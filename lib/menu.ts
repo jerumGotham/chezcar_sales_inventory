@@ -15,6 +15,8 @@ import {
 
 export const menus = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  // { label: "Admin Dashboard", href: "/dashboard2", icon: LayoutDashboard },
+  // { label: "Branch Dashboard", href: "/dashboard3", icon: LayoutDashboard },
   { label: "Customers", href: "/customers", icon: Users },
   { label: "Products", href: "/products", icon: Package },
   { label: "Inventory", href: "/inventory", icon: Boxes },

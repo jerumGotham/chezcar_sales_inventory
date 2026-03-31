@@ -1,31 +1,3 @@
-export const dashboardStats = [
-  {
-    label: "Today's Sales",
-    value: "₱58,420",
-    hint: "+12.4% vs yesterday",
-    tone: "success",
-    featured: true,
-  },
-  {
-    label: "This Month Sales",
-    value: "₱1,284,300",
-    hint: "+8.1% vs last month",
-    tone: "info",
-  },
-  {
-    label: "Pending Orders",
-    value: "14",
-    hint: "5 with downpayment",
-    tone: "warning",
-  },
-  {
-    label: "Low Stock Items",
-    value: "9",
-    hint: "Needs replenishment",
-    tone: "danger",
-  },
-];
-
 export const customers = [
   {
     id: "CUST-1001",
@@ -53,30 +25,69 @@ export const customers = [
   },
 ];
 
-export const products = [
+export const jobOrders = [
   {
-    sku: "ACC-001",
-    name: "Leather Seat Cover",
-    category: "Interior",
-    price: "₱4,500",
-    stock: 12,
-    branch: "QC Main",
+    joNo: "JO-901",
+    customer: "Paolo Santos",
+    service: "Head Unit Installation",
+    technician: "Assigned Later",
+    status: "In Progress",
+    amount: "₱1,500",
   },
   {
-    sku: "ACC-002",
-    name: "Android Head Unit",
-    category: "Electronics",
-    price: "₱12,900",
-    stock: 4,
-    branch: "QC Main",
+    joNo: "JO-902",
+    customer: "Mark Reyes",
+    service: "Tint Installation",
+    technician: "Assigned Later",
+    status: "Pending",
+    amount: "₱3,800",
+  },
+];
+
+export const transfers = [
+  {
+    transferNo: "TR-100",
+    from: "QC Main",
+    to: "Makati",
+    item: "Dash Cam 1080p",
+    qty: 5,
+    status: "Pending Approval",
   },
   {
-    sku: "ACC-003",
-    name: "Rain Visor Set",
-    category: "Exterior",
-    price: "₱1,250",
-    stock: 20,
-    branch: "Pasig",
+    transferNo: "TR-101",
+    from: "Pasig",
+    to: "QC Main",
+    item: "Rain Visor Set",
+    qty: 8,
+    status: "In Transit",
+  },
+];
+
+export const dashboardStats = [
+  {
+    label: "Today's Sales",
+    value: "₱58,420",
+    hint: "+12.4% vs yesterday",
+    tone: "success",
+    featured: true,
+  },
+  {
+    label: "This Month Sales",
+    value: "₱1,284,300",
+    hint: "+8.1% vs last month",
+    tone: "info",
+  },
+  {
+    label: "Pending Orders",
+    value: "14",
+    hint: "5 with downpayment",
+    tone: "warning",
+  },
+  {
+    label: "Low Stock Items",
+    value: "9",
+    hint: "Needs replenishment",
+    tone: "danger",
   },
 ];
 
@@ -120,44 +131,6 @@ export const orders = [
   },
 ];
 
-export const jobOrders = [
-  {
-    joNo: "JO-901",
-    customer: "Paolo Santos",
-    service: "Head Unit Installation",
-    technician: "Assigned Later",
-    status: "In Progress",
-    amount: "₱1,500",
-  },
-  {
-    joNo: "JO-902",
-    customer: "Mark Reyes",
-    service: "Tint Installation",
-    technician: "Assigned Later",
-    status: "Pending",
-    amount: "₱3,800",
-  },
-];
-
-export const transfers = [
-  {
-    transferNo: "TR-100",
-    from: "QC Main",
-    to: "Makati",
-    item: "Dash Cam 1080p",
-    qty: 5,
-    status: "Pending Approval",
-  },
-  {
-    transferNo: "TR-101",
-    from: "Pasig",
-    to: "QC Main",
-    item: "Rain Visor Set",
-    qty: 8,
-    status: "In Transit",
-  },
-];
-
 export const notifications = [
   {
     title: "Low stock alert",
@@ -189,24 +162,21 @@ export const salesTrend = [
 export const branchPerformance = [
   {
     branch: "QC Main",
-    sales: "₱520,000",
+    sales: 520000,
     transactions: 142,
     share: 41,
-    progress: 82,
   },
   {
     branch: "Makati",
-    sales: "₱412,000",
+    sales: 412000,
     transactions: 108,
     share: 32,
-    progress: 65,
   },
   {
     branch: "Pasig",
-    sales: "₱352,300",
+    sales: 352300,
     transactions: 91,
     share: 27,
-    progress: 55,
   },
 ];
 
@@ -214,21 +184,48 @@ export const topSellingProducts = [
   {
     name: "3M Tint Medium Black",
     unitsSold: 42,
-    revenue: "₱126,000",
+    revenue: 126000,
   },
   {
     name: "Toyota Rush Seat Cover",
     unitsSold: 28,
-    revenue: "₱112,000",
+    revenue: 112000,
   },
   {
     name: "Android Head Unit",
     unitsSold: 15,
-    revenue: "₱193,500",
+    revenue: 193500,
   },
   {
     name: "Roof Rack",
     unitsSold: 12,
-    revenue: "₱72,000",
+    revenue: 72000,
+  },
+];
+
+export const products = [
+  {
+    sku: "ACC-001",
+    name: "Leather Seat Cover",
+    category: "Interior",
+    price: "₱4,500",
+    stock: 12,
+    branch: "QC Main",
+  },
+  {
+    sku: "ACC-002",
+    name: "Android Head Unit",
+    category: "Electronics",
+    price: "₱12,900",
+    stock: 4,
+    branch: "QC Main",
+  },
+  {
+    sku: "ACC-003",
+    name: "Rain Visor Set",
+    category: "Exterior",
+    price: "₱1,250",
+    stock: 20,
+    branch: "Pasig",
   },
 ];
