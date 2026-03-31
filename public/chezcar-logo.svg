@@ -1,0 +1,19 @@
+<svg width="320" height="320" viewBox="0 0 320 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="320" height="320" rx="36" fill="#F5F7F6"/>
+  <path d="M160 16L272 64L248 218L160 284L72 218L48 64L160 16Z" fill="#121212"/>
+  <path d="M160 32L255 73L234 207L160 261L86 207L65 73L160 32Z" fill="#E8ECEB"/>
+  <path d="M160 45L241 80L222 197L160 242L98 197L79 80L160 45Z" fill="#1C1C1C"/>
+  <path d="M94 81H226L212 173L160 210L108 173L94 81Z" fill="#FFFFFF"/>
+  <path d="M120 89L160 71L200 89L214 135L160 178L106 135L120 89Z" fill="#4ADE4A"/>
+  <path d="M128 95H192L205 132L160 168L115 132L128 95Z" fill="#0C0C0C"/>
+  <path d="M127 108C133 96 145 88 160 88C175 88 187 96 193 108" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="115" cy="121" r="7" fill="#54FF4B"/>
+  <circle cx="205" cy="121" r="7" fill="#54FF4B"/>
+  <path d="M55 170L135 153L120 192H39L55 170Z" fill="#121212"/>
+  <path d="M265 170L185 153L200 192H281L265 170Z" fill="#121212"/>
+  <text x="160" y="190" text-anchor="middle" font-size="58" font-weight="900" font-family="Arial, Helvetica, sans-serif" fill="#FFFFFF">CHEZ</text>
+  <text x="222" y="190" text-anchor="middle" font-size="58" font-weight="900" font-family="Arial, Helvetica, sans-serif" fill="#54FF4B">CAR</text>
+  <rect x="72" y="198" width="176" height="28" rx="14" fill="#0F0F0F"/>
+  <text x="160" y="218" text-anchor="middle" font-size="24" font-weight="800" letter-spacing="1.5" font-family="Arial, Helvetica, sans-serif" fill="#54FF4B">AUTO CARE</text>
+  <text x="160" y="286" text-anchor="middle" font-size="22" font-weight="800" font-family="Arial, Helvetica, sans-serif" fill="#111111">EST 2017</text>
+</svg>

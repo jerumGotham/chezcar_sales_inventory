@@ -1,0 +1,29 @@
+import {
+  Bell,
+  Boxes,
+  ClipboardList,
+  LayoutDashboard,
+  Package,
+  ReceiptText,
+  RefreshCw,
+  Settings,
+  ShoppingCart,
+  Users,
+  UserCog,
+  Wrench,
+} from "lucide-react";
+
+export const menus = [
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Customers", href: "/customers", icon: Users },
+  { label: "Products", href: "/products", icon: Package },
+  { label: "Inventory", href: "/inventory", icon: Boxes },
+  { label: "Customer Orders", href: "/customer-orders", icon: ClipboardList },
+  { label: "POS / Sales", href: "/pos", icon: ShoppingCart },
+  { label: "Job Orders", href: "/job-orders", icon: Wrench },
+  { label: "Stock Transfers", href: "/stock-transfers", icon: RefreshCw },
+  { label: "Reports", href: "/reports", icon: ReceiptText },
+  { label: "Notifications", href: "/notifications", icon: Bell },
+  { label: "Users & Roles", href: "/users", icon: UserCog },
+  { label: "Settings", href: "/settings", icon: Settings },
+] as const;
