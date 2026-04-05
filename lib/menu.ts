@@ -21,7 +21,7 @@ export const menus = [
   { label: "Products", href: "/products", icon: Package },
   { label: "Inventory", href: "/inventory", icon: Boxes },
   { label: "Customer Orders", href: "/customer-orders", icon: ClipboardList },
-  { label: "POS / Sales", href: "/pos", icon: ShoppingCart },
+  // { label: "POS / Sales", href: "/pos", icon: ShoppingCart },
   { label: "Job Orders", href: "/job-orders", icon: Wrench },
   { label: "Stock Transfers", href: "/stock-transfers", icon: RefreshCw },
   { label: "Reports", href: "/reports", icon: ReceiptText },

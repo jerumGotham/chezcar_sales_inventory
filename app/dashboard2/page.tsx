@@ -1,10 +1,28 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SimpleTable } from "@/components/simple-table";
+import {
+  branchPerformance,
+  lowStock,
+  orders,
+  salesTrend,
+  topSellingProducts,
+} from "@/lib/mock-data";
+import {
+  statColorMap,
+  formatPeso,
+  safeNumber,
+  getStatusBadgeClass,
+  getBranches,
+  getFilteredData,
+  getPendingOrders,
+  groupTopProducts,
+  getXAxisKey,
+} from "@/lib/dashboard-data";
 import {
   ResponsiveContainer,
   LineChart,
@@ -17,204 +35,239 @@ import {
   Bar,
 } from "recharts";
 
-const statColorMap: Record<string, string> = {
-  success: "text-emerald-600",
-  warning: "text-amber-600",
-  danger: "text-red-600",
-  info: "text-sky-600",
+type ChartTooltipProps = {
+  active?: boolean;
+  payload?: Array<{
+    value?: number;
+    name?: string;
+    payload?: {
+      branch?: string;
+      day?: string;
+      label?: string;
+    };
+  }>;
+  label?: string;
 };
 
-function getStatusBadgeClass(status: string) {
-  const normalized = status.toLowerCase();
+function BranchPerformanceTooltip({ active, payload }: ChartTooltipProps) {
+  if (!active || !payload || payload.length === 0) return null;
 
-  if (
-    normalized.includes("ready") ||
-    normalized.includes("completed") ||
-    normalized.includes("approved")
-  ) {
-    return "bg-emerald-100 text-emerald-700 hover:bg-emerald-100";
-  }
+  const item = payload[0];
+  const branch = item?.payload?.branch ?? item?.name ?? "Branch";
+  const value = Number(item?.value ?? 0);
 
-  if (
-    normalized.includes("waiting") ||
-    normalized.includes("pending") ||
-    normalized.includes("for approval") ||
-    normalized.includes("in progress")
-  ) {
-    return "bg-amber-100 text-amber-700 hover:bg-amber-100";
-  }
-
-  if (
-    normalized.includes("cancel") ||
-    normalized.includes("overdue") ||
-    normalized.includes("critical")
-  ) {
-    return "bg-red-100 text-red-700 hover:bg-red-100";
-  }
-
-  return "bg-slate-100 text-slate-700 hover:bg-slate-100";
+  return (
+    <div className="rounded-xl border border-border bg-card px-3 py-2 shadow-lg">
+      <p className="text-sm font-medium text-foreground">{branch}</p>
+      <p className="text-sm text-muted-foreground">
+        Sales:{" "}
+        <span className="font-semibold text-foreground">
+          {formatPeso(value)}
+        </span>
+      </p>
+    </div>
+  );
 }
 
-function formatPeso(value: number) {
-  return `₱${value.toLocaleString()}`;
+function SalesTrendTooltip({ active, payload, label }: ChartTooltipProps) {
+  if (!active || !payload || payload.length === 0) return null;
+
+  const value = Number(payload[0]?.value ?? 0);
+  const displayLabel =
+    payload[0]?.payload?.day ?? payload[0]?.payload?.label ?? label ?? "Sales";
+
+  return (
+    <div className="rounded-xl border border-border bg-card px-3 py-2 shadow-lg">
+      <p className="text-sm font-medium text-foreground">{displayLabel}</p>
+      <p className="text-sm text-muted-foreground">
+        Sales:{" "}
+        <span className="font-semibold text-foreground">
+          {formatPeso(value)}
+        </span>
+      </p>
+    </div>
+  );
 }
 
-export const dashboardStats = [
-  {
-    label: "Today's Sales",
-    value: "₱58,420",
-    hint: "+12.4% vs yesterday",
-    tone: "success",
-    featured: true,
-  },
-  {
-    label: "This Month Sales",
-    value: "₱1,284,300",
-    hint: "+8.1% vs last month",
-    tone: "info",
-  },
-  {
-    label: "Pending Orders",
-    value: "14",
-    hint: "5 with downpayment",
-    tone: "warning",
-  },
-  {
-    label: "Low Stock Items",
-    value: "9",
-    hint: "Needs replenishment",
-    tone: "danger",
-  },
-];
-
-const salesTrend = [
-  { day: "Mon", sales: 32000 },
-  { day: "Tue", sales: 38500 },
-  { day: "Wed", sales: 36400 },
-  { day: "Thu", sales: 41750 },
-  { day: "Fri", sales: 44200 },
-  { day: "Sat", sales: 48900 },
-  { day: "Sun", sales: 41860 },
-];
-
-const branchPerformance = [
-  { branch: "QC Main", sales: 185000 },
-  { branch: "Makati", sales: 158000 },
-  { branch: "Pasig", sales: 124500 },
-];
-
-const lowStock = [
-  { item: "3M Tint Medium Black", branch: "QC Main", qty: 2, reorderLevel: 5 },
-  { item: "Dash Cam 1080p", branch: "Makati", qty: 1, reorderLevel: 3 },
-  { item: "Car Mat Universal", branch: "Pasig", qty: 3, reorderLevel: 8 },
-  { item: "Android Head Unit", branch: "QC Main", qty: 1, reorderLevel: 2 },
-];
-
-const notifications = [
-  {
-    title: "Low stock alert",
-    description: "3M Tint Medium Black is below reorder level in QC Main.",
-    time: "12 mins ago",
-  },
-  {
-    title: "Order ready for release",
-    description: "ORD-4102 can now be released to customer.",
-    time: "28 mins ago",
-  },
-  {
-    title: "Transfer awaiting approval",
-    description: "TR-104 requires owner confirmation.",
-    time: "1 hour ago",
-  },
-];
-
-const inventoryActivity = [
-  {
-    referenceNo: "INV-2001",
-    type: "Stock In",
-    branch: "QC Main",
-    item: "3M Tint Medium Black",
-    qty: "+20",
-    status: "Approved",
-  },
-  {
-    referenceNo: "TR-104",
-    type: "Transfer Out",
-    branch: "Makati",
-    item: "Dash Cam 1080p",
-    qty: "-5",
-    status: "Pending Approval",
-  },
-  {
-    referenceNo: "ADJ-3009",
-    type: "Adjustment",
-    branch: "Pasig",
-    item: "Car Mat Universal",
-    qty: "-2",
-    status: "Completed",
-  },
-];
-
-const fastMovingCategories = [
-  { name: "Tint Packages", units: 42, revenue: 126000 },
-  { name: "Seat Covers", units: 28, revenue: 112000 },
-  { name: "Audio Upgrades", units: 16, revenue: 193500 },
-  { name: "Exterior Accessories", units: 12, revenue: 72000 },
-];
-
-const orders = [
-  {
-    orderNo: "ORD-4101",
-    customer: "Paolo Santos",
-    item: "Toyota Rush Seat Cover",
-    status: "Waiting Stock",
-    downpayment: "₱2,500",
-    releaseDate: "2026-04-06",
-  },
-  {
-    orderNo: "ORD-4102",
-    customer: "Lea Ramos",
-    item: "Roof Rack",
-    status: "Ready for Release",
-    downpayment: "₱4,000",
-    releaseDate: "2026-04-02",
-  },
-  {
-    orderNo: "ORD-4103",
-    customer: "Marco Lim",
-    item: "Reverse Camera",
-    status: "Pending Installation",
-    downpayment: "₱1,500",
-    releaseDate: "2026-04-04",
-  },
-];
-
-const topSellingProducts = [
-  { name: "3M Tint Medium Black", unitsSold: 37, revenue: 111000 },
-  { name: "Toyota Rush Seat Cover", unitsSold: 23, revenue: 94300 },
-  { name: "Android Head Unit", unitsSold: 14, revenue: 189000 },
-  { name: "Roof Rack", unitsSold: 11, revenue: 80300 },
-];
+function formatMonth(month: string) {
+  const monthNum = Number(month);
+  if (isNaN(monthNum) || monthNum < 0 || monthNum > 11) return month;
+  return new Date(0, monthNum).toLocaleString("default", { month: "long" });
+}
 
 export default function AdminDashboardPage() {
+  const now = new Date();
+  const currentMonth = String(now.getMonth());
+  const currentYear = String(now.getFullYear());
+
+  const [selectedBranch, setSelectedBranch] = useState("all");
+
+  const filters = {
+    selectedBranch,
+    selectedMonth: currentMonth,
+    selectedYear: currentYear,
+  };
+
+  const branches = useMemo(() => getBranches(branchPerformance), []);
+
+  const filteredBranchPerformance = useMemo(
+    () => getFilteredData(branchPerformance, filters),
+    [selectedBranch, currentMonth, currentYear],
+  );
+
+  const filteredLowStock = useMemo(
+    () => getFilteredData(lowStock, filters),
+    [selectedBranch, currentMonth, currentYear],
+  );
+
+  const filteredOrders = useMemo(() => {
+    return getPendingOrders(getFilteredData(orders, filters));
+  }, [selectedBranch, currentMonth, currentYear]);
+
+  const filteredSalesTrend = useMemo(
+    () => getFilteredData(salesTrend, filters),
+    [selectedBranch, currentMonth, currentYear],
+  );
+
+  const groupedTopProducts = useMemo(() => {
+    return groupTopProducts(getFilteredData(topSellingProducts, filters));
+  }, [selectedBranch, currentMonth, currentYear]);
+
+  const displayedTopProducts = useMemo(
+    () => groupedTopProducts.slice(0, 5),
+    [groupedTopProducts],
+  );
+
+  const topProduct = useMemo(
+    () => groupedTopProducts[0] ?? null,
+    [groupedTopProducts],
+  );
+
+  const totalSales = useMemo(() => {
+    if (filteredSalesTrend.length > 0) {
+      return filteredSalesTrend.reduce(
+        (total, item) => total + safeNumber(item.sales),
+        0,
+      );
+    }
+
+    return filteredBranchPerformance.reduce(
+      (total, item) => total + safeNumber(item.sales),
+      0,
+    );
+  }, [filteredSalesTrend, filteredBranchPerformance]);
+
+  const latestSales = useMemo(() => {
+    if (filteredSalesTrend.length === 0) return 0;
+    return safeNumber(filteredSalesTrend[filteredSalesTrend.length - 1]?.sales);
+  }, [filteredSalesTrend]);
+
+  const totalUnitsSold = useMemo(() => {
+    return groupedTopProducts.reduce(
+      (total, item) => total + item.unitsSold,
+      0,
+    );
+  }, [groupedTopProducts]);
+
+  const summaryCards = [
+    {
+      label: "Total Sales",
+      value: formatPeso(totalSales),
+      hint: "Current month sales based on selected branch",
+      tone: "info",
+    },
+    {
+      label: "Latest Sales",
+      value: formatPeso(latestSales),
+      hint: "Latest visible sales record",
+      tone: "success",
+    },
+    {
+      label: "Top Product",
+      value: topProduct?.name ?? "No Data",
+      hint: topProduct
+        ? `${topProduct.unitsSold.toLocaleString()} units sold`
+        : "No sales data for current month",
+      tone: "info",
+    },
+    {
+      label: "Total Units Sold",
+      value: totalUnitsSold.toLocaleString(),
+      hint: "Units sold this month",
+      tone: "success",
+    },
+    {
+      label: "Pending Orders",
+      value: String(filteredOrders.length),
+      hint: "Orders needing processing or release",
+      tone: filteredOrders.length > 0 ? "warning" : "info",
+    },
+    {
+      label: "Low Stock Items",
+      value: String(filteredLowStock.length),
+      hint: "Items below reorder level",
+      tone: filteredLowStock.length > 0 ? "danger" : "success",
+    },
+  ];
+
+  const xAxisKey = getXAxisKey(filteredSalesTrend);
+
   return (
     <PageShell
-      title="Dashboard"
-      subtitle="Monitor daily sales, inventory health, customer orders, branch activity, and replenishment priorities."
+      title="Admin Dashboard"
+      subtitle="Operational overview for the current month, focused on branch activity, stock risks, orders, and sales movement."
     >
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {dashboardStats.map((stat) => (
-          <Card
-            key={stat.label}
-            className={stat.featured ? "border-primary/30 shadow-sm" : ""}
-          >
+      <div className="mb-6 rounded-2xl border border-border bg-card p-4 shadow-sm">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-foreground">
+            Branch Filter
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Admin dashboard automatically shows data for the current month and
+            current year.
+          </p>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-1">
+          <div className="max-w-sm">
+            <label className="mb-2 block text-sm font-medium text-foreground">
+              Branch
+            </label>
+            <select
+              value={selectedBranch}
+              onChange={(e) => setSelectedBranch(e.target.value)}
+              className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+            >
+              {branches.map((branch) => (
+                <option key={branch} value={branch}>
+                  {branch === "all" ? "All Branches" : branch}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Badge variant="secondary">
+            {selectedBranch === "all" ? "All Branches" : selectedBranch}
+          </Badge>
+          <Badge variant="secondary">{formatMonth(currentMonth)}</Badge>
+          <Badge variant="secondary">{currentYear}</Badge>
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {summaryCards.map((stat) => (
+          <Card key={stat.label} className="border-border bg-card shadow-sm">
             <CardContent className="p-5">
-              <p className="text-sm text-slate-500">{stat.label}</p>
+              <p className="text-sm text-muted-foreground">{stat.label}</p>
               <h3 className="mt-3 text-3xl font-bold text-foreground">
                 {stat.value}
               </h3>
               <p
-                className={`mt-2 text-sm ${statColorMap[stat.tone] ?? "text-primary"}`}
+                className={`mt-2 text-sm ${
+                  statColorMap[stat.tone] ?? "text-primary"
+                }`}
               >
                 {stat.hint}
               </p>
@@ -224,189 +277,201 @@ export default function AdminDashboardPage() {
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.6fr_1fr]">
-        <Card>
+        <Card className="border-border bg-card shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
-            <CardTitle>Sales Trend (Last 7 Days)</CardTitle>
-            <Badge variant="secondary">Daily Overview</Badge>
+            <CardTitle>Sales Trend</CardTitle>
+            <Badge variant="secondary">Current Month</Badge>
           </CardHeader>
-          <CardContent className="h-[320px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart
-                data={salesTrend}
-                margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis
-                  dataKey="day"
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fontSize: 12 }}
-                />
-                <YAxis
-                  tickFormatter={(value) => `₱${Math.round(value / 1000)}k`}
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fontSize: 12 }}
-                  width={55}
-                />
-                <Tooltip
-                  formatter={(value) => [
-                    formatPeso(Number(value ?? 0)),
-                    "Sales",
-                  ]}
-                  labelClassName="text-slate-700"
-                  contentStyle={{
-                    borderRadius: "12px",
-                    border: "1px solid #e2e8f0",
-                    backgroundColor: "#ffffff",
-                  }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="sales"
-                  stroke="#196130"
-                  strokeWidth={3}
-                  dot={{ r: 4 }}
-                  activeDot={{ r: 6 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+          <CardContent className="h-[320px] overflow-visible">
+            <div className="h-full overflow-visible">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={filteredSalesTrend}
+                  margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke="currentColor"
+                    className="text-border"
+                  />
+                  <XAxis
+                    dataKey={xAxisKey}
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 12, fill: "currentColor" }}
+                    className="text-muted-foreground"
+                  />
+                  <YAxis
+                    tickFormatter={(value) => `₱${Math.round(value / 1000)}k`}
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 12, fill: "currentColor" }}
+                    width={55}
+                    className="text-muted-foreground"
+                  />
+                  <Tooltip
+                    content={<SalesTrendTooltip />}
+                    wrapperStyle={{ zIndex: 1000, pointerEvents: "none" }}
+                    cursor={{
+                      stroke: "rgba(100, 116, 139, 0.2)",
+                      strokeWidth: 1,
+                    }}
+                    isAnimationActive={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="sales"
+                    strokeWidth={3}
+                    dot={{ r: 4, fill: "#196130" }}
+                    activeDot={{ r: 6 }}
+                    stroke="#196130"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-border bg-card shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle>Branch Performance</CardTitle>
-            <Badge variant="secondary">This Month</Badge>
+            <Badge variant="secondary">
+              {selectedBranch === "all" ? "All Branches" : selectedBranch}
+            </Badge>
           </CardHeader>
-          <CardContent className="h-[320px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={branchPerformance}
-                layout="vertical"
-                margin={{ top: 10, right: 10, left: 10, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis
-                  type="number"
-                  tickFormatter={(value) => `₱${Math.round(value / 1000)}k`}
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fontSize: 12 }}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="branch"
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fontSize: 12 }}
-                  width={96}
-                />
-                <Tooltip
-                  formatter={(value) => [
-                    formatPeso(Number(value ?? 0)),
-                    "Sales",
-                  ]}
-                  labelClassName="text-slate-700"
-                  contentStyle={{
-                    borderRadius: "12px",
-                    border: "1px solid #e2e8f0",
-                    backgroundColor: "#ffffff",
-                  }}
-                />
-                <Bar dataKey="sales" fill="#196130" radius={[0, 8, 8, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          <CardContent className="h-[320px] overflow-visible">
+            <div className="h-full overflow-visible">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={filteredBranchPerformance}
+                  layout="vertical"
+                  margin={{ top: 10, right: 40, left: 10, bottom: 0 }}
+                  barCategoryGap={18}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    horizontal={false}
+                    stroke="currentColor"
+                    className="text-border"
+                  />
+                  <XAxis
+                    type="number"
+                    tickFormatter={(value) => `₱${Math.round(value / 1000)}k`}
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 12, fill: "currentColor" }}
+                    className="text-muted-foreground"
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="branch"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 12, fill: "currentColor" }}
+                    width={90}
+                    className="text-muted-foreground"
+                  />
+                  <Tooltip
+                    cursor={{ fill: "rgba(100, 116, 139, 0.08)" }}
+                    content={<BranchPerformanceTooltip />}
+                    wrapperStyle={{ zIndex: 1000, pointerEvents: "none" }}
+                    isAnimationActive={false}
+                  />
+                  <Bar dataKey="sales" fill="#196130" radius={[0, 8, 8, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-[1.4fr_1fr]">
+      <div className="mt-6 grid gap-6 xl:grid-cols-[1.2fr_1fr]">
+        <Card className="border-border bg-card shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle>Top Selling Products</CardTitle>
+            <Badge variant="secondary">Top 5</Badge>
+          </CardHeader>
+          <CardContent>
+            {displayedTopProducts.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[520px]">
+                  <thead>
+                    <tr className="border-b border-border text-left">
+                      <th className="py-3 pr-4 text-sm font-medium text-muted-foreground">
+                        Rank
+                      </th>
+                      <th className="py-3 pr-4 text-sm font-medium text-muted-foreground">
+                        Product
+                      </th>
+                      <th className="py-3 pr-4 text-sm font-medium text-muted-foreground">
+                        Units Sold
+                      </th>
+                      <th className="py-3 text-right text-sm font-medium text-muted-foreground">
+                        Revenue
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayedTopProducts.map((product, index) => (
+                      <tr
+                        key={`${product.name}-${index}`}
+                        className="border-b border-border last:border-0"
+                      >
+                        <td className="py-4 pr-4 align-top">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                            {index + 1}
+                          </div>
+                        </td>
+                        <td className="py-4 pr-4">
+                          <p className="font-medium text-foreground">
+                            {product.name}
+                          </p>
+                        </td>
+                        <td className="py-4 pr-4">
+                          <p className="font-semibold text-foreground">
+                            {product.unitsSold.toLocaleString()}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            units sold
+                          </p>
+                        </td>
+                        <td className="py-4 text-right">
+                          <p className="font-semibold text-foreground">
+                            {formatPeso(product.revenue)}
+                          </p>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+                No top-selling data available for the current month.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <SimpleTable
           title="Low Stock Alerts"
           headers={["Item", "Branch", "Qty", "Reorder Level"]}
-          rows={lowStock.map((item) => [
+          rows={filteredLowStock.map((item) => [
             item.item,
             item.branch,
             <span
               key={`${item.item}-${item.branch}-qty`}
-              className="font-medium text-red-600"
+              className="font-medium text-red-600 dark:text-red-400"
             >
               {item.qty}
             </span>,
             item.reorderLevel,
           ])}
         />
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0">
-            <CardTitle>Latest Notifications</CardTitle>
-            <Button variant="ghost" size="sm">
-              View All
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {notifications.map((item) => (
-              <div key={item.title} className="rounded-2xl border p-4">
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <p className="font-medium text-foreground">{item.title}</p>
-                  <Badge variant="secondary">{item.time}</Badge>
-                </div>
-                <p className="text-sm text-slate-500">{item.description}</p>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-[1.4fr_1fr]">
-        <SimpleTable
-          title="Recent Inventory Activity"
-          headers={["Reference No.", "Type", "Branch", "Item", "Qty", "Status"]}
-          rows={inventoryActivity.map((item) => [
-            item.referenceNo,
-            item.type,
-            item.branch,
-            item.item,
-            item.qty,
-            <Badge
-              key={`${item.referenceNo}-status`}
-              className={getStatusBadgeClass(item.status)}
-            >
-              {item.status}
-            </Badge>,
-          ])}
-        />
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0">
-            <CardTitle>Fast Moving Categories</CardTitle>
-            <Badge variant="secondary">This Week</Badge>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {fastMovingCategories.map((category, index) => (
-              <div
-                key={category.name}
-                className="flex items-center justify-between rounded-2xl border p-4"
-              >
-                <div>
-                  <p className="font-medium text-foreground">
-                    {index + 1}. {category.name}
-                  </p>
-                  <p className="text-sm text-slate-500">
-                    {category.units} transactions
-                  </p>
-                </div>
-                <p className="text-sm font-semibold text-foreground">
-                  {formatPeso(category.revenue)}
-                </p>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="mt-6 grid gap-6 xl:grid-cols-[1.4fr_1fr]">
+      <div className="mt-6">
         <SimpleTable
           title="Pending Customer Orders"
           headers={[
@@ -417,47 +482,20 @@ export default function AdminDashboardPage() {
             "Downpayment",
             "Release Date",
           ]}
-          rows={orders.map((order) => [
+          rows={filteredOrders.map((order) => [
             order.orderNo,
             order.customer,
             order.item,
             <Badge
               key={`${order.orderNo}-status`}
-              className={getStatusBadgeClass(order.status)}
+              className={getStatusBadgeClass(String(order.status ?? ""))}
             >
-              {order.status}
+              {String(order.status ?? "")}
             </Badge>,
             order.downpayment,
             order.releaseDate,
           ])}
         />
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0">
-            <CardTitle>Top Selling Products</CardTitle>
-            <Badge variant="secondary">This Month</Badge>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {topSellingProducts.map((product, index) => (
-              <div
-                key={product.name}
-                className="flex items-center justify-between rounded-2xl border p-4"
-              >
-                <div>
-                  <p className="font-medium text-foreground">
-                    {index + 1}. {product.name}
-                  </p>
-                  <p className="text-sm text-slate-500">
-                    {product.unitsSold} units sold
-                  </p>
-                </div>
-                <p className="text-sm font-semibold text-foreground">
-                  {formatPeso(product.revenue)}
-                </p>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
       </div>
     </PageShell>
   );

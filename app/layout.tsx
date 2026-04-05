@@ -1,8 +1,9 @@
 import "./globals.css";
 import { ReactNode } from "react";
-import { AppSidebar } from "@/components/app-sidebar";
 import { Geist } from "next/font/google";
 import { cn } from "@/lib/utils";
+import Providers from "./provider";
+import AppLayoutShell from "@/components/app-layout-shell";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -20,12 +21,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       suppressHydrationWarning
     >
       <body className="overflow-x-hidden bg-white text-foreground transition-colors dark:bg-background">
-        <div className="min-h-screen lg:flex">
-          <AppSidebar />
-          <main className="min-h-screen min-w-0 flex-1 bg-white p-5 pt-20 dark:bg-background lg:p-8">
-            {children}
-          </main>
-        </div>
+        <Providers>
+          <AppLayoutShell>{children}</AppLayoutShell>
+        </Providers>
       </body>
     </html>
   );
