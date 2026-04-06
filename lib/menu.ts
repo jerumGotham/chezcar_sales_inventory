@@ -11,6 +11,7 @@ import {
   Users,
   UserCog,
   Wrench,
+  LocationEdit,
 } from "lucide-react";
 
 export const menus = [
@@ -26,6 +27,7 @@ export const menus = [
   { label: "Stock Transfers", href: "/stock-transfers", icon: RefreshCw },
   { label: "Reports", href: "/reports", icon: ReceiptText },
   { label: "Notifications", href: "/notifications", icon: Bell },
+  { label: "Branches", href: "/branches", icon: LocationEdit },
   { label: "Users & Roles", href: "/users", icon: UserCog },
   { label: "Settings", href: "/settings", icon: Settings },
 ] as const;

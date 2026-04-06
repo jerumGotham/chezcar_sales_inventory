@@ -10,6 +10,11 @@ import {
   ShoppingCart,
   CreditCard,
   ScanLine,
+  ClipboardList,
+  Wrench,
+  PackageCheck,
+  UserRound,
+  Package2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -24,6 +29,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { products } from "@/lib/mock-data";
 
 type Product = {
@@ -50,6 +57,12 @@ type SelectOption = {
   label: string;
 };
 
+type OrderItemRow = {
+  item: SelectOption | null;
+  quantity: number;
+  unitPrice: number;
+};
+
 const mockCustomers: SelectOption[] = [
   { value: "guest", label: "Guest" },
   { value: "cust-1", label: "Juan Dela Cruz" },
@@ -65,6 +78,18 @@ const paymentOptions: SelectOption[] = [
   { value: "bank_transfer", label: "Bank Transfer" },
   { value: "credit_card", label: "Credit Card" },
   { value: "split", label: "Split Payment" },
+];
+
+const ORDER_STATUS_OPTIONS: SelectOption[] = [
+  { value: "Reserved", label: "Reserved" },
+  { value: "Pending", label: "Pending" },
+  { value: "For Release", label: "For Release" },
+];
+
+const ORDER_PAYMENT_OPTIONS: SelectOption[] = [
+  { value: "Unpaid", label: "Unpaid" },
+  { value: "Partial", label: "Partial" },
+  { value: "Paid", label: "Paid" },
 ];
 
 function parsePrice(value: number | string) {
@@ -115,7 +140,7 @@ const selectStyles = {
   }),
 };
 
-export default function PosPage() {
+function PosTab() {
   const productList = useMemo(() => {
     return (products as Product[]).map((item) => ({
       ...item,
@@ -169,9 +194,7 @@ export default function PosPage() {
     });
   }, [productList, search, selectedCategory]);
 
-  const quickProducts = useMemo(() => {
-    return productList.slice(0, 8);
-  }, [productList]);
+  const quickProducts = useMemo(() => productList.slice(0, 8), [productList]);
 
   const subtotal = useMemo(() => {
     return cart.reduce((sum, item) => sum + item.price * item.qty, 0);
@@ -246,312 +269,276 @@ export default function PosPage() {
     };
 
     console.log("POS CHECKOUT PAYLOAD", payload);
-
-    /**
-     * Backend-ready:
-     * await fetch("/api/pos/sales", {
-     *   method: "POST",
-     *   headers: { "Content-Type": "application/json" },
-     *   body: JSON.stringify(payload),
-     * });
-     */
   };
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <div className="border-b bg-white">
-        <div className="mx-auto flex max-w-[1800px] flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-              POS / Sales
-            </h1>
-            <p className="text-sm text-slate-500">
-              Fast walk-in sales screen optimized for large product catalogs.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <Button variant="outline" onClick={clearSale}>
-              New Sale
-            </Button>
-            <Button variant="outline">Hold Sale</Button>
-            <Button
-              onClick={handleCheckout}
-              disabled={!cart.length || !paymentType}
-            >
-              Checkout
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      <div className="mx-auto grid max-w-[1800px] gap-6 px-4 py-6 sm:px-6 xl:grid-cols-[1.5fr_0.9fr] lg:px-8">
-        <div className="space-y-6">
-          <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-4">
-              <CardTitle>Quick Add</CardTitle>
-              <CardDescription>
-                Fast-moving products for quicker cashier transactions.
-              </CardDescription>
-            </CardHeader>
-
-            <CardContent>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                {quickProducts.map((product) => (
-                  <button
-                    key={`quick-${product.sku}`}
-                    type="button"
-                    onClick={() => addToCart(product)}
-                    className="rounded-2xl border bg-white p-4 text-left transition hover:border-emerald-300 hover:bg-emerald-50"
-                  >
-                    <div className="mb-2 flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-slate-900">
-                          {product.name}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          {product.sku}
-                        </p>
-                      </div>
-                      <Badge variant="secondary" className="whitespace-nowrap">
-                        {product.stock}
-                      </Badge>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold text-emerald-600">
-                        {formatPeso(Number(product.price))}
-                      </span>
-                      <span className="text-xs text-slate-500">Tap to add</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-4">
-              <CardTitle>Product Search</CardTitle>
-              <CardDescription>
-                Use barcode, SKU, product name, or category to find items fast.
-              </CardDescription>
-            </CardHeader>
-
-            <CardContent className="space-y-5">
-              <div className="grid gap-3 xl:grid-cols-[1.3fr_0.7fr_auto]">
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-                  <Input
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Scan barcode or search product"
-                    className="pl-9"
-                  />
-                </div>
-
-                <Select
-                  instanceId="category-select"
-                  options={categoryOptions}
-                  value={selectedCategory}
-                  onChange={(option) => setSelectedCategory(option)}
-                  isSearchable
-                  placeholder="Filter category"
-                  styles={selectStyles}
-                />
-
-                <Button variant="outline" className="h-11">
-                  <ScanLine className="mr-2 size-4" />
-                  Scan
-                </Button>
-              </div>
-
-              <div className="rounded-2xl border bg-white">
-                <div className="grid grid-cols-[1.8fr_1fr_110px_130px_120px] gap-3 border-b bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  <div>Product</div>
-                  <div>Category</div>
-                  <div>Stock</div>
-                  <div>Price</div>
-                  <div className="text-right">Action</div>
-                </div>
-
-                <div className="max-h-[560px] overflow-y-auto">
-                  {filteredProducts.length === 0 ? (
-                    <div className="px-4 py-10 text-center text-sm text-slate-500">
-                      No products found.
-                    </div>
-                  ) : (
-                    filteredProducts.map((product) => (
-                      <div
-                        key={product.sku}
-                        className="grid grid-cols-[1.8fr_1fr_110px_130px_120px] items-center gap-3 border-b px-4 py-3 last:border-b-0 hover:bg-slate-50"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate font-medium text-slate-900">
-                            {product.name}
-                          </p>
-                          <p className="mt-1 text-xs text-slate-500">
-                            SKU: {product.sku}
-                          </p>
-                        </div>
-
-                        <div className="truncate text-sm text-slate-600">
-                          {product.category}
-                        </div>
-
-                        <div>
-                          <Badge variant="secondary">
-                            Stock {product.stock}
-                          </Badge>
-                        </div>
-
-                        <div className="text-sm font-semibold text-emerald-600">
-                          {formatPeso(Number(product.price))}
-                        </div>
-
-                        <div className="text-right">
-                          <Button
-                            size="sm"
-                            onClick={() => addToCart(product)}
-                            className="min-w-[92px]"
-                          >
-                            <Plus className="mr-2 size-4" />
-                            Add
-                          </Button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              <p className="text-xs text-slate-500">
-                Showing {filteredProducts.length} product
-                {filteredProducts.length !== 1 ? "s" : ""}.
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card className="h-fit border-0 shadow-sm xl:sticky xl:top-6">
+    <div className="grid gap-6 xl:grid-cols-[1.5fr_0.9fr]">
+      <div className="space-y-6">
+        <Card className="border-0 shadow-sm">
           <CardHeader className="pb-4">
-            <CardTitle className="flex items-center gap-2">
-              <ShoppingCart className="size-5" />
-              Current Sale
-            </CardTitle>
+            <CardTitle>Quick Add</CardTitle>
             <CardDescription>
-              Review items, assign customer, and complete payment.
+              Fast-moving products for quicker cashier transactions.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {quickProducts.map((product) => (
+                <button
+                  key={`quick-${product.sku}`}
+                  type="button"
+                  onClick={() => addToCart(product)}
+                  className="rounded-2xl border bg-white p-4 text-left transition hover:border-emerald-300 hover:bg-emerald-50"
+                >
+                  <div className="mb-2 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-900">
+                        {product.name}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {product.sku}
+                      </p>
+                    </div>
+                    <Badge variant="secondary" className="whitespace-nowrap">
+                      {product.stock}
+                    </Badge>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-emerald-600">
+                      {formatPeso(Number(product.price))}
+                    </span>
+                    <span className="text-xs text-slate-500">Tap to add</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-4">
+            <CardTitle>Product Search</CardTitle>
+            <CardDescription>
+              Use barcode, SKU, product name, or category to find items fast.
             </CardDescription>
           </CardHeader>
 
           <CardContent className="space-y-5">
-            <div className="space-y-3">
-              <Label>Customer</Label>
+            <div className="grid gap-3 xl:grid-cols-[1.3fr_0.7fr_auto]">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Scan barcode or search product"
+                  className="pl-9"
+                />
+              </div>
+
               <Select
-                instanceId="customer-select"
-                options={mockCustomers}
-                value={selectedCustomer}
-                onChange={(option) => setSelectedCustomer(option)}
+                instanceId="category-select"
+                options={categoryOptions}
+                value={selectedCategory}
+                onChange={(option) => setSelectedCategory(option)}
                 isSearchable
-                placeholder="Search customer..."
+                placeholder="Filter category"
                 styles={selectStyles}
               />
+
+              <Button variant="outline" className="h-11">
+                <ScanLine className="mr-2 size-4" />
+                Scan
+              </Button>
             </div>
 
-            <div className="space-y-3">
-              <Label>Payment Type</Label>
-              <Select
-                instanceId="payment-type-select"
-                options={paymentOptions}
-                value={paymentType}
-                onChange={(option) => setPaymentType(option)}
-                isSearchable
-                placeholder="Select payment type"
-                styles={selectStyles}
-              />
-            </div>
+            <div className="rounded-2xl border bg-white">
+              <div className="grid grid-cols-[1.8fr_1fr_110px_130px_120px] gap-3 border-b bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <div>Product</div>
+                <div>Category</div>
+                <div>Stock</div>
+                <div>Price</div>
+                <div className="text-right">Action</div>
+              </div>
 
-            <Separator />
-
-            <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
-              {cart.length === 0 ? (
-                <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-slate-500">
-                  No items yet. Add products from the left panel.
-                </div>
-              ) : (
-                cart.map((item) => (
-                  <div key={item.sku} className="rounded-2xl border p-4">
-                    <div className="flex items-start justify-between gap-4">
+              <div className="max-h-[560px] overflow-y-auto">
+                {filteredProducts.length === 0 ? (
+                  <div className="px-4 py-10 text-center text-sm text-slate-500">
+                    No products found.
+                  </div>
+                ) : (
+                  filteredProducts.map((product) => (
+                    <div
+                      key={product.sku}
+                      className="grid grid-cols-[1.8fr_1fr_110px_130px_120px] items-center gap-3 border-b px-4 py-3 last:border-b-0 hover:bg-slate-50"
+                    >
                       <div className="min-w-0">
-                        <p className="font-medium text-slate-900">
-                          {item.name}
+                        <p className="truncate font-medium text-slate-900">
+                          {product.name}
                         </p>
-                        <p className="text-sm text-slate-500">{item.sku}</p>
-                        <p className="mt-1 text-sm text-slate-500">
-                          {formatPeso(item.price)} each
+                        <p className="mt-1 text-xs text-slate-500">
+                          SKU: {product.sku}
                         </p>
+                      </div>
+
+                      <div className="truncate text-sm text-slate-600">
+                        {product.category}
+                      </div>
+
+                      <div>
+                        <Badge variant="secondary">Stock {product.stock}</Badge>
+                      </div>
+
+                      <div className="text-sm font-semibold text-emerald-600">
+                        {formatPeso(Number(product.price))}
+                      </div>
+
+                      <div className="text-right">
+                        <Button
+                          size="sm"
+                          onClick={() => addToCart(product)}
+                          className="min-w-[92px]"
+                        >
+                          <Plus className="mr-2 size-4" />
+                          Add
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-500">
+              Showing {filteredProducts.length} product
+              {filteredProducts.length !== 1 ? "s" : ""}.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="h-fit border-0 shadow-sm xl:sticky xl:top-6">
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center gap-2">
+            <ShoppingCart className="size-5" />
+            Current Sale
+          </CardTitle>
+          <CardDescription>
+            Review items, assign customer, and complete payment.
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent className="space-y-5">
+          <div className="space-y-3">
+            <Label>Customer</Label>
+            <Select
+              instanceId="customer-select"
+              options={mockCustomers}
+              value={selectedCustomer}
+              onChange={(option) => setSelectedCustomer(option)}
+              isSearchable
+              placeholder="Search customer..."
+              styles={selectStyles}
+            />
+          </div>
+
+          <div className="space-y-3">
+            <Label>Payment Type</Label>
+            <Select
+              instanceId="payment-type-select"
+              options={paymentOptions}
+              value={paymentType}
+              onChange={(option) => setPaymentType(option)}
+              isSearchable
+              placeholder="Select payment type"
+              styles={selectStyles}
+            />
+          </div>
+
+          <Separator />
+
+          <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
+            {cart.length === 0 ? (
+              <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-slate-500">
+                No items yet. Add products from the left panel.
+              </div>
+            ) : (
+              cart.map((item) => (
+                <div key={item.sku} className="rounded-2xl border p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="font-medium text-slate-900">{item.name}</p>
+                      <p className="text-sm text-slate-500">{item.sku}</p>
+                      <p className="mt-1 text-sm text-slate-500">
+                        {formatPeso(item.price)} each
+                      </p>
+                    </div>
+
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => removeItem(item.sku)}
+                    >
+                      <Trash2 className="size-4 text-rose-500" />
+                    </Button>
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        onClick={() => updateQty(item.sku, "decrease")}
+                      >
+                        <Minus className="size-4" />
+                      </Button>
+
+                      <div className="flex h-10 min-w-12 items-center justify-center rounded-md border px-3 text-sm font-medium">
+                        {item.qty}
                       </div>
 
                       <Button
                         size="icon"
-                        variant="ghost"
-                        onClick={() => removeItem(item.sku)}
+                        variant="outline"
+                        onClick={() => updateQty(item.sku, "increase")}
                       >
-                        <Trash2 className="size-4 text-rose-500" />
+                        <Plus className="size-4" />
                       </Button>
                     </div>
 
-                    <div className="mt-4 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          onClick={() => updateQty(item.sku, "decrease")}
-                        >
-                          <Minus className="size-4" />
-                        </Button>
-
-                        <div className="flex h-10 min-w-12 items-center justify-center rounded-md border px-3 text-sm font-medium">
-                          {item.qty}
-                        </div>
-
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          onClick={() => updateQty(item.sku, "increase")}
-                        >
-                          <Plus className="size-4" />
-                        </Button>
-                      </div>
-
-                      <p className="font-semibold text-slate-900">
-                        {formatPeso(item.qty * item.price)}
-                      </p>
-                    </div>
+                    <p className="font-semibold text-slate-900">
+                      {formatPeso(item.qty * item.price)}
+                    </p>
                   </div>
-                ))
-              )}
+                </div>
+              ))
+            )}
+          </div>
+
+          <Separator />
+
+          <div className="rounded-2xl border p-4">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-500">Subtotal</span>
+              <span className="font-medium">{formatPeso(subtotal)}</span>
             </div>
 
-            <Separator />
-
-            <div className="rounded-2xl border p-4">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-500">Subtotal</span>
-                <span className="font-medium">{formatPeso(subtotal)}</span>
-              </div>
-
-              <div className="mt-2 flex items-center justify-between text-sm">
-                <span className="text-slate-500">Discount</span>
-                <span className="font-medium">{formatPeso(discount)}</span>
-              </div>
-
-              <div className="mt-3 flex items-center justify-between border-t pt-3 text-base font-semibold">
-                <span>Total</span>
-                <span className="text-emerald-600">{formatPeso(total)}</span>
-              </div>
+            <div className="mt-2 flex items-center justify-between text-sm">
+              <span className="text-slate-500">Discount</span>
+              <span className="font-medium">{formatPeso(discount)}</span>
             </div>
 
+            <div className="mt-3 flex items-center justify-between border-t pt-3 text-base font-semibold">
+              <span>Total</span>
+              <span className="text-emerald-600">{formatPeso(total)}</span>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Button variant="outline" onClick={clearSale}>
+              New Sale
+            </Button>
             <Button
               className="w-full"
               size="lg"
@@ -561,8 +548,498 @@ export default function PosPage() {
               <CreditCard className="mr-2 size-4" />
               Complete Sale
             </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function CustomerOrderTab() {
+  const [customer, setCustomer] = useState<SelectOption | null>(null);
+  const [status, setStatus] = useState<SelectOption>(ORDER_STATUS_OPTIONS[0]);
+  const [paymentStatus, setPaymentStatus] = useState<SelectOption>(
+    ORDER_PAYMENT_OPTIONS[0],
+  );
+  const [downpayment, setDownpayment] = useState("0");
+  const [releaseDate, setReleaseDate] = useState("");
+  const [notes, setNotes] = useState("");
+  const [items, setItems] = useState<OrderItemRow[]>([
+    {
+      item: null,
+      quantity: 1,
+      unitPrice: 0,
+    },
+  ]);
+
+  const itemOptions = useMemo<SelectOption[]>(() => {
+    return (products as Product[]).map((item) => ({
+      value: item.name,
+      label: item.name,
+    }));
+  }, []);
+
+  const itemPriceMap = useMemo<Record<string, number>>(() => {
+    return (products as Product[]).reduce<Record<string, number>>(
+      (acc, item) => {
+        acc[item.name] = parsePrice(item.price);
+        return acc;
+      },
+      {},
+    );
+  }, []);
+
+  const handleAddItem = () => {
+    setItems((prev) => [
+      ...prev,
+      {
+        item: null,
+        quantity: 1,
+        unitPrice: 0,
+      },
+    ]);
+  };
+
+  const handleRemoveItem = (index: number) => {
+    setItems((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleChangeItem = (index: number, option: SelectOption | null) => {
+    setItems((prev) =>
+      prev.map((row, i) =>
+        i === index
+          ? {
+              ...row,
+              item: option,
+              unitPrice: option ? (itemPriceMap[option.value] ?? 0) : 0,
+            }
+          : row,
+      ),
+    );
+  };
+
+  const handleChangeQuantity = (index: number, value: number) => {
+    setItems((prev) =>
+      prev.map((row, i) =>
+        i === index
+          ? {
+              ...row,
+              quantity: Number.isNaN(value) ? 1 : Math.max(1, value),
+            }
+          : row,
+      ),
+    );
+  };
+
+  const subtotal = useMemo(() => {
+    return items.reduce((sum, row) => sum + row.quantity * row.unitPrice, 0);
+  }, [items]);
+
+  const parsedDownpayment = Number(downpayment || 0);
+  const balance = Math.max(subtotal - parsedDownpayment, 0);
+
+  const handleSaveOrder = () => {
+    const payload = {
+      customerId: customer?.value ?? null,
+      status: status.value,
+      paymentStatus: paymentStatus.value,
+      releaseDate,
+      notes,
+      downpayment: parsedDownpayment,
+      subtotal,
+      balance,
+      items: items.map((row) => ({
+        productName: row.item?.value ?? null,
+        quantity: row.quantity,
+        unitPrice: row.unitPrice,
+        amount: row.quantity * row.unitPrice,
+      })),
+    };
+
+    console.log("CUSTOMER ORDER PAYLOAD", payload);
+  };
+
+  const handleClear = () => {
+    setCustomer(null);
+    setStatus(ORDER_STATUS_OPTIONS[0]);
+    setPaymentStatus(ORDER_PAYMENT_OPTIONS[0]);
+    setDownpayment("0");
+    setReleaseDate("");
+    setNotes("");
+    setItems([
+      {
+        item: null,
+        quantity: 1,
+        unitPrice: 0,
+      },
+    ]);
+  };
+
+  return (
+    <div className="grid gap-6 xl:grid-cols-[1.5fr_0.9fr]">
+      <div className="space-y-6">
+        <Card>
+          <CardContent className="p-5">
+            <div className="mb-4 flex items-center gap-2">
+              <UserRound className="h-5 w-5 text-emerald-600" />
+              <h3 className="text-base font-semibold text-foreground">
+                Customer Information
+              </h3>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Customer</Label>
+                <Select
+                  instanceId="create-order-customer"
+                  options={mockCustomers.filter((c) => c.value !== "guest")}
+                  value={customer}
+                  onChange={(option) => setCustomer(option)}
+                  isSearchable
+                  placeholder="Select customer"
+                  styles={selectStyles}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Release Date</Label>
+                <Input
+                  type="date"
+                  value={releaseDate}
+                  onChange={(e) => setReleaseDate(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Order Status</Label>
+                <Select
+                  instanceId="create-order-status"
+                  options={ORDER_STATUS_OPTIONS}
+                  value={status}
+                  onChange={(option) =>
+                    setStatus(option ?? ORDER_STATUS_OPTIONS[0])
+                  }
+                  isSearchable
+                  styles={selectStyles}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Payment Status</Label>
+                <Select
+                  instanceId="create-order-payment-status"
+                  options={ORDER_PAYMENT_OPTIONS}
+                  value={paymentStatus}
+                  onChange={(option) =>
+                    setPaymentStatus(option ?? ORDER_PAYMENT_OPTIONS[0])
+                  }
+                  isSearchable
+                  styles={selectStyles}
+                />
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label>Notes</Label>
+                <Input
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Optional notes or customer request"
+                />
+              </div>
+            </div>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardContent className="p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Package2 className="h-5 w-5 text-emerald-600" />
+                <h3 className="text-base font-semibold text-foreground">
+                  Order Items
+                </h3>
+              </div>
+
+              <Button variant="outline" onClick={handleAddItem}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Item
+              </Button>
+            </div>
+
+            <div className="space-y-4">
+              {items.map((row, index) => {
+                const amount = row.quantity * row.unitPrice;
+
+                return (
+                  <div
+                    key={index}
+                    className="rounded-2xl border border-slate-200 p-4"
+                  >
+                    <div className="mb-3 flex items-center justify-between">
+                      <Badge variant="outline">Item #{index + 1}</Badge>
+
+                      {items.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-rose-600 hover:text-rose-700"
+                          onClick={() => handleRemoveItem(index)}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Remove
+                        </Button>
+                      )}
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-4">
+                      <div className="space-y-2 md:col-span-2">
+                        <Label>Product</Label>
+                        <Select
+                          instanceId={`create-order-item-${index}`}
+                          options={itemOptions}
+                          value={row.item}
+                          onChange={(option) => handleChangeItem(index, option)}
+                          isSearchable
+                          placeholder="Select product"
+                          styles={selectStyles}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Quantity</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={row.quantity}
+                          onChange={(e) =>
+                            handleChangeQuantity(index, Number(e.target.value))
+                          }
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Unit Price</Label>
+                        <Input value={row.unitPrice} readOnly />
+                      </div>
+                    </div>
+
+                    <div className="mt-3 text-right text-sm text-slate-600">
+                      Amount:{" "}
+                      <span className="font-semibold text-foreground">
+                        {formatPeso(amount)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div>
+        <Card className="sticky top-24">
+          <CardContent className="p-5">
+            <h3 className="text-base font-semibold text-foreground">
+              Order Summary
+            </h3>
+
+            <div className="mt-4 space-y-4">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-500">Total Items</span>
+                <span className="font-medium text-foreground">
+                  {items.reduce((sum, row) => sum + row.quantity, 0)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-500">Subtotal</span>
+                <span className="font-medium text-foreground">
+                  {formatPeso(subtotal)}
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Downpayment</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={downpayment}
+                  onChange={(e) => setDownpayment(e.target.value)}
+                />
+              </div>
+
+              <div className="flex items-center justify-between border-t pt-4 text-base font-semibold">
+                <span>Balance</span>
+                <span>{formatPeso(balance)}</span>
+              </div>
+
+              <div className="grid gap-3">
+                <Button
+                  className="w-full bg-emerald-600 text-white hover:bg-emerald-700"
+                  onClick={handleSaveOrder}
+                >
+                  Save Order
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={handleClear}
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function JobOrderTab() {
+  const [customer, setCustomer] = useState<SelectOption | null>(null);
+  const [vehicle, setVehicle] = useState("");
+  const [service, setService] = useState("");
+  const [remarks, setRemarks] = useState("");
+
+  return (
+    <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+      <Card className="border-0 shadow-sm">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Wrench className="size-5" />
+            Create Job Order
+          </CardTitle>
+          <CardDescription>
+            For services with labor, materials, and installation tracking.
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent className="space-y-5">
+          <div className="space-y-3">
+            <Label>Customer</Label>
+            <Select
+              instanceId="job-order-customer"
+              options={mockCustomers.filter((c) => c.value !== "guest")}
+              value={customer}
+              onChange={(option) => setCustomer(option)}
+              isSearchable
+              placeholder="Select customer"
+              styles={selectStyles}
+            />
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Vehicle / Unit</Label>
+              <Input
+                value={vehicle}
+                onChange={(e) => setVehicle(e.target.value)}
+                placeholder="Toyota Vios / Plate No."
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Service Type</Label>
+              <Input
+                value={service}
+                onChange={(e) => setService(e.target.value)}
+                placeholder="Tint installation / Audio setup / etc."
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Remarks</Label>
+            <Textarea
+              value={remarks}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                setRemarks(e.target.value)
+              }
+              placeholder="Job details, accessories, technician notes..."
+            />
+          </div>
+
+          <div className="flex justify-end gap-3">
+            <Button variant="outline">Clear</Button>
+            <Button>Create Job Order</Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-0 shadow-sm">
+        <CardHeader>
+          <CardTitle>Suggested flow</CardTitle>
+          <CardDescription>
+            Recommended behavior for your job order module.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm text-slate-600">
+          <div className="rounded-xl border p-3">
+            1. Select customer and vehicle
+          </div>
+          <div className="rounded-xl border p-3">
+            2. Add service/labor items
+          </div>
+          <div className="rounded-xl border p-3">
+            3. Add product/material usage
+          </div>
+          <div className="rounded-xl border p-3">
+            4. Complete job and auto-deduct inventory
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export default function SalesPage() {
+  return (
+    <div className="min-h-screen bg-slate-100">
+      <div className="border-b bg-white">
+        <div className="mx-auto flex max-w-[1800px] flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+              Sales Center
+            </h1>
+            <p className="text-sm text-slate-500">
+              Unified page for POS, Customer Orders, and Job Orders.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mx-auto max-w-[1800px] px-4 py-6 sm:px-6 lg:px-8">
+        <Tabs defaultValue="pos" className="space-y-6">
+          <TabsList className="grid w-full max-w-[560px] grid-cols-3">
+            <TabsTrigger value="pos" className="gap-2">
+              <PackageCheck className="size-4" />
+              POS
+            </TabsTrigger>
+            <TabsTrigger value="customer-order" className="gap-2">
+              <ClipboardList className="size-4" />
+              Customer Order
+            </TabsTrigger>
+            <TabsTrigger value="job-order" className="gap-2">
+              <Wrench className="size-4" />
+              Job Order
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="pos" className="mt-0">
+            <PosTab />
+          </TabsContent>
+
+          <TabsContent value="customer-order" className="mt-0">
+            <CustomerOrderTab />
+          </TabsContent>
+
+          <TabsContent value="job-order" className="mt-0">
+            <JobOrderTab />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );
