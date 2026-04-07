@@ -798,8 +798,7 @@ export default function CustomersPage() {
               {selectedCustomer ? "Edit Customer" : "Add Customer"}
             </DialogTitle>
             <DialogDescription>
-              Save customer profile details and one primary vehicle for the MVP
-              version.
+              Save customer profile details and one primary vehicle.
             </DialogDescription>
           </DialogHeader>
 

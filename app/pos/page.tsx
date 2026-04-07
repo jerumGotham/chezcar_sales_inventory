@@ -32,6 +32,14 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { products } from "@/lib/mock-data";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type Product = {
   id?: string | number;
@@ -321,7 +329,7 @@ function PosTab() {
           <CardHeader className="pb-4">
             <CardTitle>Product Search</CardTitle>
             <CardDescription>
-              Use barcode, SKU, product name, or category to find items fast.
+              Use Item Code, product name, or category to find items fast.
             </CardDescription>
           </CardHeader>
 
@@ -332,7 +340,7 @@ function PosTab() {
                 <Input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Scan barcode or search product"
+                  placeholder="Search product"
                   className="pl-9"
                 />
               </div>
@@ -346,11 +354,6 @@ function PosTab() {
                 placeholder="Filter category"
                 styles={selectStyles}
               />
-
-              <Button variant="outline" className="h-11">
-                <ScanLine className="mr-2 size-4" />
-                Scan
-              </Button>
             </div>
 
             <div className="rounded-2xl border bg-white">
@@ -378,7 +381,7 @@ function PosTab() {
                           {product.name}
                         </p>
                         <p className="mt-1 text-xs text-slate-500">
-                          SKU: {product.sku}
+                          Item Code: {product.sku}
                         </p>
                       </div>
 
@@ -572,6 +575,84 @@ function CustomerOrderTab() {
     },
   ]);
 
+  // ✅ NEW
+  const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [customerOptions, setCustomerOptions] = useState<SelectOption[]>(
+    mockCustomers.filter((c) => c.value !== "guest"),
+  );
+
+  const [customerForm, setCustomerForm] = useState({
+    firstName: "",
+    lastName: "",
+    mobile: "",
+    email: "",
+    address: "",
+    vehicleMake: "",
+    vehicleModel: "",
+    vehicleYear: "",
+    plateNumber: "",
+    branch: "",
+    source: "",
+    customerNotes: "",
+  });
+
+  const resetCustomerForm = () => {
+    setSelectedCustomer(null);
+    setCustomerForm({
+      firstName: "",
+      lastName: "",
+      mobile: "",
+      email: "",
+      address: "",
+      vehicleMake: "",
+      vehicleModel: "",
+      vehicleYear: "",
+      plateNumber: "",
+      branch: "",
+      source: "",
+      customerNotes: "",
+    });
+  };
+
+  const openAddCustomerModal = () => {
+    resetCustomerForm();
+    setIsAddCustomerOpen(true);
+  };
+
+  const handleCustomerFormChange = (
+    key: keyof typeof customerForm,
+    value: string,
+  ) => {
+    setCustomerForm((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  };
+
+  const handleCreateCustomer = () => {
+    const fullName =
+      `${customerForm.firstName} ${customerForm.lastName}`.trim();
+
+    if (!fullName) return;
+
+    const newCustomerOption: SelectOption = {
+      value: `${fullName.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`,
+      label: fullName,
+    };
+
+    setCustomerOptions((prev) => [newCustomerOption, ...prev]);
+    setCustomer(newCustomerOption);
+
+    console.log("CREATE CUSTOMER PAYLOAD", {
+      ...customerForm,
+      fullName,
+    });
+
+    setIsAddCustomerOpen(false);
+    resetCustomerForm();
+  };
+
   const itemOptions = useMemo<SelectOption[]>(() => {
     return (products as Product[]).map((item) => ({
       value: item.name,
@@ -641,6 +722,7 @@ function CustomerOrderTab() {
   const handleSaveOrder = () => {
     const payload = {
       customerId: customer?.value ?? null,
+      customerName: customer?.label ?? null,
       status: status.value,
       paymentStatus: paymentStatus.value,
       releaseDate,
@@ -676,225 +758,438 @@ function CustomerOrderTab() {
   };
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[1.5fr_0.9fr]">
-      <div className="space-y-6">
-        <Card>
-          <CardContent className="p-5">
-            <div className="mb-4 flex items-center gap-2">
-              <UserRound className="h-5 w-5 text-emerald-600" />
-              <h3 className="text-base font-semibold text-foreground">
-                Customer Information
-              </h3>
-            </div>
+    <>
+      <div className="grid gap-6 xl:grid-cols-[1.5fr_0.9fr]">
+        <div className="space-y-6">
+          <Card>
+            <CardContent className="p-5">
+              <div className="mb-4 flex items-center gap-2">
+                <UserRound className="h-5 w-5 text-emerald-600" />
+                <h3 className="text-base font-semibold text-foreground">
+                  Customer Information
+                </h3>
+              </div>
 
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <Label>Customer</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={openAddCustomerModal}
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Customer
+                    </Button>
+                  </div>
+
+                  <Select
+                    instanceId="create-order-customer"
+                    options={customerOptions}
+                    value={customer}
+                    onChange={(option) => setCustomer(option)}
+                    isSearchable
+                    placeholder="Select customer"
+                    styles={selectStyles}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Release Date</Label>
+                  <Input
+                    type="date"
+                    value={releaseDate}
+                    onChange={(e) => setReleaseDate(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Order Status</Label>
+                  <Select
+                    instanceId="create-order-status"
+                    options={ORDER_STATUS_OPTIONS}
+                    value={status}
+                    onChange={(option) =>
+                      setStatus(option ?? ORDER_STATUS_OPTIONS[0])
+                    }
+                    isSearchable
+                    styles={selectStyles}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Payment Status</Label>
+                  <Select
+                    instanceId="create-order-payment-status"
+                    options={ORDER_PAYMENT_OPTIONS}
+                    value={paymentStatus}
+                    onChange={(option) =>
+                      setPaymentStatus(option ?? ORDER_PAYMENT_OPTIONS[1])
+                    }
+                    isSearchable
+                    styles={selectStyles}
+                  />
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Notes</Label>
+                  <Input
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Optional notes or customer request"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Package2 className="h-5 w-5 text-emerald-600" />
+                  <h3 className="text-base font-semibold text-foreground">
+                    Order Items
+                  </h3>
+                </div>
+
+                <Button variant="outline" onClick={handleAddItem}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Item
+                </Button>
+              </div>
+
+              <div className="space-y-4">
+                {items.map((row, index) => {
+                  const amount = row.quantity * row.unitPrice;
+
+                  return (
+                    <div
+                      key={index}
+                      className="rounded-2xl border border-slate-200 p-4"
+                    >
+                      <div className="mb-3 flex items-center justify-between">
+                        <Badge variant="outline">Item #{index + 1}</Badge>
+
+                        {items.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-rose-600 hover:text-rose-700"
+                            onClick={() => handleRemoveItem(index)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Remove
+                          </Button>
+                        )}
+                      </div>
+
+                      <div className="grid gap-4 md:grid-cols-4">
+                        <div className="space-y-2 md:col-span-2">
+                          <Label>Product</Label>
+                          <Select
+                            instanceId={`create-order-item-${index}`}
+                            options={itemOptions}
+                            value={row.item}
+                            onChange={(option) =>
+                              handleChangeItem(index, option)
+                            }
+                            isSearchable
+                            placeholder="Select product"
+                            styles={selectStyles}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Quantity</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            value={row.quantity}
+                            onChange={(e) =>
+                              handleChangeQuantity(
+                                index,
+                                Number(e.target.value),
+                              )
+                            }
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Unit Price</Label>
+                          <Input value={row.unitPrice} readOnly />
+                        </div>
+                      </div>
+
+                      <div className="mt-3 text-right text-sm text-slate-600">
+                        Amount:{" "}
+                        <span className="font-semibold text-foreground">
+                          {formatPeso(amount)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div>
+          <Card className="sticky top-24">
+            <CardContent className="p-5">
+              <h3 className="text-base font-semibold text-foreground">
+                Order Summary
+              </h3>
+
+              <div className="mt-4 space-y-4">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-500">Total Items</span>
+                  <span className="font-medium text-foreground">
+                    {items.reduce((sum, row) => sum + row.quantity, 0)}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-500">Subtotal</span>
+                  <span className="font-medium text-foreground">
+                    {formatPeso(subtotal)}
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Downpayment</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={downpayment}
+                    onChange={(e) => setDownpayment(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between border-t pt-4 text-base font-semibold">
+                  <span>Balance</span>
+                  <span>{formatPeso(balance)}</span>
+                </div>
+
+                <div className="grid gap-3">
+                  <Button
+                    className="w-full bg-emerald-600 text-white hover:bg-emerald-700"
+                    onClick={handleSaveOrder}
+                  >
+                    Save Order
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={handleClear}
+                  >
+                    Clear
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      <Dialog
+        open={isAddCustomerOpen}
+        onOpenChange={(open) => {
+          setIsAddCustomerOpen(open);
+          if (!open) resetCustomerForm();
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedCustomer ? "Edit Customer" : "Add Customer"}
+            </DialogTitle>
+            <DialogDescription>
+              Save customer profile details and one primary vehicle.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-6 py-2">
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label>Customer</Label>
-                <Select
-                  instanceId="create-order-customer"
-                  options={mockCustomers.filter((c) => c.value !== "guest")}
-                  value={customer}
-                  onChange={(option) => setCustomer(option)}
-                  isSearchable
-                  placeholder="Select customer"
-                  styles={selectStyles}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Release Date</Label>
+                <Label htmlFor="firstName">First Name</Label>
                 <Input
-                  type="date"
-                  value={releaseDate}
-                  onChange={(e) => setReleaseDate(e.target.value)}
+                  id="firstName"
+                  value={customerForm.firstName}
+                  onChange={(e) =>
+                    handleCustomerFormChange("firstName", e.target.value)
+                  }
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>Order Status</Label>
-                <Select
-                  instanceId="create-order-status"
-                  options={ORDER_STATUS_OPTIONS}
-                  value={status}
-                  onChange={(option) =>
-                    setStatus(option ?? ORDER_STATUS_OPTIONS[0])
+                <Label htmlFor="lastName">Last Name</Label>
+                <Input
+                  id="lastName"
+                  value={customerForm.lastName}
+                  onChange={(e) =>
+                    handleCustomerFormChange("lastName", e.target.value)
                   }
-                  isSearchable
-                  styles={selectStyles}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>Payment Status</Label>
-                <Select
-                  instanceId="create-order-payment-status"
-                  options={ORDER_PAYMENT_OPTIONS}
-                  value={paymentStatus}
-                  onChange={(option) =>
-                    setPaymentStatus(option ?? ORDER_PAYMENT_OPTIONS[0])
+                <Label htmlFor="mobile">Mobile Number</Label>
+                <Input
+                  id="mobile"
+                  value={customerForm.mobile}
+                  onChange={(e) =>
+                    handleCustomerFormChange("mobile", e.target.value)
                   }
-                  isSearchable
-                  styles={selectStyles}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  value={customerForm.email}
+                  onChange={(e) =>
+                    handleCustomerFormChange("email", e.target.value)
+                  }
                 />
               </div>
 
               <div className="space-y-2 md:col-span-2">
-                <Label>Notes</Label>
+                <Label htmlFor="address">Address</Label>
                 <Input
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Optional notes or customer request"
+                  id="address"
+                  placeholder="Street, barangay, city"
+                  value={customerForm.address}
+                  onChange={(e) =>
+                    handleCustomerFormChange("address", e.target.value)
+                  }
                 />
               </div>
             </div>
-          </CardContent>
-        </Card>
 
-        <Card>
-          <CardContent className="p-5">
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Package2 className="h-5 w-5 text-emerald-600" />
-                <h3 className="text-base font-semibold text-foreground">
-                  Order Items
-                </h3>
-              </div>
+            <div>
+              <h3 className="mb-3 text-sm font-semibold text-slate-700">
+                Vehicle Information
+              </h3>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="vehicleMake">Vehicle Make</Label>
+                  <Input
+                    id="vehicleMake"
+                    placeholder="Toyota"
+                    value={customerForm.vehicleMake}
+                    onChange={(e) =>
+                      handleCustomerFormChange("vehicleMake", e.target.value)
+                    }
+                  />
+                </div>
 
-              <Button variant="outline" onClick={handleAddItem}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Item
-              </Button>
-            </div>
+                <div className="space-y-2">
+                  <Label htmlFor="vehicleModel">Vehicle Model</Label>
+                  <Input
+                    id="vehicleModel"
+                    placeholder="Rush"
+                    value={customerForm.vehicleModel}
+                    onChange={(e) =>
+                      handleCustomerFormChange("vehicleModel", e.target.value)
+                    }
+                  />
+                </div>
 
-            <div className="space-y-4">
-              {items.map((row, index) => {
-                const amount = row.quantity * row.unitPrice;
+                <div className="space-y-2">
+                  <Label htmlFor="vehicleYear">Year</Label>
+                  <Input
+                    id="vehicleYear"
+                    placeholder="2022"
+                    value={customerForm.vehicleYear}
+                    onChange={(e) =>
+                      handleCustomerFormChange("vehicleYear", e.target.value)
+                    }
+                  />
+                </div>
 
-                return (
-                  <div
-                    key={index}
-                    className="rounded-2xl border border-slate-200 p-4"
-                  >
-                    <div className="mb-3 flex items-center justify-between">
-                      <Badge variant="outline">Item #{index + 1}</Badge>
-
-                      {items.length > 1 && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="text-rose-600 hover:text-rose-700"
-                          onClick={() => handleRemoveItem(index)}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Remove
-                        </Button>
-                      )}
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-4">
-                      <div className="space-y-2 md:col-span-2">
-                        <Label>Product</Label>
-                        <Select
-                          instanceId={`create-order-item-${index}`}
-                          options={itemOptions}
-                          value={row.item}
-                          onChange={(option) => handleChangeItem(index, option)}
-                          isSearchable
-                          placeholder="Select product"
-                          styles={selectStyles}
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Quantity</Label>
-                        <Input
-                          type="number"
-                          min={1}
-                          value={row.quantity}
-                          onChange={(e) =>
-                            handleChangeQuantity(index, Number(e.target.value))
-                          }
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Unit Price</Label>
-                        <Input value={row.unitPrice} readOnly />
-                      </div>
-                    </div>
-
-                    <div className="mt-3 text-right text-sm text-slate-600">
-                      Amount:{" "}
-                      <span className="font-semibold text-foreground">
-                        {formatPeso(amount)}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div>
-        <Card className="sticky top-24">
-          <CardContent className="p-5">
-            <h3 className="text-base font-semibold text-foreground">
-              Order Summary
-            </h3>
-
-            <div className="mt-4 space-y-4">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-500">Total Items</span>
-                <span className="font-medium text-foreground">
-                  {items.reduce((sum, row) => sum + row.quantity, 0)}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-500">Subtotal</span>
-                <span className="font-medium text-foreground">
-                  {formatPeso(subtotal)}
-                </span>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Downpayment</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={downpayment}
-                  onChange={(e) => setDownpayment(e.target.value)}
-                />
-              </div>
-
-              <div className="flex items-center justify-between border-t pt-4 text-base font-semibold">
-                <span>Balance</span>
-                <span>{formatPeso(balance)}</span>
-              </div>
-
-              <div className="grid gap-3">
-                <Button
-                  className="w-full bg-emerald-600 text-white hover:bg-emerald-700"
-                  onClick={handleSaveOrder}
-                >
-                  Save Order
-                </Button>
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={handleClear}
-                >
-                  Clear
-                </Button>
+                <div className="space-y-2">
+                  <Label htmlFor="plateNumber">Plate Number</Label>
+                  <Input
+                    id="plateNumber"
+                    placeholder="ABC-1234"
+                    value={customerForm.plateNumber}
+                    onChange={(e) =>
+                      handleCustomerFormChange("plateNumber", e.target.value)
+                    }
+                  />
+                </div>
               </div>
             </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+
+            <div>
+              <h3 className="mb-3 text-sm font-semibold text-slate-700">
+                Business Notes
+              </h3>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="branch">Preferred Branch</Label>
+                  <Input
+                    id="branch"
+                    value={customerForm.branch}
+                    onChange={(e) =>
+                      handleCustomerFormChange("branch", e.target.value)
+                    }
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="source">Source / Referred By</Label>
+                  <Input
+                    id="source"
+                    placeholder="Walk-in / Facebook / Referral"
+                    value={customerForm.source}
+                    onChange={(e) =>
+                      handleCustomerFormChange("source", e.target.value)
+                    }
+                  />
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="customerNotes">Notes</Label>
+                  <Input
+                    id="customerNotes"
+                    placeholder="Customer preferences, reminders, tint shade request, etc."
+                    value={customerForm.customerNotes}
+                    onChange={(e) =>
+                      handleCustomerFormChange("customerNotes", e.target.value)
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsAddCustomerOpen(false);
+                resetCustomerForm();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-emerald-600 text-white hover:bg-emerald-700"
+              onClick={handleCreateCustomer}
+            >
+              {selectedCustomer ? "Save Changes" : "Create Customer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
