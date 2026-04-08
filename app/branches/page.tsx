@@ -579,6 +579,18 @@ export default function BranchesPage() {
                             >
                               Edit
                             </Button>
+
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
+                              onClick={() => {
+                                setSelectedBranch(branch);
+                                setIsAddBranchOpen(true);
+                              }}
+                            >
+                              Delete
+                            </Button>
                           </div>
                         </td>
                       </tr>

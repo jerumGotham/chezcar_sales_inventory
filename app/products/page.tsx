@@ -634,18 +634,34 @@ export default function ProductsPage() {
                           </span>
                         </td>
                         <td className="px-5 py-4">
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
-                              onClick={() => {
-                                setSelectedProduct(product);
-                                setIsEditOpen(true);
-                              }}
-                            >
-                              Edit
-                            </Button>
+                          <div className="flex flex-row gap-2">
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
+                                onClick={() => {
+                                  setSelectedProduct(product);
+                                  setIsEditOpen(true);
+                                }}
+                              >
+                                Edit
+                              </Button>
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
+                                onClick={() => {
+                                  setSelectedProduct(product);
+                                  setIsEditOpen(true);
+                                }}
+                              >
+                                Delete
+                              </Button>
+                            </div>
                           </div>
                         </td>
                       </tr>
