@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1275" height="1296" viewBox="0 0 1275 1296">
+  <defs>
+    <linearGradient id="gGreen" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#007a14"/>
+      <stop offset="55%" stop-color="#15ff1f"/>
+      <stop offset="100%" stop-color="#008a14"/>
+    </linearGradient>
+    <linearGradient id="gSilver" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="35%" stop-color="#d9d9d9"/>
+      <stop offset="70%" stop-color="#8b8b8b"/>
+      <stop offset="100%" stop-color="#1f1f1f"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+    <style>
+      .heavy { font-family: Arial, Helvetica, sans-serif; font-weight: 900; }
+      .wide { letter-spacing: 4px; }
+    </style>
+  </defs>
+
+  <rect width="100%" height="100%" fill="#e9e9e9"/>
+
+  <!-- top shield -->
+  <path d="M266 315
+           Q637 170 1008 315
+           L976 422
+           Q827 365 637 365
+           Q447 365 298 422
+           Z"
+        fill="url(#gSilver)" stroke="#000" stroke-width="18" filter="url(#shadow)"/>
+
+  <!-- inner green shield -->
+  <path d="M332 365
+           Q637 290 943 365
+           L847 768
+           L637 933
+           L427 768
+           Z"
+        fill="url(#gGreen)" stroke="#000" stroke-width="8"/>
+
+  <!-- lower silver point -->
+  <path d="M638 828 L740 946 L638 1002 L536 946 Z" fill="url(#gSilver)" stroke="#000" stroke-width="6"/>
+
+  <!-- car icon -->
+  <g transform="translate(0,10)">
+    <path d="M485 390
+             Q520 330 604 330
+             L672 330
+             Q758 330 792 390
+             L818 460
+             Q826 480 808 480
+             L466 480
+             Q448 480 456 460
+             Z"
+          fill="#fff" stroke="#111" stroke-width="6"/>
+    <rect x="533" y="353" width="209" height="73" rx="28" fill="#111"/>
+    <rect x="520" y="401" width="239" height="14" rx="7" fill="#111"/>
+    <path d="M475 453 Q637 425 798 453" fill="none" stroke="#111" stroke-width="12" stroke-linecap="round"/>
+    <circle cx="493" cy="432" r="26" fill="#111"/>
+    <circle cx="781" cy="432" r="26" fill="#111"/>
+    <circle cx="493" cy="432" r="16" fill="none" stroke="#27ff2a" stroke-width="6"/>
+    <circle cx="781" cy="432" r="16" fill="none" stroke="#27ff2a" stroke-width="6"/>
+    <path d="M475 415 h-22 l-14 14 h34 z" fill="#fff" stroke="#111" stroke-width="4"/>
+    <path d="M799 415 h22 l14 14 h-34 z" fill="#fff" stroke="#111" stroke-width="4"/>
+    <path d="M571 478 Q637 445 703 478" fill="none" stroke="#111" stroke-width="16" stroke-linecap="round"/>
+  </g>
+
+  <!-- main banner -->
+  <g filter="url(#shadow)">
+    <path d="M42 520 L1196 520
+             Q1245 520 1245 570
+             L1245 706
+             Q1245 754 1196 754
+             L79 754
+             Q53 754 53 728
+             L53 653
+             L16 636
+             L53 610
+             L53 546
+             Q53 520 79 520 Z"
+          fill="#000" stroke="#000" stroke-width="8"/>
+    <path d="M55 585 L210 585 L210 657 L55 657 L30 636 Z" fill="#fff"/>
+  </g>
+
+  <!-- CHEZCAR -->
+  <g class="heavy">
+    <text x="150" y="650" font-size="165" fill="#f0f0f0">CHEZ</text>
+    <text x="740" y="650" font-size="165" fill="#1eff17">CAR</text>
+  </g>
+
+  <!-- green stylized chevron-ish accent approximating logo -->
+  <path d="M757 602 L840 602 L882 636 L840 670 L757 670 L800 636 Z" fill="#1eff17"/>
+
+  <!-- divider lines -->
+  <line x1="70" y1="670" x2="1180" y2="670" stroke="#1eff17" stroke-width="8"/>
+  <line x1="70" y1="688" x2="1180" y2="688" stroke="#1eff17" stroke-width="8"/>
+
+  <!-- AUTO CARE -->
+  <g class="heavy wide">
+    <text x="135" y="770" font-size="125" fill="#1eff17">AUTO</text>
+    <text x="655" y="770" font-size="125" fill="#ffffff">CARE</text>
+  </g>
+
+  <!-- est -->
+  <text x="637" y="1040" text-anchor="middle" class="heavy" font-size="86" fill="#000">EST 2017</text>
+</svg>

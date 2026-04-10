@@ -403,7 +403,6 @@ export default function ProductsPage() {
             >
               Add Product
             </Button>
-            <Button variant="outline">Import Items</Button>
           </>
         }
       >

@@ -543,7 +543,7 @@ export default function StockTransfersPage() {
             >
               Create Transfer Request
             </Button>
-            <Button variant="outline">Transfer History</Button>
+            {/* <Button variant="outline">Transfer History</Button> */}
           </>
         }
       >
@@ -809,6 +809,16 @@ export default function StockTransfersPage() {
                                     Edit
                                   </Button>
                                 )}
+                              </div>
+
+                              <div className="flex flex-wrap gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
+                                >
+                                  Delete
+                                </Button>
                               </div>
                             </td>
                           </tr>

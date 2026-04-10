@@ -42,7 +42,7 @@ export type StockMovement = {
   date: string;
   type:
     | "Opening Balance"
-    | "Receive"
+    | "Receive Stocks"
     | "Adjustment +"
     | "Adjustment -"
     | "Transfer In"
@@ -95,7 +95,7 @@ export const USER_ROLE: UserRole = "ADMIN";
 export const MAIN_WAREHOUSE = "Main Warehouse";
 
 export const LOCATION_OPTIONS: SelectOption[] = [
-  { value: "all", label: "All Locations" },
+  { value: "all", label: "All Branches" },
   { value: MAIN_WAREHOUSE, label: MAIN_WAREHOUSE },
   { value: "QC Main", label: "QC Main" },
   { value: "Makati", label: "Makati" },
@@ -319,7 +319,7 @@ export const MOCK_STOCK_MOVEMENTS: StockMovement[] = [
   {
     id: "MOV-001",
     date: "2026-04-04 09:15 AM",
-    type: "Receive",
+    type: "Receive Stocks",
     qty: 20,
     reference: "RCV-00045",
     remarks: "Supplier delivery to Main Warehouse",
@@ -363,7 +363,7 @@ export const MOCK_STOCK_MOVEMENTS: StockMovement[] = [
   {
     id: "MOV-005",
     date: "2026-04-03 11:15 AM",
-    type: "Opening Balance",
+    type: "Transfer Out",
     qty: 4,
     reference: "OB-00003",
     remarks: "Initial stock setup",
@@ -381,39 +381,6 @@ export const MOCK_STOCK_MOVEMENTS: StockMovement[] = [
     location: "Pasig",
     itemCode: "ITM-0003",
     itemName: "Android Head Unit 9in",
-  },
-  {
-    id: "MOV-007",
-    date: "2026-04-04 01:10 PM",
-    type: "Sale",
-    qty: -1,
-    reference: "POS-00120",
-    remarks: "Walk-in sale",
-    location: "QC Main",
-    itemCode: "ITM-0002",
-    itemName: "Seat Cover Set",
-  },
-  {
-    id: "MOV-008",
-    date: "2026-04-04 02:45 PM",
-    type: "Job Order Usage",
-    qty: -1,
-    reference: "JO-00054",
-    remarks: "Installed on customer vehicle",
-    location: "Pasig",
-    itemCode: "ITM-0003",
-    itemName: "Android Head Unit 9in",
-  },
-  {
-    id: "MOV-009",
-    date: "2026-04-04 03:15 PM",
-    type: "Customer Order Reserve",
-    qty: -1,
-    reference: "CO-00031",
-    remarks: "Reserved for pending release",
-    location: "Makati",
-    itemCode: "ITM-0001",
-    itemName: "3M Tint Medium Black",
   },
 ];
 

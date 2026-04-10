@@ -152,7 +152,7 @@ export function AppSidebar() {
                 >
                   <div className="relative overflow-hidden rounded-2xl border border-[#65f144]/25 bg-white/95 p-1 shadow-[0_0_0_1px_rgba(255,255,255,0.05)]">
                     <Image
-                      src="/chezcar-logo.svg"
+                      src="/chezcar-logo.png"
                       alt="Chezcar Auto Care logo"
                       width={isDesktopExpanded ? 60 : 44}
                       height={isDesktopExpanded ? 60 : 44}
@@ -251,7 +251,7 @@ export function AppSidebar() {
               <div className="flex items-center gap-3">
                 <div className="relative overflow-hidden rounded-2xl border border-brand-100 bg-white p-1">
                   <Image
-                    src="/chezcar-logo.svg"
+                    src="/chezcar-logo.png"
                     alt="Chezcar Auto Care logo"
                     width={60}
                     height={60}

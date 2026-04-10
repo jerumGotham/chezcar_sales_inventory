@@ -506,7 +506,7 @@ export default function CustomersPage() {
             >
               Add Customer
             </Button>
-            <Button variant="outline">Export List</Button>
+            {/* <Button variant="outline">Export List</Button> */}
           </>
         }
       >
@@ -743,6 +743,20 @@ export default function CustomersPage() {
                             >
                               Edit
                             </Button>
+
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
+                                onClick={() => {
+                                  setSelectedCustomer(customer);
+                                  setIsAddCustomerOpen(true);
+                                }}
+                              >
+                                Delete
+                              </Button>
+                            </div>
                           </div>
                         </td>
                       </tr>

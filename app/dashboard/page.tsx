@@ -174,6 +174,12 @@ export default function OwnerDashboardPage() {
       tone: "success",
     },
     {
+      label: "Total Units Sold",
+      value: totalUnitsSold.toLocaleString(),
+      hint: "Combined units sold",
+      tone: "success",
+    },
+    {
       label: "Top Product",
       value: topProduct?.name ?? "No Data",
       hint: topProduct
@@ -181,12 +187,7 @@ export default function OwnerDashboardPage() {
         : "No sales data for selected filters",
       tone: "info",
     },
-    {
-      label: "Total Units Sold",
-      value: totalUnitsSold.toLocaleString(),
-      hint: "Combined units sold",
-      tone: "success",
-    },
+
     {
       label: "Pending Orders",
       value: String(filteredOrders.length),

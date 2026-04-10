@@ -43,7 +43,7 @@ const reports = [
     description: "Export transfer requests and receiving statuses.",
   },
   {
-    name: "Job Orders Report",
+    name: "Job Order Report",
     category: "Service",
     description: "Export service transactions, parts usage, and job status.",
   },
@@ -80,7 +80,7 @@ export default function ReportsPage() {
   return (
     <PageShell
       title="Reports"
-      subtitle="Generate and export operational reports without loading large datasets on screen."
+      subtitle="Generate and export operational reports"
       actions={<Button>Generate Report</Button>}
     >
       <div className="grid gap-6 lg:grid-cols-[380px_minmax(0,1fr)]">

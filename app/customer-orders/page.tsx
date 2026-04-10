@@ -425,7 +425,7 @@ export default function CustomerOrdersPage() {
               Create Order
             </Button>
           </Link>
-          <Button variant="outline">Export</Button>
+          {/* <Button variant="outline">Export</Button> */}
         </>
       }
     >
@@ -699,6 +699,16 @@ export default function CustomerOrdersPage() {
                               View / Edit
                             </Button>
                           </Link>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
+                          >
+                            Delete
+                          </Button>
 
                           <Button
                             size="sm"

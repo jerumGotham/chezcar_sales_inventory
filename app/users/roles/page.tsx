@@ -609,7 +609,7 @@ export default function RolesPage() {
           </div>
         }
       >
-        <div className="grid gap-4 md:grid-cols-2">
+        {/* <div className="grid gap-4 md:grid-cols-2">
           <Card>
             <CardContent className="p-5">
               <p className="text-sm text-slate-500">Total Roles</p>
@@ -629,7 +629,7 @@ export default function RolesPage() {
               </h3>
             </CardContent>
           </Card>
-        </div>
+        </div> */}
 
         <Card className="mt-6">
           <CardContent className="p-0">
@@ -638,7 +638,7 @@ export default function RolesPage() {
                 Role List
               </h3>
               <p className="text-sm text-slate-500">
-                Click view, edit, or delete for each role.
+                Click edit, or delete for each role.
               </p>
             </div>
 
@@ -681,14 +681,14 @@ export default function RolesPage() {
                       </td>
                       <td className="px-5 py-4">
                         <div className="flex flex-wrap gap-2">
-                          <Button
+                          {/* <Button
                             size="sm"
                             variant="outline"
                             onClick={() => handleOpenView(role)}
                           >
                             <Eye className="mr-1 h-4 w-4" />
                             View
-                          </Button>
+                          </Button> */}
 
                           <Button
                             size="sm"

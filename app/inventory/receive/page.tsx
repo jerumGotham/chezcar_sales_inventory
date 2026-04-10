@@ -66,10 +66,10 @@ export default function ReceiveStockPage() {
             </Button>
           </Link>
 
-          <Button variant="outline">
+          {/* <Button variant="outline">
             <Save className="mr-2 h-4 w-4" />
             Save Draft
-          </Button>
+          </Button> */}
 
           <Button className="bg-emerald-600 text-white hover:bg-emerald-700">
             Submit Receiving
@@ -259,7 +259,6 @@ export default function ReceiveStockPage() {
               </div>
 
               <div className="mt-5 flex flex-col gap-2">
-                <Button variant="outline">Save Draft</Button>
                 <Button className="bg-emerald-600 text-white hover:bg-emerald-700">
                   Submit Receiving
                 </Button>

@@ -151,7 +151,7 @@ export default function CustomerHistoryTabs({
                     </p>
                   </div>
                   <Badge className="border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50">
-                    Waiting Stock
+                    Pending
                   </Badge>
                 </div>
 

@@ -1069,7 +1069,7 @@ export default function UsersPage() {
         <Card className="mt-6">
           <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-6">
             <Input
-              placeholder="Search name, email, or user ID"
+              placeholder="Search name"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -1157,9 +1157,9 @@ export default function UsersPage() {
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Status
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    {/* <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Last Login
-                    </th>
+                    </th> */}
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Permissions
                     </th>
@@ -1220,9 +1220,9 @@ export default function UsersPage() {
                               {user.status}
                             </Badge>
                           </td>
-                          <td className="px-5 py-4 text-sm text-slate-600">
+                          {/* <td className="px-5 py-4 text-sm text-slate-600">
                             {user.lastLogin ?? "-"}
-                          </td>
+                          </td> */}
                           <td className="px-5 py-4 text-sm text-slate-600">
                             {countGrantedModules(rolePermissions)} modules
                           </td>
@@ -1236,6 +1236,16 @@ export default function UsersPage() {
                               >
                                 Edit User
                               </Button>
+
+                              <div className="flex flex-wrap gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
+                                >
+                                  Delete
+                                </Button>
+                              </div>
 
                               <Button
                                 size="sm"
@@ -1374,7 +1384,7 @@ export default function UsersPage() {
               />
             </div>
 
-            <Card className="border-emerald-200 bg-emerald-50/40">
+            {/* <Card className="border-emerald-200 bg-emerald-50/40">
               <CardContent className="p-5">
                 <h3 className="mb-2 font-semibold text-slate-900">
                   Role Permissions Preview
@@ -1392,7 +1402,7 @@ export default function UsersPage() {
               </CardContent>
             </Card>
 
-            <RolePermissionViewer roleName={userFormRole.value} roles={roles} />
+            <RolePermissionViewer roleName={userFormRole.value} roles={roles} /> */}
           </div>
 
           <DialogFooter>
@@ -1416,53 +1426,143 @@ export default function UsersPage() {
           if (!open) setSelectedUser(null);
         }}
       >
-        <SheetContent className="w-full overflow-y-auto sm:max-w-3xl">
-          <SheetHeader className="border-b pb-4 text-left">
-            <SheetTitle>{selectedUser?.name ?? "User"} Permissions</SheetTitle>
-            <SheetDescription>
-              Read-only permission view based on the user’s assigned role.
-            </SheetDescription>
-          </SheetHeader>
-
-          <div className="mt-6 space-y-6">
-            <Card>
-              <CardContent className="grid gap-4 p-5 md:grid-cols-2">
-                <div>
-                  <p className="text-sm text-slate-500">Email</p>
-                  <p className="font-medium text-slate-900">
-                    {selectedUser?.email ?? "-"}
-                  </p>
+        <SheetContent
+          side="right"
+          className="
+      !w-[100vw]
+      !max-w-[100vw]
+      sm:!max-w-[95vw]
+      lg:!max-w-[88vw]
+      xl:!max-w-[80vw]
+      2xl:!max-w-[72vw]
+      h-screen
+      overflow-hidden
+      p-0
+    "
+        >
+          <div className="flex h-full flex-col bg-slate-50">
+            <SheetHeader className="sticky top-0 z-10 border-b bg-white px-6 py-5 text-left shadow-sm">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="space-y-1">
+                  <SheetTitle className="text-xl font-semibold text-slate-900">
+                    {selectedUser?.name ?? "User"} Permissions
+                  </SheetTitle>
+                  <SheetDescription className="text-sm text-slate-500">
+                    View the permissions currently assigned through this user’s
+                    role.
+                  </SheetDescription>
                 </div>
 
-                <div>
-                  <p className="text-sm text-slate-500">Role</p>
-                  <p className="font-medium text-slate-900">
-                    {selectedUser?.role ?? "-"}
-                  </p>
-                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge
+                    variant="outline"
+                    className="rounded-full px-3 py-1 text-xs font-medium"
+                  >
+                    Role: {selectedUser?.role ?? "-"}
+                  </Badge>
 
-                <div>
-                  <p className="text-sm text-slate-500">Branch</p>
-                  <p className="font-medium text-slate-900">
-                    {selectedUser?.branch ?? "-"}
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-sm text-slate-500">Status</p>
-                  <p className="font-medium text-slate-900">
+                  <Badge
+                    className={`${
+                      selectedUser?.status === "Active"
+                        ? "rounded-full px-3 py-1 text-xs font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-100"
+                        : "rounded-full px-3 py-1 text-xs font-medium bg-slate-200 text-slate-700 hover:bg-slate-200"
+                    }`}
+                  >
                     {selectedUser?.status ?? "-"}
-                  </p>
+                  </Badge>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </SheetHeader>
 
-            {selectedUser && (
-              <RolePermissionViewer
-                roleName={selectedUser.role}
-                roles={roles}
-              />
-            )}
+            <div className="flex-1 overflow-y-auto px-6 py-6">
+              <div className="space-y-6">
+                <Card className="border-none shadow-sm">
+                  <CardContent className="p-5">
+                    <div className="mb-4 flex items-center gap-3">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-base font-semibold text-emerald-700">
+                        {selectedUser?.name
+                          ?.split(" ")
+                          .map((part) => part[0])
+                          .slice(0, 2)
+                          .join("") ?? "U"}
+                      </div>
+
+                      <div>
+                        <p className="text-base font-semibold text-slate-900">
+                          {selectedUser?.name ?? "User"}
+                        </p>
+                        <p className="text-sm text-slate-500">
+                          Permission access summary
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                      <div className="rounded-xl border bg-white p-4">
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                          Email
+                        </p>
+                        <p className="mt-1 break-words text-sm font-medium text-slate-900">
+                          {selectedUser?.email ?? "-"}
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl border bg-white p-4">
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                          Role
+                        </p>
+                        <p className="mt-1 text-sm font-medium text-slate-900">
+                          {selectedUser?.role ?? "-"}
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl border bg-white p-4">
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                          Branch
+                        </p>
+                        <p className="mt-1 text-sm font-medium text-slate-900">
+                          {selectedUser?.branch ?? "-"}
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl border bg-white p-4">
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                          Status
+                        </p>
+                        <p className="mt-1 text-sm font-medium text-slate-900">
+                          {selectedUser?.status ?? "-"}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-none shadow-sm">
+                  <CardContent className="p-5">
+                    <div className="mb-4">
+                      <h3 className="text-base font-semibold text-slate-900">
+                        Role Permissions
+                      </h3>
+                      <p className="text-sm text-slate-500">
+                        These permissions are based on the selected user’s
+                        assigned role and cannot be edited here.
+                      </p>
+                    </div>
+
+                    {selectedUser ? (
+                      <RolePermissionViewer
+                        roleName={selectedUser.role}
+                        roles={roles}
+                      />
+                    ) : (
+                      <div className="rounded-xl border border-dashed bg-slate-50 p-8 text-center text-sm text-slate-500">
+                        No user selected.
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
           </div>
         </SheetContent>
       </Sheet>

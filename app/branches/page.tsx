@@ -358,11 +358,10 @@ export default function BranchesPage() {
             >
               Add Branch
             </Button>
-            <Button variant="outline">Export List</Button>
           </>
         }
       >
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <Card>
             <CardContent className="p-5">
               <p className="text-sm text-slate-500">Total Branches</p>
@@ -398,24 +397,12 @@ export default function BranchesPage() {
               </p>
             </CardContent>
           </Card>
-
-          <Card>
-            <CardContent className="p-5">
-              <p className="text-sm text-slate-500">Managed Customers</p>
-              <h3 className="mt-3 text-3xl font-bold text-foreground">
-                {summary.totalManagedCustomers}
-              </h3>
-              <p className="mt-2 text-sm text-amber-600">
-                Total customers across all branches
-              </p>
-            </CardContent>
-          </Card>
         </div>
 
         <Card className="mt-6">
           <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
             <Input
-              placeholder="Search branch name, code, city, or manager"
+              placeholder="Search branch name"
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
@@ -470,9 +457,7 @@ export default function BranchesPage() {
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Branch ID
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Code
-                    </th>
+
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Branch Name
                     </th>
@@ -528,9 +513,9 @@ export default function BranchesPage() {
                         <td className="px-5 py-4 text-sm font-medium text-slate-700">
                           {branch.id}
                         </td>
-                        <td className="px-5 py-4 text-sm text-slate-600">
+                        {/* <td className="px-5 py-4 text-sm text-slate-600">
                           {branch.code}
-                        </td>
+                        </td> */}
                         <td className="px-5 py-4 text-sm text-foreground">
                           {branch.name}
                         </td>
@@ -717,7 +702,7 @@ export default function BranchesPage() {
               </div>
             </div>
 
-            <div>
+            {/* <div>
               <h3 className="mb-3 text-sm font-semibold text-slate-700">
                 Operations Notes
               </h3>
@@ -740,7 +725,7 @@ export default function BranchesPage() {
                   />
                 </div>
               </div>
-            </div>
+            </div> */}
           </div>
 
           <DialogFooter>
@@ -775,7 +760,7 @@ export default function BranchesPage() {
             2xl:!max-w-[72vw]
             h-screen
             overflow-hidden
-            p-0
+            p-2
           "
         >
           <div className="flex h-full flex-col bg-slate-50">

@@ -69,12 +69,12 @@ export default function TransferToBranchPage() {
             </Button>
           </Link>
 
-          <Button variant="outline">
+          {/* <Button variant="outline">
             <Save className="mr-2 h-4 w-4" />
             Save Draft
-          </Button>
+          </Button> */}
 
-          <Button className="bg-violet-600 text-white hover:bg-violet-700">
+          <Button className="bg-emerald-600 text-white hover:bg-emerald-700">
             Save Transfer
           </Button>
         </div>
@@ -269,8 +269,7 @@ export default function TransferToBranchPage() {
               </div>
 
               <div className="mt-5 flex flex-col gap-2">
-                <Button variant="outline">Save Draft</Button>
-                <Button className="bg-violet-600 text-white hover:bg-violet-700">
+                <Button className="bg-emerald-600 text-white hover:bg-emerald-700">
                   Save Transfer
                 </Button>
               </div>

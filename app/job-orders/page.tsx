@@ -434,7 +434,7 @@ export default function JobOrdersPage() {
                 Create Job Order
               </Button>
             </Link>
-            <Button variant="outline">Assign Parts</Button>
+            {/* <Button variant="outline">Assign Parts</Button> */}
           </>
         }
       >
@@ -662,9 +662,19 @@ export default function JobOrdersPage() {
                                 variant="outline"
                                 className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
                               >
-                                Update
+                                Edit
                               </Button>
                             </Link>
+
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
+                              >
+                                Delete
+                              </Button>
+                            </div>
 
                             {job.status !== "Completed" && (
                               <Button
@@ -885,7 +895,7 @@ export default function JobOrdersPage() {
             </div>
           )}
 
-          <DialogFooter>
+          {/* <DialogFooter>
             {selectedJobOrder && selectedJobOrder.status !== "Completed" && (
               <Button
                 variant="outline"
@@ -904,7 +914,7 @@ export default function JobOrdersPage() {
                 </Button>
               </Link>
             )}
-          </DialogFooter>
+          </DialogFooter> */}
         </DialogContent>
       </Dialog>
     </>

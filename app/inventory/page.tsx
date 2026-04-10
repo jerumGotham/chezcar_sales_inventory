@@ -328,7 +328,7 @@ export default function InventoryPage() {
     <>
       <PageShell
         title="Inventory"
-        subtitle="Receive stock into Main Warehouse, transfer multiple products to branches, do manual corrections when needed, and view stock card and availability through global inquiry tools."
+        subtitle="Receive stock into Main Warehouse, transfer multiple products to branches, do manual corrections when needed, and view stock card and availability through inquiry tools."
         actions={
           <div className="flex flex-wrap gap-2">
             {canReceiveStock && (
@@ -353,7 +353,7 @@ export default function InventoryPage() {
 
             <Button variant="outline" onClick={() => setIsStockCardOpen(true)}>
               <History className="mr-2 h-4 w-4" />
-              Stock Card
+              Stock Movement
             </Button>
 
             <Button
@@ -466,7 +466,7 @@ export default function InventoryPage() {
 
             <div className="rounded-xl border border-emerald-100 bg-white p-4">
               <p className="text-sm font-semibold text-emerald-700">
-                4. Stock Card
+                4. Stock Movement
               </p>
               <p className="mt-1 text-sm text-slate-600">
                 Global audit trail with filters.
@@ -595,7 +595,7 @@ export default function InventoryPage() {
                       Unit Cost
                     </th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Locations
+                      Branches
                     </th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Status
@@ -1098,7 +1098,7 @@ export default function InventoryPage() {
     "
         >
           <SheetHeader>
-            <SheetTitle>Stock Card</SheetTitle>
+            <SheetTitle>Stock Movement</SheetTitle>
             <SheetDescription>
               Global stock movement history with filters for product, location,
               movement type, and reference number.
@@ -1263,7 +1263,7 @@ export default function InventoryPage() {
       2xl:!max-w-[72vw]
       h-screen
       overflow-hidden
-      p-0
+      p-2
     "
         >
           <SheetHeader>
