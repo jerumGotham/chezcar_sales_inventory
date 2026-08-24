@@ -101,6 +101,7 @@ The workbook was inspected without modification by reading its XLSX ZIP/XML memb
 
 ### Planning consequences
 
+- **These workbook questions are unresolved facts, not planner discretion.** Plans 01-02 and 01-03 may reproduce and package the evidence, but neither research nor execution may infer answers. Plan 01-04 is the blocking owner-decision gate for every question below, and Plan 01-05 must halt unless the resulting `01-04-SUMMARY.md` supplies a keyed answer for every blocking finding. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:19-29]
 - **Block canonical seed generation until the owner identifies which workbook source represents `SR` and explains `BL BEFORE`.** D-03 fixes canonical location codes but does not resolve the workbook’s ambiguous source columns. [ASSUMED]
 - Treat latest opening quantities as source evidence, not as trustworthy merely because formula caches contain numbers. Recalculate row rules from the selected source columns, and report formula/cached-value disagreements. [CITED: https://docs.sheetjs.com/docs/api/parse-options/]
 - Preserve source sheet, row, column, raw value, normalized value, rule outcome, and owner resolution in the mapping/report artifact. [ASSUMED]
@@ -245,7 +246,7 @@ tests/integration/             # Prisma seed/auth/scope tests
 
 ### Pattern 3: Narrow application-owned account lifecycle over Better Auth
 
-**What:** Enable only the Better Auth server primitives needed for credential operations, then expose narrow Chezcar route handlers that enforce owner-Admin access, the three creatable roles, status, role-valid location, and session revocation. Do not expose a generic Admin client or unrestricted plugin endpoints to the UI. [CITED: https://raw.githubusercontent.com/better-auth/better-auth/v1.6.23/docs/content/docs/plugins/admin.mdx] [ASSUMED]
+**What:** Keep the existing public `auth` instance as the sole catch-all handler with `disableSignUp` and no Admin plugin. Create a separate server-only Better Auth 1.6.23 instance with `admin()` solely for supported `createUser`/`setUserPassword` service calls, and never mount that instance through `toNextJsHandler`. Expose only narrow Chezcar route handlers that enforce owner-Admin access, the three creatable roles, application `status`, role-valid location, and session revocation; direct tests must prove public sign-up and generic Admin routes are unavailable. [CITED: https://raw.githubusercontent.com/better-auth/better-auth/v1.6.23/docs/content/docs/plugins/admin.mdx] [ASSUMED]
 
 **Important:** the v1.6.23 Admin plugin adds optional `role`, `banned`, `banReason`, `banExpires`, and `impersonatedBy` fields and defaults to lowercase `admin`/`user` role conventions. The application defines `"ADMIN"`, `"STOCK_STAFF"`, `"BRANCH_STAFF"`, and `"ACCOUNTING_STAFF"` plus `"ACTIVE"`/`"INACTIVE"`; configure custom access control and hand-review additive schema changes rather than applying generated plugin schema blindly. [CITED: https://raw.githubusercontent.com/better-auth/better-auth/v1.6.23/docs/content/docs/plugins/admin.mdx] [VERIFIED: prisma/schema.prisma:15-25,81-110]
 
@@ -426,20 +427,22 @@ The model/field spellings `User`, `Session`, `id`, and `userId` are quoted verba
 
 ## Open Questions
 
+**Execution gate:** all three questions remain unresolved at planning time. They may be resolved only by the owner checkpoint in Plan 01-04, recorded by finding ID in `01-04-SUMMARY.md`/`resolutions.json`. Plan 01-05 has a hard precondition on that complete response and must not generate or modify `prisma/fixtures/opening-catalog.json` when any answer is absent, ambiguous, or stale for the current workbook hash.
+
 1. **Which workbook source is canonical for `SR`, and what is `BL BEFORE`?**
    - What we know: canonical values are fixed to `SR`, `QC`, `BL`, `LU`, `VC`, `SP`. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:19-24]
    - What's unclear: the latest rollup appears to have duplicate BL sources and no explicit SR source. [ASSUMED]
-   - Recommendation: owner approval is a blocking checkpoint before canonical fixture generation. [ASSUMED]
+   - Execution disposition: unresolved; Plan 01-04 owner approval is mandatory before Plan 01-05 fixture generation. [ASSUMED]
 
 2. **What is the exact product identity rule?**
    - What we know: the current database makes `itemCode` unique. [VERIFIED: prisma/schema.prisma:49-61]
    - What's unclear: workbook code `"40"` appears to identify two different rows and several descriptions appear under different codes. [ASSUMED]
-   - Recommendation: owner resolves each collision; no automatic merge or renumbering. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:26-29]
+   - Execution disposition: unresolved; Plan 01-04 must resolve each collision, with no automatic merge or renumbering, before Plan 01-05. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:26-29]
 
 3. **Which prices are required for Phase 1?**
    - What we know: Product currently requires one Decimal `price`. [VERIFIED: prisma/schema.prisma:49-61]
    - What's unclear: the workbook profile found many blank prices and one nonnumeric marker. [ASSUMED]
-   - Recommendation: owner chooses a confirmed price or an explicit blocked/inactive outcome; do not invent zero. [ASSUMED]
+   - Execution disposition: unresolved; Plan 01-04 must choose a confirmed price or explicit inactive/excluded outcome before Plan 01-05; zero must not be invented. [ASSUMED]
 
 The role/location assignment matrix and prompt-consumption behavior are not open: Stock Staff is assigned to `SR`, Branch Staff to exactly one branch, Admin/Accounting to no location, and a skipped first-login prompt is consumed until a later Admin reset. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:31-41] [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-UI-SPEC.md:202-207]
 

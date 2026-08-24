@@ -20,6 +20,7 @@ created: 2026-08-25
 | **Framework** | Vitest, with an exact Node 20-compatible version verified before installation in Wave 0 |
 | **Config file** | `vitest.config.ts` - Wave 0 creates |
 | **Quick run command** | `npm run test -- <changed-test-file>` |
+| **Node 20 data CLI commands** | `npm run data:profile -- <flags>` and `npm run data:generate -- <flags>`; both package scripts invoke executable `.mjs` entry points, never `node` against `.ts` |
 | **Full suite command** | `npm run test && npm run test:integration && npm run typecheck` |
 | **Estimated runtime** | Quick: under 30 seconds; full: under 180 seconds |
 
@@ -31,7 +32,7 @@ The integration suite must use a separately named disposable PostgreSQL instance
 
 - **After every task commit:** Run the changed Vitest file(s) and `npm run typecheck`.
 - **After every plan wave:** Run `npm run test`; also run `npm run test:integration` after schema, seed, auth, authorization, or user-service changes.
-- **Before `/gsd-verify-work`:** Run `npm run test && npm run test:integration && npm run typecheck && npm run build`; record the existing lint baseline separately.
+- **Before `/gsd-verify-work`:** On the approved disposable target run `npm exec prisma migrate deploy && npm run db:seed && npm run db:catalog:reload && npm run db:catalog:reload && npm run test && npm run test:integration && npm run typecheck && npm run build`; run and record `npm run lint` separately because existing unrelated debt is not the phase gate.
 - **Max feedback latency:** 30 seconds for task-level checks.
 
 ---
@@ -53,7 +54,10 @@ Every row below is mapped to its final plan/task ID and must be preserved throug
 | 01-09-T1 | 01-09 | 8 | REQ-user-management | T-USER-01 | Only owner Admin can mutate non-Admin users | integration | `npm run test:integration -- tests/integration/user-management.test.ts` | ❌ 01-09 | ⬜ pending |
 | 01-09-T1 | 01-09 | 8 | REQ-user-management | T-USER-02 | Role/location combinations and the single-Admin invariant are enforced | integration | `npm run test:integration -- tests/integration/user-management.test.ts` | ❌ 01-09 | ⬜ pending |
 | 01-09-T3 | 01-09 | 8 | REQ-user-management | T-USER-03 | Deactivation or access change revokes all prior sessions | integration | `npm run test:integration -- tests/integration/session-revocation.test.ts` | ❌ 01-09 | ⬜ pending |
+| 01-09-T3 | 01-09 | 8 | REQ-user-management | T-USER-05 | Pinned Better Auth internal create/reset works without exposing public sign-up or generic Admin endpoints | integration | `npm run test:integration -- tests/integration/auth-admin-surface.test.ts` | ❌ 01-09 | ⬜ pending |
 | 01-10-T1 | 01-10 | 9 | REQ-user-management | T-USER-04 | Change and skip consume the first-login prompt until a later reset | integration | `npm run test:integration -- tests/integration/credential-setup.test.ts` | ❌ 01-10 | ⬜ pending |
+| 01-11-T1 | 01-11 | 10 | REQ-user-management | T-USER-06 | Durable User Management renders all eight approved UI states after credential flow exists | build + manual | `npm run typecheck && npm run build` | ❌ 01-11 | ⬜ pending |
+| 01-12-T3 | 01-12 | 11 | all Phase 1 requirements | T-EVIDENCE-01 | Fresh migration, double reload, automated gates, lint baseline, six edge-rule groups, and manual UAT statuses are committed without secrets | evidence gate | `npm run test && npm run test:integration && npm run typecheck && npm run build` | ❌ 01-12 | ⬜ pending |
 
 *Status: ⬜ pending | ✅ green | ❌ red | ⚠ flaky*
 
@@ -66,6 +70,7 @@ Every row below is mapped to its final plan/task ID and must be preserved throug
 - [ ] Add role/session/location fixture factories and direct request helpers without importing prototype user fixtures.
 - [ ] Add a small synthetic XLSX fixture covering formulas, hidden sheets, category rows, duplicate/missing codes, invalid quantities, and conflicting/missing prices.
 - [ ] Add the unit and integration test files referenced in the verification map.
+- [ ] Add `data:profile` and `data:generate` package scripts backed by Node 20-executable `.mjs` modules with strict `.d.mts` declarations; direct Node execution of `.ts` is not supported.
 
 ---
 
@@ -77,6 +82,7 @@ Every row below is mapped to its final plan/task ID and must be preserved throug
 | Role-aware navigation and denied route | REQ-role-authorization | Shell hydration and focus behavior require browser inspection | Sign in as each fixed role; verify no forbidden-link flash, correct scope label, direct denied-route behavior, keyboard focus, and no protected content disclosure. |
 | First-login credential prompt | REQ-user-management | Dialog focus, password-manager behavior, and responsive layout require browser inspection | Exercise change, skip, validation error, server failure, later reset, keyboard-only use, reduced motion, and sign-in continuation. |
 | Owner workbook approval checkpoint | REQ-data-onboarding | `SR`/`BL BEFORE`, duplicate-code, and missing-price meanings require owner judgment | Review the generated source-traceability report and record explicit decisions before canonical fixture generation. |
+| Consolidated Phase 1 UAT evidence | all Phase 1 requirements | Responsive/theme/focus and owner judgment require human observation | Record each role/UI/security check as pending/pass/fail with notes in `docs/verification/phase-01-evidence.md`; pending is never treated as passed. |
 
 ---
 

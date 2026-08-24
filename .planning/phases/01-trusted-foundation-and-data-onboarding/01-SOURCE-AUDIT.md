@@ -7,11 +7,12 @@ REQ | REQ-data-onboarding | Profile, review, canonicalize, migrate, seed, and sa
 REQ | REQ-role-authorization | Four fixed roles, active session, persisted scope on pages/reads/mutations | 01-06–01-10 | COVERED | Hostile direct requests and page denial included
 REQ | REQ-user-management | Owner Admin manages only valid non-Admin accounts with immediate revocation | 01-09–01-12 | COVERED | Exactly one owner Admin; no generalized model
 RESEARCH | — | Package legitimacy, Node 20 Vitest, SheetJS official CDN | 01-01–01-02 | COVERED | Blocking-human package gate precedes install
-RESEARCH | — | Profile→review→generate→load and deterministic output | 01-02–01-06 | COVERED | No fixture before owner review
+RESEARCH | — | Profile→review→generate→load and deterministic output | 01-02–01-06 | COVERED | Node 20 `.mjs` package-script entry points; no fixture before complete 01-04 owner review
 RESEARCH | — | Additive migration and disposable PostgreSQL verification | 01-06 | COVERED | Includes [BLOCKING] schema application
 RESEARCH | — | Central persisted policy and hostile request matrix | 01-07–01-08 | COVERED | API and page layers independent
-RESEARCH | — | Narrow Better Auth-backed lifecycle and atomic revocation | 01-09–01-10 | COVERED | Generic Admin endpoints are not exposed
-RESEARCH | — | Approved Chezcar UI contract and all eight UI states | 01-08, 01-10–01-11 | COVERED | Empty/loading/error/populated/partial/overflow/zero-one-many/long-text
+RESEARCH | — | Narrow Better Auth-backed lifecycle and atomic revocation | 01-06, 01-09–01-10 | COVERED | Pinned 1.6.23 internal unmounted instance; public generic Admin endpoints/sign-up are tested unavailable
+RESEARCH | — | External API coverage decision | COVERAGE.md | COVERED | No external network API integration; Better Auth is pinned in-process code behind first-party routes
+RESEARCH | — | Approved Chezcar UI contract and all eight UI states | 01-08, 01-10–01-12 | COVERED | Empty/loading/error/populated/partial/overflow/zero-one-many/long-text plus committed UAT status
 CONTEXT | D-01 | Owner workbook is developer input and seed basis | 01-02–01-06 | COVERED | No application upload surface
 CONTEXT | D-02 | Normalize rather than copy spreadsheet shape; preserve traceability | 01-02–01-05 | COVERED | Source coordinates/hashes retained
 CONTEXT | D-03 | SR Stock Room; QC/BL/LU/VC/SP branches | 01-03–01-08 | COVERED | Owner resolves workbook source mapping

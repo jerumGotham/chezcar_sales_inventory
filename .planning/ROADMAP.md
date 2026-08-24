@@ -66,9 +66,12 @@ Plans:
 **Wave 9** *(blocked on Wave 8 completion)*
 
 - [ ] 01-10-PLAN.md — Complete the temporary-credential prompt flow
-- [ ] 01-11-PLAN.md — Replace the mock User Management UI
 
 **Wave 10** *(blocked on Wave 9 completion)*
+
+- [ ] 01-11-PLAN.md — Replace the mock User Management UI
+
+**Wave 11** *(blocked on Wave 10 completion)*
 
 - [ ] 01-12-PLAN.md — Synchronize docs and run the phase evidence gate
 

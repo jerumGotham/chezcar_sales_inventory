@@ -19,9 +19,9 @@ Workbook fixture generation is gated: do not produce an approved canonical fixtu
 | `package.json` | config | batch | `package.json` scripts/dependency blocks | exact-modification |
 | `package-lock.json` | config | batch | existing npm lockfile | generated |
 | `vitest.config.ts` | config | batch | none | no analog |
-| `scripts/data-onboarding/workbook-profile.ts` | utility | file-I/O/transform | `prisma/seed.mjs` | partial |
-| `scripts/data-onboarding/canonicalize.ts` | utility | transform | `lib/server/catalog.ts` Zod boundary | partial |
-| `scripts/data-onboarding/generate-seed.ts` | utility | file-I/O/transform | `prisma/seed.mjs` | partial |
+| `scripts/data-onboarding/workbook-profile.mjs` / `.d.mts` | utility | file-I/O/transform | `prisma/seed.mjs` | partial |
+| `scripts/data-onboarding/canonicalize.mjs` / `.d.mts` | utility | transform | `lib/server/catalog.ts` Zod boundary | partial |
+| `scripts/data-onboarding/generate-seed.mjs` / `.d.mts` | utility | file-I/O/transform | `prisma/seed.mjs` | partial |
 | `scripts/data-onboarding/resolutions.json` | config | file-I/O | none | no analog |
 | `scripts/data-onboarding/source-mapping.json` | config | transform | none | no analog |
 | `prisma/fixtures/opening-catalog.json` | config/fixture | batch | `prisma/seed.mjs:6-39` | role-match |
@@ -30,9 +30,12 @@ Workbook fixture generation is gated: do not produce an approved canonical fixtu
 | `prisma/seed.mjs` | utility | batch/CRUD | current `prisma/seed.mjs` | exact-modification |
 | `lib/server/services/catalog-reset.ts` | service | batch/CRUD | `prisma/seed.mjs` + `lib/server/catalog.ts` | role-match |
 | `lib/contracts/users.ts` | model/contract | transform | `lib/catalog.ts` | exact-role |
+| `lib/contracts/access.ts` | model/contract | transform | `lib/catalog.ts` | exact-role |
 | `lib/server/policy/access.ts` | utility/policy | request-response | `lib/server/authorization.ts` | role-match |
 | `lib/server/authorization.ts` | middleware | request-response | current authorization module | exact-modification |
 | `lib/server/auth.ts` | config/provider | request-response | current Better Auth config | exact-modification |
+| `lib/server/internal-user-auth.ts` | server-only provider | request-response | `lib/server/auth.ts` | role-match |
+| `lib/server/shell.ts` | server loader | request-response/transform | `lib/server/authorization.ts` | role-match |
 | `lib/server/services/users.ts` | service | CRUD | `lib/server/catalog.ts` | role-match |
 | `app/api/users/route.ts` | route/controller | request-response/CRUD | `app/api/inventory/route.ts` | exact-role |
 | `app/api/users/[userId]/route.ts` | route/controller | request-response/CRUD | `app/api/inventory/route.ts` | role-match |
@@ -43,9 +46,11 @@ Workbook fixture generation is gated: do not produce an approved canonical fixtu
 | `proxy.test.ts` | test | request-response | none | no analog |
 | `lib/menu.ts` | config | transform | current `lib/menu.ts` | exact-modification |
 | `components/app-sidebar.tsx` | component | transform/event-driven | current sidebar | exact-modification |
+| `components/app-layout-shell-client.tsx` | component | transform/event-driven | current client `app-layout-shell.tsx` | extraction |
 | `app/access-denied/page.tsx` | component/page | request-response | `app/sign-in/page.tsx` + `PageShell` | role-match |
 | `app/users/page.tsx` | component/page | request-response | current users page shell | exact-modification |
 | `app/users/users-client.tsx` | component | request-response/event-driven | `app/products/page.tsx` | exact-role |
+| `app/inventory/inventory-client.tsx` | component | request-response/event-driven | current `app/inventory/page.tsx` | extraction |
 | `app/sign-in/sign-in-form.tsx` | component | request-response/event-driven | current sign-in form | exact-modification |
 | `components/credential-setup-dialog.tsx` | component | request-response/event-driven | sign-in form + existing Dialog usage | role-match |
 | `scripts/data-onboarding/workbook-profile.test.ts` | test | file-I/O/transform | none | no analog |
@@ -61,11 +66,13 @@ Workbook fixture generation is gated: do not produce an approved canonical fixtu
 | `tests/integration/inventory-scope.test.ts` | test | request-response/CRUD | none | no analog |
 | `tests/integration/user-management.test.ts` | test | request-response/CRUD | none | no analog |
 | `tests/integration/session-revocation.test.ts` | test | request-response/CRUD | none | no analog |
+| `tests/integration/auth-admin-surface.test.ts` | test | request-response/auth | auth catch-all | partial |
 | `tests/integration/credential-setup.test.ts` | test | request-response/CRUD | none | no analog |
 | `docs/API.md` | config/documentation | transform | current API document | exact-modification |
 | `docs/DATABASE.md` | config/documentation | transform | current database document | exact-modification |
 | `docs/TESTING.md` | config/documentation | transform | current testing document | exact-modification |
 | `docs/ARCHITECTURE.md` / `docs/CONFIGURATION.md` | config/documentation | transform | current documents | exact-modification |
+| `docs/verification/phase-01-evidence.md` | verification evidence | batch/manual | none | no analog |
 
 ## Pattern Assignments
 
@@ -73,9 +80,9 @@ Workbook fixture generation is gated: do not produce an approved canonical fixtu
 
 **Apply to:**
 
-- `scripts/data-onboarding/workbook-profile.ts`
-- `scripts/data-onboarding/canonicalize.ts`
-- `scripts/data-onboarding/generate-seed.ts`
+- `scripts/data-onboarding/workbook-profile.mjs`
+- `scripts/data-onboarding/canonicalize.mjs`
+- `scripts/data-onboarding/generate-seed.mjs`
 - `scripts/data-onboarding/resolutions.json`
 - `scripts/data-onboarding/source-mapping.json`
 - `prisma/fixtures/opening-catalog.json`
@@ -99,7 +106,7 @@ import type {
 import { prisma } from "@/lib/server/prisma";
 ```
 
-For scripts, omit `server-only` and Prisma from the profile/generate stages. Use Zod at each raw → finding → approved canonical boundary. The profiler must be read-only and must not import `lib/server/prisma.ts`.
+Keep all three data modules Node 20-executable `.mjs` with `// @ts-check` JSDoc and strict sibling `.d.mts` declarations; invoke them only through `data:profile`/`data:generate` package scripts. Omit `server-only` and Prisma from profile/generate stages. Use Zod at each raw → finding → approved canonical boundary. The profiler must be read-only and must not import `lib/server/prisma.ts`.
 
 **Fail-closed environment/input pattern** (`prisma/seed.mjs:41-58`):
 
@@ -470,7 +477,7 @@ That excerpt is a boundary warning, not the analog to copy for user operations.
 
 ### User lifecycle service and Better Auth integration
 
-**Apply to:** `lib/server/services/users.ts`, `lib/server/auth.ts`
+**Apply to:** `lib/server/services/users.ts`, `lib/server/auth.ts`, `lib/server/internal-user-auth.ts`
 
 **Server module pattern** (`lib/server/catalog.ts:1-12`): use `import "server-only"`, Prisma types, Zod, browser-safe contract imports, and the shared Prisma singleton.
 
@@ -501,7 +508,7 @@ export const auth = betterAuth({
 });
 ```
 
-Keep `disableSignUp`, fixed uppercase roles, and `input: false`. Hand-review any Admin-plugin schema additions; do not introduce lowercase plugin roles or a second status authority.
+Keep this public `auth` instance mounted by `app/api/auth/[...all]/route.ts` with `disableSignUp`, fixed uppercase roles, `input: false`, and no Admin plugin. Put Better Auth 1.6.23 `admin()` in a separate `internal-user-auth.ts` instance using the same adapter/additional fields; call only its server API primitives from the owner-authorized service and never pass it to `toNextJsHandler`. Hand-review the additive plugin schema fields; keep application `User.status` as the sole active/inactive authority and do not introduce lowercase plugin roles.
 
 **Atomic access-change/revocation pattern:** no exact local analog exists. Use one short Prisma transaction for application user fields and database session deletion when atomicity is required:
 
@@ -897,7 +904,7 @@ Documentation must replace current-state claims only after implementation and ve
 | File/Family | Reason / Planner Direction |
 |---|---|
 | `vitest.config.ts` and all test files | No runner, config, test, or helper exists. Follow `01-VALIDATION.md` and Vitest Node-project guidance. |
-| `scripts/data-onboarding/*` | No workbook-processing code exists. Use SheetJS read-only parsing and the profile → review → generate → load architecture from research. |
+| `scripts/data-onboarding/*` | No workbook-processing code exists. Use Node 20-executable `.mjs` modules plus `.d.mts` declarations, SheetJS read-only parsing, and the profile → review → generate → load architecture from research. |
 | Review/mapping JSON artifacts | No traceability artifact exists. Preserve workbook hash, source sheet/row/column, raw/normalized values, finding, and explicit resolution. |
 | Synthetic XLSX fixture | No binary test fixtures exist. Generate a small deterministic fixture; do not use the owner workbook in quick tests. |
 | Atomic user/session lifecycle | No mutation service exists. Use one application boundary and prove postconditions against PostgreSQL/Better Auth sessions. |
