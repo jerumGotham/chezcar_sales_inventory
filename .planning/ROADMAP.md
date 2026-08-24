@@ -28,7 +28,7 @@ This roadmap implements the confirmed simple process in dependency order. Existi
   3. Every fixed role can request only its permitted pages/data/actions, and manipulated branch parameters cannot escape persisted scope.
   4. The single owner Admin can create, update, deactivate, and reset credentials for non-Admin users; another Admin cannot be created; Stock Staff is fixed to `SR`, Branch Staff requires one branch, Accounting has no location assignment, and access changes revoke sessions.
 
-**Plans**: 12 plans
+**Plans**: 17 plans
 Plans:
 **Wave 1**
 
@@ -41,6 +41,7 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [ ] 01-03-PLAN.md — Produce the complete owner-review evidence package
+- [ ] 01-13-PLAN.md — Establish disposable database and direct-request test helpers
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -60,18 +61,25 @@ Plans:
 
 **Wave 8** *(blocked on Wave 7 completion)*
 
-- [ ] 01-08-PLAN.md — Add safe denial, navigation, and scope feedback
-- [ ] 01-09-PLAN.md — Deliver owner-Admin user lifecycle APIs
+- [ ] 01-08-PLAN.md — Deliver the server-derived global shell scope contract
+- [ ] 01-14-PLAN.md — Close hostile Inventory API and persisted data scope
+- [ ] 01-15-PLAN.md — Add safe page denial routing and presentation
+- [ ] 01-17-PLAN.md — Prove the unmounted Better Auth credential mechanism
 
 **Wave 9** *(blocked on Wave 8 completion)*
 
-- [ ] 01-10-PLAN.md — Complete the temporary-credential prompt flow
+- [ ] 01-09-PLAN.md — Deliver owner-Admin user lifecycle APIs
+- [ ] 01-16-PLAN.md — Add capability-gated Inventory scope controls
 
 **Wave 10** *(blocked on Wave 9 completion)*
 
-- [ ] 01-11-PLAN.md — Replace the mock User Management UI
+- [ ] 01-10-PLAN.md — Complete the temporary-credential prompt flow
 
 **Wave 11** *(blocked on Wave 10 completion)*
+
+- [ ] 01-11-PLAN.md — Replace the mock User Management UI
+
+**Wave 12** *(blocked on Wave 11 completion)*
 
 - [ ] 01-12-PLAN.md — Synchronize docs and run the phase evidence gate
 
@@ -174,7 +182,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Trusted Foundation and Data Onboarding | 0/12 | Planned | - |
+| 1. Trusted Foundation and Data Onboarding | 0/17 | Planned | - |
 | 2. Receipt Sales and Accounting Verification | 0/TBD | Not started | - |
 | 3. Durable Realtime Notifications | 0/TBD | Not started | - |
 | 4. Stock Room Receiving and Transfer Dispatch | 0/TBD | Not started | - |

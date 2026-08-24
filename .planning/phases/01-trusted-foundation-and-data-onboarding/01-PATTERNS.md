@@ -36,6 +36,7 @@ Workbook fixture generation is gated: do not produce an approved canonical fixtu
 | `lib/server/auth.ts` | config/provider | request-response | current Better Auth config | exact-modification |
 | `lib/server/internal-user-auth.ts` | server-only provider | request-response | `lib/server/auth.ts` | role-match |
 | `lib/server/shell.ts` | server loader | request-response/transform | `lib/server/authorization.ts` | role-match |
+| `lib/server/shell.test.ts` | test | transform/policy | none | no analog |
 | `lib/server/services/users.ts` | service | CRUD | `lib/server/catalog.ts` | role-match |
 | `app/api/users/route.ts` | route/controller | request-response/CRUD | `app/api/inventory/route.ts` | exact-role |
 | `app/api/users/[userId]/route.ts` | route/controller | request-response/CRUD | `app/api/inventory/route.ts` | role-match |
@@ -47,6 +48,7 @@ Workbook fixture generation is gated: do not produce an approved canonical fixtu
 | `lib/menu.ts` | config | transform | current `lib/menu.ts` | exact-modification |
 | `components/app-sidebar.tsx` | component | transform/event-driven | current sidebar | exact-modification |
 | `components/app-layout-shell-client.tsx` | component | transform/event-driven | current client `app-layout-shell.tsx` | extraction |
+| `components/shell-access-context.tsx` | component/context | server-data hydration | providers pattern | partial |
 | `app/access-denied/page.tsx` | component/page | request-response | `app/sign-in/page.tsx` + `PageShell` | role-match |
 | `app/users/page.tsx` | component/page | request-response | current users page shell | exact-modification |
 | `app/users/users-client.tsx` | component | request-response/event-driven | `app/products/page.tsx` | exact-role |
@@ -73,6 +75,7 @@ Workbook fixture generation is gated: do not produce an approved canonical fixtu
 | `docs/TESTING.md` | config/documentation | transform | current testing document | exact-modification |
 | `docs/ARCHITECTURE.md` / `docs/CONFIGURATION.md` | config/documentation | transform | current documents | exact-modification |
 | `docs/verification/phase-01-evidence.md` | verification evidence | batch/manual | none | no analog |
+| `scripts/verify-phase-01.mjs` | verification runner | batch/process | `prisma/seed.mjs` exit handling | partial |
 
 ## Pattern Assignments
 
@@ -525,7 +528,7 @@ For credential creation/reset, use Better Auth's supported APIs rather than dire
 
 ### Role-aware menu and shell
 
-**Apply to:** `lib/menu.ts`, `components/app-sidebar.tsx`, and the server-derived shell integration selected by the planner.
+**Apply to:** `lib/contracts/access.ts`, `lib/server/shell.ts`, `lib/server/shell.test.ts`, `lib/menu.ts`, `components/app-layout-shell.tsx`, `components/app-layout-shell-client.tsx`, `components/shell-access-context.tsx`, `components/app-sidebar.tsx`, and `components/app-header.tsx`.
 
 **Current menu metadata** (`lib/menu.ts:17-33`):
 
@@ -570,6 +573,8 @@ const renderMenu = (showLabels: boolean) => (
 ```
 
 Change the sidebar to receive an already-filtered menu/capability model. Preserve active-link, desktop/mobile, accessible label, and `cn()` patterns. Do not fetch capabilities in an effect or briefly render all entries.
+
+Pass the same server-derived `ShellAccessDto` through a client context to the globally rendered `AppHeader`. The header shows Admin `All locations`/selected location, Stock Staff `Stock Room (SR)`, Branch Staff's active assigned branch, and Accounting `Business-wide`. `Business-wide` is display-only with null location and no inventory capability; Accounting does not use or render Inventory controls.
 
 ---
 
@@ -840,7 +845,7 @@ The exact required test matrix is fixed by `01-VALIDATION.md:45-56`; preserve ev
 }
 ```
 
-Add explicit one-shot `test` and protected integration scripts; do not use watch mode in validation. Install SheetJS only from the approved official CDN URL and only add a human-verified Node-20-compatible Vitest version. Let npm generate `package-lock.json`; do not hand-edit it.
+Add explicit one-shot `test` and protected integration scripts; do not use watch mode in validation. Plan 01-12 adds `verify:phase-01` backed by `scripts/verify-phase-01.mjs` to apply fresh migrations, seed/reload twice, run all gates, capture the known lint baseline, preserve manual UAT status, and validate `docs/verification/phase-01-evidence.md`. Install SheetJS only from the approved official CDN URL and only add a human-verified Node-20-compatible Vitest version. Let npm generate `package-lock.json`; do not hand-edit it.
 
 Documentation must replace current-state claims only after implementation and verification. Follow the current API error/status tables (`docs/API.md:10-41`), database boundary/model/gap sections (`docs/DATABASE.md:4-50,86-95`), and testing current-vs-future distinction (`docs/TESTING.md:4-29,161-173`). Record exact command outcomes and retain the existing lint baseline unless a fresh run proves otherwise.
 

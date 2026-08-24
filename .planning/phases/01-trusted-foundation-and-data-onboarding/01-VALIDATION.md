@@ -32,7 +32,7 @@ The integration suite must use a separately named disposable PostgreSQL instance
 
 - **After every task commit:** Run the changed Vitest file(s) and `npm run typecheck`.
 - **After every plan wave:** Run `npm run test`; also run `npm run test:integration` after schema, seed, auth, authorization, or user-service changes.
-- **Before `/gsd-verify-work`:** On the approved disposable target run `npm exec prisma migrate deploy && npm run db:seed && npm run db:catalog:reload && npm run db:catalog:reload && npm run test && npm run test:integration && npm run typecheck && npm run build`; run and record `npm run lint` separately because existing unrelated debt is not the phase gate.
+- **Before `/gsd-verify-work`:** On the approved disposable target run `npm run verify:phase-01 -- --validate-evidence`; the runner applies fresh committed migrations, seeds, reloads twice with equivalence proof, runs full unit/integration/typecheck/build gates, captures the expected lint baseline separately, preserves manual UAT statuses, and validates the committed evidence file.
 - **Max feedback latency:** 30 seconds for task-level checks.
 
 ---
@@ -49,15 +49,16 @@ Every row below is mapped to its final plan/task ID and must be preserved throug
 | 01-06-T3 | 01-06 | 6 | REQ-data-onboarding | T-DATA-04 | Fresh migration and repeat seed create exact locations/products/balances | integration | `npm run test:integration -- tests/integration/seed.test.ts` | ❌ 01-06 | ⬜ pending |
 | 01-06-T3 | 01-06 | 6 | REQ-data-onboarding | T-DATA-05 | Reset rejects production and unknown database targets | unit + integration | `npm run test -- lib/server/services/catalog-reset.test.ts` | ❌ 01-06 | ⬜ pending |
 | 01-07-T1 | 01-07 | 7 | REQ-role-authorization | T-AUTHZ-01 | Missing/inactive/wrong-role/invalid-location access fails closed | unit | `npm run test -- lib/server/authorization.test.ts` | ❌ 01-07 | ⬜ pending |
-| 01-07-T3 | 01-07 | 7 | REQ-role-authorization | T-AUTHZ-02 | Hostile branch parameters cannot escape persisted scope | integration | `npm run test:integration -- tests/integration/inventory-scope.test.ts` | ❌ 01-07 | ⬜ pending |
-| 01-08-T1 | 01-08 | 8 | REQ-role-authorization | T-AUTHZ-03 | Direct forbidden pages and APIs disclose no protected data | route | `npm run test -- proxy.test.ts` | ❌ 01-08 | ⬜ pending |
-| 01-09-T1 | 01-09 | 8 | REQ-user-management | T-USER-01 | Only owner Admin can mutate non-Admin users | integration | `npm run test:integration -- tests/integration/user-management.test.ts` | ❌ 01-09 | ⬜ pending |
-| 01-09-T1 | 01-09 | 8 | REQ-user-management | T-USER-02 | Role/location combinations and the single-Admin invariant are enforced | integration | `npm run test:integration -- tests/integration/user-management.test.ts` | ❌ 01-09 | ⬜ pending |
-| 01-09-T3 | 01-09 | 8 | REQ-user-management | T-USER-03 | Deactivation or access change revokes all prior sessions | integration | `npm run test:integration -- tests/integration/session-revocation.test.ts` | ❌ 01-09 | ⬜ pending |
-| 01-09-T3 | 01-09 | 8 | REQ-user-management | T-USER-05 | Pinned Better Auth internal create/reset works without exposing public sign-up or generic Admin endpoints | integration | `npm run test:integration -- tests/integration/auth-admin-surface.test.ts` | ❌ 01-09 | ⬜ pending |
-| 01-10-T1 | 01-10 | 9 | REQ-user-management | T-USER-04 | Change and skip consume the first-login prompt until a later reset | integration | `npm run test:integration -- tests/integration/credential-setup.test.ts` | ❌ 01-10 | ⬜ pending |
-| 01-11-T1 | 01-11 | 10 | REQ-user-management | T-USER-06 | Durable User Management renders all eight approved UI states after credential flow exists | build + manual | `npm run typecheck && npm run build` | ❌ 01-11 | ⬜ pending |
-| 01-12-T3 | 01-12 | 11 | all Phase 1 requirements | T-EVIDENCE-01 | Fresh migration, double reload, automated gates, lint baseline, six edge-rule groups, and manual UAT statuses are committed without secrets | evidence gate | `npm run test && npm run test:integration && npm run typecheck && npm run build` | ❌ 01-12 | ⬜ pending |
+| 01-14-T2 | 01-14 | 8 | REQ-role-authorization | T-AUTHZ-02 | Hostile branch parameters cannot escape persisted scope and Accounting remains inventory-denied | integration | `npm run test:integration -- tests/integration/inventory-scope.test.ts` | ❌ 01-14 | ⬜ pending |
+| 01-08-T1 | 01-08 | 8 | REQ-role-authorization | T-AUTHZ-04 | Server-derived shell DTO gives all four roles exact global scope feedback while Accounting has no inventory capability | unit | `npm run test -- lib/server/shell.test.ts` | ❌ 01-08 | ⬜ pending |
+| 01-15-T1 | 01-15 | 8 | REQ-role-authorization | T-AUTHZ-03 | Direct forbidden pages and APIs disclose no protected data | route | `npm run test -- proxy.test.ts` | ❌ 01-15 | ⬜ pending |
+| 01-17-T2 | 01-17 | 8 | REQ-user-management | T-USER-05 | Pinned Better Auth internal create/reset works without exposing public sign-up or generic Admin endpoints | integration | `npm run test:integration -- tests/integration/auth-admin-surface.test.ts` | ❌ 01-17 | ⬜ pending |
+| 01-09-T1 | 01-09 | 9 | REQ-user-management | T-USER-01 | Only owner Admin can mutate non-Admin users | integration | `npm run test:integration -- tests/integration/user-management.test.ts` | ❌ 01-09 | ⬜ pending |
+| 01-09-T1 | 01-09 | 9 | REQ-user-management | T-USER-02 | Role/location combinations and the single-Admin invariant are enforced | integration | `npm run test:integration -- tests/integration/user-management.test.ts` | ❌ 01-09 | ⬜ pending |
+| 01-09-T3 | 01-09 | 9 | REQ-user-management | T-USER-03 | Deactivation or access change revokes all prior sessions | integration | `npm run test:integration -- tests/integration/session-revocation.test.ts` | ❌ 01-09 | ⬜ pending |
+| 01-10-T1 | 01-10 | 10 | REQ-user-management | T-USER-04 | Change and skip consume the first-login prompt until a later reset | integration | `npm run test:integration -- tests/integration/credential-setup.test.ts` | ❌ 01-10 | ⬜ pending |
+| 01-11-T1 | 01-11 | 11 | REQ-user-management | T-USER-06 | Durable User Management renders all eight approved UI states after credential flow exists | build + manual | `npm run typecheck && npm run build` | ❌ 01-11 | ⬜ pending |
+| 01-12-T3 | 01-12 | 12 | all Phase 1 requirements | T-EVIDENCE-01 | Fresh committed migration, seed, two deterministic reloads, full unit/integration/typecheck/build, expected lint-baseline capture, manual UAT status, and evidence-file validation | evidence gate | `npm run verify:phase-01 -- --validate-evidence` | ❌ 01-12 | ⬜ pending |
 
 *Status: ⬜ pending | ✅ green | ❌ red | ⚠ flaky*
 
@@ -66,10 +67,9 @@ Every row below is mapped to its final plan/task ID and must be preserved throug
 ## Wave 0 Requirements
 
 - [ ] Verify a legitimate Node 20-compatible Vitest release, install it intentionally, and add `vitest.config.ts`, `test`, and `test:integration`.
-- [ ] Add a disposable PostgreSQL lifecycle helper that refuses the development bind mount and unknown database targets.
-- [ ] Add role/session/location fixture factories and direct request helpers without importing prototype user fixtures.
+- [ ] Plan 01-13 adds the disposable PostgreSQL lifecycle plus role/session/location/request helpers; Wave 0 only establishes the runner/config they use.
 - [ ] Add a small synthetic XLSX fixture covering formulas, hidden sheets, category rows, duplicate/missing codes, invalid quantities, and conflicting/missing prices.
-- [ ] Add the unit and integration test files referenced in the verification map.
+- [ ] Mapped tests are created by their owning plans, not Wave 0: 01-03 canonicalization, 01-05 generation, 01-06 migration/seed/reset, 01-07 policy/four routes, 01-08 shell scope, 01-14 inventory scope, 01-15 proxy denial, 01-17 auth surface, 01-09 user/revocation, and 01-10 credential setup.
 - [ ] Add `data:profile` and `data:generate` package scripts backed by Node 20-executable `.mjs` modules with strict `.d.mts` declarations; direct Node execution of `.ts` is not supported.
 
 ---
