@@ -1,7 +1,5 @@
 # Phase 1: Trusted Foundation and Data Onboarding - Research
 
-> **Scope note (2026-08-25):** The owner subsequently confirmed the simplified MVP and `.planning/REQUIREMENTS.md`/`.planning/ROADMAP.md` were reconciled. Regenerate this research before planning; all requirement mappings, roadmap corrections, and generic user-creation statements below are stale historical findings.
-
 <user_constraints>
 ## User Constraints (from CONTEXT.md)
 
@@ -24,13 +22,16 @@
 - **D-10:** Hide unauthorized pages and actions from navigation, while retaining independent server authorization for every request.
 - **D-11:** Direct navigation to an unauthorized page shows a dedicated access-denied screen without protected data and provides a route back to the dashboard.
 - **D-12:** Admin can select `All` or a specific location. Branch Staff is fixed to its assigned branch. Stock Staff defaults to `SR`.
-- **D-13:** A Branch Staff account cannot be activated without a branch assignment. The user-creation form must enforce this instead of allowing an invalid account state.
+- **D-13:** Stock Staff is assigned to `SR`, Branch Staff requires exactly one branch assignment, and Accounting Staff has business-wide access with no location assignment. The user-creation form must reject invalid role/location combinations.
 
 ### Minimal User Management
-- **D-14:** Phase 1 includes an Admin-only User Management menu for creating internal users, assigning a fixed role and required location, activating/deactivating accounts, and initiating credential setup/reset. Custom permission editing is out of scope because roles remain fixed.
+- **D-14:** Phase 1 includes an Admin-only User Management menu for creating Stock Staff, Branch Staff, and Accounting Staff accounts, applying the D-13 role/location rule, activating/deactivating accounts, and initiating credential setup/reset. The MVP has one owner Admin account and User Management cannot create another Admin. Custom permission editing is out of scope because roles remain fixed.
 - **D-15:** Admin sets a temporary password and provides it through an offline channel. First login prompts the user to change it but allows the user to skip.
 - **D-16:** Deactivating an account immediately revokes its active sessions.
 - **D-17:** Changing an active user's role or assigned branch immediately revokes active sessions. The user must sign in again to receive the new access and branch context.
+
+### Visual Direction
+- **D-18:** Improve the current Chezcar prototype style rather than redesigning it. Preserve the sidebar, semantic colors, shared components, responsive behavior, and familiar tables/forms while simplifying hierarchy, workflow feedback, notifications, and offline states.
 
 ### the agent's Discretion
 - Temporary item-code format and collision handling.
@@ -49,40 +50,41 @@
 
 | ID | Description | Research Support |
 |----|-------------|------------------|
-| REQ-role-authorization | Server policy prevents forbidden role actions and cross-location access; every action independently enforces active user, fixed role, and persisted location scope. | Central policy manifest, persisted authorization context, page/API denial patterns, session-revoking user lifecycle, and an automated role/location matrix. |
-| REQ-excel-import | Existing wording describes an Admin import UI, but D-01 corrects this to developer-only workbook profiling, canonical mapping, review, and deterministic initial seed. | Read-only workbook profile, source-to-canonical mapping pipeline, owner-review gates, deterministic seed/reset design, and database integration tests. |
+| REQ-data-onboarding | The developer profiles the owner workbook, preserves traceability, resolves blockers, generates canonical records, and can safely reload development/test only. | Read-only workbook evidence, profile-review-generate-load pipeline, owner checkpoints, deterministic seed design, and production refusal tests. |
+| REQ-role-authorization | The server enforces the four fixed roles, active status, and persisted location scope on sensitive pages, reads, and mutations. | Central capability policy, persisted authorization context, page/API denial patterns, database constraints, and a hostile-request role/location matrix. |
+| REQ-user-management | The owner Admin manages only non-Admin staff accounts with valid fixed role/location combinations and immediate session revocation after access changes. | Narrow Admin routes/service, Better Auth credential/session APIs, role-location validation, lifecycle transactions, and account/session integration tests. |
 </phase_requirements>
 
 **Researched:** 2026-08-25  
 **Domain:** Canonical data onboarding, PostgreSQL seeding, fixed-role/location authorization, and internal account lifecycle  
-**Confidence:** MEDIUM — codebase and schema findings are HIGH; official documentation is cited; workbook statistics are conservatively marked ASSUMED because the binary source could not be opened by the required `Read` tool.
+**Confidence:** MEDIUM — codebase, locked scope, and current schema findings are HIGH; official documentation is cited; workbook statistics remain LOW until committed tooling reproduces them and the owner resolves the ambiguous location mapping.
 
 ## Summary
 
-Phase 1 should be planned as four vertical slices, not as an upload feature: (1) test infrastructure and a disposable PostgreSQL harness, (2) read-only workbook profiling plus an owner-reviewable source mapping, (3) an additive canonical schema and deterministic development/test catalog-opening-stock seed, and (4) complete role/location and Admin user-management enforcement from database to navigation. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:7-14] The current roadmap criteria 3–4 and `REQ-excel-import` still say “Admin upload/import”; they must be interpreted as developer profiling/review/seeding under D-01, while adding D-14 user management to Phase 1. [VERIFIED: .planning/ROADMAP.md:21-30] [VERIFIED: .planning/REQUIREMENTS.md:40-43]
+Phase 1 should be planned as five vertical slices, not as an upload feature: (1) test infrastructure and a disposable PostgreSQL harness, (2) read-only workbook profiling plus an owner-reviewable source mapping, (3) an additive canonical schema and deterministic development/test catalog-opening-stock seed, (4) complete role/location policy from database through navigation, and (5) narrow Admin-only user lifecycle operations. The reconciled requirements name these scopes verbatim as `"REQ-data-onboarding"`, `"REQ-role-authorization"`, and `"REQ-user-management"`. [VERIFIED: .planning/REQUIREMENTS.md:11-16]
 
-The project already has the right boundary shape: browser-safe DTOs call same-origin route handlers; handlers use persisted active-user/role checks and server-only Prisma. [VERIFIED: app/api/inventory/route.ts:9-20] [VERIFIED: lib/server/authorization.ts:24-56] It does not yet have complete page policy, role-aware menus, durable user management, automated tests, or the real workbook seed. [VERIFIED: proxy.ts:6-48] [VERIFIED: lib/menu.ts:17-33] [VERIFIED: app/users/page.tsx:441-500]
+The project already has the right server boundary shape: route handlers validate input, load a persisted active user, and delegate to server-only Prisma services. [VERIFIED: app/api/inventory/route.ts:9-20] [VERIFIED: lib/server/authorization.ts:24-56] The current page proxy has only partial hard-coded route rules, the menu is unfiltered, and `/users` still queries page-local mock arrays. [VERIFIED: proxy.ts:29-46] [VERIFIED: lib/menu.ts:17-33] [VERIFIED: app/users/page.tsx:441-500]
 
-**Primary recommendation:** first produce a reviewed, versioned canonical seed artifact from the workbook; then implement Admin user lifecycle and route/API policy against that same canonical location model, with PostgreSQL integration tests proving scope and revocation.
+**Primary recommendation:** produce a reviewed, versioned canonical seed artifact first; then close authorization and user lifecycle against the same fixed location model, proving role/location scope and session revocation with disposable-PostgreSQL integration tests. [ASSUMED]
 
 ## Architectural Responsibility Map
 
 | Capability | Primary Tier | Secondary Tier | Rationale |
 |------------|-------------|----------------|-----------|
-| Workbook profiling and canonical mapping | Developer tooling | Database / Storage | The workbook is offline developer input; only reviewed normalized output reaches persistence. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:20-25] |
+| Workbook profiling and canonical mapping | Developer tooling | Database / Storage | The workbook is offline developer input; only reviewed normalized output reaches persistence. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:19-24] |
 | Catalog/location/opening-stock seed | Database / Storage | API / Backend | PostgreSQL owns canonical records; a server-side seed validates and loads them deterministically. [VERIFIED: prisma/seed.mjs:90-130] |
 | Active-user, role, and location policy | API / Backend | Frontend Server (page proxy) | Every data operation needs authoritative server policy; page denial is defense-in-depth and UX. [VERIFIED: lib/server/authorization.ts:24-56] [VERIFIED: proxy.ts:6-48] |
 | Role-aware navigation and location selector | Browser / Client | API / Backend | The client hides unavailable options, but server-derived scope remains authoritative. [VERIFIED: lib/menu.ts:17-33] |
-| Internal user creation and lifecycle | API / Backend | Database / Storage | Better Auth owns credentials/sessions while the application owns fixed role/location/status rules. [CITED: https://www.better-auth.com/docs/plugins/admin] |
-| Access-denied experience | Frontend Server (SSR) | Browser / Client | Denial occurs before protected data is rendered; the page supplies navigation back to the dashboard. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:33-37] |
+| Internal user creation and lifecycle | API / Backend | Database / Storage | Better Auth owns credentials/sessions while the application owns fixed role/location/status rules. [CITED: https://raw.githubusercontent.com/better-auth/better-auth/v1.6.23/docs/content/docs/plugins/admin.mdx] |
+| Access-denied experience | Frontend Server (SSR) | Browser / Client | Denial occurs before protected data is rendered; the page supplies navigation back to the dashboard. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:31-35] |
 | Authorization and seed verification | Database / Storage | API / Backend | Real constraints, transaction behavior, and scope require a disposable PostgreSQL database, not mocks alone. [CITED: https://www.prisma.io/docs/orm/prisma-client/queries/transactions] |
 
-## Scope Reconciliation
+## Scope Lock
 
-1. Replace roadmap success criteria “Admin can upload” and “Admin can import” with: a developer can run a read-only profiler, obtain row-level review findings, apply an approved mapping, and deterministically load development/test data. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:9-13]
-2. Add a Phase 1 criterion that only Admin can list/create/update/activate/deactivate/reset internal users, with fixed roles and role-valid location assignment. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:39-43]
-3. Do not plan a browser file picker, upload endpoint, staging UI, recurring import history, or production reset operation. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:113-119]
-4. Do not treat prototype Users/Roles controls as reusable policy. The current screen contains mock roles such as `"Super Admin"`, `"Branch Manager"`, `"Cashier"`, and `"Inventory Staff"`, while the implemented fixed values are quoted below. [VERIFIED: app/users/page.tsx:192-199] [VERIFIED: prisma/schema.prisma:15-20]
+1. Plan developer-operated workbook profiling, review, generation, and development/test reload; do not plan a browser file picker, upload endpoint, recurring import history, or production reset operation. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:7-11,115-121]
+2. Plan Admin-only list/create/update/deactivate/reactivate/reset operations for non-Admin staff; never expose Admin creation or custom permission editing. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:37-41]
+3. Preserve the approved `base-nova` Chezcar UI contract; no new UI package or registry block is required. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-UI-SPEC.md:20-35,242-249]
+4. Do not treat prototype Users/Roles controls as policy. The current screen defines `"Super Admin"`, `"Admin"`, `"Branch Manager"`, `"Cashier"`, and `"Inventory Staff"`; the implemented canonical roles are quoted below. [VERIFIED: app/users/page.tsx:192-199] [VERIFIED: prisma/schema.prisma:15-20]
 
 ## Workbook Evidence and Review Gates
 
@@ -93,8 +95,9 @@ The workbook was inspected without modification by reading its XLSX ZIP/XML memb
 - The file is approximately 116,466,467 bytes and contains 21 worksheets, including hidden June/July history and visible August sheets. [ASSUMED]
 - The latest rollup appears to be `"REALTIME INVENTORY AUGUST 2026"`; row 3 contains `"ITEM CODE"`, `"ITEM NAME"`, `"BRAND"`, `"CAR MODEL"`, `"YEAR MODEL"`, location-like columns, `"TOTAL STOCK AVAILABLE"`, and `"DISCOUNTED PRICE"`. [ASSUMED]
 - The rollup links current quantities to branch sheets by formulas and cached values. It has two `"BL"` columns, one linked to `"BL AUGUST 2026"` and one to `"BL BEFORE"`; it has no explicit `"SR"` heading, although historical sheets named `"STOCKROOM JUNE 2026"` and `"STOCKROOM JULY 2026"` exist. [ASSUMED]
-- A heuristic found about 1,434 product-like rows, but section headings and malformed rows mean the final count must come from an explicit row classifier, not this estimate. [ASSUMED]
-- The profile found item code `"40"` on two distinct rows with different descriptions and prices (`"25000"` and `"30000"`), four same-description signatures with different codes, a cached quantity `"-106"`, missing quantity cells on several product-like rows, one price cell `"-"`, and hundreds of blank price cells. These are review findings, not automatic cleanup instructions. [ASSUMED]
+- The candidate sheet contains 1,448 populated rows, but rows such as `"JIMNY ACCESSORIES"` and `"TAMARAW ACCESSORIES"` appear to be headings; the final product count must come from an explicit row classifier. [ASSUMED]
+- The scan found 2 missing item-code rows, duplicate code values `"40.0"` and `"958.0"`, quantity `"-106"` at `J1411`, 10 blank quantity cells, 718 blank prices, and price `"-"` at `O1092`. These are review findings, not automatic cleanup instructions. [ASSUMED]
+- Only 235 of 1,434 normalized candidate names matched branch-detail column-B values, so branch sheets must not be joined to the rollup by row position or assumed description equality. [ASSUMED]
 
 ### Planning consequences
 
@@ -102,7 +105,7 @@ The workbook was inspected without modification by reading its XLSX ZIP/XML memb
 - Treat latest opening quantities as source evidence, not as trustworthy merely because formula caches contain numbers. Recalculate row rules from the selected source columns, and report formula/cached-value disagreements. [CITED: https://docs.sheetjs.com/docs/api/parse-options/]
 - Preserve source sheet, row, column, raw value, normalized value, rule outcome, and owner resolution in the mapping/report artifact. [ASSUMED]
 - Generate temporary codes only after excluding headings and blank spacer rows; use a deterministic source-row-derived format with collision checks so reruns produce the same code. [ASSUMED]
-- Duplicate-code, suspected-duplicate, invalid quantity, and conflicting-price findings must be blocking review records. Never choose a winner in code. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:27-31]
+- Duplicate-code, suspected-duplicate, invalid quantity, and conflicting-price findings must be blocking review records. Never choose a winner in code. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:26-29]
 
 ## Existing Canonical Values and Constraints
 
@@ -112,11 +115,11 @@ The implemented source of truth defines these values verbatim:
 
 The user decisions define these location values verbatim:
 
-> `"SR"` is the central Stock Room; `"QC"`, `"BL"`, `"LU"`, `"VC"`, and `"SP"` are branches. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:20-25]
+> `"SR"` is the central Stock Room; `"QC"`, `"BL"`, `"LU"`, `"VC"`, and `"SP"` are branches. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:19-24]
 
 The current seed conflicts with that decision: it uses `"WH-MAIN"`, `"BR-QC"`, `"BR-MKT"`, and `"BR-PSG"`; replace these fixtures only after the workbook mapping is reviewed. [VERIFIED: prisma/seed.mjs:6-11]
 
-The existing schema already has unique product codes and unique location-product balances, but `User.locationId` is nullable and does not enforce Branch Staff assignment. [VERIFIED: prisma/schema.prisma:32-47] [VERIFIED: prisma/schema.prisma:49-79] [VERIFIED: prisma/schema.prisma:81-97] Add an application validation rule and a manually reviewed SQL check equivalent to “Branch Staff implies non-null location”; separately validate that the referenced location is a branch because a simple row check cannot inspect the related Location row. [ASSUMED]
+The existing schema already has unique product codes and unique location-product balances, but nullable `User.locationId` does not enforce the locked role/location matrix. [VERIFIED: prisma/schema.prisma:32-47] [VERIFIED: prisma/schema.prisma:49-79] [VERIFIED: prisma/schema.prisma:81-97] Add shared application validation plus a reviewed SQL `CHECK` enforcing: `ADMIN` and `ACCOUNTING_STAFF` imply null; `STOCK_STAFF` and `BRANCH_STAFF` imply non-null. Validate that Stock Staff references `SR` and Branch Staff references a `BRANCH` row inside the service transaction because a row-local check cannot inspect the related Location record. [ASSUMED]
 
 ## Project Constraints (from AGENTS.md)
 
@@ -183,7 +186,7 @@ Versions were checked on 2026-08-25. The Vitest registry reports `4.1.11`. [CITE
 **Packages removed due to [SLOP] verdict:** none.  
 **Packages flagged as suspicious [SUS]:** `vitest` installation requires a human checkpoint; Better Auth and Prisma findings apply only to their newly published registry releases, not a recommendation to alter the existing lockfile.
 
-No inspected package exposed a registry `postinstall` script. [VERIFIED: package-legitimacy seam and npm registry query 2026-08-25]
+The legitimacy seam reported no suspicious postinstall script. Registry metadata shows no postinstall for SheetJS, Vitest, Better Auth, Zod, or the Prisma CLI; `@prisma/client@6.12.0` has its expected `node scripts/postinstall.js`, with no network command or path outside the package visible in the script declaration. [VERIFIED: npm registry and package-legitimacy seam 2026-08-25]
 
 ## Architecture Patterns
 
@@ -240,11 +243,11 @@ tests/integration/             # Prisma seed/auth/scope tests
 
 **When to use:** Every protected page, read, and mutation. `proxy.ts` does not match APIs, so page gating cannot protect HTTP handlers. [VERIFIED: proxy.ts:51-53]
 
-### Pattern 3: Application-owned account lifecycle over Better Auth
+### Pattern 3: Narrow application-owned account lifecycle over Better Auth
 
-**What:** Use the Better Auth Admin plugin for credential/session operations; wrap it in a Chezcar service that enforces the fixed roles, status, role-valid location, last-Admin protection, and session revocation rules. [CITED: https://raw.githubusercontent.com/better-auth/better-auth/v1.6.23/docs/content/docs/plugins/admin.mdx] [ASSUMED]
+**What:** Enable only the Better Auth server primitives needed for credential operations, then expose narrow Chezcar route handlers that enforce owner-Admin access, the three creatable roles, status, role-valid location, and session revocation. Do not expose a generic Admin client or unrestricted plugin endpoints to the UI. [CITED: https://raw.githubusercontent.com/better-auth/better-auth/v1.6.23/docs/content/docs/plugins/admin.mdx] [ASSUMED]
 
-**Important:** the v1.6.23 Admin plugin adds optional `role`, `banned`, `banReason`, `banExpires`, and `impersonatedBy` fields. The application already has an enum role and separate `status`; plan an explicit compatibility migration/spike rather than blindly running generated auth migration output. [CITED: https://raw.githubusercontent.com/better-auth/better-auth/v1.6.23/docs/content/docs/plugins/admin.mdx] [VERIFIED: prisma/schema.prisma:81-131]
+**Important:** the v1.6.23 Admin plugin adds optional `role`, `banned`, `banReason`, `banExpires`, and `impersonatedBy` fields and defaults to lowercase `admin`/`user` role conventions. The application defines `"ADMIN"`, `"STOCK_STAFF"`, `"BRANCH_STAFF"`, and `"ACCOUNTING_STAFF"` plus `"ACTIVE"`/`"INACTIVE"`; configure custom access control and hand-review additive schema changes rather than applying generated plugin schema blindly. [CITED: https://raw.githubusercontent.com/better-auth/better-auth/v1.6.23/docs/content/docs/plugins/admin.mdx] [VERIFIED: prisma/schema.prisma:15-25,81-110]
 
 ### Pattern 4: Scoped, environment-gated reset
 
@@ -258,7 +261,7 @@ tests/integration/             # Prisma seed/auth/scope tests
 - **Seed directly from raw workbook:** it makes review resolutions implicit and makes reruns dependent on formula caches and parser behavior. [ASSUMED]
 - **Global destructive reset:** it will eventually erase auth and transactional records along with seed data. [ASSUMED]
 - **Client-only role/location validation:** request parameters and direct HTTP calls bypass it. [CITED: https://raw.githubusercontent.com/OWASP/ASVS/master/5.0/en/0x17-V8-Authorization.md]
-- **Custom editable roles:** fixed roles are locked; remove or disable `/users/roles` management rather than persisting prototype permissions. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:39-43]
+- **Custom editable roles:** fixed roles are locked; remove or disable `/users/roles` management rather than persisting prototype permissions. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:37-41,115-120]
 - **Two authorities for account status:** do not let Better Auth `banned` and application `status` drift. Choose one application-facing lifecycle and document how plugin fields support it. [ASSUMED]
 
 ## Recommended Vertical Implementation Slices
@@ -276,9 +279,9 @@ tests/integration/             # Prisma seed/auth/scope tests
 |---------|-------------|-------------|-----|
 | XLSX container/formula parsing | ZIP/XML parser as production tooling | SheetJS CE selected-sheet parser | Formula cells, cached values, hidden sheets, ranges, date/number formats, and merged cells are format edge cases. [CITED: https://docs.sheetjs.com/docs/api/parse-options/] |
 | Password hashing/account records | Custom crypto or direct Account writes in the user-management API | Better Auth Admin plugin | It already supports create user and set user password for the pinned version. [CITED: https://raw.githubusercontent.com/better-auth/better-auth/v1.6.23/docs/content/docs/plugins/admin.mdx] |
-| Session revocation protocol | Cookie manipulation | Better Auth session APIs or an explicitly tested atomic database-session deletion inside the service | Revocation must invalidate backend session state. [CITED: https://www.better-auth.com/docs/concepts/session-management] |
+| Session revocation protocol | Cookie manipulation | Better Auth session APIs or an explicitly tested atomic database-session deletion inside the service | Revocation must invalidate backend session state. [CITED: https://raw.githubusercontent.com/better-auth/better-auth/v1.6.23/docs/content/docs/concepts/session-management.mdx] |
 | Authorization in menu components | Per-component role conditionals | Central server policy plus derived UI capabilities | UI is manipulable and cannot protect objects or fields. [CITED: https://raw.githubusercontent.com/OWASP/ASVS/master/5.0/en/0x17-V8-Authorization.md] |
-| Spreadsheet cleanup heuristics | Automatic fuzzy merge or “best” price | Blocking review report with explicit owner resolutions | D-06 and D-09 forbid automatic winners. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:27-31] |
+| Spreadsheet cleanup heuristics | Automatic fuzzy merge or “best” price | Blocking review report with explicit owner resolutions | D-06 and D-09 forbid automatic winners. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:26-29] |
 | Database reset | Generic shell deletion or production-capable endpoint | Environment-gated server script and disposable test database | The project contains mutable developer state and future durable records. [VERIFIED: docs/DATABASE.md:78-84] |
 
 **Key insight:** this phase is trustworthy only if ambiguity is surfaced before mutation and authorization is proven with hostile direct requests, not inferred from the rendered UI.
@@ -311,7 +314,7 @@ tests/integration/             # Prisma seed/auth/scope tests
 **Warning sign:** lowercase `admin`/`user` roles or both `banned` and `status` independently control access.
 
 ### Pitfall 6: “Immediate” revocation defeated by cookie caching
-**What goes wrong:** Better Auth documents that cached session cookies can remain active until cache expiry. [CITED: https://www.better-auth.com/docs/concepts/session-management]  
+**What goes wrong:** Better Auth documents that cached session cookies can remain active until cache expiry. [CITED: https://raw.githubusercontent.com/better-auth/better-auth/v1.6.23/docs/content/docs/concepts/session-management.mdx]
 **How to avoid:** keep cookie cache disabled for this phase or force database session validation.  
 **Warning sign:** `session.cookieCache.enabled` appears without revocation-specific tests.
 
@@ -397,7 +400,7 @@ The model/field spellings `User`, `Session`, `id`, and `userId` are quoted verba
 
 | Old Approach | Current Approach | When Changed | Impact |
 |--------------|------------------|--------------|--------|
-| Browser upload/import implied by roadmap | Offline developer profile/review/generate/seed | Locked by D-01 on 2026-08-25 | Remove upload UI/API work from every plan. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:20-25] |
+| Browser upload/import implied by roadmap | Offline developer profile/review/generate/seed | Locked by D-01 on 2026-08-25 | Remove upload UI/API work from every plan. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:19-24] |
 | Prototype custom roles | Four fixed persisted roles | Implemented foundation / D-14 | Delete custom-role planning and use a fixed policy matrix. [VERIFIED: prisma/schema.prisma:15-20] |
 | Static seed fixtures | Reviewed Excel-derived canonical fixtures | Phase 1 target | Existing mock locations/products/balances must be replaced deterministically. [VERIFIED: prisma/seed.mjs:6-39] |
 | Page redirects to dashboard/inventory | Dedicated access-denied route without protected data | D-11 | Direct navigation gets explicit denial, while APIs retain 403 JSON. [VERIFIED: proxy.ts:29-46] |
@@ -413,11 +416,8 @@ The model/field spellings `User`, `Session`, `id`, and `userId` are quoted verba
 | A2 | A source-row-derived temporary-code format is appropriate | Workbook / Architecture | Codes may not match owner conventions; planner must make format explicit. |
 | A3 | Reviewed canonical fixture and mapping artifact paths/format | Project Structure | Only task/file organization changes. |
 | A4 | Scoped reset should preserve auth/users and replace only catalog/opening balances | Architecture | Test/development workflow may instead require a fully isolated whole-database reset. |
-| A5 | Last-active-Admin protection is required | User Lifecycle | Without it, Admin can lock out all administration. |
-| A6 | Skipping the first-login password prompt consumes the prompt permanently until the next Admin reset | Pitfalls | User may expect the prompt on every login. |
-| A7 | Stock Staff can select locations beyond its default `SR` | Open Questions | Incorrect scope could overexpose branch data or prevent required oversight. |
 | A8 | The mapping artifact should retain source coordinates, raw/normalized values, outcomes, resolutions, and deterministic hashes | Workbook / Architecture | A different traceability contract could change generator and review tasks. |
-| A9 | Branch Staff assignment should be backed by an application rule plus a reviewed database check, with related-location type validated in application code | Canonical Constraints | An invalid enforcement design could reject valid users or permit invalid active accounts. |
+| A9 | The role/location matrix should be backed by application validation plus a row-local database check, with `SR`/branch type validated transactionally | Canonical Constraints | An invalid enforcement design could reject valid users or permit invalid accounts. |
 | A10 | Better Auth Admin operations should sit behind an application-owned lifecycle service with one authoritative status model | Architecture | Plugin and application fields could drift or revocation could become non-atomic. |
 | A11 | Proposed implementation waves, new paths, test filenames, scripts, and sampling commands are suitable | Slices / Validation | Planner may need to rename or regroup tasks after implementation seams are fixed. |
 | A12 | Integration tests should be serial or worker-isolated and use a separately protected disposable database | Validation | Shared mutable state could make tests flaky or destructive. |
@@ -427,34 +427,21 @@ The model/field spellings `User`, `Session`, `id`, and `userId` are quoted verba
 ## Open Questions
 
 1. **Which workbook source is canonical for `SR`, and what is `BL BEFORE`?**
-   - What we know: canonical values are fixed to `SR`, `QC`, `BL`, `LU`, `VC`, `SP`. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:20-25]
+   - What we know: canonical values are fixed to `SR`, `QC`, `BL`, `LU`, `VC`, `SP`. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:19-24]
    - What's unclear: the latest rollup appears to have duplicate BL sources and no explicit SR source. [ASSUMED]
-   - Recommendation: owner approval is a blocking checkpoint before canonical fixture generation.
+   - Recommendation: owner approval is a blocking checkpoint before canonical fixture generation. [ASSUMED]
 
 2. **What is the exact product identity rule?**
    - What we know: the current database makes `itemCode` unique. [VERIFIED: prisma/schema.prisma:49-61]
    - What's unclear: workbook code `"40"` appears to identify two different rows and several descriptions appear under different codes. [ASSUMED]
-   - Recommendation: owner resolves each collision; no automatic merge or renumbering.
+   - Recommendation: owner resolves each collision; no automatic merge or renumbering. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:26-29]
 
 3. **Which prices are required for Phase 1?**
    - What we know: Product currently requires one Decimal `price`. [VERIFIED: prisma/schema.prisma:49-61]
    - What's unclear: the workbook profile found many blank prices and one nonnumeric marker. [ASSUMED]
-   - Recommendation: decide whether missing price blocks the product, creates an inactive product, or requires a separately confirmed price; do not invent zero.
+   - Recommendation: owner chooses a confirmed price or an explicit blocked/inactive outcome; do not invent zero. [ASSUMED]
 
-4. **What does “skip” mean on first login?**
-   - What we know: the prompt is required and change is optional. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:39-43]
-   - What's unclear: whether skipping dismisses once, permanently, or until a later login.
-   - Recommendation: use A6 only after user confirmation.
-
-5. **What locations are valid for Stock Staff and Accounting Staff accounts?**
-   - What we know: Branch Staff requires a branch; Stock Staff defaults to `SR`; Admin can use All or specific. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:33-37]
-   - What's unclear: whether Stock Staff is assigned to SR but can inspect all, and whether Accounting is unassigned/global or location-scoped.
-   - Recommendation: lock the account-assignment and resource-scope matrix before migration/API tasks.
-
-6. **Does the owner accept the temporary-password security deviation?**
-   - What we know: D-15 permits skipping change. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:39-43]
-   - What's unclear: whether security policy can require expiry or one-time use despite that UX.
-   - Recommendation: document the accepted risk; do not silently contradict D-15.
+The role/location assignment matrix and prompt-consumption behavior are not open: Stock Staff is assigned to `SR`, Branch Staff to exactly one branch, Admin/Accounting to no location, and a skipped first-login prompt is consumed until a later Admin reset. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:31-41] [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-UI-SPEC.md:202-207]
 
 ## Environment Availability
 
@@ -468,8 +455,8 @@ The model/field spellings `User`, `Session`, `id`, and `userId` are quoted verba
 | Python/openpyxl | Ad-hoc workbook inspection | Python ✓ / openpyxl ✗ | Python `3.12.3` | Use the planned Node SheetJS tool; do not add a second Python toolchain. [VERIFIED: Python import probe 2026-08-25] |
 | Installed `node_modules` | Local verification | ✗ inconsistent | Prisma `6.19.2`, Zod `3.25.76`, Better Auth absent vs checked-in pins | Run `npm ci` in an isolated clean copy; do not trust current modules. The required pins are quoted verbatim as `"@prisma/client": "6.12.0"`, `"better-auth": "1.6.23"`, and `"zod": "4.4.3"`. [VERIFIED: npm ls 2026-08-25] [VERIFIED: package.json:18,21,32] |
 
-**Missing dependencies with no fallback:** none after an isolated `npm ci` and approved Vitest/SheetJS installation.  
-**Missing dependencies with fallback:** host PostgreSQL CLI tools; use container-local tools.
+**Missing dependencies with no fallback:** none after an isolated `npm ci` and approved Vitest/SheetJS installation. [ASSUMED]
+**Missing dependencies with fallback:** host PostgreSQL CLI tools; use container-local tools. [ASSUMED]
 
 ## Validation Architecture
 
@@ -481,7 +468,7 @@ Nyquist validation is enabled because `.planning/config.json` is absent; no expl
 |----------|-------|
 | Framework | Vitest `4.1.11` [WARNING: package-legitimacy seam marked this release SUS/too-new; human verification required before install.] |
 | Config file | none — create in Wave 0 [VERIFIED: docs/TESTING.md:4-17] |
-| Quick run command | `npm run test -- --run <changed-test-file>` after Wave 0 [ASSUMED] |
+| Quick run command | `npm run test -- <changed-test-file>` after Wave 0 [ASSUMED] |
 | Full suite command | `npm run test && npm run test:integration && npm run typecheck` after Wave 0 [ASSUMED] |
 
 Use Vitest’s Node environment for policy, mapping, route/service, and integration tests; no DOM library is required to prove server authorization. [CITED: https://vitest.dev/guide/environment] Keep database integration serial or isolated per worker so tests cannot share mutable rows. [ASSUMED]
@@ -490,18 +477,18 @@ Use Vitest’s Node environment for policy, mapping, route/service, and integrat
 
 | Req ID | Behavior | Test Type | Automated Command | File Exists? |
 |--------|----------|-----------|-------------------|-------------|
-| REQ-excel-import | Classifies source rows and preserves raw/source mapping | unit | `npm run test -- --run scripts/data-onboarding/workbook-profile.test.ts` | ❌ Wave 0 [ASSUMED] |
-| REQ-excel-import | Blocks duplicate code, negative/blank/nonnumeric quantity, and conflicting price | unit/table-driven | `npm run test -- --run scripts/data-onboarding/canonicalize.test.ts` | ❌ Wave 0 [ASSUMED] |
-| REQ-excel-import | Same approved input yields the same canonical fixture/report | unit/snapshot/hash | `npm run test -- --run scripts/data-onboarding/generate-seed.test.ts` | ❌ Wave 0 [ASSUMED] |
-| REQ-excel-import | Fresh migration + seed creates exact locations/products/balances; rerun is equivalent | PostgreSQL integration | `npm run test:integration -- --run tests/integration/seed.test.ts` | ❌ Wave 0 [ASSUMED] |
-| REQ-excel-import | Reload refuses production and unknown database targets | unit + integration | `npm run test -- --run lib/server/services/catalog-reset.test.ts` | ❌ Wave 0 [ASSUMED] |
-| REQ-role-authorization | Unauthenticated/inactive/wrong-role/missing-branch requests return correct denial | route/service | `npm run test -- --run lib/server/authorization.test.ts` | ❌ Wave 0 [ASSUMED] |
-| REQ-role-authorization | Branch query manipulation cannot escape persisted location | PostgreSQL integration | `npm run test:integration -- --run tests/integration/inventory-scope.test.ts` | ❌ Wave 0 [ASSUMED] |
-| REQ-role-authorization | Direct forbidden page shows access denied and direct API returns 403 | route/proxy integration | `npm run test -- --run proxy.test.ts` | ❌ Wave 0 [ASSUMED] |
-| REQ-role-authorization | Only Admin lists/creates/changes/deactivates/resets users | route + PostgreSQL integration | `npm run test:integration -- --run tests/integration/user-management.test.ts` | ❌ Wave 0 [ASSUMED] |
-| REQ-role-authorization | Branch Staff cannot activate without branch assignment | service + DB constraint | `npm run test:integration -- --run tests/integration/user-management.test.ts` | ❌ Wave 0 [ASSUMED] |
-| REQ-role-authorization | Deactivate/role/location change revokes all old sessions immediately | auth integration | `npm run test:integration -- --run tests/integration/session-revocation.test.ts` | ❌ Wave 0 [ASSUMED] |
-| REQ-role-authorization | First login prompts for change, change works, skip works | integration + manual UI | `npm run test:integration -- --run tests/integration/credential-setup.test.ts` | ❌ Wave 0 [ASSUMED] |
+| REQ-data-onboarding | Classifies source rows and preserves raw/source mapping | unit | `npm run test -- scripts/data-onboarding/workbook-profile.test.ts` | ❌ Wave 0 [ASSUMED] |
+| REQ-data-onboarding | Blocks duplicate code, invalid quantity, and conflicting/missing price outcomes | unit/table-driven | `npm run test -- scripts/data-onboarding/canonicalize.test.ts` | ❌ Wave 0 [ASSUMED] |
+| REQ-data-onboarding | Same approved input yields the same canonical fixture/report | unit/snapshot/hash | `npm run test -- scripts/data-onboarding/generate-seed.test.ts` | ❌ Wave 0 [ASSUMED] |
+| REQ-data-onboarding | Fresh migration + seed creates exact locations/products/balances; rerun is equivalent | PostgreSQL integration | `npm run test:integration -- tests/integration/seed.test.ts` | ❌ Wave 0 [ASSUMED] |
+| REQ-data-onboarding | Reload refuses production and unknown database targets | unit + integration | `npm run test -- lib/server/services/catalog-reset.test.ts` | ❌ Wave 0 [ASSUMED] |
+| REQ-role-authorization | Unauthenticated/inactive/wrong-role/missing-branch requests return correct denial | route/service | `npm run test -- lib/server/authorization.test.ts` | ❌ Wave 0 [ASSUMED] |
+| REQ-role-authorization | Branch query manipulation cannot escape persisted location | PostgreSQL integration | `npm run test:integration -- tests/integration/inventory-scope.test.ts` | ❌ Wave 0 [ASSUMED] |
+| REQ-role-authorization | Direct forbidden page shows access denied and direct API returns 403 | route/proxy integration | `npm run test -- proxy.test.ts` | ❌ Wave 0 [ASSUMED] |
+| REQ-user-management | Only Admin lists/creates/changes/deactivates/reactivates/resets non-Admin users | route + PostgreSQL integration | `npm run test:integration -- tests/integration/user-management.test.ts` | ❌ Wave 0 [ASSUMED] |
+| REQ-user-management | Every role/location combination follows D-13 and second-Admin creation is rejected | service + DB constraint | `npm run test:integration -- tests/integration/user-management.test.ts` | ❌ Wave 0 [ASSUMED] |
+| REQ-user-management | Deactivate/role/location change revokes all old sessions immediately | auth integration | `npm run test:integration -- tests/integration/session-revocation.test.ts` | ❌ Wave 0 [ASSUMED] |
+| REQ-user-management | First login prompts once; password change and skip both consume it until reset | integration + manual UI | `npm run test:integration -- tests/integration/credential-setup.test.ts` | ❌ Wave 0 [ASSUMED] |
 
 ### Sampling Rate
 
@@ -541,8 +528,8 @@ Security enforcement is enabled because no config explicitly disables it. [VERIF
 | Session retained after deactivation/scope change | Elevation | Atomic user/session update or verified Better Auth revocation; cookie cache disabled; old-cookie integration test. |
 | Spreadsheet formula/reference poisoning or stale cache | Tampering | Offline-only selected-sheet parse; capture formula and cached value; no formula execution; reviewed canonical artifact. |
 | Production reset invocation | Tampering / Denial of Service | No HTTP endpoint; positive environment/database allowlist; hard refusal; separate credentials. |
-| Admin lockout or self-demotion | Denial of Service | Preserve at least one active Admin and test self-change paths. [ASSUMED] |
-| Temporary password exposure | Spoofing | Mask inputs, offline handoff, no logs, Better Auth hashing, reset + session revocation, one-time prompt state. |
+| Raw Better Auth Admin endpoint permits unsupported role mutation | Elevation | Expose narrow Chezcar handlers only; server allowlist the three creatable roles and reject owner-Admin mutation. [ASSUMED] |
+| Temporary password exposure | Spoofing | Mask inputs, offline handoff, no logs, Better Auth hashing, reset + session revocation, one-time prompt state. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-UI-SPEC.md:179-207] |
 
 ## Sources
 
@@ -550,18 +537,18 @@ Security enforcement is enabled because no config explicitly disables it. [VERIF
 - `prisma/schema.prisma`, `prisma/seed.mjs`, migration SQL — implemented models, discrete values, seed, constraints.
 - `lib/server/authorization.ts`, `lib/server/catalog.ts`, `proxy.ts`, route handlers — current authorization and scoping.
 - `01-CONTEXT.md`, requirements, roadmap, AGENTS.md — locked scope and project constraints.
-- Read-only ZIP/XML workbook profile — direct inspection, but discrete workbook claims remain `[ASSUMED]` because binary `Read` was unsupported.
+- `.planning/phases/01-trusted-foundation-and-data-onboarding/01-UI-SPEC.md` — approved presentation and interaction contract.
 
 ### Secondary (MEDIUM confidence)
 - [Better Auth v1.6.23 Admin plugin](https://raw.githubusercontent.com/better-auth/better-auth/v1.6.23/docs/content/docs/plugins/admin.mdx) — version-matched official API and schema.
-- [Better Auth sessions](https://www.better-auth.com/docs/concepts/session-management) — revocation and cookie-cache caveat.
+- [Better Auth v1.6.23 sessions](https://raw.githubusercontent.com/better-auth/better-auth/v1.6.23/docs/content/docs/concepts/session-management.mdx) — revocation and cookie-cache caveat.
 - [Prisma seeding](https://www.prisma.io/docs/orm/prisma-migrate/workflows/seeding) and [transactions](https://www.prisma.io/docs/orm/prisma-client/queries/transactions).
 - [SheetJS parsing](https://docs.sheetjs.com/docs/api/parse-options/) and [Node installation](https://docs.sheetjs.com/docs/getting-started/installation/nodejs/).
 - [Vitest guide](https://vitest.dev/guide/), [projects](https://vitest.dev/guide/projects), and [environments](https://vitest.dev/guide/environment).
 - OWASP ASVS 5.0 [V2](https://raw.githubusercontent.com/OWASP/ASVS/master/5.0/en/0x11-V2-Validation-and-Business-Logic.md), [V6](https://raw.githubusercontent.com/OWASP/ASVS/master/5.0/en/0x15-V6-Authentication.md), [V7](https://raw.githubusercontent.com/OWASP/ASVS/master/5.0/en/0x16-V7-Session-Management.md), [V8](https://raw.githubusercontent.com/OWASP/ASVS/master/5.0/en/0x17-V8-Authorization.md).
 
 ### Tertiary (LOW confidence)
-- None used as authority; all unresolved interpretations are recorded as `[ASSUMED]`.
+- Read-only ZIP/XML workbook profile — direct ad-hoc inspection, but workbook claims remain `[ASSUMED]` because binary `Read` is unsupported and committed tooling does not yet reproduce the profile.
 
 ## Metadata
 
