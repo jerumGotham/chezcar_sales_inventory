@@ -1,8 +1,8 @@
 ---
 phase: 1
 slug: trusted-foundation-and-data-onboarding
-status: draft
-nyquist_compliant: false
+status: planned
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-08-25
 ---
@@ -38,22 +38,22 @@ The integration suite must use a separately named disposable PostgreSQL instance
 
 ## Per-Task Verification Map
 
-The planner must replace each `TBD` task reference with the final plan/task ID while preserving every row.
+Every row below is mapped to its final plan/task ID and must be preserved through execution.
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| TBD | TBD | 0 | REQ-data-onboarding | T-DATA-01 | Source rows remain traceable and formulas are not executed | unit | `npm run test -- scripts/data-onboarding/workbook-profile.test.ts` | ❌ W0 | ⬜ pending |
-| TBD | TBD | 0 | REQ-data-onboarding | T-DATA-02 | Duplicate codes, invalid quantities, and unresolved prices cannot enter canonical data | unit | `npm run test -- scripts/data-onboarding/canonicalize.test.ts` | ❌ W0 | ⬜ pending |
-| TBD | TBD | 0 | REQ-data-onboarding | T-DATA-03 | Approved input generates deterministic canonical output | unit | `npm run test -- scripts/data-onboarding/generate-seed.test.ts` | ❌ W0 | ⬜ pending |
-| TBD | TBD | 0 | REQ-data-onboarding | T-DATA-04 | Fresh migration and repeat seed create exact locations/products/balances | integration | `npm run test:integration -- tests/integration/seed.test.ts` | ❌ W0 | ⬜ pending |
-| TBD | TBD | 0 | REQ-data-onboarding | T-DATA-05 | Reset rejects production and unknown database targets | unit + integration | `npm run test -- lib/server/services/catalog-reset.test.ts` | ❌ W0 | ⬜ pending |
-| TBD | TBD | 0 | REQ-role-authorization | T-AUTHZ-01 | Missing/inactive/wrong-role/invalid-location access fails closed | unit | `npm run test -- lib/server/authorization.test.ts` | ❌ W0 | ⬜ pending |
-| TBD | TBD | 0 | REQ-role-authorization | T-AUTHZ-02 | Hostile branch parameters cannot escape persisted scope | integration | `npm run test:integration -- tests/integration/inventory-scope.test.ts` | ❌ W0 | ⬜ pending |
-| TBD | TBD | 0 | REQ-role-authorization | T-AUTHZ-03 | Direct forbidden pages and APIs disclose no protected data | route | `npm run test -- proxy.test.ts` | ❌ W0 | ⬜ pending |
-| TBD | TBD | 0 | REQ-user-management | T-USER-01 | Only owner Admin can mutate non-Admin users | integration | `npm run test:integration -- tests/integration/user-management.test.ts` | ❌ W0 | ⬜ pending |
-| TBD | TBD | 0 | REQ-user-management | T-USER-02 | Role/location combinations and the single-Admin invariant are enforced | integration | `npm run test:integration -- tests/integration/user-management.test.ts` | ❌ W0 | ⬜ pending |
-| TBD | TBD | 0 | REQ-user-management | T-USER-03 | Deactivation or access change revokes all prior sessions | integration | `npm run test:integration -- tests/integration/session-revocation.test.ts` | ❌ W0 | ⬜ pending |
-| TBD | TBD | 0 | REQ-user-management | T-USER-04 | Change and skip consume the first-login prompt until a later reset | integration | `npm run test:integration -- tests/integration/credential-setup.test.ts` | ❌ W0 | ⬜ pending |
+| 01-02-T1 | 01-02 | 2 | REQ-data-onboarding | T-DATA-01 | Source rows remain traceable and formulas are not executed | unit | `npm run test -- scripts/data-onboarding/workbook-profile.test.ts` | ❌ 01-02 | ⬜ pending |
+| 01-03-T1 | 01-03 | 3 | REQ-data-onboarding | T-DATA-02 | Duplicate codes, invalid quantities, and unresolved prices cannot enter canonical data | unit | `npm run test -- scripts/data-onboarding/canonicalize.test.ts` | ❌ 01-03 | ⬜ pending |
+| 01-05-T2 | 01-05 | 5 | REQ-data-onboarding | T-DATA-03 | Approved input generates deterministic canonical output | unit | `npm run test -- scripts/data-onboarding/generate-seed.test.ts` | ❌ 01-05 | ⬜ pending |
+| 01-06-T3 | 01-06 | 6 | REQ-data-onboarding | T-DATA-04 | Fresh migration and repeat seed create exact locations/products/balances | integration | `npm run test:integration -- tests/integration/seed.test.ts` | ❌ 01-06 | ⬜ pending |
+| 01-06-T3 | 01-06 | 6 | REQ-data-onboarding | T-DATA-05 | Reset rejects production and unknown database targets | unit + integration | `npm run test -- lib/server/services/catalog-reset.test.ts` | ❌ 01-06 | ⬜ pending |
+| 01-07-T1 | 01-07 | 7 | REQ-role-authorization | T-AUTHZ-01 | Missing/inactive/wrong-role/invalid-location access fails closed | unit | `npm run test -- lib/server/authorization.test.ts` | ❌ 01-07 | ⬜ pending |
+| 01-07-T3 | 01-07 | 7 | REQ-role-authorization | T-AUTHZ-02 | Hostile branch parameters cannot escape persisted scope | integration | `npm run test:integration -- tests/integration/inventory-scope.test.ts` | ❌ 01-07 | ⬜ pending |
+| 01-08-T1 | 01-08 | 8 | REQ-role-authorization | T-AUTHZ-03 | Direct forbidden pages and APIs disclose no protected data | route | `npm run test -- proxy.test.ts` | ❌ 01-08 | ⬜ pending |
+| 01-09-T1 | 01-09 | 8 | REQ-user-management | T-USER-01 | Only owner Admin can mutate non-Admin users | integration | `npm run test:integration -- tests/integration/user-management.test.ts` | ❌ 01-09 | ⬜ pending |
+| 01-09-T1 | 01-09 | 8 | REQ-user-management | T-USER-02 | Role/location combinations and the single-Admin invariant are enforced | integration | `npm run test:integration -- tests/integration/user-management.test.ts` | ❌ 01-09 | ⬜ pending |
+| 01-09-T3 | 01-09 | 8 | REQ-user-management | T-USER-03 | Deactivation or access change revokes all prior sessions | integration | `npm run test:integration -- tests/integration/session-revocation.test.ts` | ❌ 01-09 | ⬜ pending |
+| 01-10-T1 | 01-10 | 9 | REQ-user-management | T-USER-04 | Change and skip consume the first-login prompt until a later reset | integration | `npm run test:integration -- tests/integration/credential-setup.test.ts` | ❌ 01-10 | ⬜ pending |
 
 *Status: ⬜ pending | ✅ green | ❌ red | ⚠ flaky*
 
@@ -87,7 +87,7 @@ The planner must replace each `TBD` task reference with the final plan/task ID w
 - [ ] Wave 0 covers all missing references.
 - [ ] No watch-mode flags.
 - [ ] Feedback latency is under 30 seconds for task checks.
-- [ ] Planner replaced every `TBD` map reference with a final plan/task ID.
-- [ ] `nyquist_compliant: true` is set after the validation audit passes.
+- [x] Planner replaced every placeholder map reference with a final plan/task ID.
+- [x] `nyquist_compliant: true` is set after the validation audit passes.
 
-**Approval:** pending
+**Approval:** planning audit passed; execution evidence pending
