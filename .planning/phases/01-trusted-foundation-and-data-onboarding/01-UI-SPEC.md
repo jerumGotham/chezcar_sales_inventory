@@ -113,9 +113,15 @@ Accent reserved for: `Create User`, `Change Password`, the selected sidebar item
 | Reactivate confirmation | `Reactivate {name}? They will be able to sign in with their current credentials.` |
 | Credential reset title | `Reset Temporary Password` |
 | Credential reset success | `Temporary password updated. Share it with {name} through an offline channel.` |
+| Create failure | `We couldn’t create {name}. No account was created.` Action: `Try Creating User Again` |
+| Edit failure | `We couldn’t save changes for {name}. Their account details and access are unchanged.` Action: `Try Saving Changes Again` |
+| Credential reset failure | `We couldn’t reset {name}’s password. Their current password is unchanged.` Action: `Try Resetting Password Again` |
+| Deactivate failure | `We couldn’t deactivate {name}. They can still sign in.` Action: `Try Deactivating Again` |
+| Reactivate failure | `We couldn’t reactivate {name}. They still cannot sign in.` Action: `Try Reactivating Again` |
 | First-login title | `Change your temporary password` |
 | First-login body | `Choose a private password now, or skip this step and continue.` |
 | First-login actions | Primary `Change Password`; secondary `Skip for Now` |
+| First-login password-change failure | `We couldn’t change your password. Your current password is unchanged.` Action: `Try Changing Password Again` |
 | Access denied heading | `Access denied` |
 | Access denied body | `Your account does not have access to this page. Return to the dashboard to continue.` |
 | Access denied CTA | `Back to Dashboard` |
@@ -183,15 +189,15 @@ Use `PageShell` at `/users`. The owner Admin may view all accounts but may mutat
 - Temporary password fields are masked, support password managers, are never logged or echoed after success, and show the offline-handoff helper text before submit.
 - Edit excludes temporary-password fields; credential reset is a separate dialog. When role or branch changes, show the fixed revocation warning directly above the footer.
 - Validate on blur and submit. Put a specific message directly under each invalid field, set `aria-invalid`, focus the first invalid field after submit, and retain all entered values after server rejection.
-- Footer order is secondary `Cancel`, then primary `Create User` or `Save Changes`. While submitting, disable duplicate submission and change the label to `Creating User…` or `Saving Changes…` with `Loader2`.
+- Footer order is a context-specific secondary action, then the primary action: create uses `Close Without Creating` and `Create User`; edit uses `Close Without Saving` and `Save Changes`. While submitting, disable duplicate submission and change the primary label to `Creating User…` or `Saving Changes…` with `Loader2`.
 
 ### 5. Lifecycle confirmations and feedback
 
-- Deactivation requires a destructive confirmation dialog with user name, immediate sign-out consequence, secondary `Cancel`, and destructive `Deactivate User`.
-- Reactivation requires a neutral confirmation dialog; it is not styled destructive.
-- Reset Password uses two masked fields (`Temporary Password`, `Confirm Temporary Password`) and primary `Reset Password`. It never displays or generates a password in the browser.
+- Deactivation requires a destructive confirmation dialog with user name, immediate sign-out consequence, secondary `Keep User Active`, and destructive `Deactivate User`.
+- Reactivation requires a neutral confirmation dialog with secondary `Keep User Inactive` and primary `Reactivate User`; it is not styled destructive.
+- Reset Password uses two masked fields (`Temporary Password`, `Confirm Temporary Password`), secondary `Keep Current Password`, and primary `Reset Password`. It never displays or generates a password in the browser.
 - Successful mutations close the dialog, refresh the affected row and counts, preserve applied filters/page when valid, and announce the fixed success copy in a visible `role="status"` banner.
-- Failed mutations keep the dialog open, preserve values, re-enable controls, and show a problem-plus-next-step message in `role="alert"`. Do not imply a durable change before the server response succeeds.
+- Failed mutations keep the dialog open, preserve values, re-enable controls, and show the operation-specific failure copy and retry action declared above in `role="alert"`. Each message states what remained unchanged. Do not imply a durable change before the server response succeeds.
 
 ### 6. First-login temporary-password prompt
 
