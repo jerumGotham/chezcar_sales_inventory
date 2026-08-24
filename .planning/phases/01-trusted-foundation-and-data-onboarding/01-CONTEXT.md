@@ -1,16 +1,14 @@
 # Phase 1: Trusted Foundation and Data Onboarding - Context
 
 **Gathered:** 2026-08-25
-**Status:** Ready for planning
+**Status:** Scope reconciled; UI specification and refreshed research required before planning
 
 <domain>
 ## Phase Boundary
 
 Establish trustworthy initial catalog/location/inventory data from the owner's real Excel workbook, complete server-enforced role/location access, and provide the minimal Admin-only user management needed to create valid internal accounts. This phase does not build an in-app spreadsheet import feature or transactional sales, receiving, transfer, or discrepancy workflows.
 
-The planner must reconcile two scope corrections before producing executable plans:
-- `REQ-excel-import` currently describes an Admin upload/review feature. The owner clarified that the workbook is a one-time developer input for database design and initial seeding.
-- Minimal Admin-only User Management is required in Phase 1 so fixed roles and mandatory branch assignments can be configured safely.
+The reconciled project requirements define the workbook as one-time developer input and include minimal Admin-only User Management in Phase 1.
 
 </domain>
 
@@ -34,13 +32,16 @@ The planner must reconcile two scope corrections before producing executable pla
 - **D-10:** Hide unauthorized pages and actions from navigation, while retaining independent server authorization for every request.
 - **D-11:** Direct navigation to an unauthorized page shows a dedicated access-denied screen without protected data and provides a route back to the dashboard.
 - **D-12:** Admin can select `All` or a specific location. Branch Staff is fixed to its assigned branch. Stock Staff defaults to `SR`.
-- **D-13:** A Branch Staff account cannot be activated without a branch assignment. The user-creation form must enforce this instead of allowing an invalid account state.
+- **D-13:** Stock Staff is assigned to `SR`, Branch Staff requires exactly one branch assignment, and Accounting Staff has business-wide access with no location assignment. The user-creation form must reject invalid role/location combinations.
 
 ### Minimal User Management
-- **D-14:** Phase 1 includes an Admin-only User Management menu for creating internal users, assigning a fixed role and required location, activating/deactivating accounts, and initiating credential setup/reset. Custom permission editing is out of scope because roles remain fixed.
+- **D-14:** Phase 1 includes an Admin-only User Management menu for creating Stock Staff, Branch Staff, and Accounting Staff accounts, applying the D-13 role/location rule, activating/deactivating accounts, and initiating credential setup/reset. The MVP has one owner Admin account and User Management cannot create another Admin. Custom permission editing is out of scope because roles remain fixed.
 - **D-15:** Admin sets a temporary password and provides it through an offline channel. First login prompts the user to change it but allows the user to skip.
 - **D-16:** Deactivating an account immediately revokes its active sessions.
 - **D-17:** Changing an active user's role or assigned branch immediately revokes active sessions. The user must sign in again to receive the new access and branch context.
+
+### Visual Direction
+- **D-18:** Improve the current Chezcar prototype style rather than redesigning it. Preserve the sidebar, semantic colors, shared components, responsive behavior, and familiar tables/forms while simplifying hierarchy, workflow feedback, notifications, and offline states.
 
 ### Agent Discretion
 - Temporary item-code format and collision handling.
@@ -63,8 +64,8 @@ The planner must reconcile two scope corrections before producing executable pla
 
 ### Planning contracts
 - `.planning/PROJECT.md` - Locked architecture, scope constraints, and prototype-versus-production distinction.
-- `.planning/REQUIREMENTS.md` - Phase requirements and traceability; `REQ-excel-import` needs correction to match D-01.
-- `.planning/ROADMAP.md` - Phase boundary and success criteria; Phase 1 needs the User Management clarification from D-14.
+- `.planning/REQUIREMENTS.md` - Reconciled phase requirements and traceability for data onboarding, fixed-role access, and User Management.
+- `.planning/ROADMAP.md` - Reconciled simple MVP phases and success criteria.
 
 ### Architecture and persistence
 - `docs/adr/0005-nextjs-api-prisma-postgresql.md` - Locked modular-monolith, server-only Prisma, PostgreSQL, and service-boundary decision.
@@ -104,6 +105,7 @@ The planner must reconcile two scope corrections before producing executable pla
 ## Specific Ideas
 
 - The owner will provide and use the real Excel workbook as the concrete basis for schema and seeder decisions.
+- Workbook inspection found that the August stockroom-like sheet and `BL BEFORE` mapping require owner-reviewed reconciliation before seed generation.
 - `SR` must be represented as Stock Room rather than treated as another branch.
 - Branch codes `QC`, `BL`, `LU`, `VC`, and `SP` must be preserved during initial mapping.
 - Developer reset-and-reload is intentionally convenient for development/test, with a structural production safeguard.

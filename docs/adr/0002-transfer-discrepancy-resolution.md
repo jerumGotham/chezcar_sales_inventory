@@ -1,30 +1,32 @@
 # ADR 0002: Preserve Transfers and Resolve Discrepancies Separately
 
-**Status:** Proposed for stakeholder confirmation
+**Status:** Accepted
 **Date:** 2026-08-24
+**Accepted:** 2026-08-25
 
 ## Context
 
-Stock Staff distributes products from a central warehouse to branches. Branch Staff must compare the transfer shown in the system with the physical delivery. Branch users are not allowed to directly edit stock, but they need a simple way to confirm a correct delivery or report missing, excess, damaged, or wrong items.
+Stock Staff distributes products from the central Stock Room (`SR`) to branches. Branch Staff must compare the transfer shown in the system with the physical delivery. Branch users are not allowed to directly edit stock, but they need a simple way to confirm a correct delivery or submit a discrepancy form.
 
-Editing the original transfer after dispatch would hide whether the warehouse record, transport, or physical receipt was wrong. Posting a generic stock adjustment without linking it to the transfer would also make investigation difficult.
+Editing the original transfer after dispatch would hide whether the Stock Room record, transport, or physical receipt was wrong. Posting a generic stock adjustment without linking it to the transfer would also make investigation difficult.
 
 ## Decision
 
-1. A dispatched transfer is an immutable record of what the warehouse says it sent.
-2. Dispatch deducts source stock and records an in-transit movement.
-3. Branch Staff can perform one of two controlled actions:
+1. Stock Staff initiates and dispatches transfers from `SR` to a branch. Branch requests, branch-to-branch transfers, and direct supplier-to-branch receipts are deferred.
+2. A dispatched transfer is an immutable record of what `SR` says it sent.
+3. Dispatch deducts `SR` stock, records equal in-transit quantities, and notifies the destination branch in real time.
+4. Assigned Branch Staff can perform one of two controlled actions:
    - confirm that every item and quantity matches; or
    - submit the actual disposition of every dispatched line, plus any excess/wrong SKU lines and discrepancy reasons.
-4. A matched confirmation posts destination stock automatically and closes the transfer.
-5. A discrepancy creates a linked discrepancy report and notifies Admin and Stock Staff. It does not allow Branch Staff to set inventory directly.
-6. Stock Staff investigates and prepares a read-only movement proposal for every affected item; submitting its immutable version/hash sets `PENDING_ADMIN_APPROVAL`.
-7. Admin reviews original dispatch, branch count, evidence, findings, and the exact proposed ledger effects. Admin may approve the proposal, return it for recount, or resolve the report as a normal matched receipt.
-8. Destination stock for a discrepant transfer is posted only during Admin resolution. Approval supplies and transactionally revalidates the immutable proposal version/hash, transfer version, and ledger state before posting. Resolving as matched still posts `transit -D` and `destination +D`; it omits only variance movements.
-9. Resolution clears the complete original in-transit quantity, receives confirmed actual quantities, and creates separate source restoration, variance, loss, return, damaged, or supplemental movements as needed. No unexplained transit balance may remain.
-10. The original dispatched quantities, reporter, investigator, proposal, approver, resolution, actors, reasons, timestamps, and posted movement IDs remain visible.
+5. A matched confirmation clears in-transit stock, posts destination stock automatically, marks the transfer `RECEIVED`, and notifies Stock Staff and Admin.
+6. There is no separate `DELIVERED` or `CONFIRMED` status. `RECEIVED` means physically at the branch and confirmed matched.
+7. A discrepancy form records actual quantities, reason, notes, and conditionally required photos; it notifies Admin and Stock Staff and does not let Branch Staff set inventory.
+8. Disputed quantities remain unavailable for sale.
+9. Stock Staff investigates and records findings. Admin performs the final linked stock correction.
+10. Resolution clears the complete original in-transit quantity and accounts for every destination, restoration, non-sellable, loss/write-off, return, or supplemental movement.
+11. Original dispatch, branch report, findings, Admin resolution, actors, reasons, timestamps, and movements remain visible.
 
-Admin approval is one fixed MVP control, not a configurable multi-level approval engine. If Admin performs the investigation personally, Admin may enter findings and approve on the same screen. Branch Staff never approves, and Stock Staff cannot perform final posting in the MVP.
+Admin approval is one fixed MVP control, not a configurable approval engine. Branch Staff never approves, and Stock Staff cannot perform final posting in the MVP.
 
 ## Inventory Movement Rule
 
@@ -36,7 +38,7 @@ Each resolution must conserve quantity across locations and explicit loss/write-
 
 ## Why a Separate Resolution Record
 
-The transfer answers, "What did the warehouse dispatch?" The discrepancy report answers, "What did the branch physically count?" The resolution answers, "What did the authorized investigation conclude and post?" Keeping these facts separate preserves accountability while remaining simple for Branch Staff.
+The transfer answers, "What did the Stock Room dispatch?" The discrepancy report answers, "What did the branch physically count?" The resolution answers, "What did the authorized investigation conclude and post?" Keeping these facts separate preserves accountability while remaining simple for Branch Staff.
 
 ## Consequences
 
@@ -58,9 +60,7 @@ The transfer answers, "What did the warehouse dispatch?" The discrepancy report 
 ```text
 DRAFT -> FOR_DISPATCH -> IN_TRANSIT
   -> RECEIVED
-  -> DISCREPANCY_REPORTED -> UNDER_REVIEW -> PENDING_ADMIN_APPROVAL
-     -> RESOLVED
-     -> RECOUNT_REQUIRED -> UNDER_REVIEW
+   -> DISCREPANCY_REPORTED -> UNDER_REVIEW -> RESOLVED
 ```
 
 ## Rejected Alternatives

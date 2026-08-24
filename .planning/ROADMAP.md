@@ -1,145 +1,116 @@
-# Roadmap: Chezcar Sales & Inventory
+# Roadmap: Chezcar Sales and Inventory
 
 ## Overview
 
-This roadmap converts the current hybrid UI prototype into an operational internal sales and inventory MVP through vertical, verifiable capabilities. It first establishes canonical onboarding and complete server policy, then makes sales, reconciliation, warehouse intake, dispatch, notifications, dashboards, transfer receipt/discrepancy resolution, limited offline branch work, and production operations durable. Existing screens are starting points only; no phase is complete until its stated behavior persists, survives reload/retry, enforces authorization at the server, and meets its observable criteria.
-
-**Granularity:** Standard (default; no `.planning/config.json` was present). Seven phases are retained because offline continuity and production operations are distinct delivery boundaries rather than thin internal-quality phases.
+This roadmap implements the confirmed simple process in dependency order. Existing UI routes are prototypes and starting points only. A phase is complete only when its workflow persists, survives reload/retry, enforces role/location access on the server, preserves audit history, and passes its verification criteria.
 
 ## Phases
 
-- [ ] **Phase 1: Trusted Foundation and Data Onboarding** - Users operate within server-enforced role/location boundaries and Admin can onboard reviewed canonical catalog/opening-stock data.
-- [ ] **Phase 2: Durable Sales and Accounting Reconciliation** - Branch sales affect stock durably and Accounting/Admin can reconcile them without silent edits.
-- [ ] **Phase 3: Warehouse Receiving and Transfer Dispatch** - Authorized central staff can receive stock and dispatch conserved warehouse-to-branch transfers.
-- [ ] **Phase 4: Durable Notifications and Operational Views** - Each role sees canonical operational information and cannot miss durable event notifications.
-- [ ] **Phase 5: Transfer Receipt and Discrepancy Resolution** - Branch, Stock Staff, and Admin can complete matched and discrepant stock workflows with full audit integrity.
-- [ ] **Phase 6: Offline Branch Continuity** - Branch users can queue limited physical operations offline and reconcile them safely with the cloud record.
-- [ ] **Phase 7: Production Deployment and Recovery** - Operators can deploy, observe, back up, and restore the production system before go-live.
+- [ ] **Phase 1: Trusted Foundation and Data Onboarding** - Canonical workbook-derived data, four fixed roles, and Admin User Management establish trustworthy access and inventory foundations.
+- [ ] **Phase 2: Receipt Sales and Accounting Verification** - Branch Staff encodes handwritten-receipt sales with immediate stock deduction, and Accounting verifies each receipt-linked sale.
+- [ ] **Phase 3: Durable Realtime Notifications** - Actionable users receive durable live, push, low-stock, and exception notifications before transfer workflows depend on them.
+- [ ] **Phase 4: Stock Room Receiving and Transfer Dispatch** - Stock Staff receives into `SR` and dispatches auditable `SR`-to-branch transfers.
+- [ ] **Phase 5: Branch Receipt, Discrepancy Resolution, and Monitoring** - Branch Staff confirms matched stock or sends a discrepancy form; Stock Staff investigates, Admin resolves, and the complete operational dashboard becomes available.
+- [ ] **Phase 6: Offline Branch Continuity** - Enabled branches can queue sales and transfer receipt/discrepancy evidence during temporary outages and synchronize safely.
+- [ ] **Phase 7: Production Deployment and Recovery** - Operators deploy, observe, back up, and restore the verified MVP.
 
 ## Phase Details
 
 ### Phase 1: Trusted Foundation and Data Onboarding
-**Goal**: Users can rely on canonical product/opening-stock data and server-enforced role/location boundaries before transactional workflows are introduced.
+**Goal**: Users can rely on canonical catalog/opening inventory, individual accounts, and server-enforced role/location access before business mutations begin.
 **Depends on**: Nothing (first phase)
-**Requirements**: REQ-role-authorization, REQ-excel-import
-**Success Criteria** (what must be TRUE):
-  1. Each active role can directly request only the pages, reads, and actions allowed for that role, and Branch Staff sees only its persisted assigned location even when request parameters are manipulated.
-  2. Branch Staff cannot directly change stock or approve its own discrepancy, and Accounting Staff cannot change sales or stock; denied direct HTTP requests return an authorization failure rather than relying on hidden controls.
-  3. Admin can upload the supplied spreadsheet, review detected duplicates, missing identifiers, invalid/negative values, terminology, locations, and proposed mappings before any import is committed.
-  4. Admin can import approved canonical products, prices, locations, and opening balances with a repeatable result and review what was accepted or rejected; raw spreadsheet structure does not become the database model.
+**Requirements**: REQ-data-onboarding, REQ-role-authorization, REQ-user-management
+**Success Criteria**:
+  1. The workbook is profiled with source traceability, blocking identity/location/quantity/price ambiguities are reported, and an owner-reviewed canonical seed dataset can reset/reload development or test without exposing a production reset path.
+  2. `SR`, `QC`, `BL`, `LU`, `VC`, and `SP` exist with the confirmed Stock Room/branch meaning and canonical seeded products, prices, and opening balances.
+  3. Every fixed role can request only its permitted pages/data/actions, and manipulated branch parameters cannot escape persisted scope.
+  4. The single owner Admin can create, update, deactivate, and reset credentials for non-Admin users; another Admin cannot be created; Stock Staff is fixed to `SR`, Branch Staff requires one branch, Accounting has no location assignment, and access changes revoke sessions.
 **Plans**: TBD
-**UI hint**: yes
+**UI hint**: yes - improve the current Chezcar style
 
-### Phase 2: Durable Sales and Accounting Reconciliation
-**Goal**: Branch sales and their handwritten-receipt reconciliation become durable, stock-affecting, controlled records.
+### Phase 2: Receipt Sales and Accounting Verification
+**Goal**: Released handwritten-receipt sales become durable stock deductions and Accounting can verify them without editing sales or stock.
 **Depends on**: Phase 1
 **Requirements**: REQ-sales-posting, REQ-sales-reconciliation
-**Success Criteria** (what must be TRUE):
-  1. Branch Staff can submit a sale form tied to one required handwritten receipt, and after reload the sale, server-calculated total, lines, actor/time, branch stock deduction, and linked movements remain present.
-  2. A posted sale cannot be directly edited or deleted; an authorized correction produces an explicit linked reversal/replacement or correction with a reason and correct stock effect.
-  3. Accounting Staff can view sales by receipt and mark one verified or report expected-versus-actual mismatch details, but direct attempts to modify the sale or inventory are denied.
-  4. Admin can resolve a reconciliation issue by confirming the record or applying an explicit linked correction, and users can inspect reporter, resolver, notes, timestamps, and resulting records.
+**Success Criteria**:
+  1. Assigned Branch Staff can post one sale per unique branch/series/number receipt, and the sale, lines, actor/time, stock deduction, and movements survive reload.
+  2. Posting never drives stock negative; duplicate/reused receipt identity and insufficient stock are blocked.
+  3. Accounting can compare full receipt details and mark Verified or submit a structured mismatch.
+  4. Admin can resolve a mismatch through a linked auditable correction; posted sales are not silently edited or hard-deleted.
+  5. Admin sales totals, branch stock, low-stock state, and Accounting's queue reflect the committed sale without an end-of-day batch.
 **Plans**: TBD
-**UI hint**: yes
+**UI hint**: yes - improve the current Chezcar style
 
-### Phase 3: Warehouse Receiving and Transfer Dispatch
-**Goal**: Central stock enters the ledger through receiving and leaves for branches through durable, conserved in-transit transfers.
+### Phase 3: Durable Realtime Notifications
+**Goal**: Actionable users receive durable low-stock and workflow notifications through live, reconnect, polling, and browser-push delivery before transfer workflows depend on them.
 **Depends on**: Phase 2
-**Requirements**: REQ-warehouse-receiving, REQ-transfer-dispatch
-**Success Criteria** (what must be TRUE):
-  1. Admin or Stock Staff can post a warehouse receiving form and see warehouse balances increase by exactly the posted quantities with source/reference, immutable movements, actor, and timestamps after reload.
-  2. Stock Staff can dispatch a multi-item warehouse-to-branch transfer and see each quantity move from warehouse stock to in-transit stock without changing total accountable quantity.
-  3. Users can view the original dispatched lines, source, destination, status, actors, and history after reload; dispatched quantities cannot be silently rewritten or hard-deleted.
-  4. Unauthorized roles and out-of-scope locations cannot receive or dispatch stock through either the interface or direct API requests.
+**Requirements**: REQ-durable-notifications
+**Success Criteria**:
+  1. A committed business event creates durable notifications for only actionable users and connected clients receive them without refresh.
+  2. Reconnect and polling return missed notifications in order without duplicate user-visible events.
+  3. Every notification attempts browser push when permission and delivery are available without making push the source of truth.
+  4. Notification history and linked records independently enforce user role/location authorization.
 **Plans**: TBD
-**UI hint**: yes
+**UI hint**: yes - improve the current Chezcar style
 
-### Phase 4: Durable Notifications and Operational Views
-**Goal**: Users can monitor canonical role-scoped operations and reliably receive the events that require their attention.
+### Phase 4: Stock Room Receiving and Transfer Dispatch
+**Goal**: Stock Staff can receive into `SR` and dispatch conserved, auditable stock to a destination branch.
 **Depends on**: Phase 3
-**Requirements**: REQ-durable-notifications, REQ-dashboard-views
-**Success Criteria** (what must be TRUE):
-  1. Admin can view current all-branch sales, receipt references, transaction counts, stock/low-stock, transfer, open discrepancy, and reconciliation information derived from durable records rather than fixtures.
-  2. Branch Staff can view only assigned-branch stock, incoming transfers, today's branch sales, notifications, and discrepancy status; Accounting can view sales and reconciliation totals by permitted date/branch scope.
-  3. A committed business event creates a durable notification for each intended user, and connected users see it arrive through the authenticated live stream without a page refresh.
-  4. After disconnecting or missing live delivery, a user can reconnect/poll from the last cursor and receive every missed notification once in sequence; notification delivery does not grant access to the linked resource.
+**Requirements**: REQ-stockroom-receiving, REQ-transfer-dispatch
+**Success Criteria**:
+  1. Stock Staff can post an `SR` receipt and see exact immutable stock movements after reload.
+  2. Stock Staff can finalize and physically dispatch a multi-item `SR`-to-branch transfer.
+  3. Dispatch deducts `SR`, adds equal in-transit quantities, marks `IN_TRANSIT`, records history, and notifies the destination branch.
+  4. Unauthorized roles cannot receive or dispatch stock through UI or direct requests.
 **Plans**: TBD
-**UI hint**: yes
+**UI hint**: yes - improve the current Chezcar style
 
-### Phase 5: Transfer Receipt and Discrepancy Resolution
-**Goal**: Users can close matched transfers and resolve transfer or general stock discrepancies without losing stock accountability or audit evidence.
+### Phase 5: Branch Receipt, Discrepancy Resolution, and Monitoring
+**Goal**: Branch Staff can complete a matched transfer or send a simple discrepancy form without directly adjusting stock, and Admin can monitor the complete durable MVP workflow.
 **Depends on**: Phase 4
-**Requirements**: REQ-transfer-matched-receipt, REQ-transfer-discrepancy, REQ-admin-discrepancy-approval, REQ-general-stock-discrepancy, REQ-audit-integrity, REQ-mvp-transfer-definition-of-done
-**Success Criteria** (what must be TRUE):
-  1. Branch Staff can confirm every line of an unchanged in-transit transfer as matched exactly once; destination stock increases, the complete transit quantity clears, status becomes `RECEIVED`, and Admin/Stock Staff are notified.
-  2. Branch Staff can instead report every line's actual disposition, required reasons, and wrong/excess items; the original dispatch stays unchanged, no direct stock edit occurs, and the case enters a visible investigation state.
-  3. Stock Staff can record findings and submit a versioned movement proposal, while Admin can review exact ledger effects and approve, return for recount, or resolve as matched; stale proposal, transfer, or ledger versions cannot post.
-  4. Users can report non-transfer physical discrepancies without changing stock, and only Admin can reject them or post a linked, reasoned adjustment after Stock Staff investigation.
-  5. For matched, discrepant, correction, retry, and concurrent cases, users can inspect a role-scoped immutable history that accounts for every source, transit, destination, restoration, loss, return, damage, or supplemental quantity with no unexplained transit remainder.
+**Requirements**: REQ-transfer-receipt, REQ-transfer-discrepancy, REQ-discrepancy-resolution, REQ-dashboard-monitoring
+**Success Criteria**:
+  1. Assigned Branch Staff can confirm every line matches exactly once; transit clears, branch stock increases, and status becomes `RECEIVED`.
+  2. Any mismatch produces a form with complete actual quantities, reason, notes, and required evidence; disputed stock remains unavailable.
+  3. Stock Staff can investigate and record findings, while Admin alone posts the final linked correction.
+  4. Original dispatch, report, findings, resolution, notifications, and all movements remain auditable with no unexplained transit remainder.
+  5. Admin dashboard shows current sales, stock by location, low-stock items, transfers, discrepancies, and reconciliation status; Branch Staff and Accounting see only their authorized operational views.
 **Plans**: TBD
-**UI hint**: yes
+**UI hint**: yes - improve the current Chezcar style
 
 ### Phase 6: Offline Branch Continuity
-**Goal**: Branch Staff can capture limited sales and transfer receipt evidence without connectivity and synchronize without disguising pending or conflicting work as complete.
+**Goal**: Branch Staff can continue the same simple sales and transfer-receipt work during temporary outages without hiding pending or conflicting operations.
 **Depends on**: Phase 5
-**Requirements**: REQ-offline-pwa, REQ-offline-storage, REQ-sync-protocol, REQ-offline-sale-conflicts, REQ-offline-transfer-report
-**Success Criteria** (what must be TRUE):
-  1. Branch Staff can install and reopen the PWA offline, see a timestamped assigned-branch snapshot, queue a sale with a local stock effect, and record complete transfer receipt evidence while every operation visibly remains `Pending Sync`.
-  2. Inspection of offline storage shows only minimum branch product/price/stock snapshots and operation metadata—never passwords, reusable bearer tokens, customer PII, Admin data, or other branches' data.
-  3. After fresh authentication returns, queued operations synchronize with stable per-operation results; identical retries do not duplicate work, while reused keys with changed payloads and stale device/schema/reference versions produce visible conflicts.
-  4. A genuine already-fulfilled offline sale with insufficient canonical stock remains preserved and enters the controlled stock-conflict path; other invalid/duplicate submissions remain immutable `NEEDS_REVIEW` evidence rather than disappearing.
-  5. A valid matched offline transfer report completes an unchanged in-transit transfer once, while stale, duplicate, or conflicting reports remain reviewable evidence and cannot double-post destination stock.
+**Requirements**: REQ-offline-continuity
+**Success Criteria**:
+  1. An Admin-enabled primary branch device can reopen a cached shell and timestamped assigned-branch snapshot offline.
+  2. Branch Staff can queue a non-negative-stock sale and transfer confirmation/discrepancy as visibly `Pending Sync`.
+  3. Reconnect processing is authenticated, branch-scoped, idempotent, and posts each accepted action once.
+  4. Aged, stale, conflicting, or insufficient-stock operations remain visible as `Needs Review`; none are discarded, forced through, or allowed to create negative stock.
 **Plans**: TBD
-**UI hint**: yes
+**UI hint**: yes - improve the current Chezcar style
 
 ### Phase 7: Production Deployment and Recovery
-**Goal**: Operators can run the verified MVP on the owner's infrastructure and recover its authoritative data before operational use begins.
+**Goal**: Operators can run and recover the verified MVP on the owner's infrastructure.
 **Depends on**: Phase 6
 **Requirements**: REQ-deployment-operations
-**Success Criteria** (what must be TRUE):
-  1. An authorized user can reach the production application on its dedicated HTTPS domain and sign in against the deployed PostgreSQL-backed system.
-  2. A deployment applies committed migrations using deployment-managed secrets and reports application/database health without exposing credential values.
-  3. Operators can inspect useful application logs and health checks for a failed request or unhealthy dependency.
-  4. Automated PostgreSQL backups run on schedule, and operators can restore a backup into a verified environment and demonstrate that durable business records and audit history are recoverable before go-live.
+**Success Criteria**:
+  1. Authorized users can reach the HTTPS production domain and sign in against deployed PostgreSQL.
+  2. Deployment applies committed migrations with managed secrets and useful health checks/logs.
+  3. Automated PostgreSQL backups run on schedule.
+  4. Operators restore a backup into a verified environment and demonstrate recoverable business/audit records before go-live.
 **Plans**: TBD
-
-## Coverage
-
-| Requirement | Phase |
-|-------------|-------|
-| REQ-role-authorization | Phase 1 |
-| REQ-excel-import | Phase 1 |
-| REQ-sales-posting | Phase 2 |
-| REQ-sales-reconciliation | Phase 2 |
-| REQ-warehouse-receiving | Phase 3 |
-| REQ-transfer-dispatch | Phase 3 |
-| REQ-durable-notifications | Phase 4 |
-| REQ-dashboard-views | Phase 4 |
-| REQ-transfer-matched-receipt | Phase 5 |
-| REQ-transfer-discrepancy | Phase 5 |
-| REQ-admin-discrepancy-approval | Phase 5 |
-| REQ-general-stock-discrepancy | Phase 5 |
-| REQ-audit-integrity | Phase 5 |
-| REQ-mvp-transfer-definition-of-done | Phase 5 |
-| REQ-offline-pwa | Phase 6 |
-| REQ-offline-storage | Phase 6 |
-| REQ-sync-protocol | Phase 6 |
-| REQ-offline-sale-conflicts | Phase 6 |
-| REQ-offline-transfer-report | Phase 6 |
-| REQ-deployment-operations | Phase 7 |
-
-**Coverage:** 20/20 v1 requirements mapped exactly once; no orphans or duplicate mappings.
 
 ## Progress
 
-**Execution Order:** Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6 → Phase 7
+**Execution Order:** Phase 1 -> Phase 2 -> Phase 3 -> Phase 4 -> Phase 5 -> Phase 6 -> Phase 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Trusted Foundation and Data Onboarding | 0/TBD | Not started | - |
-| 2. Durable Sales and Accounting Reconciliation | 0/TBD | Not started | - |
-| 3. Warehouse Receiving and Transfer Dispatch | 0/TBD | Not started | - |
-| 4. Durable Notifications and Operational Views | 0/TBD | Not started | - |
-| 5. Transfer Receipt and Discrepancy Resolution | 0/TBD | Not started | - |
+| 1. Trusted Foundation and Data Onboarding | 0/TBD | Discussed; replan after scope update | - |
+| 2. Receipt Sales and Accounting Verification | 0/TBD | Not started | - |
+| 3. Durable Realtime Notifications | 0/TBD | Not started | - |
+| 4. Stock Room Receiving and Transfer Dispatch | 0/TBD | Not started | - |
+| 5. Branch Receipt, Discrepancy Resolution, and Monitoring | 0/TBD | Not started | - |
 | 6. Offline Branch Continuity | 0/TBD | Not started | - |
 | 7. Production Deployment and Recovery | 0/TBD | Not started | - |

@@ -3,7 +3,7 @@
 
 ## Current status
 
-This repository does not currently have an automated test suite. No test framework, DOM testing library, browser test runner, test files, test configuration, coverage tool, `test` package script, or CI workflow is checked in. The application is presently a Next.js UI prototype backed by mock data, so verification is manual.
+This repository does not currently have an automated test suite. No test framework, DOM testing library, browser test runner, test files, test configuration, coverage tool, `test` package script, or CI workflow is checked in. The application is presently a Next.js UI prototype: authentication plus product/inventory reads use PostgreSQL, while most screens and all business mutations remain mock/local, so verification is manual.
 
 | Capability | Current state |
 | --- | --- |
@@ -56,7 +56,7 @@ Start the prototype:
 npm run dev
 ```
 
-Use the local URL printed by Next.js, then check the following smoke path:
+Use the local URL printed by Next.js, then check the following current-prototype smoke path. This inventory includes deferred screens so current prototype regressions remain visible; it is not the MVP acceptance scope:
 
 1. Confirm an unauthenticated `/` request redirects to `/sign-in`; after sign-in, `/` redirects to `/dashboard`.
 2. Navigate through Customers, Products, Inventory, Customer Orders, Job Orders, Stock Transfers, Reports, Notifications, Branches, Users, Roles, and Settings from the application shell.
@@ -109,24 +109,23 @@ Keep route handlers thin. Mock domain-service boundaries in handler unit tests, 
 
 Once business behavior is extracted from client pages, add service-level tests before connecting it to forms or routes. Prioritize invariants for:
 
-- customer-order totals, downpayments, cancellation, and release eligibility;
-- stock availability, receiving, adjustments, reservations, and non-negative quantities;
-- stock-transfer approval, dispatch, receipt, rejection, and valid state transitions;
-- sale checkout, payment totals, and inventory deductions;
-- job-order status transitions and labor totals;
-- branch scope, duplicate identifiers, and idempotent command handling.
+- receipt identity, sale totals/discount/payment capture, inventory deduction, and non-negative quantities;
+- individual Accounting verification, structured mismatches, and linked Admin corrections;
+- Stock Room receiving plus transfer dispatch, matched receipt, discrepancy, investigation, and final resolution transitions;
+- durable notification recipient selection, cursor replay, and browser push attempts;
+- role/location scope, duplicate identifiers, idempotent commands, and offline `NEEDS_REVIEW` outcomes.
 
 Use table-driven cases and inject repositories, clocks, and identifier generators so these tests remain deterministic.
 
 ### 4. Prisma and transaction integration
 
-When Prisma runtime code and migrations exist, run integration tests against a dedicated disposable PostgreSQL database—not the local development data directory. Apply migrations before the suite, seed only the minimum fixture set, and clean data between tests.
+As transactional Prisma services and migrations are added, run integration tests against a dedicated disposable PostgreSQL database, not the local development data directory. Apply migrations before the suite, seed only the minimum fixture set, and clean data between tests.
 
-Exercise real transaction boundaries for checkout, receiving, transfer dispatch/receipt, downpayment, and order release. Assert both successful commits and complete rollback after a forced failure midway through a multi-write operation. Add concurrency cases for competing stock updates and verify that retries or conflicts cannot oversell inventory or apply a movement twice.
+Exercise real transaction boundaries for sale posting/correction, Stock Room receiving, transfer dispatch/receipt, and discrepancy resolution. Assert both successful commits and complete rollback after a forced failure midway through a multi-write operation. Add concurrency cases for competing stock updates and verify that retries or conflicts cannot oversell inventory or apply a movement twice.
 
 ### 5. Authentication and authorization
 
-Authentication and server-side authorization do not yet exist. When introduced, build a role/permission/branch matrix and test every protected page, route handler, and mutation on the server. Include unauthenticated, expired-session, wrong-role, wrong-branch, and allowed cases.
+Better Auth sessions, active-account checks, and fixed role/location authorization exist for the current protected reads. Add a role/branch matrix and deterministic tests as each protected page, route handler, and mutation is implemented. Include unauthenticated, inactive/expired-session, wrong-role, wrong-branch, and allowed cases.
 
 Client-side button visibility is only a usability check; it must never be the sole authorization assertion. Verify that direct HTTP requests cannot bypass the server policy and that denied operations leave the database unchanged.
 
@@ -134,11 +133,11 @@ Client-side button visibility is only a usability check; it must never be the so
 
 After durable APIs, authentication, and persistence exist, configure Playwright for a small set of critical journeys:
 
-1. Sign in and enforce role-specific navigation.
-2. Create a customer and customer order, record a downpayment, receive stock, and release the order.
-3. Receive inventory and complete a warehouse-to-branch transfer.
-4. Complete a sale and verify inventory and payment results.
-5. Create and advance a job order.
+1. Sign in and enforce role/location access, including account deactivation and reassignment.
+2. Encode a handwritten-receipt sale, verify the stock deduction, and complete Accounting verification or mismatch resolution.
+3. Receive inventory into `SR`, dispatch an `SR`-to-branch transfer, and confirm an exact receipt.
+4. Submit a transfer discrepancy, record Stock Staff findings, and post the Admin resolution.
+5. Reconnect an offline branch device and verify accepted and `Needs Review` sync outcomes without negative stock.
 
 Seed isolated accounts and records for each test, use stable semantic locators, and avoid depending on test order. Keep visual regression testing selective until the functional journeys are stable.
 
@@ -152,7 +151,7 @@ When the proposed PWA/realtime architecture exists, add deterministic tests for:
 - server-side canonical hash computation, identical idempotency-key/hash replay, conflicting key/hash reuse, and atomic SyncOperation/business writes;
 - partial sync batches, retryable failures, poison operations, and explicit aggregate dependencies;
 - duplicate receipts, immutable server price-version validation, stale/deactivated prices, stale transfer versions, and once-only transfer receipt commands;
-- the controlled offline physical-sale stock-conflict exception, negative book `onHand`, zero-clamped `availableToSell`, and discrepancy creation;
+- insufficient cached or canonical stock, non-negative `onHand` enforcement, preserved `NEEDS_REVIEW` submissions, and discrepancy creation;
 - one logical branch activation epoch, authoritative server-side expiry, normal replacement, emergency replacement, and old/expired-epoch submissions entering review;
 - service-worker upgrade, stale snapshot labeling, IndexedDB migration, logout cleanup, queue recovery, and browser-storage loss;
 - online/offline transitions in supported desktop and mobile browsers.
@@ -171,7 +170,7 @@ The following test script names are a proposed interface only. **None of the tes
 | `npm run test:integration` | Run domain/Prisma integration tests against disposable PostgreSQL. |
 | `npm run test:e2e` | Run Playwright journeys once E2E infrastructure exists. |
 
-For a configured Vitest suite, a future single-file invocation could use `npm run test -- path/to/file.test.ts`. For a configured Playwright suite, a future single-spec invocation could use `npm run test:e2e -- tests/e2e/order-release.spec.ts`. These are examples of the intended command shape, not currently runnable project commands.
+For a configured Vitest suite, a future single-file invocation could use `npm run test -- path/to/file.test.ts`. For a configured Playwright suite, a future single-spec invocation could use `npm run test:e2e -- tests/e2e/receipt-sale.spec.ts`. These are examples of the intended command shape, not currently runnable project commands.
 
 ## Coverage requirements
 

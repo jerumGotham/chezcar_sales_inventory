@@ -1,92 +1,74 @@
-# Requirements: Chezcar Sales & Inventory
+# Requirements: Chezcar Sales and Inventory
 
 **Defined:** 2026-08-25
-**Core Value:** Core production MVP workflows for sales, warehouse receiving, stock transfers, discrepancy resolution, and accounting reconciliation are durable, server-authorized, auditable, and tested.
+**Updated:** 2026-08-25 after owner process confirmation
+**Core Value:** Admin can monitor current sales and inventory while Branch Staff, Stock Staff, and Accounting Staff complete simple, role-controlled workflows that remain auditable and usable during temporary outages.
 
 ## v1 Requirements
 
-These 20 requirements preserve the ingested product flows. A checked item means implemented and verified production behavior, not merely an existing prototype screen.
+A checked item means durable, authorized, verified production behavior, not an existing prototype screen.
+
+### Foundation and Access
+
+- [ ] **REQ-data-onboarding**: The developer can profile `excel/REALTIME INVENTORY- NEW 3.xlsx`, preserve source traceability, resolve blocking workbook ambiguities, generate canonical products/prices/locations/opening balances, and reset/reload that dataset in development/test while production reset is blocked.
+- [ ] **REQ-role-authorization**: The server enforces four fixed roles (`ADMIN`, `STOCK_STAFF`, `BRANCH_STAFF`, `ACCOUNTING_STAFF`), active-account status, and persisted location scope on every sensitive page, read, and mutation. Stock Staff is fixed to `SR`, Branch Staff to exactly one branch, and Admin/Accounting are business-wide with no location assignment. Hidden navigation never substitutes for authorization.
+- [ ] **REQ-user-management**: The single owner Admin can create, view, update, deactivate, and initiate credential setup/reset for Stock Staff, Branch Staff, and Accounting Staff accounts. User Management cannot create another Admin. Stock Staff receives the fixed `SR` assignment, Branch Staff requires one assigned branch, and Accounting has no location assignment; delete means deactivate; deactivation or role/location change revokes sessions immediately.
 
 ### Sales and Accounting
 
-- [ ] **REQ-sales-posting**: Branch Staff can post one sale with branch, required manual receipt identity, items, quantities, prices, and monitoring payment data. The server enforces the confirmed receipt uniqueness scope, calculates totals, atomically persists sale/lines and stock movements, records actor/time, and permits correction only through an explicit reasoned void/replacement or correction flow.
-- [ ] **REQ-sales-reconciliation**: Accounting Staff can compare each system sale with its handwritten receipt and either mark it `VERIFIED` or report a mismatch with reason, expected/actual values, and notes. Accounting cannot alter sales or stock; Admin resolution is explicit, linked, and preserves every actor and timestamp.
+- [ ] **REQ-sales-posting**: After issuing the handwritten receipt and releasing goods, assigned Branch Staff can encode one sale using branch + receipt series/booklet + number, items, quantities, prices, optional customer, optional discount, and payment. Successful posting atomically records the sale, deducts branch stock without going negative, creates movements, and updates monitoring immediately.
+- [ ] **REQ-sales-reconciliation**: Accounting Staff can compare every sale's receipt identity, items, quantities, prices, discounts, payment, and total with the handwritten receipt, then mark it `VERIFIED` or submit a structured mismatch. Accounting cannot edit sales or stock; Admin resolves linked issues auditably.
+- [ ] **REQ-dashboard-monitoring**: Admin can monitor current sales, stock by location, low-stock items, transfers, discrepancies, and reconciliation status; Branch Staff and Accounting receive only their role-scoped operational views.
 
-### Warehouse and Transfers
+### Stock Room and Transfers
 
-- [ ] **REQ-warehouse-receiving**: Admin or Stock Staff can post a warehouse receipt with source/reference and item quantities; it durably increases warehouse inventory through movement records and records receiver, poster, and timestamps.
-- [ ] **REQ-transfer-dispatch**: Stock Staff can dispatch a multi-item warehouse-to-branch transfer. Dispatch preserves what was sent, deducts each quantity from source stock, adds the same quantity to in-transit inventory, and records the durable transfer lifecycle.
-- [ ] **REQ-transfer-matched-receipt**: Branch Staff can compare every delivered transfer line and confirm a complete match. The server posts destination stock, clears in-transit quantities, marks the transfer `RECEIVED`, notifies Admin and Stock Staff, and prevents duplicate completion.
-- [ ] **REQ-transfer-discrepancy**: Branch Staff can report actual disposition for every dispatched line, reasons for every mismatch, and additional wrong/excess SKU lines. The immutable dispatch remains unchanged; the report enters `DISCREPANCY_REPORTED`, notifies Admin/Stock Staff, and final resolution explicitly clears all original transit and allocates every difference.
-- [ ] **REQ-admin-discrepancy-approval**: Admin can review original dispatch, branch evidence/count, findings, and an immutable movement proposal, then choose `Approve Resolution`, `Return for Recount`, or `Resolve as Matched`. Approval revalidates proposal hash/version, transfer version, and ledger state transactionally and records proposer, approver, notes, times, and movements.
-- [ ] **REQ-general-stock-discrepancy**: Branch Staff can report a non-transfer discrepancy without changing inventory; Stock Staff can investigate and recommend; Admin can reject or post a reasoned, linked adjustment; and the reporting branch is notified of the result.
-- [ ] **REQ-mvp-transfer-definition-of-done**: Transfer operations are not considered complete until warehouse receiving, multi-item dispatch, in-transit movements, branch notification, matched/discrepant receipt, Stock Staff investigation, Admin resolution, complete transit clearing, role-scoped history/status, persistence, authorization, audit history, and transaction tests all work together.
+- [ ] **REQ-stockroom-receiving**: Stock Staff can record stock arriving at `SR`; posting increases `SR` through immutable inventory movements with source/reference, actor, and time.
+- [ ] **REQ-transfer-dispatch**: Stock Staff can finalize and dispatch a multi-item `SR`-to-branch transfer. Physical dispatch atomically deducts `SR`, adds equal in-transit quantities, records history, and notifies the destination branch.
+- [ ] **REQ-transfer-receipt**: Assigned Branch Staff can compare every incoming line and confirm a complete match once. Confirmation clears transit, increases branch stock, marks the transfer `RECEIVED`, and notifies Stock Staff and Admin.
+- [ ] **REQ-transfer-discrepancy**: If any item or quantity differs, Branch Staff can submit actual quantities, reason, notes, and conditionally required photos without editing stock. Stock Staff and Admin are notified; disputed quantities remain unavailable.
+- [ ] **REQ-discrepancy-resolution**: Stock Staff can investigate a linked discrepancy and record findings; Admin alone posts the final accountable stock outcome. Every original dispatch, count, finding, actor, reason, correction, and movement remains auditable.
 
-### Access, Audit, and Oversight
+### Notifications and Offline Continuity
 
-- [ ] **REQ-role-authorization**: Server policy prevents Branch Staff from direct stock changes, self-approval, and unauthorized branch access, and prevents Accounting Staff from changing sales or inventory. Every action independently enforces active user, fixed role, and persisted location scope; UI visibility and notifications never substitute for authorization.
-- [ ] **REQ-audit-integrity**: Every stock change has an immutable inventory movement; posted sales and dispatched/completed transfers cannot be hard-deleted; corrections/reversals link to originals with reasons; transfer receipt and resolution are idempotent; and coupled source/destination changes commit atomically.
-- [ ] **REQ-dashboard-views**: Admin can view canonical all-branch sales, transaction, stock, low-stock, transfer, discrepancy, and reconciliation information; Branch Staff can view assigned-branch stock, incoming transfers, notifications, today's sales, and discrepancy status; Accounting can view sales and reconciliation counts/totals by date and branch.
-- [ ] **REQ-durable-notifications**: Business events create durable per-user notification/outbox records in the same PostgreSQL transaction, with immutable IDs and monotonic cursors. Authenticated clients receive live same-origin SSE updates and use cursor polling/reconnect catch-up so missed events remain recoverable.
+- [ ] **REQ-durable-notifications**: Business events create durable per-user notifications for actionable roles. Connected clients receive live updates; reconnecting clients catch up; every notification attempts browser push when permitted. Urgent events include low stock, discrepancies, failed/aged sync, and overdue unresolved cases.
+- [ ] **REQ-offline-continuity**: Admin can enable one primary offline device per branch. For up to 24 hours after online authorization, Branch Staff can queue non-negative-stock sales and transfer receipt/discrepancy evidence as `Pending Sync`. Reconnect processing is authenticated, scoped, idempotent, and preserves unsafe or aged operations as `Needs Review` without forcing or discarding them.
 
-### Offline Branch Continuity
+### Operations
 
-- [ ] **REQ-offline-pwa**: Branch Staff can install the PWA, open a cached shell, view timestamped branch-scoped snapshots, queue a branch sale with a local stock effect, record transfer receipt evidence as `Pending Sync`, and inspect queued/conflicted actions. Administrative, warehouse, correction, final-resolution, adjustment, and cross-branch work stays online-only.
-- [ ] **REQ-offline-storage**: IndexedDB stores only minimum branch product/price/stock snapshots and queued operations—never passwords, reusable bearer tokens, Admin/cross-branch data, or customer PII. Each operation carries aggregate/idempotency/device/branch/user/version/time metadata and always displays its sync state.
-- [ ] **REQ-sync-protocol**: After fresh online authentication, a device can submit queued operations to an endpoint that validates authorization, scope, device epoch, operation/schema type, product/price/receipt versions, and payload. `(deviceId, idempotencyKey)` is unique; matching retries return the stored result, hash mismatches hard-conflict, and sync intake/result plus canonical writes commit atomically.
-- [ ] **REQ-offline-sale-conflicts**: Every authenticated offline sale submission is retained immutably. Invalid/duplicate submissions enter `NEEDS_REVIEW`; a genuine physical sale blocked only by canonical stock can use the controlled exception, mark `stockConflict=true`, allow negative book on-hand only there, clamp available-to-sell to zero, and open a critical discrepancy.
-- [ ] **REQ-offline-transfer-report**: Offline Branch Staff can record complete physical transfer evidence with transfer/line versions and occurrence time. A matched report auto-completes only an unchanged `IN_TRANSIT` transfer with no accepted report; a once-only receipt command prevents duplication, and later conflicts remain preserved as `NEEDS_REVIEW` evidence.
+- [ ] **REQ-deployment-operations**: Operators can deploy the verified system through Coolify to Hetzner under HTTPS with managed secrets, committed migrations, health checks, useful logs, automated PostgreSQL backups, and a tested restore before go-live.
 
-### Data Onboarding and Operations
+## Deferred
 
-- [ ] **REQ-excel-import**: When the stakeholder spreadsheet is supplied, Admin can profile codes/duplicates, names, categories, prices, units, locations, quantities, negatives, statuses, and missing IDs; review an explicit mapping into canonical tables rather than a copied spreadsheet schema; and establish opening stock preferably against a physical count.
-- [ ] **REQ-deployment-operations**: Operators can deploy the application through Coolify to the owner's Hetzner infrastructure on a dedicated HTTPS domain, with managed secrets, committed migration deployment, health checks, application logs, automated PostgreSQL backups, and a successfully tested restore before go-live.
-
-## v2 Requirements
-
-No synthesized requirements are deferred: all 20 are committed to this roadmap. New scope requires an explicit requirements and roadmap update.
-
-## Out of Scope
-
-| Feature | Reason |
-|---------|--------|
-| Customer-facing POS or official receipt/invoice printing | Handwritten receipts remain customer-facing; this system records internal sales. |
-| Daily closing and cash/collection reconciliation | Deferred until payment and closing requirements are confirmed. |
-| Offline central/administrative workflows | The proposed PWA deliberately limits offline writes to branch sales and transfer receipt evidence. |
-| Redis or a general job queue initially | Locked architecture uses PostgreSQL durability and `LISTEN/NOTIFY` wake-ups. |
-| Public registration | Internal account provisioning is required; current public sign-up is disabled. |
+- Customer Orders, downpayments, Job Orders, advanced CRM
+- Customer return, exchange, and refund workflow
+- Branch-to-branch transfers and direct supplier-to-branch receiving
+- Standalone cycle-count and general physical-stock discrepancy workflow
+- Formal daily cash/collection closing
+- Custom roles and granular permission editing
+- Multiple simultaneous offline-operation devices per branch
+- Fully offline Admin, Stock Room, Accounting correction, or final discrepancy resolution
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| REQ-data-onboarding | Phase 1 | Pending |
 | REQ-role-authorization | Phase 1 | Pending |
-| REQ-excel-import | Phase 1 | Pending |
+| REQ-user-management | Phase 1 | Pending |
 | REQ-sales-posting | Phase 2 | Pending |
 | REQ-sales-reconciliation | Phase 2 | Pending |
-| REQ-warehouse-receiving | Phase 3 | Pending |
-| REQ-transfer-dispatch | Phase 3 | Pending |
-| REQ-durable-notifications | Phase 4 | Pending |
-| REQ-dashboard-views | Phase 4 | Pending |
-| REQ-transfer-matched-receipt | Phase 5 | Pending |
+| REQ-dashboard-monitoring | Phase 5 | Pending |
+| REQ-durable-notifications | Phase 3 | Pending |
+| REQ-stockroom-receiving | Phase 4 | Pending |
+| REQ-transfer-dispatch | Phase 4 | Pending |
+| REQ-transfer-receipt | Phase 5 | Pending |
 | REQ-transfer-discrepancy | Phase 5 | Pending |
-| REQ-admin-discrepancy-approval | Phase 5 | Pending |
-| REQ-general-stock-discrepancy | Phase 5 | Pending |
-| REQ-audit-integrity | Phase 5 | Pending |
-| REQ-mvp-transfer-definition-of-done | Phase 5 | Pending |
-| REQ-offline-pwa | Phase 6 | Pending |
-| REQ-offline-storage | Phase 6 | Pending |
-| REQ-sync-protocol | Phase 6 | Pending |
-| REQ-offline-sale-conflicts | Phase 6 | Pending |
-| REQ-offline-transfer-report | Phase 6 | Pending |
+| REQ-discrepancy-resolution | Phase 5 | Pending |
+| REQ-offline-continuity | Phase 6 | Pending |
 | REQ-deployment-operations | Phase 7 | Pending |
 
 **Coverage:**
-- v1 requirements: 20 total
-- Mapped to phases: 20
-- Unmapped: 0 ✓
-- Duplicate mappings: 0 ✓
-
----
-*Requirements defined: 2026-08-25*
-*Last updated: 2026-08-25 after initial brownfield roadmap creation*
+- v1 requirements: 14
+- Mapped to phases: 14
+- Unmapped: 0
+- Duplicate mappings: 0

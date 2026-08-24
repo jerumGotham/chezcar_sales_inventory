@@ -28,7 +28,7 @@ Uses unique `itemCode`, name, optional description/category/brand, current Decim
 
 Stores one balance per `(locationId, productId)` with `onHand`, `reserved`, `reorderLevel`, Decimal `unitCost`, optimistic `version`, and timestamps.
 
-The initial SQL migration enforces non-negative reserved/reorder/cost values and a positive version. It intentionally does not prohibit negative on-hand because the accepted offline-sale design may later require explicitly flagged negative book stock. No mutation currently changes balances.
+The initial SQL migration enforces non-negative reserved/reorder/cost values and a positive version, but it does not yet constrain `onHand` to be non-negative. The accepted sales/offline workflow requires future mutation services and additive database constraints to prevent negative stock. No mutation currently changes balances.
 
 ### User and Better Auth
 

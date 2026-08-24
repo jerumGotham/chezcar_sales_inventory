@@ -1,7 +1,8 @@
 # ADR 0004: Durable Realtime Notifications and Limited Offline PWA
 
-**Status:** Proposed for stakeholder confirmation
+**Status:** Accepted
 **Date:** 2026-08-24
+**Accepted:** 2026-08-25
 
 ## Context
 
@@ -21,8 +22,8 @@ A cloud database cannot be reached while a branch is offline. Therefore, offline
 6. Keep administration, warehouse receiving/dispatch, final discrepancy resolution, corrections, and cross-branch reporting online-only.
 7. Show explicit offline and per-operation sync states; a queued action is not globally complete.
 8. Retry sync on reconnect, app open/focus, and Background Sync where supported.
-9. Enforce one active logical offline-sales activation epoch per branch during synchronization and assign it operationally to one physical device. Without a non-exportable WebAuthn/device key, browser storage cannot prove physical-device uniqueness. A replacement normally requires the old queue to synchronize before retirement.
-10. Apply a best-effort local offline window and an authoritative server acceptance window based on server last-sync/activation time. Submissions received outside that window remain immutable evidence in `NEEDS_REVIEW` rather than being automatically posted.
+9. Admin enables offline mode per branch and assigns one active logical offline-operation activation to one primary device for both sales and transfer receipt/discrepancy evidence.
+10. Permit new offline operations for 24 hours after the last successful online authorization. Aged submissions remain immutable evidence in `NEEDS_REVIEW` rather than being automatically posted.
 
 ### Idempotent Sync
 
@@ -42,8 +43,8 @@ An offline sale may represent goods already released with a handwritten receipt.
 2. On sync, preserve every authenticated command as an immutable `OfflineSaleSubmission`.
 3. Automatically create a canonical sale only when authorization, receipt uniqueness, payload, item/price version, and normal rules pass.
 4. Duplicate receipts, invalid payloads, deactivated items, disallowed prices, or inactive device epochs remain `NEEDS_REVIEW` submissions and do not create duplicate/invalid sales.
-5. If a genuine physical sale fails only because canonical stock is insufficient, post it once with `stockConflict=true`, allow the controlled negative book-balance exception, set available-to-sell to zero, and create a critical discrepancy.
-6. Admin resolves the variance using a physical count or identified missing upstream movement; a generic adjustment must not merely hide the negative balance.
+5. If canonical stock is insufficient, do not post the canonical sale and do not create negative stock. Preserve the submission in `NEEDS_REVIEW` and create an urgent discrepancy.
+6. Admin and Stock Staff identify and post the missing or stale upstream stock fact first, then retry the linked sale.
 
 ### Offline Transfer Reports
 
@@ -59,7 +60,7 @@ An offline sale may represent goods already released with a handwritten receipt.
 2. Assign an immutable notification ID and database-generated monotonic sequence cursor. SSE sends cursor `id:` values, clients reconnect from their last cursor, and every listener catches up from the table before live fan-out.
 3. Use authenticated same-origin SSE with secure cookies for live in-app delivery and periodic cursor-based polling as a correctness fallback. Delivery is at least once, so clients deduplicate by notification ID.
 4. Track `createdAt`, user `readAt`, and channel delivery attempts separately; an SSE write does not prove the event was seen.
-5. Browser push is optional best-effort prompting. Send minimal non-sensitive identifiers, fetch authorized details after activation, and never mark a notification read because a push provider accepted it.
+5. Every notification attempts best-effort browser push when permission and delivery are available. Send minimal non-sensitive identifiers, fetch authorized details after activation, and never mark a notification read because a push provider accepted it.
 6. Offline users receive no realtime stream but fetch all missed notifications after reconnecting.
 7. Use PostgreSQL `LISTEN/NOTIFY` through one dedicated `node-postgres` listener connection per Node application instance as the live wake-up signal. Notification rows and cursor catch-up remain authoritative because `LISTEN/NOTIFY` alone is not durable.
 
@@ -80,7 +81,7 @@ The cloud database remains authoritative. Offline devices temporarily hold only 
 ### Negative
 
 - Offline stock is a stale snapshot, not a global guarantee.
-- The MVP permits one active logical offline-sales activation epoch per branch, operationally assigned to a primary device; emergency replacement and any future multi-device mode still require conflict handling.
+- The MVP permits one active logical offline-operation activation per enabled branch, operationally assigned to a primary device; simultaneous multi-device offline work is deferred.
 - Service worker upgrades, queue migrations, device revocation, and conflict UX require dedicated testing.
 - Browser storage can be cleared by the user or operating system, so manual receipts remain an important recovery source.
 - Realtime SSE and service-worker behavior require proxy and browser compatibility testing.
@@ -91,14 +92,11 @@ The cloud database remains authoritative. Offline devices temporarily hold only 
 - **Make the whole application offline-first:** adds unnecessary conflict and security complexity for Admin and warehouse workflows.
 - **Store pending actions only in React state/localStorage:** not durable or structured enough for transactional queues.
 - **Use WebSocket events without a notification table:** events can be lost during disconnects and are not an auditable source of truth.
-- **Reject conflicting offline sales:** hides a physical sale that already happened and breaks receipt/accounting reconciliation.
+- **Discard conflicting offline sales:** hides a physical sale that already happened and breaks receipt/accounting reconciliation. Conflicts remain evidence, but they do not bypass the non-negative-stock rule.
 
 ## Deferred Decisions
 
-- Final offline authorization duration
 - Whether multi-device offline support is worth its accepted overselling/reconciliation risk after the single-device pilot
-- Browser push after the initial durable polling/SSE release
-- Maximum queue age and manual recovery process
 - Exact PWA/service-worker library after compatibility evaluation
 
 ## Implementation Reference

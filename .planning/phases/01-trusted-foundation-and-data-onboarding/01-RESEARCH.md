@@ -1,5 +1,7 @@
 # Phase 1: Trusted Foundation and Data Onboarding - Research
 
+> **Scope note (2026-08-25):** The owner subsequently confirmed the simplified MVP and `.planning/REQUIREMENTS.md`/`.planning/ROADMAP.md` were reconciled. Regenerate this research before planning; all requirement mappings, roadmap corrections, and generic user-creation statements below are stale historical findings.
+
 <user_constraints>
 ## User Constraints (from CONTEXT.md)
 
