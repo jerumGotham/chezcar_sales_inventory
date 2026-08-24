@@ -27,39 +27,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  fetchProducts,
+  type ProductRow,
+  type ProductStatus,
+} from "@/lib/catalog";
 
 type SelectOption = {
   value: string;
   label: string;
-};
-
-type ProductStatus = "Active" | "Inactive";
-
-type ProductRow = {
-  id: string;
-  itemCode: string;
-  name: string;
-  category: string;
-  price: number;
-  reorderLevel: number;
-  status: ProductStatus;
-  description?: string;
-};
-
-type ProductsApiResponse = {
-  data: ProductRow[];
-  meta: {
-    page: number;
-    pageSize: number;
-    total: number;
-    totalPages: number;
-  };
-  summary: {
-    totalProducts: number;
-    activeProducts: number;
-    inactiveProducts: number;
-    withReorderLevel: number;
-  };
 };
 
 const CATEGORY_OPTIONS: SelectOption[] = [
@@ -77,109 +53,6 @@ const STATUS_OPTIONS: SelectOption[] = [
   { value: "Inactive", label: "Inactive" },
 ];
 
-const MOCK_PRODUCTS: ProductRow[] = [
-  {
-    id: "PROD-1001",
-    itemCode: "ITM-0001",
-    name: "3M Tint Medium Black",
-    category: "Tint",
-    price: 8500,
-    reorderLevel: 5,
-    status: "Active",
-    description: "Premium medium black tint for SUVs and sedans",
-  },
-  {
-    id: "PROD-1002",
-    itemCode: "ITM-0002",
-    name: "Seat Cover Set",
-    category: "Seat Cover",
-    price: 6000,
-    reorderLevel: 4,
-    status: "Active",
-    description: "Leatherette seat cover set",
-  },
-  {
-    id: "PROD-1003",
-    itemCode: "ITM-0003",
-    name: "Android Head Unit 9in",
-    category: "Audio",
-    price: 12500,
-    reorderLevel: 5,
-    status: "Active",
-    description: "Touchscreen Android head unit with CarPlay",
-  },
-  {
-    id: "PROD-1004",
-    itemCode: "ITM-0004",
-    name: "LED Fog Lamp Set",
-    category: "Lighting",
-    price: 3500,
-    reorderLevel: 3,
-    status: "Active",
-    description: "Bright LED fog lamps for better visibility",
-  },
-  {
-    id: "PROD-1005",
-    itemCode: "ITM-0005",
-    name: "Roof Rack",
-    category: "Exterior",
-    price: 9500,
-    reorderLevel: 2,
-    status: "Inactive",
-    description: "Heavy duty roof rack",
-  },
-  {
-    id: "PROD-1006",
-    itemCode: "ITM-0006",
-    name: "Nano Ceramic Tint",
-    category: "Tint",
-    price: 14500,
-    reorderLevel: 4,
-    status: "Active",
-    description: "High heat rejection ceramic tint",
-  },
-  {
-    id: "PROD-1007",
-    itemCode: "ITM-0007",
-    name: "Amplifier 4 Channel",
-    category: "Audio",
-    price: 7800,
-    reorderLevel: 3,
-    status: "Active",
-    description: "4-channel car amplifier",
-  },
-  {
-    id: "PROD-1008",
-    itemCode: "ITM-0008",
-    name: "Premium Seat Cover Beige",
-    category: "Seat Cover",
-    price: 7200,
-    reorderLevel: 3,
-    status: "Active",
-    description: "Premium beige seat cover set",
-  },
-  {
-    id: "PROD-1009",
-    itemCode: "ITM-0009",
-    name: "LED Headlight Bulb",
-    category: "Lighting",
-    price: 2200,
-    reorderLevel: 5,
-    status: "Active",
-    description: "LED headlight bulb pair",
-  },
-  {
-    id: "PROD-1010",
-    itemCode: "ITM-0010",
-    name: "Rear Spoiler",
-    category: "Exterior",
-    price: 6800,
-    reorderLevel: 2,
-    status: "Inactive",
-    description: "Sporty rear spoiler",
-  },
-];
-
 function formatPeso(value: number) {
   return `₱${value.toLocaleString("en-PH")}`;
 }
@@ -190,70 +63,6 @@ function getStatusBadgeClass(status: ProductStatus) {
   }
 
   return "border border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-100";
-}
-
-async function mockFetchProducts(params: {
-  page: number;
-  pageSize: number;
-  itemCode: string;
-  name: string;
-  category: string;
-  status: string;
-}): Promise<ProductsApiResponse> {
-  const { page, pageSize, itemCode, name, category, status } = params;
-
-  await new Promise((resolve) => setTimeout(resolve, 400));
-
-  let filtered = [...MOCK_PRODUCTS];
-
-  if (itemCode.trim()) {
-    const keyword = itemCode.trim().toLowerCase();
-    filtered = filtered.filter((product) =>
-      product.itemCode.toLowerCase().includes(keyword),
-    );
-  }
-
-  if (name.trim()) {
-    const keyword = name.trim().toLowerCase();
-    filtered = filtered.filter((product) =>
-      product.name.toLowerCase().includes(keyword),
-    );
-  }
-
-  if (category !== "all") {
-    filtered = filtered.filter((product) => product.category === category);
-  }
-
-  if (status !== "all") {
-    filtered = filtered.filter((product) => product.status === status);
-  }
-
-  const total = filtered.length;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const safePage = Math.min(page, totalPages);
-  const startIndex = (safePage - 1) * pageSize;
-  const endIndex = startIndex + pageSize;
-  const paginated = filtered.slice(startIndex, endIndex);
-
-  return {
-    data: paginated,
-    meta: {
-      page: safePage,
-      pageSize,
-      total,
-      totalPages,
-    },
-    summary: {
-      totalProducts: MOCK_PRODUCTS.length,
-      activeProducts: MOCK_PRODUCTS.filter((item) => item.status === "Active")
-        .length,
-      inactiveProducts: MOCK_PRODUCTS.filter(
-        (item) => item.status === "Inactive",
-      ).length,
-      withReorderLevel: MOCK_PRODUCTS.filter((item) => item.reorderLevel > 0)
-        .length,
-    },
-  };
 }
 
 const reactSelectStyles = {
@@ -318,7 +127,7 @@ export default function ProductsPage() {
   );
   const [isEditOpen, setIsEditOpen] = useState(false);
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, error, isLoading, isFetching } = useQuery({
     queryKey: [
       "products-master-list",
       {
@@ -331,7 +140,7 @@ export default function ProductsPage() {
       },
     ],
     queryFn: () =>
-      mockFetchProducts({
+      fetchProducts({
         page,
         pageSize,
         itemCode: appliedItemCode,
@@ -391,15 +200,13 @@ export default function ProductsPage() {
     <>
       <PageShell
         title="Products"
-        subtitle="Maintain the product master list with item code, category, price, reorder level, description, and status."
+        subtitle="View the database-backed product catalog. Product mutations remain disabled until their authorized workflow is implemented."
         actions={
           <>
             <Button
               className="bg-emerald-600 text-white hover:bg-emerald-700"
-              onClick={() => {
-                setSelectedProduct(null);
-                setIsEditOpen(true);
-              }}
+              disabled
+              title="Product mutations are not implemented"
             >
               Add Product
             </Button>
@@ -590,6 +397,15 @@ export default function ProductsPage() {
                         </div>
                       </td>
                     </tr>
+                  ) : error ? (
+                    <tr>
+                      <td
+                        colSpan={8}
+                        className="px-5 py-16 text-center text-red-600"
+                      >
+                        {error.message}
+                      </td>
+                    </tr>
                   ) : rows.length === 0 ? (
                     <tr>
                       <td
@@ -639,10 +455,8 @@ export default function ProductsPage() {
                                 size="sm"
                                 variant="outline"
                                 className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
-                                onClick={() => {
-                                  setSelectedProduct(product);
-                                  setIsEditOpen(true);
-                                }}
+                                disabled
+                                title="Product mutations are not implemented"
                               >
                                 Edit
                               </Button>
@@ -653,10 +467,8 @@ export default function ProductsPage() {
                                 size="sm"
                                 variant="outline"
                                 className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
-                                onClick={() => {
-                                  setSelectedProduct(product);
-                                  setIsEditOpen(true);
-                                }}
+                                disabled
+                                title="Product mutations are not implemented"
                               >
                                 Delete
                               </Button>

@@ -1,10 +1,13 @@
 "use client";
 
 import Image from "next/image";
+import type { Route } from "next";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, LogOut, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { authClient } from "@/lib/auth-client";
 
 const THEME_KEY = "chezcar-theme";
 
@@ -20,6 +23,8 @@ export function AppHeader({
   title: string;
   subtitle: string;
 }) {
+  const router = useRouter();
+  const { data: session } = authClient.useSession();
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [isReady, setIsReady] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -105,10 +110,10 @@ export function AppHeader({
             />
             <div className="hidden min-w-0 sm:block">
               <p className="truncate text-sm font-semibold text-foreground">
-                Owner Account
+                {session?.user.name ?? "Current User"}
               </p>
               <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                Super Admin
+                Authenticated user
               </p>
             </div>
             <ChevronDown
@@ -130,17 +135,22 @@ export function AppHeader({
           >
             <div className="rounded-xl bg-brand-50/80 px-3 py-2 dark:bg-slate-900">
               <p className="text-sm font-semibold text-foreground">
-                Owner Account
+                {session?.user.name ?? "Current User"}
               </p>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                owner@chezcar.local
+                {session?.user.email ?? ""}
               </p>
             </div>
             <button
               type="button"
               className="mt-2 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10"
               role="menuitem"
-              onClick={() => setIsMenuOpen(false)}
+              onClick={async () => {
+                setIsMenuOpen(false);
+                await authClient.signOut();
+                router.replace("/sign-in" as Route);
+                router.refresh();
+              }}
             >
               <LogOut className="h-4 w-4" />
               Logout

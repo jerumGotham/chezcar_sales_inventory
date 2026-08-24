@@ -8,6 +8,11 @@ export default function AppLayoutShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
   const isPosPage = pathname?.startsWith("/pos");
+  const isAuthPage = pathname?.startsWith("/sign-in");
+
+  if (isAuthPage) {
+    return children;
+  }
 
   if (isPosPage) {
     return (

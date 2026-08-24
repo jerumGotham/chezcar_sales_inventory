@@ -42,6 +42,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { fetchInventory } from "@/lib/catalog";
 
 import {
   ADJUSTMENT_TYPE_OPTIONS,
@@ -59,7 +60,6 @@ import {
   getLocationBadgeClass,
   getStockBadgeClass,
   formatPeso,
-  mockFetchInventory,
   reactSelectStyles,
   type BranchAvailabilityRow,
   type InventoryRow,
@@ -133,7 +133,7 @@ export default function InventoryPage() {
   const canTransferToBranch = USER_ROLE === "OWNER" || USER_ROLE === "ADMIN";
   const canAdjustStock = USER_ROLE === "OWNER" || USER_ROLE === "ADMIN";
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, error, isLoading, isFetching } = useQuery({
     queryKey: [
       "inventory-locations",
       {
@@ -147,7 +147,7 @@ export default function InventoryPage() {
       },
     ],
     queryFn: () =>
-      mockFetchInventory({
+      fetchInventory({
         page,
         pageSize,
         itemCode: appliedItemCode,
@@ -562,8 +562,7 @@ export default function InventoryPage() {
                   Inventory by Product
                 </h3>
                 <p className="text-sm text-slate-500">
-                  Showing {showingFrom} to {showingTo} of {meta.total} location
-                  records grouped by product
+                  Showing {showingFrom} to {showingTo} of {meta.total} products
                   {isFetching && !isLoading ? " • Updating..." : ""}
                 </p>
               </div>
@@ -614,6 +613,15 @@ export default function InventoryPage() {
                           <Loader2 className="h-4 w-4 animate-spin" />
                           Loading inventory...
                         </div>
+                      </td>
+                    </tr>
+                  ) : error ? (
+                    <tr>
+                      <td
+                        colSpan={10}
+                        className="px-5 py-16 text-center text-red-600"
+                      >
+                        {error.message}
                       </td>
                     </tr>
                   ) : groupedRows.length === 0 ? (

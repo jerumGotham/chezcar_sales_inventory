@@ -1,0 +1,38 @@
+import "server-only";
+
+import { betterAuth } from "better-auth";
+import { prismaAdapter } from "better-auth/adapters/prisma";
+
+import { prisma } from "@/lib/server/prisma";
+
+export const auth = betterAuth({
+  appName: "Chezcar Sales & Inventory",
+  database: prismaAdapter(prisma, {
+    provider: "postgresql",
+  }),
+  disableSignUp: true,
+  emailAndPassword: {
+    enabled: true,
+  },
+  user: {
+    additionalFields: {
+      role: {
+        type: ["ADMIN", "STOCK_STAFF", "BRANCH_STAFF", "ACCOUNTING_STAFF"],
+        required: true,
+        defaultValue: "BRANCH_STAFF",
+        input: false,
+      },
+      status: {
+        type: ["ACTIVE", "INACTIVE"],
+        required: true,
+        defaultValue: "ACTIVE",
+        input: false,
+      },
+      locationId: {
+        type: "string",
+        required: false,
+        input: false,
+      },
+    },
+  },
+});
