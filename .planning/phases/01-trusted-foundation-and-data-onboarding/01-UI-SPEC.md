@@ -1,7 +1,7 @@
 ---
 phase: 1
 slug: trusted-foundation-and-data-onboarding
-status: draft
+status: approved
 shadcn_initialized: true
 preset: base-nova
 created: 2026-08-25
@@ -222,20 +222,20 @@ Use `PageShell` at `/users`. The owner Admin may view all accounts but may mutat
 
 ## UI Considerations
 
-> Shape-rooted state coverage for Phase 1 forms, navigation, tables, controls, and static feedback.
+> Post-verification probe coverage for Phase 1 forms, navigation, tables, controls, and static feedback. Surface kinds were confirmed complete on 2026-08-25.
 
-Applicable state considerations resolved: 8 covered, 0 backstop, 0 unresolved.
+Applicable probe checks resolved: 29 explicit, 0 backstop, 0 unresolved.
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
-| empty | User table | ✅ covered | The unfiltered staff-empty state renders `No staff users yet` plus `Create User`; a zero-result filter renders the separate filtered-empty copy plus `Reset Filters`. |
-| loading | Navigation, user table, forms, pagination | ✅ covered | Forbidden navigation never flashes; first load uses `Loading users…`, refetch retains rows with `Updating…`, and mutations disable duplicate submit with an explicit progress label. |
-| error | User table, create/edit/reset/password forms | ✅ covered | Load failure shows the documented error and `Try Again`; field/server failures remain in context, preserve input, focus/announce the problem, and never claim success early. |
-| populated | User table | ✅ covered | Typical rows show seven defined columns, readable role/location/status labels, lifecycle actions, result count, and ten-row pagination. |
-| partial | User records and forms | ✅ covered | Missing last sign-in reads `Never`; invalid role/location combinations cannot submit; partial form data is retained after a failed request. |
-| overflow | Sidebar, table, dialogs, long identifiers | ✅ covered | Sidebar retains its existing scroll/drawer behavior; tables scroll horizontally; dialog bodies scroll vertically; names/emails wrap and accessible full values remain available. |
-| zero-one-many | User table and result summary | ✅ covered | Zero uses empty-state copy, one uses `1 user`, and many uses `{n} users`; pagination and range copy never display `0 to 0 of 0`. |
-| long-text | Names, emails, branch labels, errors, actions | ✅ covered | Names/emails and error copy wrap; action labels do not truncate; table identifiers may ellipsize only with an accessible full value; no control shrinks below its touch target. |
+| empty | User table and forms | resolved (explicit) | The unfiltered staff-empty state renders `No staff users yet` plus `Create User`; a zero-result filter renders separate filtered-empty copy plus `Reset Filters`. Create and first-login forms begin with blank credential fields and declared defaults. Target-dependent edit/lifecycle dialogs do not open without a loaded user. |
+| loading | Navigation, user table, forms, pagination | resolved (explicit) | Forbidden navigation never flashes; capability/session loading fails closed. First table load uses `Loading users…`, refetch retains rows with `Updating…`, and mutations disable duplicate submit with an explicit progress label. |
+| error | Navigation, access feedback, user table, and forms | resolved (explicit) | Missing/expired/inactive sessions return to sign-in; authenticated denial uses the dedicated denial screen without protected data. User-load failure shows the documented error and `Try Again`; field/server failures remain in context, preserve input, focus/announce the problem, and never claim success early. |
+| populated | User table | resolved (explicit) | Typical rows show seven defined columns, readable role/location/status labels, lifecycle actions, result count, and ten-row pagination. |
+| partial | User records and forms | resolved (explicit) | Missing last sign-in reads `Never`; invalid role/location combinations cannot submit; role changes clear incompatible location data; partial form data is retained after a failed request. |
+| overflow | Shell navigation, access-denied card, table, dialogs, and identifiers | resolved (explicit) | The sidebar retains existing scroll/drawer behavior; the denial card stays within the content region; tables scroll horizontally; dialog bodies scroll vertically; names/emails wrap and accessible full values remain available. |
+| zero-one-many | User table and result summary | resolved (explicit) | Zero uses empty-state copy, one uses `1 user`, and many uses `{n} users`; pagination and range copy never display `0 to 0 of 0`. |
+| long-text | Navigation, denial copy, names, emails, branch labels, errors, and actions | resolved (explicit) | Human-readable text and errors wrap and reflow; action labels do not truncate; table identifiers may ellipsize only with an accessible full value; no control shrinks below its touch target. |
 
 ---
 
@@ -264,11 +264,11 @@ No new UI package, registry, or block is part of this contract.
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** verified by `gsd-ui-checker` on 2026-08-25; 6/6 dimensions passed with no recommendations.
