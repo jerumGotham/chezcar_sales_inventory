@@ -1,0 +1,23 @@
+{
+  "source_path": "E:/Chezcar/chezcar-ui-starter/docs/adr/0004-realtime-notifications-and-offline-pwa.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "ADR 0004: Durable Realtime Notifications and Limited Offline PWA",
+  "summary": "Proposes durable realtime notifications, idempotent offline synchronization, and a limited branch PWA for outage continuity while retaining authoritative cloud transactions.",
+  "scope": [
+    "offline PWA",
+    "IndexedDB",
+    "idempotent sync",
+    "offline sales",
+    "offline transfer reports",
+    "SSE notifications",
+    "PostgreSQL LISTEN/NOTIFY"
+  ],
+  "cross_refs": [
+    "0007-backend-services-and-realtime-delivery.md"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

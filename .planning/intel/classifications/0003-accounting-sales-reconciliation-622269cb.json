@@ -1,0 +1,20 @@
+{
+  "source_path": "E:/Chezcar/chezcar-ui-starter/docs/adr/0003-accounting-sales-reconciliation.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "ADR 0003: Accounting Reports Mismatches; Admin Corrects Sales",
+  "summary": "Defines Accounting's read-only sales reconciliation workflow and Admin's responsibility for auditable corrections while deferring cash and daily-closing reconciliation.",
+  "scope": [
+    "Accounting Staff",
+    "sales reconciliation",
+    "reconciliation issues",
+    "Admin corrections",
+    "inventory",
+    "daily closing"
+  ],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

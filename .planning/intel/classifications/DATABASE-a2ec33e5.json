@@ -1,0 +1,23 @@
+{
+  "source_path": "E:/Chezcar/chezcar-ui-starter/docs/DATABASE.md",
+  "type": "SPEC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "Database",
+  "summary": "Documents the implemented PostgreSQL and Prisma foundation, models, constraints, setup workflow, data warnings, and current database gaps.",
+  "scope": [
+    "PostgreSQL",
+    "Prisma",
+    "database models",
+    "database migrations",
+    "database seed",
+    "Better Auth",
+    "inventory balances"
+  ],
+  "cross_refs": [
+    "docs/product/PROVISIONAL-DATA-MODEL.md"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": "Detailed implemented data models and SQL constraints are dominant SPEC signals; local setup and warnings are supporting DOC signals."
+}

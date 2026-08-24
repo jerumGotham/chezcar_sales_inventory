@@ -1,0 +1,25 @@
+{
+  "source_path": "E:/Chezcar/chezcar-ui-starter/docs/GETTING-STARTED.md",
+  "type": "DOC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "Getting Started",
+  "summary": "Guide to installing, configuring, running, building, and troubleshooting the Chezcar sales and inventory prototype with PostgreSQL, Prisma, Better Auth, and Next.js.",
+  "scope": [
+    "Chezcar sales and inventory prototype",
+    "PostgreSQL",
+    "Prisma",
+    "Better Auth",
+    "Next.js"
+  ],
+  "cross_refs": [
+    "../README.md",
+    "ARCHITECTURE.md",
+    "CONFIGURATION.md",
+    "DEVELOPMENT.md",
+    "TESTING.md"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

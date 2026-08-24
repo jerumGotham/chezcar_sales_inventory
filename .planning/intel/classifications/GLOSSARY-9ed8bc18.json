@@ -1,0 +1,22 @@
+{
+  "source_path": "E:/Chezcar/chezcar-ui-starter/docs/product/GLOSSARY.md",
+  "type": "DOC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "Chezcar Domain Glossary",
+  "summary": "Defines working Chezcar terminology for roles, inventory, sales, transfers, reconciliation, discrepancies, offline operations, and synchronization.",
+  "scope": [
+    "roles",
+    "inventory",
+    "sales",
+    "stock transfers",
+    "reconciliation",
+    "discrepancies",
+    "offline operations",
+    "synchronization"
+  ],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

@@ -1,0 +1,24 @@
+{
+  "source_path": "E:/Chezcar/chezcar-ui-starter/docs/ARCHITECTURE.md",
+  "type": "DOC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "Architecture",
+  "summary": "Documents the implemented Next.js architecture, boundaries, data flows, database shape, security properties, risks, and next direction for Chezcar Sales & Inventory.",
+  "scope": [
+    "Chezcar Sales & Inventory",
+    "Next.js App Router",
+    "Better Auth",
+    "Prisma",
+    "PostgreSQL",
+    "authorization",
+    "products",
+    "inventory"
+  ],
+  "cross_refs": [
+    "docs/product/PROVISIONAL-DATA-MODEL.md"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

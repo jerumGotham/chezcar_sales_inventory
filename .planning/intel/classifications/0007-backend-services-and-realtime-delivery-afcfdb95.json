@@ -1,0 +1,21 @@
+{
+  "source_path": "E:/Chezcar/chezcar-ui-starter/docs/adr/0007-backend-services-and-realtime-delivery.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "ADR 0007: Backend Services and Realtime Delivery Stack",
+  "summary": "Selects backend libraries and durable realtime notification delivery using PostgreSQL, Prisma transactions, LISTEN/NOTIFY wake-ups, authenticated SSE, cursor replay, and polling fallback.",
+  "scope": [
+    "backend services",
+    "realtime notifications",
+    "PostgreSQL",
+    "Prisma",
+    "Better Auth",
+    "SSE",
+    "LISTEN/NOTIFY"
+  ],
+  "cross_refs": [],
+  "locked": true,
+  "precedence": null,
+  "notes": ""
+}

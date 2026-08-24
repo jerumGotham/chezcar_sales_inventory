@@ -1,0 +1,18 @@
+{
+  "source_path": "E:/Chezcar/chezcar-ui-starter/docs/adr/0002-transfer-discrepancy-resolution.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "ADR 0002: Preserve Transfers and Resolve Discrepancies Separately",
+  "summary": "Proposes preserving dispatched transfers and resolving delivery discrepancies through linked reports, controlled investigation, Admin approval, and auditable inventory movements.",
+  "scope": [
+    "transfers",
+    "discrepancy reports",
+    "inventory movements",
+    "Admin approval"
+  ],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

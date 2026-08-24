@@ -1,0 +1,23 @@
+{
+  "source_path": "E:/Chezcar/chezcar-ui-starter/docs/DEVELOPMENT.md",
+  "type": "DOC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "Development",
+  "summary": "Development guide for setting up, extending, styling, and verifying the Chezcar Sales & Inventory UI prototype.",
+  "scope": [
+    "Chezcar Sales & Inventory UI prototype",
+    "Next.js",
+    "React Query",
+    "Prisma",
+    "PostgreSQL",
+    "Tailwind CSS",
+    "TypeScript"
+  ],
+  "cross_refs": [
+    "ARCHITECTURE.md"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

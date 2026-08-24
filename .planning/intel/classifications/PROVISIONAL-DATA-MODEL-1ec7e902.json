@@ -1,0 +1,24 @@
+{
+  "source_path": "E:/Chezcar/chezcar-ui-starter/docs/product/PROVISIONAL-DATA-MODEL.md",
+  "type": "SPEC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "Provisional MVP Data Model",
+  "summary": "Defines the MVP canonical data model, implemented foundation entities, provisional transactional models, and Excel-driven refinement strategy.",
+  "scope": [
+    "User",
+    "Location",
+    "Product",
+    "InventoryBalance",
+    "InventoryMovement",
+    "StockTransfer",
+    "Sale",
+    "Notification",
+    "SyncOperation",
+    "AuditEvent"
+  ],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

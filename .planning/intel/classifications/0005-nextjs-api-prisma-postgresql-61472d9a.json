@@ -1,0 +1,22 @@
+{
+  "source_path": "E:/Chezcar/chezcar-ui-starter/docs/adr/0005-nextjs-api-prisma-postgresql.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "ADR 0005: Next.js Route Handlers with Prisma and PostgreSQL",
+  "summary": "Chooses a Next.js modular monolith using route handlers, server-only Prisma, PostgreSQL, application services, validation contracts, and transactional persistence for MVP workflows.",
+  "scope": [
+    "Next.js Route Handlers",
+    "Prisma",
+    "PostgreSQL",
+    "application services",
+    "API contracts",
+    "database transactions"
+  ],
+  "cross_refs": [
+    "0007-backend-services-and-realtime-delivery.md"
+  ],
+  "locked": true,
+  "precedence": null,
+  "notes": ""
+}

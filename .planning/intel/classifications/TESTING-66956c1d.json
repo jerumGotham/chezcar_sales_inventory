@@ -1,0 +1,20 @@
+{
+  "source_path": "E:/Chezcar/chezcar-ui-starter/docs/TESTING.md",
+  "type": "DOC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "Testing",
+  "summary": "Documents the repository's absent automated test infrastructure, current manual verification process, and recommended incremental testing and CI strategy.",
+  "scope": [
+    "automated tests",
+    "manual verification",
+    "Vitest",
+    "Playwright",
+    "PostgreSQL",
+    "CI"
+  ],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

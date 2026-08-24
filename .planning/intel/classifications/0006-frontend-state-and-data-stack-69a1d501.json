@@ -1,0 +1,23 @@
+{
+  "source_path": "E:/Chezcar/chezcar-ui-starter/docs/adr/0006-frontend-state-and-data-stack.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "ADR 0006: Frontend State and Data Stack",
+  "summary": "Proposes ownership and tooling for server, client, form, offline, presentation, feedback, and verification concerns in the frontend data stack.",
+  "scope": [
+    "TanStack Query",
+    "native fetch",
+    "React state",
+    "URL search parameters",
+    "Zustand",
+    "React Hook Form",
+    "Zod",
+    "IndexedDB",
+    "frontend verification"
+  ],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}
