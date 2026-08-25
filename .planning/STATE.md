@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 current_phase: 01
 current_phase_name: Trusted Foundation and Data Onboarding
 status: executing
-stopped_at: Completed 01-16-PLAN.md
-last_updated: "2026-08-25T12:09:28.225Z"
+stopped_at: Completed 01-10-PLAN.md
+last_updated: "2026-08-25T13:44:07.319Z"
 last_activity: 2026-08-25
 last_activity_desc: Phase 01 execution started
-state_head: ff37df588d89cd9401cea42a1dc3ba209aed84c9
+state_head: 74a642beea369addc7eff83c5e29c410b4fafc33
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 17
-  completed_plans: 14
+  completed_plans: 15
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-08-25)
 ## Current Position
 
 Phase: 01 (Trusted Foundation and Data Onboarding) — EXECUTING
-Plan: 10 of 17
+Plan: 11 of 17
 Status: Ready to execute
 Last activity: 2026-08-25 — Completed 01-16-PLAN.md (next incomplete plan: 01-10; 01-15/01-16/01-17 summaries exist on disk)
 
@@ -72,6 +72,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P17 | 30 min | 2 tasks | 3 files |
 | Phase 01 P09 | 51 min | 3 tasks | 8 files |
 | Phase 01 P16 | 6 min | 2 tasks | 3 files |
+| Phase 01 P10 | 20 min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -117,6 +118,7 @@ Decisions are logged in PROJECT.md. Current constraints:
 - [Phase 01]: Plan 01-09: Access changes and required session revocation commit in one Prisma transaction with FOR UPDATE row locking; injected failures roll back both writes.
 - [Phase 01]: Plan 01-09: Duplicate emails map to a stable EMAIL_IN_USE 409 with one user/account; repeated status/reset requests are idempotent no-ops.
 - [Phase 01]: [Phase 01]: Plan 01-16: Inventory renders only through a capability-gated server page whose client controls clamp to the persisted LocationScopeDto; Accounting is redirected before any render and shows Business-wide feedback only in the global header.
+- [Phase 01]: Plan 01-10: Credential change revokes other sessions server-side (Better Auth revokeOtherSessions would also replace the initiating session); the route is a current-user-only all-roles capability gate and skip/change each consume the D-15 prompt once per arming.
 
 ### Pending Todos
 
@@ -139,6 +141,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-25T12:09:28.194Z
-Stopped at: Completed 01-16-PLAN.md
+Last session: 2026-08-25T13:44:07.288Z
+Stopped at: Completed 01-10-PLAN.md
 Resume file: None
