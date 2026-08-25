@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 current_phase: 01
 current_phase_name: Trusted Foundation and Data Onboarding
 status: executing
-stopped_at: Completed 01-09-PLAN.md
-last_updated: "2026-08-25T11:55:34.717Z"
+stopped_at: Completed 01-16-PLAN.md
+last_updated: "2026-08-25T12:09:28.225Z"
 last_activity: 2026-08-25
 last_activity_desc: Phase 01 execution started
-state_head: 5560efefd8174352967e5538cd505ab76f6f94fd
+state_head: ff37df588d89cd9401cea42a1dc3ba209aed84c9
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 17
-  completed_plans: 13
+  completed_plans: 14
   percent: 0
 ---
 
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-08-25)
 ## Current Position
 
 Phase: 01 (Trusted Foundation and Data Onboarding) — EXECUTING
-Plan: 14 of 17
+Plan: 10 of 17
 Status: Ready to execute
-Last activity: 2026-08-25 — Phase 01 execution started
+Last activity: 2026-08-25 — Completed 01-16-PLAN.md (next incomplete plan: 01-10; 01-15/01-16/01-17 summaries exist on disk)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -71,6 +71,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P15 | 12 min | 2 tasks | 3 files |
 | Phase 01 P17 | 30 min | 2 tasks | 3 files |
 | Phase 01 P09 | 51 min | 3 tasks | 8 files |
+| Phase 01 P16 | 6 min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -115,6 +116,7 @@ Decisions are logged in PROJECT.md. Current constraints:
 - [Phase 01]: Plan 01-09: Stock/Accounting create and update payloads cannot persist hostile location fields; Stock Staff resolves to active SR server-side and Accounting never carries a location.
 - [Phase 01]: Plan 01-09: Access changes and required session revocation commit in one Prisma transaction with FOR UPDATE row locking; injected failures roll back both writes.
 - [Phase 01]: Plan 01-09: Duplicate emails map to a stable EMAIL_IN_USE 409 with one user/account; repeated status/reset requests are idempotent no-ops.
+- [Phase 01]: [Phase 01]: Plan 01-16: Inventory renders only through a capability-gated server page whose client controls clamp to the persisted LocationScopeDto; Accounting is redirected before any render and shows Business-wide feedback only in the global header.
 
 ### Pending Todos
 
@@ -137,6 +139,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-25T11:55:34.688Z
-Stopped at: Completed 01-09-PLAN.md
+Last session: 2026-08-25T12:09:28.194Z
+Stopped at: Completed 01-16-PLAN.md
 Resume file: None

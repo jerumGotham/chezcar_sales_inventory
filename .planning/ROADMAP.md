@@ -28,7 +28,7 @@ This roadmap implements the confirmed simple process in dependency order. Existi
   3. Every fixed role can request only its permitted pages/data/actions, and manipulated branch parameters cannot escape persisted scope.
   4. The single owner Admin can create, update, deactivate, and reset credentials for non-Admin users; another Admin cannot be created; Stock Staff is fixed to `SR`, Branch Staff requires one branch, Accounting has no location assignment, and access changes revoke sessions.
 
-**Plans**: 13/17 plans executed
+**Plans**: 14/17 plans executed
 Plans:
 **Wave 1**
 
@@ -69,7 +69,7 @@ Plans:
 **Wave 9** *(blocked on Wave 8 completion)*
 
 - [x] 01-09-PLAN.md — Deliver owner-Admin user lifecycle APIs
-- [ ] 01-16-PLAN.md — Add capability-gated Inventory scope controls
+- [x] 01-16-PLAN.md — Add capability-gated Inventory scope controls
 
 **Wave 10** *(blocked on Wave 9 completion)*
 
@@ -182,7 +182,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Trusted Foundation and Data Onboarding | 13/17 | In Progress|  |
+| 1. Trusted Foundation and Data Onboarding | 14/17 | In Progress|  |
 | 2. Receipt Sales and Accounting Verification | 0/TBD | Not started | - |
 | 3. Durable Realtime Notifications | 0/TBD | Not started | - |
 | 4. Stock Room Receiving and Transfer Dispatch | 0/TBD | Not started | - |
