@@ -7,6 +7,9 @@ import { describe, expect, it } from "vitest";
 import {
   generateCanonicalFixture,
   runCanonicalFixtureGenerator,
+  type GenerateCanonicalFixtureInput,
+  type ResolutionArtifact,
+  type ReviewReportArtifact,
   type SourceMappingArtifact,
 } from "./generate-seed.mjs";
 
@@ -79,12 +82,12 @@ function sourceRow(input: {
   };
 }
 
-function reviewedArtifacts() {
+function reviewedArtifacts(): GenerateCanonicalFixtureInput {
   const missingPriceFinding = {
     id: "F-MISSING_PRICE-S1-R6-DISCOUNTED PRICE@O",
-    code: "MISSING_PRICE",
-    blocking: true,
-    status: "unresolved",
+    code: "MISSING_PRICE" as const,
+    blocking: true as const,
+    status: "unresolved" as const,
     message: "Price requires review",
     workbookSha256: WORKBOOK_HASH,
     sourceIds: ["S1-R6"],
@@ -92,7 +95,7 @@ function reviewedArtifacts() {
     details: { priceSource: "DISCOUNTED PRICE@O" },
     resolutionKey: "F-MISSING_PRICE-S1-R6-DISCOUNTED PRICE@O",
   };
-  const profile = {
+  const profile: ReviewReportArtifact = {
     schemaVersion: 1,
     workbook: {
       path: "excel/reviewed.xlsx",
@@ -114,7 +117,7 @@ function reviewedArtifacts() {
     findings: [missingPriceFinding],
     canonicalCandidates: [],
   };
-  const resolutions = {
+  const resolutions: ResolutionArtifact = {
     schemaVersion: 1,
     workbookSha256: WORKBOOK_HASH,
     resolutions: {
@@ -154,7 +157,7 @@ function reviewedArtifacts() {
         code: "NO-PRICE",
         name: "Inactive stock",
         price: null,
-        quantities: [null, 7, 88, 8, 9, 10],
+        quantities: [0, 7, 88, 8, 9, 10],
       }),
     ],
   };
@@ -229,7 +232,10 @@ describe("generateCanonicalFixture", () => {
       findingId: "F-UNKNOWN",
     };
     const ambiguous = structuredClone(base);
-    Object.values(ambiguous.resolutions.resolutions)[0].canonicalValue.salePrice = 0;
+    const ambiguousResolution = Object.values(
+      ambiguous.resolutions.resolutions,
+    )[0];
+    (ambiguousResolution.canonicalValue as { salePrice: number | null }).salePrice = 0;
 
     expect(() => generateCanonicalFixture(stale)).toThrow(/stale|hash/i);
     expect(() => generateCanonicalFixture(missing)).toThrow(/missing|coverage/i);
@@ -240,7 +246,50 @@ describe("generateCanonicalFixture", () => {
 
 describe("runCanonicalFixtureGenerator", () => {
   it("writes only after validation and check compares committed bytes", async () => {
-    const root = await mkdtemp(join(tmpdir(), "chezcar-canonical-"));
+    const artifacts = reviewedArtifacts();
+    const roots = await Promise.all([
+      mkdtemp(join(tmpdir(), "chezcar-canonical-a-")),
+      mkdtemp(join(tmpdir(), "chezcar-canonical-b-")),
+    ]);
+    const paths = roots.map((root) => ({
+      profilePath: join(root, "review-report.json"),
+      resolutionsPath: join(root, "resolutions.json"),
+      fixtureOutPath: join(root, "opening-catalog.json"),
+      mappingOutPath: join(root, "source-mapping.json"),
+    }));
+    await Promise.all(
+      paths.flatMap((pathSet) => [
+        writeFile(
+          pathSet.profilePath,
+          `${JSON.stringify(artifacts.profile, null, 2)}\n`,
+        ),
+        writeFile(
+          pathSet.resolutionsPath,
+          `${JSON.stringify(artifacts.resolutions, null, 2)}\n`,
+        ),
+        writeFile(
+          pathSet.mappingOutPath,
+          `${JSON.stringify(artifacts.sourceMapping, null, 2)}\n`,
+        ),
+      ]),
+    );
+
+    await Promise.all(paths.map(runCanonicalFixtureGenerator));
+    const [firstFixture, secondFixture, firstMapping, secondMapping] =
+      await Promise.all([
+        readFile(paths[0].fixtureOutPath, "utf8"),
+        readFile(paths[1].fixtureOutPath, "utf8"),
+        readFile(paths[0].mappingOutPath, "utf8"),
+        readFile(paths[1].mappingOutPath, "utf8"),
+      ]);
+    await runCanonicalFixtureGenerator({ ...paths[0], check: true });
+
+    expect(secondFixture).toBe(firstFixture);
+    expect(secondMapping).toBe(firstMapping);
+  });
+
+  it("leaves both outputs untouched when reviewed input validation fails", async () => {
+    const root = await mkdtemp(join(tmpdir(), "chezcar-canonical-refusal-"));
     const paths = {
       profilePath: join(root, "review-report.json"),
       resolutionsPath: join(root, "resolutions.json"),
@@ -248,19 +297,21 @@ describe("runCanonicalFixtureGenerator", () => {
       mappingOutPath: join(root, "source-mapping.json"),
     };
     const artifacts = reviewedArtifacts();
+    artifacts.resolutions.workbookSha256 = "b".repeat(64);
+    const fixtureMarker = "fixture must remain untouched\n";
+    const mappingText = `${JSON.stringify(artifacts.sourceMapping, null, 2)}\n`;
     await Promise.all([
       writeFile(paths.profilePath, `${JSON.stringify(artifacts.profile, null, 2)}\n`),
-      writeFile(paths.resolutionsPath, `${JSON.stringify(artifacts.resolutions, null, 2)}\n`),
-      writeFile(paths.mappingOutPath, `${JSON.stringify(artifacts.sourceMapping, null, 2)}\n`),
+      writeFile(
+        paths.resolutionsPath,
+        `${JSON.stringify(artifacts.resolutions, null, 2)}\n`,
+      ),
+      writeFile(paths.fixtureOutPath, fixtureMarker),
+      writeFile(paths.mappingOutPath, mappingText),
     ]);
 
-    await runCanonicalFixtureGenerator(paths);
-    const firstFixture = await readFile(paths.fixtureOutPath, "utf8");
-    const firstMapping = await readFile(paths.mappingOutPath, "utf8");
-    await runCanonicalFixtureGenerator({ ...paths, check: true });
-    await runCanonicalFixtureGenerator(paths);
-
-    expect(await readFile(paths.fixtureOutPath, "utf8")).toBe(firstFixture);
-    expect(await readFile(paths.mappingOutPath, "utf8")).toBe(firstMapping);
+    await expect(runCanonicalFixtureGenerator(paths)).rejects.toThrow(/stale|hash/i);
+    expect(await readFile(paths.fixtureOutPath, "utf8")).toBe(fixtureMarker);
+    expect(await readFile(paths.mappingOutPath, "utf8")).toBe(mappingText);
   });
 });
