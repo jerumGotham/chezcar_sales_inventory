@@ -151,6 +151,7 @@ type UserListBody = {
 type MutationBody = {
   data?: {
     id: string;
+    name: string;
     email: string;
     role: string;
     status: string;
