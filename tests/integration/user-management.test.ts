@@ -38,10 +38,25 @@ const OWNER_EMAIL = "owner-admin@auth-fixture.example.test";
 const OWNER_PASSWORD = "Owner-Temp-Pass-1";
 
 type UsersRoute = typeof import("../../app/api/users/route");
+type UserIdRoute = typeof import("../../app/api/users/[userId]/route");
+type UserStatusRoute = typeof import("../../app/api/users/[userId]/status/route");
+type UserPasswordRoute = typeof import("../../app/api/users/[userId]/password/route");
 let usersRoute: UsersRoute;
+let userIdRoute: UserIdRoute | null;
+let userStatusRoute: UserStatusRoute | null;
+let userPasswordRoute: UserPasswordRoute | null;
 
 async function loadRoutes() {
   usersRoute = await import("../../app/api/users/route");
+}
+
+async function loadLifecycleRoutes() {
+  usersRoute = await import("../../app/api/users/route");
+  userIdRoute = await import("../../app/api/users/[userId]/route");
+  userStatusRoute = await import("../../app/api/users/[userId]/status/route");
+  userPasswordRoute = await import(
+    "../../app/api/users/[userId]/password/route"
+  );
 }
 
 /**
@@ -516,4 +531,319 @@ describe("user management list and create", () => {
       expect(await prisma.user.count()).toBe(usersBefore);
     });
   }, 90_000);
+});
+
+type LifecycleSetup = {
+  locations: LocationFixtures;
+  ownerHeaders: Headers;
+  staffHeaders: Headers;
+  targetId: string;
+};
+
+async function routeContext(userId: string) {
+  return { params: Promise.resolve({ userId }) };
+}
+
+describe("user management lifecycle", () => {
+  afterEach(async () => {
+    await sharedPrisma.$disconnect();
+  });
+
+  async function prepareLifecycle(prisma: PrismaClient): Promise<LifecycleSetup> {
+    const locations = await createLocationFixtures(prisma);
+    const { fixture, ownerHeaders } = await signInOwner(prisma);
+    const target = fixture.users.branchStaff;
+    await grantCredential(prisma, target.id, "Staff-Old-Pass-1");
+    const staffHeaders = await signInUser(
+      prisma,
+      target.email,
+      "Staff-Old-Pass-1",
+    );
+    await loadLifecycleRoutes();
+    return {
+      locations,
+      ownerHeaders,
+      staffHeaders,
+      targetId: target.id,
+    };
+  }
+
+  function patchRequest(
+    path: string,
+    headers: HeadersInit,
+    body: unknown,
+    method = "PATCH",
+  ) {
+    return usersRequest(path, { method, headers, body });
+  }
+
+  it("updates staff fields and enforces the full resulting assignment", async () => {
+    await withDisposableDatabase(async ({ prisma }) => {
+      const { locations, ownerHeaders, staffHeaders, targetId } =
+        await prepareLifecycle(prisma);
+      if (!userIdRoute) throw new Error("PATCH route module missing");
+
+      expect(
+        await prisma.session.count({ where: { userId: targetId } }),
+      ).toBe(1);
+
+      // Name/email-only updates keep the assignment and live session intact.
+      const renameResponse = await userIdRoute.PATCH(
+        patchRequest(`/api/users/${targetId}`, ownerHeaders, {
+          name: "Renamed Staff",
+          email: "renamed.staff@example.test",
+        }),
+        await routeContext(targetId),
+      );
+      expect(renameResponse.status).toBe(200);
+      const renamed = (await renameResponse.json()) as MutationBody;
+      expect(renamed.data?.name).toBe("Renamed Staff");
+      expect(renamed.data?.email).toBe("renamed.staff@example.test");
+      expect(renamed.data?.location?.code).toBe("QC");
+      expect(await prisma.session.count({ where: { userId: targetId } })).toBe(1);
+
+      // Role change to Accounting clears the location and revokes sessions.
+      const accountingResponse = await userIdRoute.PATCH(
+        patchRequest(`/api/users/${targetId}`, ownerHeaders, {
+          role: "ACCOUNTING_STAFF",
+        }),
+        await routeContext(targetId),
+      );
+      expect(accountingResponse.status).toBe(200);
+      const accountant = (await accountingResponse.json()) as MutationBody;
+      expect(accountant.data?.role).toBe("ACCOUNTING_STAFF");
+      expect(accountant.data?.location).toBeNull();
+      expect(await prisma.session.count({ where: { userId: targetId } })).toBe(0);
+
+      // Stock Staff resolves to SR server-side.
+      const stockResponse = await userIdRoute.PATCH(
+        patchRequest(`/api/users/${targetId}`, ownerHeaders, {
+          role: "STOCK_STAFF",
+        }),
+        await routeContext(targetId),
+      );
+      expect(stockResponse.status).toBe(200);
+      expect(((await stockResponse.json()) as MutationBody).data?.location?.code).toBe("SR");
+
+      // Switching into Branch Staff without an explicit active branch fails
+      // with an unchanged resulting state.
+      const beforeFailedBranch = await prisma.user.findUniqueOrThrow({
+        where: { id: targetId },
+      });
+      const missingBranchResponse = await userIdRoute.PATCH(
+        patchRequest(`/api/users/${targetId}`, ownerHeaders, {
+          role: "BRANCH_STAFF",
+        }),
+        await routeContext(targetId),
+      );
+      expect(missingBranchResponse.status).toBe(400);
+      const afterFailedBranch = await prisma.user.findUniqueOrThrow({
+        where: { id: targetId },
+      });
+      expect(afterFailedBranch.role).toBe(beforeFailedBranch.role);
+      expect(afterFailedBranch.locationId).toBe(beforeFailedBranch.locationId);
+      expect(afterFailedBranch.locationId).toBe(locations.stockRoom.id);
+
+      const branchResponse = await userIdRoute.PATCH(
+        patchRequest(`/api/users/${targetId}`, ownerHeaders, {
+          role: "BRANCH_STAFF",
+          locationId: locations.branches.BL.id,
+        }),
+        await routeContext(targetId),
+      );
+      expect(branchResponse.status).toBe(200);
+      expect(((await branchResponse.json()) as MutationBody).data?.location?.code).toBe("BL");
+
+      // Duplicate email conflicts map to a stable 409 with no change.
+      const duplicateEmailResponse = await userIdRoute.PATCH(
+        patchRequest(`/api/users/${targetId}`, ownerHeaders, {
+          email: OWNER_EMAIL,
+        }),
+        await routeContext(targetId),
+      );
+      expect(duplicateEmailResponse.status).toBe(409);
+      expect((await duplicateEmailResponse.json() as MutationBody).error?.code).toBe("EMAIL_IN_USE");
+      expect(
+        (await prisma.user.findUniqueOrThrow({ where: { id: targetId } })).email,
+      ).toBe("renamed.staff@example.test");
+
+      // Hostile location payloads never assign a location to Accounting.
+      const accountingTarget = (
+        await prisma.user.findUniqueOrThrow({
+          where: { email: "accounting-staff.um-owner@example.test" },
+        })
+      ).id;
+      const hostileLocationResponse = await userIdRoute.PATCH(
+        patchRequest(`/api/users/${accountingTarget}`, ownerHeaders, {
+          locationId: locations.branches.QC.id,
+        }),
+        await routeContext(accountingTarget),
+      );
+      expect(hostileLocationResponse.status).toBe(200);
+      expect(((await hostileLocationResponse.json()) as MutationBody).data?.location).toBeNull();
+
+      // The owner Admin is not manageable.
+      const admin = (await prisma.user.findUniqueOrThrow({ where: { email: OWNER_EMAIL } }));
+      const adminPatchResponse = await userIdRoute.PATCH(
+        patchRequest(`/api/users/${admin.id}`, ownerHeaders, { name: "New Owner" }),
+        await routeContext(admin.id),
+      );
+      expect(adminPatchResponse.status).toBe(403);
+      expect((await adminPatchResponse.json() as MutationBody).error?.code).toBe("USER_NOT_MANAGEABLE");
+      const adminAfter = await prisma.user.findUniqueOrThrow({ where: { email: OWNER_EMAIL } });
+      expect(adminAfter.name).toBe(admin.name);
+
+      const missingResponse = await userIdRoute.PATCH(
+        patchRequest("/api/users/does-not-exist", ownerHeaders, { name: "Ghost" }),
+        await routeContext("does-not-exist"),
+      );
+      expect(missingResponse.status).toBe(404);
+      expect((await missingResponse.json() as MutationBody).error?.code).toBe("USER_NOT_FOUND");
+
+      const staffCallerResponse = await userIdRoute.PATCH(
+        patchRequest(`/api/users/${targetId}`, staffHeaders, { name: "Escalated" }),
+        await routeContext(targetId),
+      );
+      expect(staffCallerResponse.status).toBe(403);
+      expect((await staffCallerResponse.json() as MutationBody).data).toBeUndefined();
+      expect(
+        (await prisma.user.findUniqueOrThrow({ where: { id: targetId } })).name,
+      ).toBe("Renamed Staff");
+    });
+  }, 120_000);
+
+  it("deactivates and reactivates idempotently without duplicates or a delete surface", async () => {
+    await withDisposableDatabase(async ({ prisma }) => {
+      const { ownerHeaders, staffHeaders, targetId } = await prepareLifecycle(prisma);
+      if (!userStatusRoute) throw new Error("status route module missing");
+
+      expect(await prisma.session.count({ where: { userId: targetId } })).toBe(1);
+
+      async function postStatus(status: string, headers: HeadersInit = ownerHeaders, userId = targetId) {
+        const response = await userStatusRoute!.POST(
+          patchRequest(`/api/users/${userId}/status`, headers, { status }, "POST"),
+          await routeContext(userId),
+        );
+        return { status: response.status, body: (await response.json()) as MutationBody };
+      }
+
+      const deactivated = await postStatus("INACTIVE");
+      expect(deactivated.status).toBe(200);
+      expect(deactivated.body.data?.status).toBe("INACTIVE");
+      expect(await prisma.session.count({ where: { userId: targetId } })).toBe(0);
+
+      const repeatedDeactivate = await postStatus("INACTIVE");
+      expect(repeatedDeactivate.status).toBe(200);
+      expect(repeatedDeactivate.body.data?.status).toBe("INACTIVE");
+      expect(await prisma.session.count({ where: { userId: targetId } })).toBe(0);
+
+      const reactivated = await postStatus("ACTIVE");
+      expect(reactivated.status).toBe(200);
+      expect(reactivated.body.data?.status).toBe("ACTIVE");
+      expect(await prisma.session.count({ where: { userId: targetId } })).toBe(0);
+
+      const repeatedReactivate = await postStatus("ACTIVE");
+      expect(repeatedReactivate.status).toBe(200);
+      expect(repeatedReactivate.body.data?.status).toBe("ACTIVE");
+
+      const missing = await postStatus("INACTIVE", ownerHeaders, "does-not-exist");
+      expect(missing.status).toBe(404);
+      expect(missing.body.error?.code).toBe("USER_NOT_FOUND");
+
+      const admin = await prisma.user.findUniqueOrThrow({ where: { email: OWNER_EMAIL } });
+      const adminDeactivate = await postStatus("INACTIVE", ownerHeaders, admin.id);
+      expect(adminDeactivate.status).toBe(403);
+      expect(adminDeactivate.body.error?.code).toBe("USER_NOT_MANAGEABLE");
+      expect(
+        (await prisma.user.findUniqueOrThrow({ where: { id: admin.id } })).status,
+      ).toBe("ACTIVE");
+
+      const accounting = await prisma.user.findUniqueOrThrow({
+        where: { email: "accounting-staff.um-owner@example.test" },
+      });
+      const staffCaller = await postStatus("INACTIVE", staffHeaders, accounting.id);
+      expect(staffCaller.status).toBe(403);
+      expect(staffCaller.body.data).toBeUndefined();
+      expect(
+        (await prisma.user.findUniqueOrThrow({ where: { id: accounting.id } })).status,
+      ).toBe("ACTIVE");
+
+      expect(userIdRoute && Object.prototype.hasOwnProperty.call(userIdRoute, "DELETE")).toBe(false);
+      expect(userStatusRoute && Object.prototype.hasOwnProperty.call(userStatusRoute, "DELETE")).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(usersRoute, "DELETE")).toBe(false);
+    });
+  }, 120_000);
+
+  it("resets credentials safely without duplication, echo, or surviving sessions", async () => {
+    await withDisposableDatabase(async ({ prisma }) => {
+      const { ownerHeaders, staffHeaders, targetId } = await prepareLifecycle(prisma);
+      if (!userPasswordRoute) throw new Error("password route module missing");
+
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const usersBefore = await prisma.user.count();
+        const accountsBefore = await prisma.account.count({ where: { userId: targetId } });
+        expect(accountsBefore).toBe(1);
+        expect(await prisma.session.count({ where: { userId: targetId } })).toBe(1);
+
+        async function postPassword(newPassword: string, headers: HeadersInit = ownerHeaders, userId = targetId) {
+          const response = await userPasswordRoute!.POST(
+            patchRequest(`/api/users/${userId}/password`, headers, { newPassword }, "POST"),
+            await routeContext(userId),
+          );
+          return {
+            status: response.status,
+            raw: JSON.stringify(await response.json()),
+          };
+        }
+
+        const firstReset = await postPassword("Brand-New-Pass-7");
+        expect(firstReset.status).toBe(200);
+        expect(firstReset.raw).not.toContain("Brand-New-Pass-7");
+        expect(firstReset.raw).toContain('"credentialSetupRequired":true');
+        expect(await prisma.session.count({ where: { userId: targetId } })).toBe(0);
+        expect(await prisma.account.count({ where: { userId: targetId } })).toBe(accountsBefore);
+        expect(await prisma.user.count()).toBe(usersBefore);
+        expect(errorSpy.mock.calls.map(String).join("\n")).not.toContain("Brand-New-Pass-7");
+
+        await expect(
+          auth.api.signInEmail({
+            body: { email: "branch-staff.um-owner@example.test", password: "Staff-Old-Pass-1" },
+          }),
+        ).rejects.toThrow();
+        const reauth = await auth.api.signInEmail({
+          body: { email: "branch-staff.um-owner@example.test", password: "Brand-New-Pass-7" },
+        });
+        expect(reauth.user.id).toBe(targetId);
+
+        const secondReset = await postPassword("Second-New-Pass-8");
+        expect(secondReset.status).toBe(200);
+        expect(secondReset.raw).not.toContain("Second-New-Pass-8");
+        expect(secondReset.raw).toContain('"credentialSetupRequired":true');
+        expect(await prisma.session.count({ where: { userId: targetId } })).toBe(0);
+        expect(await prisma.account.count({ where: { userId: targetId } })).toBe(accountsBefore);
+
+        const weakAttempt = await postPassword("weak");
+        expect(weakAttempt.status).toBe(400);
+        const stillWorks = await auth.api.signInEmail({
+          body: { email: "branch-staff.um-owner@example.test", password: "Second-New-Pass-8" },
+        });
+        expect(stillWorks.user.id).toBe(targetId);
+
+        const admin = await prisma.user.findUniqueOrThrow({ where: { email: OWNER_EMAIL } });
+        const adminReset = await postPassword("Admin-Pass-999", ownerHeaders, admin.id);
+        expect(adminReset.status).toBe(403);
+        expect(adminReset.raw).toContain("USER_NOT_MANAGEABLE");
+
+        const missingReset = await postPassword("Missing-Pass-9", ownerHeaders, "does-not-exist");
+        expect(missingReset.status).toBe(404);
+
+        const staffCaller = await postPassword("Escalated-Pass-1", staffHeaders);
+        expect(staffCaller.status).toBe(403);
+        expect(staffCaller.raw).not.toContain("Escalated-Pass-1");
+      } finally {
+        errorSpy.mockRestore();
+      }
+    });
+  }, 120_000);
 });
