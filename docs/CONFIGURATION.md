@@ -1,7 +1,7 @@
 <!-- generated-by: gsd-doc-writer -->
 # Configuration
 
-This project uses checked-in configuration for Next.js, Better Auth, TypeScript, Tailwind CSS, PostCSS, React Query, Prisma, ESLint, and local PostgreSQL. Authentication plus product/inventory reads use PostgreSQL; most other business behavior remains mock-backed.
+This project uses checked-in configuration for Next.js, Better Auth, TypeScript, Tailwind CSS, PostCSS, React Query, Prisma, ESLint, Vitest, read-only SheetJS workbook profiling, and local PostgreSQL. Authentication plus product/inventory reads use PostgreSQL; most other business behavior remains mock-backed.
 
 ## Environment variables
 
@@ -39,11 +39,21 @@ The npm scripts in `package.json` are:
 | `npm run start` | `next start` | Serve an existing production build. |
 | `npm run lint` | `eslint .` | Run the checked-in ESLint flat configuration; existing prototype findings currently make it fail. |
 | `npm run typecheck` | `tsc --noEmit` | Run strict TypeScript checking without emitting files. |
+| `npm run test` | `vitest run --project unit` | Run Node unit tests once; pass a test path after `--` for a focused run. |
+| `npm run test:integration` | `vitest run --project integration --no-file-parallelism` | Run the serial integration project; its disposable database harness and tests are pending. |
+| `npm run data:profile -- --sheet <name> [--input <path>]` | `node scripts/data-onboarding/workbook-profile.mjs` | Read one selected sheet and emit JSON evidence. Defaults to the owner workbook path, never executes formulas, and never writes beside the input. |
+| `npm run data:generate` | `node scripts/data-onboarding/generate-seed.mjs` | Reserved interface for reviewed canonical generation; the executable is intentionally deferred and must not be used before owner resolutions. |
 | `npm run prisma:generate` | `prisma generate` | Regenerate Prisma Client from the checked-in schema. |
 | `npm run db:migrate` | `prisma migrate dev` | Create/apply development migrations. Production uses `prisma migrate deploy`. |
 | `npm run db:seed` | `prisma db seed` | Upsert development locations, products, balances, and the environment-supplied Admin. |
 
 `package-lock.json` is present, so npm is the repository's locked package manager.
+
+### Vitest and workbook tooling
+
+`vitest.config.ts` defines a Node unit project and a serial integration project. Vitest is pinned to the human-approved `4.1.11` release. SheetJS CE is locked to the official `0.20.3` CDN tarball rather than the stale npm-registry release.
+
+The workbook profiler is a developer CLI, not an upload or import endpoint. Its `.mjs` entry point runs directly on Node 20, while `workbook-profile.d.mts` supplies the strict TypeScript contract. The checked-in hostile XLSX fixture is synthetic; the owner workbook remains read-only input and is excluded from quick tests.
 
 ### Next.js
 

@@ -3,22 +3,23 @@
 
 ## Current status
 
-This repository does not currently have an automated test suite. No test framework, DOM testing library, browser test runner, test files, test configuration, coverage tool, `test` package script, or CI workflow is checked in. The application is presently a Next.js UI prototype: authentication plus product/inventory reads use PostgreSQL, while most screens and all business mutations remain mock/local, so verification is manual.
+Vitest `4.1.11` is configured with Node unit and serial integration projects. The first unit suite covers the read-only workbook profiler and its small hostile XLSX fixture. No DOM testing library, browser runner, coverage tool, automated database harness, or CI workflow is checked in. The application remains a Next.js UI prototype: authentication plus product/inventory reads use PostgreSQL, while most screens and all business mutations remain mock/local.
 
 | Capability | Current state |
 | --- | --- |
-| Unit/component tests | Not configured |
+| Unit tests | Vitest Node project; workbook profiler suite checked in |
+| Component tests | Not configured |
 | Route-handler tests | Not configured |
-| Database integration tests | No automated suite; migration/seed/auth/read paths were manually verified against disposable PostgreSQL 17 |
+| Database integration tests | Serial Vitest project configured, but no integration tests or disposable database harness are checked in yet |
 | End-to-end tests | Not configured |
 | Coverage reporting or thresholds | Not configured |
 | CI test execution | Not configured; `.github/workflows/` is absent |
 
-Running `npm test` currently fails with `Missing script: "test"`. Do not use any of the recommended future commands later in this document until their dependencies, configuration, and package scripts have been added.
+`npm run test` runs the unit project once. `npm run test:integration` is reserved for the separately protected disposable PostgreSQL harness and currently has no test files.
 
 ## Test framework and setup
 
-There is no current test framework to install or configure. `package.json` contains no Jest, Vitest, Testing Library, Playwright, Cypress, or coverage dependencies. Install exactly the dependencies recorded in `package-lock.json` before performing the available manual checks:
+Install exactly the dependencies recorded in `package-lock.json` before running Vitest or the available manual checks:
 
 ```bash
 npm ci
@@ -26,21 +27,30 @@ npm ci
 
 Use `npm install` only when intentionally resolving or changing dependencies.
 
-No automated test database harness is configured. The repository now has a migration, seed, shared server-only Prisma client, authorization boundary, and Prisma-backed product/inventory handlers. Use a disposable database for manual verification; never reset an unknown developer database.
+Vitest uses `vitest.config.ts`: unit tests run in Node and exclude `tests/integration/`; the integration project is serial. No automated test database harness is configured. Use a disposable database for manual verification; never reset an unknown developer database.
 
 ## Running tests
 
-There is currently no full-suite, watch, subset, or single-file test command. In particular, this command is **not available**:
+Run the current unit suite once:
 
 ```bash
-npm test
+npm run test
 ```
 
-The existing scripts provide development and build tooling, not automated behavioral tests:
+Run one changed test file without watch mode:
+
+```bash
+npm run test -- scripts/data-onboarding/workbook-profile.test.ts
+```
+
+The current scripts provide these verification paths:
 
 | Command | Current purpose and caveat |
 | --- | --- |
 | `npm run dev` | Starts the application for manual browser and HTTP verification. |
+| `npm run test` | Runs the Vitest Node unit project once. |
+| `npm run test -- <test-file>` | Runs a focused unit test file once. |
+| `npm run test:integration` | Runs the serial integration project; no integration tests or disposable database harness exist yet. |
 | `npm run build` | Creates a production Next.js build. A clean Node.js `20.20.2` isolated run passes on 2026-08-24, with existing Recharts zero-size prerender warnings. It is not a behavioral test suite. |
 | `npm run typecheck` | Runs strict TypeScript with `tsc --noEmit`. A clean Node.js `20.20.2` isolated run passes on 2026-08-24. |
 | `npm run lint` | Runs the checked-in ESLint flat configuration. It is reproducible but currently fails with 104 errors and 41 warnings from existing prototype code. |
@@ -79,11 +89,11 @@ Products and inventory return validated, paginated PostgreSQL data. Dashboard, c
 
 ## Writing new tests
 
-There is no existing test-file naming convention or shared helper directory. Adopt conventions only when the corresponding runner is configured. A practical starting convention is:
+The checked-in Vitest conventions are:
 
 - Place tests beside source as `*.test.ts` for pure code and route handlers, and `*.test.tsx` for React components.
-- Place browser journeys under `tests/e2e/*.spec.ts`.
-- Put shared render factories, fixtures, and database helpers under `tests/helpers/`.
+- Place PostgreSQL integration tests under `tests/integration/*.test.ts`; keep them serial or worker-isolated and use only a positively identified disposable target.
+- Put deterministic fixtures under `tests/fixtures/` and shared database/request helpers under `tests/helpers/`.
 - Prefer small, explicit fixtures over importing the complete arrays from `lib/mock-data.ts` when testing edge cases.
 - Test observable behavior and domain outcomes rather than component implementation details.
 
@@ -91,11 +101,11 @@ The existing pure functions in `lib/dashboard-data.ts` are suitable first unit-t
 
 ## Incremental test strategy
 
-Add automation in layers. The commands shown here are **future recommendations and are not configured today**.
+Add automation in layers. Only the Node unit and empty serial integration projects are configured today; DOM, browser, coverage, and CI commands below remain future work.
 
 ### 1. Pure functions and React components
 
-Configure Vitest with a `jsdom` environment, React Testing Library, and `@testing-library/jest-dom`. Begin with `lib/dashboard-data.ts`, `components/page-shell.tsx`, `components/simple-table.tsx`, and focused controls under `components/ui/`.
+The current Vitest unit project uses the Node environment. Add a separate browser-like project plus React Testing Library and `@testing-library/jest-dom` before component tests. Begin with `lib/dashboard-data.ts`, `components/page-shell.tsx`, `components/simple-table.tsx`, and focused controls under `components/ui/`.
 
 Test calculations and boundary values with pure unit tests. For components, test accessible names, keyboard interaction, loading/empty states, dialogs, form validation, callbacks, and conditional rendering. Split oversized page components before attempting broad page-level component tests.
 
@@ -160,17 +170,17 @@ Use network interception to simulate disconnects, delayed responses, retries, an
 
 ## Recommended future commands
 
-The following test script names are a proposed interface only. **None of the test scripts exists in `package.json` today.** Add and verify the relevant dependencies and configuration before documenting them as runnable project commands.
+The unit and integration script names are checked in. The remaining names are proposed interfaces only.
 
-| Future command | Intended scope |
+| Command | Current or intended scope |
 | --- | --- |
-| `npm run test` | Run unit, component, and route-handler tests once Vitest is configured. |
+| `npm run test` | Current: run Node unit tests once. |
 | `npm run test:watch` | Run Vitest in watch mode. |
 | `npm run test:coverage` | Produce coverage once a coverage provider is configured. |
-| `npm run test:integration` | Run domain/Prisma integration tests against disposable PostgreSQL. |
+| `npm run test:integration` | Configured serial project; tests and disposable PostgreSQL harness are pending. |
 | `npm run test:e2e` | Run Playwright journeys once E2E infrastructure exists. |
 
-For a configured Vitest suite, a future single-file invocation could use `npm run test -- path/to/file.test.ts`. For a configured Playwright suite, a future single-spec invocation could use `npm run test:e2e -- tests/e2e/receipt-sale.spec.ts`. These are examples of the intended command shape, not currently runnable project commands.
+The current focused Vitest invocation is `npm run test -- path/to/file.test.ts`. A future configured Playwright suite could use `npm run test:e2e -- tests/e2e/receipt-sale.spec.ts`.
 
 ## Coverage requirements
 
