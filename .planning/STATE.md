@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 current_phase: 01
 current_phase_name: Trusted Foundation and Data Onboarding
 status: executing
-stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-08-25T06:52:07.973Z"
+stopped_at: Completed 01-13-PLAN.md
+last_updated: "2026-08-25T07:03:59.506Z"
 last_activity: 2026-08-25
 last_activity_desc: Phase 01 execution started
-state_head: fd67150d897f4bb0448a5138fd018c4b43ace8f8
+state_head: 0e92369422464721f4dab22e87fc8f8cc9e193fd
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 17
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-08-25)
 ## Current Position
 
 Phase: 01 (Trusted Foundation and Data Onboarding) — EXECUTING
-Plan: 4 of 17
+Plan: 5 of 17
 Status: Ready to execute
 Last activity: 2026-08-25 — Phase 01 execution started
 
@@ -61,6 +61,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P01 | 5 min | 1 tasks | 3 files |
 | Phase 01 P02 | 3h 54m | 2 tasks | 10 files |
 | Phase 01 P03 | 12 min | 2 tasks | 9 files |
+| Phase 01 P13 | 7 min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -79,6 +80,9 @@ Decisions are logged in PROJECT.md. Current constraints:
 - [Phase 01]: Preserve BL formula source labels and leave BL BEFORE and SR mapping unresolved for owner review.
 - [Phase 01]: Classify identity-empty formula rows as spacers and code-less ACCESSORIES labels as headings before temporary codes.
 - [Phase 01]: Withhold all canonical candidates until every keyed owner finding is resolved against the current workbook hash.
+- [Phase 01]: Use only the exact localhost:55435 disposable PostgreSQL 17 target with no bind mount. — A complete positive identity check prevents destructive integration work from reaching development, production, or unknown databases.
+- [Phase 01]: Represent revoked Better Auth sessions by deleted Session rows. — Immediate revocation is fail-closed without adding a noncanonical schema field.
+- [Phase 01]: Require explicit opt-in before persisting invalid role/location fixtures. — Canonical defaults stay valid while later authorization tests can deliberately prove fail-closed handling.
 
 ### Pending Todos
 
@@ -88,7 +92,7 @@ None yet.
 
 - Phase 1 planning must resolve the supplied workbook's duplicate codes, missing prices, formula anomalies, and August `SR`/`BL` mapping before generating canonical seed data.
 - Phase 1 `UI-SPEC.md` is approved; refresh `01-RESEARCH.md` against the reconciled scope before planning.
-- Vitest unit infrastructure and workbook profiler coverage now exist; database integration tests and CI remain pending, and lint still has documented baseline failures.
+- Vitest unit infrastructure, workbook coverage, and the isolated PostgreSQL integration harness now exist; CI remains pending, and lint still has documented baseline failures.
 - Existing business screens and mutations are mock/local prototypes; preserve the distinction from durable behavior.
 
 ## Deferred Items
@@ -102,6 +106,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-25T06:52:07.950Z
-Stopped at: Completed 01-03-PLAN.md
+Last session: 2026-08-25T07:03:59.482Z
+Stopped at: Completed 01-13-PLAN.md
 Resume file: None
