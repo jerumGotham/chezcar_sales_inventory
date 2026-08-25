@@ -53,7 +53,7 @@ model Product {
   description       String?
   category          String?
   brand             String?
-  price             Decimal            @db.Decimal(12, 2)
+  price             Decimal?           @db.Decimal(12, 2)
   status            ProductStatus      @default(ACTIVE)
   inventoryBalances InventoryBalance[]
   createdAt         DateTime           @default(now())
@@ -79,33 +79,39 @@ model InventoryBalance {
 }
 
 model User {
-  id            String     @id @default(cuid())
-  name          String
-  email         String     @unique
-  emailVerified Boolean    @default(false)
-  image         String?
-  role          UserRole   @default(BRANCH_STAFF)
-  status        UserStatus @default(ACTIVE)
-  locationId    String?
-  location      Location?  @relation(fields: [locationId], references: [id])
-  sessions      Session[]
-  accounts      Account[]
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  id                      String     @id @default(cuid())
+  name                    String
+  email                   String     @unique
+  emailVerified           Boolean    @default(false)
+  image                   String?
+  role                    UserRole   @default(BRANCH_STAFF)
+  /// Application activation is governed only by status. Lifecycle services keep the plugin ban fields false/null.
+  status                  UserStatus @default(ACTIVE)
+  credentialSetupRequired Boolean    @default(false)
+  banned                  Boolean    @default(false)
+  banReason               String?
+  banExpires              DateTime?
+  locationId              String?
+  location                Location?  @relation(fields: [locationId], references: [id])
+  sessions                Session[]
+  accounts                Account[]
+  createdAt               DateTime   @default(now())
+  updatedAt               DateTime   @updatedAt
 
   @@index([locationId])
 }
 
 model Session {
-  id        String   @id @default(cuid())
-  expiresAt DateTime
-  token     String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  ipAddress String?
-  userAgent String?
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String   @id @default(cuid())
+  expiresAt      DateTime
+  token          String   @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  ipAddress      String?
+  userAgent      String?
+  impersonatedBy String?
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }

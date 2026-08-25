@@ -53,8 +53,8 @@ const STATUS_OPTIONS: SelectOption[] = [
   { value: "Inactive", label: "Inactive" },
 ];
 
-function formatPeso(value: number) {
-  return `₱${value.toLocaleString("en-PH")}`;
+function formatPeso(value: number | null) {
+  return value === null ? "—" : `₱${value.toLocaleString("en-PH")}`;
 }
 
 function getStatusBadgeClass(status: ProductStatus) {
@@ -568,7 +568,7 @@ export default function ProductsPage() {
                 <Input
                   id="price"
                   type="number"
-                  defaultValue={selectedProduct?.price ?? 0}
+                  defaultValue={selectedProduct?.price ?? undefined}
                 />
               </div>
 

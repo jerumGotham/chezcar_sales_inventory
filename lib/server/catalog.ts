@@ -91,7 +91,7 @@ export async function listProducts(
       itemCode: product.itemCode,
       name: product.name,
       category: product.category ?? "Uncategorized",
-      price: product.price.toNumber(),
+      price: product.price?.toNumber() ?? null,
       reorderLevel: Math.max(
         0,
         ...product.inventoryBalances.map((balance) => balance.reorderLevel),

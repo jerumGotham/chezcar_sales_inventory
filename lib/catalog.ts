@@ -5,7 +5,7 @@ export type ProductRow = {
   itemCode: string;
   name: string;
   category: string;
-  price: number;
+  price: number | null;
   reorderLevel: number;
   status: ProductStatus;
   description?: string;
