@@ -1,33 +1,21 @@
-"use client";
-
 import { ReactNode } from "react";
-import { usePathname } from "next/navigation";
-import { AppSidebar } from "@/components/app-sidebar";
+import { headers } from "next/headers";
 
-export default function AppLayoutShell({ children }: { children: ReactNode }) {
-  const pathname = usePathname();
+import { AppLayoutShellClient } from "@/components/app-layout-shell-client";
+import { ShellAccessProvider } from "@/components/shell-access-context";
+import { loadShellAccess } from "@/lib/server/shell";
 
-  const isPosPage = pathname?.startsWith("/pos");
-  const isAuthPage = pathname?.startsWith("/sign-in");
-
-  if (isAuthPage) {
-    return children;
-  }
-
-  if (isPosPage) {
-    return (
-      <main className="min-h-screen bg-slate-50 text-foreground">
-        {children}
-      </main>
-    );
-  }
+export default async function AppLayoutShell({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const requestHeaders = new Headers(await headers());
+  const access = await loadShellAccess(requestHeaders);
 
   return (
-    <div className="min-h-screen lg:flex">
-      <AppSidebar />
-      <main className="min-h-screen min-w-0 flex-1 bg-white p-5 pt-20 dark:bg-background lg:p-8">
-        {children}
-      </main>
-    </div>
+    <ShellAccessProvider access={access}>
+      <AppLayoutShellClient>{children}</AppLayoutShellClient>
+    </ShellAccessProvider>
   );
 }

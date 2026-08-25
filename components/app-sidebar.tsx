@@ -5,21 +5,40 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
+  Boxes,
+  ClipboardList,
+  LayoutDashboard,
   Menu,
+  Package,
   PanelLeftClose,
   PanelLeftOpen,
   Pin,
   PinOff,
+  UserCog,
+  Users,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { menus } from "@/lib/menu";
+import type {
+  ShellMenuEntryDto,
+  ShellMenuIcon,
+} from "@/lib/contracts/access";
 import { cn } from "@/lib/utils";
 
 const DESKTOP_PIN_KEY = "chezcar-sidebar-pinned";
 
-export function AppSidebar() {
+const MENU_ICONS: Record<ShellMenuIcon, LucideIcon> = {
+  dashboard: LayoutDashboard,
+  customers: Users,
+  products: Package,
+  inventory: Boxes,
+  "customer-orders": ClipboardList,
+  users: UserCog,
+};
+
+export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
   const pathname = usePathname();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isDesktopExpanded, setIsDesktopExpanded] = useState(true);
@@ -73,17 +92,18 @@ export function AppSidebar() {
 
   const renderMenu = (showLabels: boolean) => (
     <nav className="space-y-2">
-      {menus.map((menu) => {
-        const Icon = menu.icon;
+      {menu.map((menuItem) => {
+        const Icon = MENU_ICONS[menuItem.icon];
         const active =
-          pathname === menu.href || pathname.startsWith(`${menu.href}/`);
+          pathname === menuItem.href ||
+          pathname.startsWith(`${menuItem.href}/`);
 
         return (
           <Link
-            key={menu.href}
-            href={menu.href}
-            aria-label={menu.label}
-            title={menu.label}
+            key={menuItem.href}
+            href={menuItem.href}
+            aria-label={menuItem.label}
+            title={menuItem.label}
             className={cn(
               buttonVariants({ variant: "ghost" }),
               "group h-12 w-full rounded-2xl border px-3 text-sm font-medium transition-all duration-200",
@@ -102,9 +122,9 @@ export function AppSidebar() {
               )}
             />
             {showLabels ? (
-              <span className="truncate">{menu.label}</span>
+              <span className="truncate">{menuItem.label}</span>
             ) : (
-              <span className="sr-only">{menu.label}</span>
+              <span className="sr-only">{menuItem.label}</span>
             )}
           </Link>
         );

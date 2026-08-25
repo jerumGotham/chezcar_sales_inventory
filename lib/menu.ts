@@ -1,5 +1,6 @@
 import type {
   ShellCapabilityId,
+  ShellMenuHref,
   ShellMenuIcon,
 } from "./contracts/access";
 import {
@@ -14,7 +15,7 @@ import {
 
 export type MenuDefinition = {
   label: string;
-  href: string;
+  href: ShellMenuHref;
   icon: LucideIcon;
   iconId: ShellMenuIcon;
   capability: ShellCapabilityId;

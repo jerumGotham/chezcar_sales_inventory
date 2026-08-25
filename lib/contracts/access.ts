@@ -20,9 +20,17 @@ export type ShellMenuIcon =
   | "customer-orders"
   | "users";
 
+export type ShellMenuHref =
+  | "/dashboard"
+  | "/customers"
+  | "/products"
+  | "/inventory"
+  | "/customer-orders"
+  | "/users";
+
 export type ShellMenuEntryDto = {
   label: string;
-  href: string;
+  href: ShellMenuHref;
   icon: ShellMenuIcon;
 };
 
