@@ -1,10 +1,70 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import {
   buildReviewFindings,
   classifySourceRow,
+  resolutionRecordSchema,
   type ProfileEvidence,
 } from "./canonicalize.mjs";
+
+type ReviewArtifact = {
+  workbook: { sha256: string };
+  findings: Array<{ id: string; blocking: true }>;
+};
+
+type ResolutionArtifact = {
+  workbookSha256: string;
+  resolutions: Record<string, unknown>;
+};
+
+function validateResolutionCoverage(
+  review: ReviewArtifact,
+  artifact: ResolutionArtifact,
+) {
+  if (artifact.workbookSha256 !== review.workbook.sha256) {
+    throw new Error("Resolution workbook hash is stale");
+  }
+
+  const expectedIds = new Set(review.findings.map(({ id }) => id));
+  const records = Object.entries(artifact.resolutions).map(([key, value]) => {
+    const record = resolutionRecordSchema.parse(value);
+
+    if (key !== record.findingId) {
+      throw new Error(`Resolution key does not match finding ID: ${key}`);
+    }
+    if (record.workbookSha256 !== review.workbook.sha256) {
+      throw new Error(`Resolution workbook hash is stale: ${key}`);
+    }
+    if (
+      record.status !== "resolved" ||
+      !record.reviewer ||
+      !record.reviewedAt ||
+      !record.decision ||
+      !record.reason
+    ) {
+      throw new Error(`Resolution is incomplete: ${key}`);
+    }
+
+    return record;
+  });
+  const recordIds = records.map(({ findingId }) => findingId);
+
+  if (new Set(recordIds).size !== recordIds.length) {
+    throw new Error("Duplicate resolution finding ID");
+  }
+
+  const missingIds = [...expectedIds].filter((id) => !recordIds.includes(id));
+  const unknownIds = recordIds.filter((id) => !expectedIds.has(id));
+  if (missingIds.length > 0 || unknownIds.length > 0) {
+    throw new Error(
+      `Resolution coverage mismatch: ${missingIds.length} missing, ${unknownIds.length} unknown`,
+    );
+  }
+
+  return records;
+}
 
 type CellValue = string | number | boolean | null;
 
@@ -277,5 +337,56 @@ describe("buildReviewFindings", () => {
       ]),
     );
     expect(result.canonicalCandidates).toEqual([]);
+  });
+});
+
+describe("approved owner resolution coverage", () => {
+  const review = JSON.parse(
+    readFileSync(
+      new URL("./review-report.json", import.meta.url),
+      "utf8",
+    ),
+  ) as ReviewArtifact;
+  const resolutions = JSON.parse(
+    readFileSync(new URL("./resolutions.json", import.meta.url), "utf8"),
+  ) as ResolutionArtifact;
+
+  it("has exactly one complete reviewed resolution for every blocking finding", () => {
+    const records = validateResolutionCoverage(review, resolutions);
+
+    expect(records).toHaveLength(review.findings.length);
+    expect(records).toHaveLength(855);
+    expect(new Set(records.map(({ findingId }) => findingId))).toHaveLength(855);
+  });
+
+  it.each([
+    ["stale hash", (copy: ResolutionArtifact) => {
+      copy.workbookSha256 = "a".repeat(64);
+    }],
+    ["missing ID", (copy: ResolutionArtifact) => {
+      delete copy.resolutions[Object.keys(copy.resolutions)[0]];
+    }],
+    ["unknown ID", (copy: ResolutionArtifact) => {
+      const first = structuredClone(Object.values(copy.resolutions)[0]) as {
+        findingId: string;
+      };
+      first.findingId = "F-UNKNOWN-S1-R1";
+      copy.resolutions[first.findingId] = first;
+    }],
+    ["duplicate finding ID", (copy: ResolutionArtifact) => {
+      const [first, second] = Object.values(copy.resolutions) as Array<{
+        findingId: string;
+      }>;
+      second.findingId = first.findingId;
+    }],
+    ["malformed resolution", (copy: ResolutionArtifact) => {
+      const first = Object.values(copy.resolutions)[0] as { reviewer?: string };
+      delete first.reviewer;
+    }],
+  ])("refuses %s resolution data", (_label, mutate) => {
+    const copy = structuredClone(resolutions);
+    mutate(copy);
+
+    expect(() => validateResolutionCoverage(review, copy)).toThrow();
   });
 });
