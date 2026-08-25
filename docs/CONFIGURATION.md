@@ -15,6 +15,7 @@ Copy the sanitized `.env.example` to an untracked `.env` and replace every place
 | `SEED_ADMIN_EMAIL` | Seed only | None | Email for the first development Admin. |
 | `SEED_ADMIN_PASSWORD` | Seed only | None | Admin password; the seed rejects examples and values shorter than 12 characters. |
 | `SEED_ADMIN_NAME` | Seed only | None | Display name for the seeded Admin. |
+| `ALLOW_CATALOG_RESET` | Catalog seed/reload only | None | Must equal `true`; still requires an exact isolated development/test URL and is always refused in production or against the checked-in bind mount. |
 
 Use the credentials configured for your environment and do not commit the populated file:
 
@@ -40,12 +41,13 @@ The npm scripts in `package.json` are:
 | `npm run lint` | `eslint .` | Run the checked-in ESLint flat configuration; existing prototype findings currently make it fail. |
 | `npm run typecheck` | `tsc --noEmit` | Run strict TypeScript checking without emitting files. |
 | `npm run test` | `vitest run --project unit` | Run Node unit tests once; pass a test path after `--` for a focused run. |
-| `npm run test:integration` | `vitest run --project integration --no-file-parallelism` | Run the serial integration project; its disposable database harness and tests are pending. |
+| `npm run test:integration` | `vitest run --project integration --no-file-parallelism` | Run serial tests against the fixed, no-bind-mount disposable PostgreSQL 17 harness. |
 | `npm run data:profile -- --sheet <name> [--input <path>]` | `node scripts/data-onboarding/workbook-profile.mjs` | Read one selected sheet and emit JSON evidence. Defaults to the owner workbook path, never executes formulas, and never writes beside the input. |
 | `npm run data:generate` | `node scripts/data-onboarding/generate-seed.mjs` | Reserved interface for reviewed canonical generation; the executable is intentionally deferred and must not be used before owner resolutions. |
 | `npm run prisma:generate` | `prisma generate` | Regenerate Prisma Client from the checked-in schema. |
 | `npm run db:migrate` | `prisma migrate dev` | Create/apply development migrations. Production uses `prisma migrate deploy`. |
-| `npm run db:seed` | `prisma db seed` | Upsert development locations, products, balances, and the environment-supplied Admin. |
+| `npm run db:seed` | `prisma db seed` | Transactionally load the approved canonical opening catalog and environment-supplied owner Admin on an explicitly allowed isolated target. |
+| `npm run db:catalog:reload` | `node prisma/seed.mjs --catalog-only` | Transactionally replace only canonical locations/products/opening balances while preserving auth; uses the same positive reset gates. |
 
 `package-lock.json` is present, so npm is the repository's locked package manager.
 

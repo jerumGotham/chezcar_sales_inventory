@@ -9,10 +9,12 @@ The implemented database boundary consists of:
 
 - `prisma/schema.prisma`: implemented foundation models only.
 - `prisma/migrations/20260824000000_initial_foundation/migration.sql`: reproducible initial PostgreSQL migration.
+- `prisma/migrations/20260825_trusted_foundation/migration.sql`: additive nullable-price, account-state, Better Auth compatibility, role-scope, and singleton-Admin migration.
 - `lib/server/prisma.ts`: server-only development-safe Prisma singleton.
 - `lib/server/auth.ts`: Better Auth Prisma adapter configuration.
 - `lib/server/catalog.ts`: validated product and inventory reads.
-- `prisma/seed.mjs`: deterministic reference data and environment-driven first Admin.
+- `prisma/seed.mjs`: validated canonical opening catalog and environment-driven first Admin.
+- `lib/server/services/catalog-reset.ts`: transactionally scoped catalog reload with positive target identity checks.
 
 ## Implemented models
 
@@ -22,7 +24,7 @@ Represents both the central `WAREHOUSE` and each `BRANCH`. It has a unique busin
 
 ### Product
 
-Uses unique `itemCode`, name, optional description/category/brand, current Decimal price, `ACTIVE`/`INACTIVE` status, and timestamps. Historical price versions are not implemented yet.
+Uses unique `itemCode`, name, optional description/category/brand, nullable current Decimal price, `ACTIVE`/`INACTIVE` status, and timestamps. A null price is an approved value only for inactive, non-sellable opening products; it is not converted to zero. Historical price versions are not implemented yet.
 
 ### InventoryBalance
 
@@ -32,7 +34,7 @@ The initial SQL migration enforces non-negative reserved/reorder/cost values and
 
 ### User and Better Auth
 
-User contains Better Auth's identity fields plus fixed `UserRole`, `ACTIVE`/`INACTIVE` status, and optional Location assignment. Session, Account, and Verification match Better Auth's required database schema.
+User contains Better Auth's identity fields plus fixed `UserRole`, `ACTIVE`/`INACTIVE` status, optional Location assignment, `credentialSetupRequired`, and the pinned Better Auth 1.6.23 Admin-plugin compatibility fields. `User.status` is the sole application activation authority; lifecycle services keep `banned`, `banReason`, and `banExpires` false/null. Session includes the plugin-compatible nullable `impersonatedBy` field.
 
 Fixed roles are:
 
@@ -41,7 +43,7 @@ Fixed roles are:
 - `BRANCH_STAFF`
 - `ACCOUNTING_STAFF`
 
-The application reloads the User on protected API requests instead of treating a valid cookie as sufficient authorization. Branch Staff must have a location assignment for inventory access.
+The application reloads the User on protected API requests instead of treating a valid cookie as sufficient authorization. A database check requires Admin/Accounting Staff to have no location and Stock/Branch Staff to have a location. A partial unique index permits exactly one persisted owner Admin at most; service policy additionally validates Stock Room versus branch assignments.
 
 ## Deliberately absent models
 
@@ -62,18 +64,20 @@ SEED_ADMIN_PASSWORD="<strong-development-password>"
 SEED_ADMIN_NAME="<admin-display-name>"
 ```
 
-Then run:
+The ordinary application runtime may use the bind-mounted development database. Destructive catalog seed/reload must not. For catalog onboarding, start a separately isolated PostgreSQL 17 database with no bind mount at the exact development identity `localhost:55436/chezcar_catalog_dev`, set `NODE_ENV=development`, set `ALLOW_CATALOG_RESET=true`, and then run:
 
 ```bash
-docker compose up -d postgres
 npm run prisma:generate
 npm run db:migrate
 npm run db:seed
+npm run db:catalog:reload
 ```
 
-`db:migrate` uses Prisma's development migration workflow. Deployment should use `npx prisma migrate deploy` against a backed-up target.
+`db:migrate` uses Prisma's development migration workflow. Deployment should use `prisma migrate deploy` against a backed-up target.
 
-The seed upserts locations, products, balances, and the first Admin. It rejects the placeholder email/password and passwords shorter than 12 characters. No credential is committed.
+The seed validates the approved fixture hash and complete six-location/product/balance shape, then replaces locations, products, and opening balances with the first Admin in one transaction. It rejects placeholder credentials, passwords shorter than 12 characters, and a different existing Admin. `db:catalog:reload` runs the same catalog-only CLI path and preserves users, accounts, and sessions. No credential is committed.
+
+Both commands refuse before opening a write transaction unless `ALLOW_CATALOG_RESET=true` and the URL exactly identifies either the isolated development target above or the fixed disposable integration target. Production, unknown URLs, and the checked-in port-5435 bind mount are always refused.
 
 ## Local data warning
 
@@ -85,7 +89,7 @@ Do not delete or replace a developer's existing data directory without confirmin
 
 ## Current gaps
 
-- No automated database integration tests or CI database service.
+- No CI database service; disposable PostgreSQL migration and seed integration tests run locally.
 - No immutable InventoryMovement ledger or transactional stock mutations.
 - No ProductPriceVersion, imports, receipts, transfers, sales, payments, notifications, or audit tables.
 - No startup-time typed environment validation.
