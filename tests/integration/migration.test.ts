@@ -129,6 +129,17 @@ describe("trusted foundation migration", () => {
         );
       }
 
+      const singletonAdminIndexes = await prisma.$queryRaw<
+        Array<{ indexname: string }>
+      >`
+        SELECT indexname
+        FROM pg_indexes
+        WHERE schemaname = 'public' AND indexname = 'User_single_admin_key'
+      `;
+      expect(singletonAdminIndexes).toEqual([
+        { indexname: "User_single_admin_key" },
+      ]);
+
       await expect(
         insertUser(prisma, {
           id: "second-admin",
@@ -136,7 +147,7 @@ describe("trusted foundation migration", () => {
           role: "ADMIN",
           locationId: null,
         }),
-      ).rejects.toThrow(/User_single_admin_key/);
+      ).rejects.toThrow(/23505|already exists/i);
     });
   }, 30_000);
 });
