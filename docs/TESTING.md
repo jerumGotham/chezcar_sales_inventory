@@ -3,19 +3,20 @@
 
 ## Current status
 
-Vitest `4.1.11` is configured with Node unit and serial integration projects. The first unit suite covers the read-only workbook profiler and its small hostile XLSX fixture. No DOM testing library, browser runner, coverage tool, automated database harness, or CI workflow is checked in. The application remains a Next.js UI prototype: authentication plus product/inventory reads use PostgreSQL, while most screens and all business mutations remain mock/local.
+Vitest `4.1.11` is configured with Node unit and serial integration projects. The unit project covers the workbook profiler, canonicalizer, fixture generator, catalog-reset gates, access policy, shell DTOs, proxy denial, and the disposable-database/request helpers. The serial integration project covers migration application, seed/reload determinism, persisted authorization factories, inventory scope, the Better Auth admin surface, user management, session revocation, and first-login credential setup over a fixed-identity disposable PostgreSQL 17 container. No DOM testing library, browser runner, coverage tool, or CI workflow is checked in. The application remains a Next.js UI prototype: authentication, product/inventory reads, user management, and credential setup use PostgreSQL, while most screens and all sales/receiving/transfer mutations remain mock/local.
 
 | Capability | Current state |
 | --- | --- |
-| Unit tests | Vitest Node project; workbook profiler suite checked in |
+| Unit tests | Vitest Node project; 10 suite files checked in (workbook, canonicalization, generation, reset gates, policy, shell, proxy, helpers) |
 | Component tests | Not configured |
-| Route-handler tests | Not configured |
-| Database integration tests | Serial Vitest project configured, but no integration tests or disposable database harness are checked in yet |
+| Route-handler tests | Unit-project direct-handler authorization suites (`tests/routes/authorization.test.ts`, `proxy.test.ts`); no DOM/browser runner |
+| Database integration tests | Serial Vitest project with fixed-identity disposable PostgreSQL 17 harness; 8 integration suite files checked in |
 | End-to-end tests | Not configured |
 | Coverage reporting or thresholds | Not configured |
 | CI test execution | Not configured; `.github/workflows/` is absent |
+| Phase evidence gate | `npm run verify:phase-01 -- --validate-evidence` runs fresh migration/seed/double-reload plus all suites on the disposable target |
 
-`npm run test` runs the unit project once. `npm run test:integration` is reserved for the separately protected disposable PostgreSQL harness and currently has no test files.
+`npm run test` runs the unit project once. `npm run test:integration` starts its own disposable PostgreSQL container (never a bind mount) and must not overlap another instance of the same container name/port.
 
 ## Test framework and setup
 
@@ -27,7 +28,7 @@ npm ci
 
 Use `npm install` only when intentionally resolving or changing dependencies.
 
-Vitest uses `vitest.config.ts`: unit tests run in Node and exclude `tests/integration/`; the integration project is serial. No automated test database harness is configured. Use a disposable database for manual verification; never reset an unknown developer database.
+Vitest uses `vitest.config.ts`: unit tests run in Node and exclude `tests/integration/`; the integration project is serial with `--no-file-parallelism`. The integration lifecycle helper accepts only the exact disposable identity — container `chezcar_test_postgres_01_13`, port `55435`, database `chezcar_test_01_13`, no bind mount — and tears down only the container it started. Use that target for manual database verification; never reset an unknown developer database.
 
 ## Running tests
 
@@ -50,13 +51,44 @@ The current scripts provide these verification paths:
 | `npm run dev` | Starts the application for manual browser and HTTP verification. |
 | `npm run test` | Runs the Vitest Node unit project once. |
 | `npm run test -- <test-file>` | Runs a focused unit test file once. |
-| `npm run test:integration` | Runs the serial integration project; no integration tests or disposable database harness exist yet. |
+| `npm run test:integration` | Runs the serial integration project against the disposable PostgreSQL 17 harness it starts itself. |
+| `npm run verify:phase-01 -- --validate-evidence` | Phase 1 evidence gate: asserts the disposable test target plus seed/reset environment, then records fresh migration deploy, seed, two hash-equivalent catalog reloads, full unit/integration suites, typecheck, and build in `docs/verification/phase-01-evidence.md`; captures lint's expected failure baseline separately and preserves completed manual UAT rows across reruns. |
 | `npm run build` | Creates a production Next.js build. A clean Node.js `20.20.2` isolated run passes on 2026-08-24, with existing Recharts zero-size prerender warnings. It is not a behavioral test suite. |
 | `npm run typecheck` | Runs strict TypeScript with `tsc --noEmit`. A clean Node.js `20.20.2` isolated run passes on 2026-08-24. |
 | `npm run lint` | Runs the checked-in ESLint flat configuration. It is reproducible but currently fails with 104 errors and 41 warnings from existing prototype code. |
 | `npm audit --omit=dev` | Reports zero known production dependency findings as of 2026-08-24. The full development tree still reports one high and one low transitive tooling finding. |
 
-Run each command in the current environment and record its exact outcome, including prompts, failures, timeouts, and skipped checks. Add explicit, reproducible scripts before enforcing them locally or in CI.
+## Checked-in suites
+
+Unit project (`npm run test`):
+
+| Suite | Owner plan | Covers |
+| --- | --- | --- |
+| `scripts/data-onboarding/workbook-profile.test.ts` | 01-02 | Read-only selected-sheet profiling, inert formulas, hostile fixture determinism |
+| `scripts/data-onboarding/canonicalize.test.ts` | 01-03/01-04 | Row classification, temporary codes, blocking findings, owner-resolution coverage |
+| `scripts/data-onboarding/generate-seed.test.ts` | 01-05 | Byte-stable canonical fixture and source-map generation |
+| `lib/server/services/catalog-reset.test.ts` | 01-06 | Positive reset gates; production/unknown/bind-mount refusal |
+| `lib/server/authorization.test.ts` | 01-07 | Fixed persisted access policy and capability guards |
+| `tests/routes/authorization.test.ts` | 01-07/01-14 | Direct-handler authorization order for dashboard/customers/orders/products/inventory |
+| `lib/server/shell.test.ts` | 01-08 | Four-role shell DTOs and scope feedback |
+| `proxy.test.ts` | 01-15 | Page session routing, capability denial, safe callbacks |
+| `tests/helpers/database.test.ts` | 01-13 | Disposable target assertion and lifecycle |
+| `tests/helpers/requests.test.ts` | 01-13 | Hostile direct-request construction |
+
+Integration project (`npm run test:integration`, serial over disposable PostgreSQL):
+
+| Suite | Owner plan | Covers |
+| --- | --- | --- |
+| `tests/integration/migration.test.ts` | 01-06 | Trusted-foundation migration application and constraint refusals |
+| `tests/integration/seed.test.ts` | 01-06 | Fresh/repeat seed producing exact locations/products/balances |
+| `tests/integration/factories.test.ts` | 01-13 | Persisted actor/session fixtures including deliberately invalid assignments |
+| `tests/integration/inventory-scope.test.ts` | 01-14 | Admin/Branch/SR persisted scopes and Accounting denial under hostile requests |
+| `tests/integration/auth-admin-surface.test.ts` | 01-17 | Internal credential engine; public sign-up and generic admin operations unroutable |
+| `tests/integration/user-management.test.ts` | 01-09 | Owner-only user list/create/update semantics and error envelopes |
+| `tests/integration/session-revocation.test.ts` | 01-09 | Atomic access-change/session revocation, rollback, concurrency |
+| `tests/integration/credential-setup.test.ts` | 01-10 | Prompt arming/consumption, change/skip, other-session revocation |
+
+Shared helpers live under `tests/helpers/`: `database.ts` (disposable PostgreSQL lifecycle), `factories.ts` (persisted authorization fixtures), and `requests.ts` (direct Request construction preserving hostile query/body/header input).
 
 ## Manual verification available now
 
@@ -101,7 +133,7 @@ The existing pure functions in `lib/dashboard-data.ts` are suitable first unit-t
 
 ## Incremental test strategy
 
-Add automation in layers. Only the Node unit and empty serial integration projects are configured today; DOM, browser, coverage, and CI commands below remain future work.
+Add automation in layers. The Node unit project and the serial integration project over disposable PostgreSQL are configured today; DOM, browser, coverage, and CI commands below remain future work.
 
 ### 1. Pure functions and React components
 
@@ -135,9 +167,9 @@ Exercise real transaction boundaries for sale posting/correction, Stock Room rec
 
 ### 5. Authentication and authorization
 
-Better Auth sessions, active-account checks, and fixed role/location authorization exist for the current protected reads. Add a role/branch matrix and deterministic tests as each protected page, route handler, and mutation is implemented. Include unauthenticated, inactive/expired-session, wrong-role, wrong-branch, and allowed cases.
+Better Auth sessions, active-account checks, fixed capability authorization, session revocation, the internal credential surface, and the first-login prompt now have unit and integration suites (see the checked-in suites above). Extend this matrix as each new protected page, route handler, and mutation is implemented: include unauthenticated, inactive/expired-session, wrong-role, wrong-branch, revoked-session, and allowed cases.
 
-Client-side button visibility is only a usability check; it must never be the sole authorization assertion. Verify that direct HTTP requests cannot bypass the server policy and that denied operations leave the database unchanged.
+Client-side button visibility is only a usability check; it must never be the sole authorization assertion. Verify that direct HTTP requests cannot bypass the server policy and that denied operations leave the database unchanged — `tests/helpers/requests.ts` exists for exactly this hostile-input style.
 
 ### 6. End-to-end journeys
 
@@ -170,14 +202,15 @@ Use network interception to simulate disconnects, delayed responses, retries, an
 
 ## Recommended future commands
 
-The unit and integration script names are checked in. The remaining names are proposed interfaces only.
+The unit and integration script names plus the phase gate are checked in. The remaining names are proposed interfaces only.
 
 | Command | Current or intended scope |
 | --- | --- |
 | `npm run test` | Current: run Node unit tests once. |
-| `npm run test:watch` | Run Vitest in watch mode. |
+| `npm run test:integration` | Current: run serial integration tests against the disposable PostgreSQL 17 harness. |
+| `npm run verify:phase-01 -- --validate-evidence` | Current: run the consolidated Phase 1 evidence gate and validate the committed evidence report. |
+| `npm run test:watch` | Run Vitest in watch mode. Not checked in; no watch-mode flags are used by the gate. |
 | `npm run test:coverage` | Produce coverage once a coverage provider is configured. |
-| `npm run test:integration` | Configured serial project; tests and disposable PostgreSQL harness are pending. |
 | `npm run test:e2e` | Run Playwright journeys once E2E infrastructure exists. |
 
 The current focused Vitest invocation is `npm run test -- path/to/file.test.ts`. A future configured Playwright suite could use `npm run test:e2e -- tests/e2e/receipt-sale.spec.ts`.
