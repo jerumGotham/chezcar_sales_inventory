@@ -4,8 +4,9 @@ import Image from "next/image";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, LogOut, Moon, Sun } from "lucide-react";
+import { ChevronDown, LogOut, MapPin, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useShellAccess } from "@/components/shell-access-context";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth-client";
 
@@ -24,7 +25,7 @@ export function AppHeader({
   subtitle: string;
 }) {
   const router = useRouter();
-  const { data: session } = authClient.useSession();
+  const access = useShellAccess();
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [isReady, setIsReady] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -75,6 +76,26 @@ export function AppHeader({
       </div>
 
       <div className="flex flex-wrap items-center justify-end gap-3">
+        {access.authenticated ? (
+          <div
+            className="flex min-h-11 max-w-full items-center gap-2 rounded-2xl border border-brand-100 bg-brand-50/70 px-3 py-2 text-sm text-foreground dark:border-slate-800 dark:bg-slate-900"
+            aria-label={`Current scope: ${access.scope.label}`}
+          >
+            <MapPin
+              className="h-4 w-4 shrink-0 text-brand-700 dark:text-brand-300"
+              aria-hidden="true"
+            />
+            <span className="min-w-0">
+              <span className="block text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Current scope
+              </span>
+              <span className="block break-words font-semibold">
+                {access.scope.label}
+              </span>
+            </span>
+          </div>
+        ) : null}
+
         <Button
           variant="outline"
           size="icon"
@@ -93,70 +114,72 @@ export function AppHeader({
           )}
         </Button>
 
-        <div className="relative" ref={menuRef}>
-          <button
-            type="button"
-            className="flex items-center gap-3 rounded-2xl border border-brand-100 bg-brand-50/70 px-3 py-2 text-left transition hover:bg-brand-100 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800"
-            onClick={() => setIsMenuOpen((current) => !current)}
-            aria-expanded={isMenuOpen}
-            aria-haspopup="menu"
-          >
-            <Image
-              src="/user-avatar.svg"
-              alt="Current user avatar"
-              width={40}
-              height={40}
-              className="rounded-full border border-brand-100 bg-white dark:border-slate-700 dark:bg-slate-950"
-            />
-            <div className="hidden min-w-0 sm:block">
-              <p className="truncate text-sm font-semibold text-foreground">
-                {session?.user.name ?? "Current User"}
-              </p>
-              <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                Authenticated user
-              </p>
-            </div>
-            <ChevronDown
-              className={cn(
-                "h-4 w-4 text-slate-500 transition-transform dark:text-slate-400",
-                isMenuOpen && "rotate-180",
-              )}
-            />
-          </button>
-
-          <div
-            className={cn(
-              "absolute right-0 top-[calc(100%+0.75rem)] z-30 w-56 rounded-2xl border border-brand-100 bg-white p-2 shadow-soft transition dark:border-slate-800 dark:bg-slate-950",
-              isMenuOpen
-                ? "pointer-events-auto translate-y-0 opacity-100"
-                : "pointer-events-none -translate-y-2 opacity-0",
-            )}
-            role="menu"
-          >
-            <div className="rounded-xl bg-brand-50/80 px-3 py-2 dark:bg-slate-900">
-              <p className="text-sm font-semibold text-foreground">
-                {session?.user.name ?? "Current User"}
-              </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {session?.user.email ?? ""}
-              </p>
-            </div>
+        {access.authenticated ? (
+          <div className="relative" ref={menuRef}>
             <button
               type="button"
-              className="mt-2 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10"
-              role="menuitem"
-              onClick={async () => {
-                setIsMenuOpen(false);
-                await authClient.signOut();
-                router.replace("/sign-in" as Route);
-                router.refresh();
-              }}
+              className="flex items-center gap-3 rounded-2xl border border-brand-100 bg-brand-50/70 px-3 py-2 text-left transition hover:bg-brand-100 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800"
+              onClick={() => setIsMenuOpen((current) => !current)}
+              aria-expanded={isMenuOpen}
+              aria-haspopup="menu"
             >
-              <LogOut className="h-4 w-4" />
-              Logout
+              <Image
+                src="/user-avatar.svg"
+                alt="Current user avatar"
+                width={40}
+                height={40}
+                className="rounded-full border border-brand-100 bg-white dark:border-slate-700 dark:bg-slate-950"
+              />
+              <div className="hidden min-w-0 sm:block">
+                <p className="truncate text-sm font-semibold text-foreground">
+                  {access.identity.name}
+                </p>
+                <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                  Authenticated user
+                </p>
+              </div>
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 text-slate-500 transition-transform dark:text-slate-400",
+                  isMenuOpen && "rotate-180",
+                )}
+              />
             </button>
+
+            <div
+              className={cn(
+                "absolute right-0 top-[calc(100%+0.75rem)] z-30 w-56 rounded-2xl border border-brand-100 bg-white p-2 shadow-soft transition dark:border-slate-800 dark:bg-slate-950",
+                isMenuOpen
+                  ? "pointer-events-auto translate-y-0 opacity-100"
+                  : "pointer-events-none -translate-y-2 opacity-0",
+              )}
+              role="menu"
+            >
+              <div className="rounded-xl bg-brand-50/80 px-3 py-2 dark:bg-slate-900">
+                <p className="text-sm font-semibold text-foreground">
+                  {access.identity.name}
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {access.identity.email}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="mt-2 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10"
+                role="menuitem"
+                onClick={async () => {
+                  setIsMenuOpen(false);
+                  await authClient.signOut();
+                  router.replace("/sign-in" as Route);
+                  router.refresh();
+                }}
+              >
+                <LogOut className="h-4 w-4" />
+                Logout
+              </button>
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
     </div>
   );
