@@ -5,6 +5,7 @@ import type { Route } from "next";
 import { useRouter } from "next/navigation";
 import { Loader2, LockKeyhole } from "lucide-react";
 
+import { CredentialSetupDialog } from "@/components/credential-setup-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,6 +18,14 @@ export function SignInForm({ callbackUrl }: { callbackUrl: string }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [credentialPhase, setCredentialPhase] = useState<
+    "none" | "checking" | "required"
+  >("none");
+
+  async function navigateToCallback() {
+    router.replace(callbackUrl as Route);
+    router.refresh();
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -31,8 +40,39 @@ export function SignInForm({ callbackUrl }: { callbackUrl: string }) {
       return;
     }
 
-    router.replace(callbackUrl as Route);
-    router.refresh();
+    // D-15: before navigating, check whether this login must still consume
+    // the first-login temporary-password prompt. A transient state-check
+    // failure never blocks navigation; the unconsumed prompt re-arms on the
+    // next sign-in because nothing consumed it server-side.
+    setCredentialPhase("checking");
+    let requiresSetup = false;
+    try {
+      const response = await fetch("/api/credential-setup");
+      if (response.ok) {
+        const body = (await response.json()) as {
+          data?: { credentialSetupRequired?: boolean };
+        };
+        requiresSetup = body.data?.credentialSetupRequired === true;
+      }
+    } catch {
+      // Fall through to normal navigation.
+    }
+
+    if (requiresSetup) {
+      setCredentialPhase("required");
+      setIsSubmitting(false);
+      return;
+    }
+
+    setCredentialPhase("none");
+    setPassword("");
+    await navigateToCallback();
+  }
+
+  function handleCredentialComplete() {
+    setCredentialPhase("none");
+    setPassword("");
+    void navigateToCallback();
   }
 
   return (
@@ -82,11 +122,18 @@ export function SignInForm({ callbackUrl }: { callbackUrl: string }) {
             disabled={isSubmitting}
             type="submit"
           >
-            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Sign in
+            {(isSubmitting || credentialPhase === "checking") && (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            )}
+            {credentialPhase === "checking" ? "Signing in…" : "Sign in"}
           </Button>
         </form>
       </CardContent>
+
+      <CredentialSetupDialog
+        open={credentialPhase === "required"}
+        onComplete={handleCredentialComplete}
+      />
     </Card>
   );
 }
