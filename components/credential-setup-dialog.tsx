@@ -101,8 +101,16 @@ export function CredentialSetupDialog({
     });
   }
 
-  function handleBlur(field: FieldName) {
+  function handleBlur(
+    field: FieldName,
+    relatedTarget?: EventTarget | null,
+  ) {
     if (pendingAction) return;
+    // Moving focus to Skip is an intentional exit, not an incomplete entry:
+    // never surface validation for a field the user chose not to fill.
+    if (relatedTarget instanceof Element && relatedTarget.id === "credential-skip-button") {
+      return;
+    }
     setFieldError(field, validateField(field, values));
   }
 
@@ -243,7 +251,9 @@ export function CredentialSetupDialog({
                   : undefined
               }
               onChange={(event) => setCurrentPassword(event.target.value)}
-              onBlur={() => handleBlur("currentPassword")}
+              onBlur={(event) =>
+                handleBlur("currentPassword", event.relatedTarget)
+              }
             />
             {fieldErrors.currentPassword && (
               <p
@@ -272,7 +282,9 @@ export function CredentialSetupDialog({
                   : undefined
               }
               onChange={(event) => setNewPassword(event.target.value)}
-              onBlur={() => handleBlur("newPassword")}
+              onBlur={(event) =>
+                handleBlur("newPassword", event.relatedTarget)
+              }
             />
             {fieldErrors.newPassword && (
               <p
@@ -303,7 +315,9 @@ export function CredentialSetupDialog({
                   : undefined
               }
               onChange={(event) => setConfirmPassword(event.target.value)}
-              onBlur={() => handleBlur("confirmPassword")}
+              onBlur={(event) =>
+                handleBlur("confirmPassword", event.relatedTarget)
+              }
             />
             {fieldErrors.confirmPassword && (
               <p
@@ -353,6 +367,7 @@ export function CredentialSetupDialog({
             </Button>
             <Button
               type="button"
+              id="credential-skip-button"
               variant="outline"
               className="w-full"
               disabled={isBusy}

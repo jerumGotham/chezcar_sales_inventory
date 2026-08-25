@@ -45,20 +45,37 @@ export function SignInForm({ callbackUrl }: { callbackUrl: string }) {
     // failure never blocks navigation; the unconsumed prompt re-arms on the
     // next sign-in because nothing consumed it server-side.
     setCredentialPhase("checking");
-    let requiresSetup = false;
+    let setupState: "unknown" | "not-required" | "required" | "inactive" =
+      "unknown";
     try {
       const response = await fetch("/api/credential-setup");
       if (response.ok) {
         const body = (await response.json()) as {
           data?: { credentialSetupRequired?: boolean };
         };
-        requiresSetup = body.data?.credentialSetupRequired === true;
+        setupState =
+          body.data?.credentialSetupRequired === true
+            ? "required"
+            : "not-required";
+      } else if (response.status === 401 || response.status === 403) {
+        // Credentials matched, but the persisted account is inactive or
+        // revoked. Clear the just-created session instead of redirecting
+        // into a sign-in loop.
+        setupState = "inactive";
       }
     } catch {
       // Fall through to normal navigation.
     }
 
-    if (requiresSetup) {
+    if (setupState === "inactive") {
+      await authClient.signOut();
+      setError("Your account has been deactivated. Contact your administrator.");
+      setCredentialPhase("none");
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (setupState === "required") {
       setCredentialPhase("required");
       setIsSubmitting(false);
       return;
