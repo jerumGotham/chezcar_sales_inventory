@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 4
+open_count: 5
 waived_count: 0
 fixed_count: 0
-total_count: 4
-last_updated: 2026-08-25T06:51:14.216Z
+total_count: 5
+last_updated: 2026-08-25T09:36:58.083Z
 ---
 
 # Broken Windows Ledger
@@ -19,6 +19,7 @@ last_updated: 2026-08-25T06:51:14.216Z
 | 2 | 01 | stub | scripts/data-onboarding/resolutions.json | 8 | All 855 resolution records remain intentionally unresolved for the Plan 01-04 owner checkpoint | open |  | 2026-08-25T06:51:13.261Z |  |
 | 3 | 01 | deviation | scripts/data-onboarding/canonicalize.mjs |  | Formula-only identity-empty rows and accessory labels required classification correction during real-workbook profiling | open |  | 2026-08-25T06:51:13.725Z |  |
 | 4 | 01 | deviation | scripts/data-onboarding/workbook-profile.d.mts |  | Existing strict profiler declaration required review-package API exports omitted from the task file list | open |  | 2026-08-25T06:51:14.216Z |  |
+| 5 | 01 | deviation | docs/API.md |  | Synchronized the Inventory API contract as required by AGENTS.md | open |  | 2026-08-25T09:36:58.083Z |  |
 
 ````json
 [
@@ -68,6 +69,18 @@ last_updated: 2026-08-25T06:51:14.216Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-25T06:51:14.216Z",
+    "resolved_at": null
+  },
+  {
+    "id": 5,
+    "kind": "deviation",
+    "phase": "01",
+    "file": "docs/API.md",
+    "line": null,
+    "description": "Synchronized the Inventory API contract as required by AGENTS.md",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-25T09:36:58.083Z",
     "resolved_at": null
   }
 ]

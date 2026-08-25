@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 current_phase: 01
 current_phase_name: Trusted Foundation and Data Onboarding
 status: executing
-stopped_at: Completed 01-08-PLAN.md
-last_updated: "2026-08-25T09:21:46.896Z"
+stopped_at: Completed 01-14-PLAN.md
+last_updated: "2026-08-25T09:36:44.651Z"
 last_activity: 2026-08-25
 last_activity_desc: Phase 01 execution started
-state_head: 63f37ada77011582d4c7d80125c79b87d28e9bf6
+state_head: 5da54bd4c5d9baae6a70c529e0d76e7bd5b35b98
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 17
-  completed_plans: 9
+  completed_plans: 10
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-08-25)
 ## Current Position
 
 Phase: 01 (Trusted Foundation and Data Onboarding) — EXECUTING
-Plan: 10 of 17
+Plan: 11 of 17
 Status: Ready to execute
 Last activity: 2026-08-25 — Phase 01 execution started
 
@@ -67,6 +67,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P06 | 25 min | 3 tasks | 16 files |
 | Phase 01 P07 | 10 min | 2 tasks | 8 files |
 | Phase 01 P08 | 12 min | 3 tasks | 9 files |
+| Phase 01 P14 | 11 min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -101,6 +102,9 @@ Decisions are logged in PROJECT.md. Current constraints:
 - [Phase 01]: The four migrated reads preserve existing role reach through named capabilities; Accounting remains denied Products and Inventory.
 - [Phase 01]: Keep prototype routes without a named central capability out of authenticated navigation rather than inventing client-side role arrays.
 - [Phase 01]: Treat the Admin location cookie as a validated presentation preference only; persisted role capabilities remain authoritative and invalid selections fall back to All locations.
+- [Phase 01]: Branch Staff inventory scope always comes from its persisted active branch, and Stock Staff inventory scope always maps to persisted SR.
+- [Phase 01]: Admin inventory scope accepts All or one active canonical location; conflicting duplicate scope values fail independent of parameter order.
+- [Phase 01]: Accounting remains inventory-denied and receives a data-free 403 before query parsing or catalog work.
 
 ### Pending Todos
 
@@ -123,6 +127,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-25T09:21:46.869Z
-Stopped at: Completed 01-08-PLAN.md
+Last session: 2026-08-25T09:36:44.624Z
+Stopped at: Completed 01-14-PLAN.md
 Resume file: None
