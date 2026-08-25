@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +14,69 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+
+/**
+ * Masked input with an accessible visibility toggle. Values stay in the
+ * dialog's local state; the toggle only changes the rendered input type.
+ */
+function PasswordInput({
+  id,
+  value,
+  onChange,
+  onBlur,
+  disabled,
+  invalid,
+  describedBy,
+  autoFocus,
+  autoComplete,
+  inputRef,
+}: {
+  id: string;
+  value: string;
+  onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onBlur?: (event: React.FocusEvent<HTMLInputElement>) => void;
+  disabled?: boolean;
+  invalid?: boolean;
+  describedBy?: string;
+  autoFocus?: boolean;
+  autoComplete: "current-password" | "new-password";
+  inputRef: React.RefObject<HTMLInputElement | null>;
+}) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="relative">
+      <Input
+        ref={inputRef}
+        id={id}
+        type={visible ? "text" : "password"}
+        value={value}
+        required
+        disabled={disabled}
+        autoComplete={autoComplete}
+        className="pr-10"
+        autoFocus={autoFocus}
+        aria-invalid={invalid ? true : undefined}
+        aria-describedby={describedBy}
+        onChange={onChange}
+        onBlur={onBlur}
+      />
+      <button
+        type="button"
+        onClick={() => setVisible((previous) => !previous)}
+        disabled={disabled}
+        aria-label={visible ? "Hide password" : "Show password"}
+        aria-pressed={visible}
+        className="text-muted-foreground hover:text-foreground absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+      >
+        {visible ? (
+          <EyeOff className="size-4" aria-hidden />
+        ) : (
+          <Eye className="size-4" aria-hidden />
+        )}
+      </button>
+    </div>
+  );
+}
 
 /**
  * Blocking first-login temporary-password prompt (UI-SPEC surface 6).
@@ -235,21 +298,19 @@ export function CredentialSetupDialog({
         <form className="space-y-4" onSubmit={submitChange} noValidate>
           <div className="space-y-2">
             <Label htmlFor="credential-current-password">Current Password</Label>
-            <Input
-              ref={currentPasswordRef}
+            <PasswordInput
+              inputRef={currentPasswordRef}
               id="credential-current-password"
-              type="password"
-              autoComplete="current-password"
-              autoFocus
-              required
-              disabled={isBusy}
               value={currentPassword}
-              aria-invalid={fieldErrors.currentPassword ? true : undefined}
-              aria-describedby={
+              disabled={isBusy}
+              invalid={Boolean(fieldErrors.currentPassword)}
+              describedBy={
                 fieldErrors.currentPassword
                   ? "credential-current-password-error"
                   : undefined
               }
+              autoFocus
+              autoComplete="current-password"
               onChange={(event) => setCurrentPassword(event.target.value)}
               onBlur={(event) =>
                 handleBlur("currentPassword", event.relatedTarget)
@@ -267,20 +328,18 @@ export function CredentialSetupDialog({
 
           <div className="space-y-2">
             <Label htmlFor="credential-new-password">New Password</Label>
-            <Input
-              ref={newPasswordRef}
+            <PasswordInput
+              inputRef={newPasswordRef}
               id="credential-new-password"
-              type="password"
-              autoComplete="new-password"
-              required
-              disabled={isBusy}
               value={newPassword}
-              aria-invalid={fieldErrors.newPassword ? true : undefined}
-              aria-describedby={
+              disabled={isBusy}
+              invalid={Boolean(fieldErrors.newPassword)}
+              describedBy={
                 fieldErrors.newPassword
                   ? "credential-new-password-error"
                   : undefined
               }
+              autoComplete="new-password"
               onChange={(event) => setNewPassword(event.target.value)}
               onBlur={(event) =>
                 handleBlur("newPassword", event.relatedTarget)
@@ -300,20 +359,18 @@ export function CredentialSetupDialog({
             <Label htmlFor="credential-confirm-password">
               Confirm New Password
             </Label>
-            <Input
-              ref={confirmPasswordRef}
+            <PasswordInput
+              inputRef={confirmPasswordRef}
               id="credential-confirm-password"
-              type="password"
-              autoComplete="new-password"
-              required
-              disabled={isBusy}
               value={confirmPassword}
-              aria-invalid={fieldErrors.confirmPassword ? true : undefined}
-              aria-describedby={
+              disabled={isBusy}
+              invalid={Boolean(fieldErrors.confirmPassword)}
+              describedBy={
                 fieldErrors.confirmPassword
                   ? "credential-confirm-password-error"
                   : undefined
               }
+              autoComplete="new-password"
               onChange={(event) => setConfirmPassword(event.target.value)}
               onBlur={(event) =>
                 handleBlur("confirmPassword", event.relatedTarget)
