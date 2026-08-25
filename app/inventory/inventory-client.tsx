@@ -21,6 +21,7 @@ import {
   PackageSearch,
 } from "lucide-react";
 
+import { LocationScopeControl } from "@/components/location-scope-control";
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -560,14 +561,13 @@ export function InventoryClient({
             </div>
 
             <div className="w-full">
-              <Select
-                instanceId="inventory-location-filter"
-                options={locationOptions}
-                value={location}
-                onChange={(option) => setLocation(option ?? locationOptions[0])}
-                isSearchable
-                isDisabled={!isAdmin}
-                styles={reactSelectStyles}
+              <LocationScopeControl
+                id="inventory-location-filter"
+                role={role}
+                scope={scope}
+                locations={locations}
+                value={location.value}
+                onValueChange={(value) => setLocation(optionForValue(value))}
               />
             </div>
 
