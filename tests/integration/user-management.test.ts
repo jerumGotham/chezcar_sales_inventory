@@ -217,6 +217,7 @@ describe("user management list and create", () => {
             "email",
             "id",
             "isOwner",
+            "lastSignInAt",
             "location",
             "name",
             "role",

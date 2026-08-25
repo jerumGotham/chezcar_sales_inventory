@@ -69,7 +69,10 @@ const managedUserSelect = {
 
 type ManagedUserRecord = Prisma.UserGetPayload<{ select: typeof managedUserSelect }>;
 
-export function toManagedUserDto(user: ManagedUserRecord): ManagedUserDto {
+export function toManagedUserDto(
+  user: ManagedUserRecord,
+  lastSignInAt?: Date | null,
+): ManagedUserDto {
   return {
     id: user.id,
     name: user.name,
@@ -88,6 +91,7 @@ export function toManagedUserDto(user: ManagedUserRecord): ManagedUserDto {
     credentialSetupRequired: user.credentialSetupRequired,
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
+    lastSignInAt: lastSignInAt ? lastSignInAt.toISOString() : null,
   };
 }
 
@@ -303,8 +307,25 @@ export async function listUsers(query: UserListQuery): Promise<{
     prisma.user.count({ where: { role: { not: "ADMIN" }, status: "INACTIVE" } }),
   ]);
 
+  // Last sign-in derives from the most recent session record per listed user.
+  const lastSignInByUser = new Map<string, Date>();
+  if (rows.length > 0) {
+    const sessions = await prisma.session.groupBy({
+      by: ["userId"],
+      where: { userId: { in: rows.map((row) => row.id) } },
+      _max: { createdAt: true },
+    });
+    for (const session of sessions) {
+      if (session._max.createdAt) {
+        lastSignInByUser.set(session.userId, session._max.createdAt);
+      }
+    }
+  }
+
   return {
-    data: rows.map(toManagedUserDto),
+    data: rows.map((row) =>
+      toManagedUserDto(row, lastSignInByUser.get(row.id) ?? null),
+    ),
     meta: {
       page,
       pageSize: USER_LIST_PAGE_SIZE,

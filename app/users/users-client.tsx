@@ -183,12 +183,12 @@ function statusLabel(status: UserStatusDto): string {
 }
 
 /**
- * The safe list DTO intentionally carries no sign-in timestamp yet, so every
- * missing value reports `Never` per the partial-data contract until the API
- * adds the field.
+ * Renders the DTO's last sign-in timestamp in the user's locale, or `Never`
+ * when the account holds no session record.
  */
-function formatLastSignIn(): string {
-  return "Never";
+function formatLastSignIn(lastSignInAt: string | null): string {
+  if (!lastSignInAt) return "Never";
+  return new Date(lastSignInAt).toLocaleString();
 }
 
 // --- Validation (usability only; the server remains authoritative) ---------
@@ -1450,7 +1450,7 @@ export function UsersClient({
                         </Badge>
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">
-                        {formatLastSignIn()}
+                        {formatLastSignIn(user.lastSignInAt)}
                       </TableCell>
                       <TableCell>
                         {user.isOwner ? (

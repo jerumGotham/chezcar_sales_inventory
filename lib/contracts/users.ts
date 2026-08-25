@@ -141,6 +141,8 @@ export type ManagedUserDto = {
   credentialSetupRequired: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Most recent session creation time; null when the account never signed in or holds no live session record. */
+  lastSignInAt: string | null;
 };
 
 export type UserListMetaDto = {
