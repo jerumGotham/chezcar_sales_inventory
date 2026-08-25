@@ -10,9 +10,11 @@ export const auth = betterAuth({
   database: prismaAdapter(prisma, {
     provider: "postgresql",
   }),
-  disableSignUp: true,
   emailAndPassword: {
     enabled: true,
+    // Better Auth 1.6.23 only honors `emailAndPassword.disableSignUp`; a
+    // top-level flag is silently ignored and leaves public sign-up enabled.
+    disableSignUp: true,
   },
   user: {
     additionalFields: {
