@@ -14,6 +14,9 @@ vi.mock("@/lib/server/auth", () => ({
 vi.mock("@/lib/server/prisma", () => ({
   prisma: { user: { findUnique: mocks.findUser } },
 }));
+vi.mock("@/lib/server/policy/access", () =>
+  import("./lib/server/policy/access"),
+);
 
 import { proxy } from "./proxy";
 
