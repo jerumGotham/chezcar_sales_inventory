@@ -9,7 +9,7 @@ import {
   type Ref,
 } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Loader2, TriangleAlert, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, EyeOff, Loader2, TriangleAlert, X } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
@@ -287,6 +287,64 @@ function FieldError({ id, message }: { id: string; message: string }) {
     <p id={id} className="text-destructive text-xs font-semibold">
       {message}
     </p>
+  );
+}
+
+/**
+ * Masked input with an accessible visibility toggle. The value stays in the
+ * parent's state; the toggle only changes the rendered input type.
+ */
+function PasswordInput({
+  ref,
+  value,
+  onChange,
+  onBlur,
+  disabled,
+  invalid,
+  describedBy,
+  id,
+}: {
+  ref: Ref<HTMLInputElement>;
+  value: string;
+  onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onBlur?: () => void;
+  disabled?: boolean;
+  invalid?: boolean;
+  describedBy?: string;
+  id: string;
+}) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="relative">
+      <Input
+        ref={ref}
+        id={id}
+        type={visible ? "text" : "password"}
+        value={value}
+        required
+        disabled={disabled}
+        autoComplete="new-password"
+        className="pr-10"
+        aria-invalid={invalid ? true : undefined}
+        aria-describedby={describedBy}
+        onChange={onChange}
+        onBlur={onBlur}
+      />
+      <button
+        type="button"
+        onClick={() => setVisible((previous) => !previous)}
+        disabled={disabled}
+        aria-label={visible ? "Hide password" : "Show password"}
+        aria-pressed={visible}
+        className="text-muted-foreground hover:text-foreground absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+      >
+        {visible ? (
+          <EyeOff className="size-4" aria-hidden />
+        ) : (
+          <Eye className="size-4" aria-hidden />
+        )}
+      </button>
+    </div>
   );
 }
 
@@ -670,16 +728,13 @@ function UserFormDialog({
                 <>
                   <div className="space-y-2">
                     <Label htmlFor="user-form-password">Temporary Password</Label>
-                    <Input
+                    <PasswordInput
                       ref={passwordRef}
                       id="user-form-password"
-                      type="password"
                       value={temporaryPassword}
-                      required
                       disabled={isBusy}
-                      autoComplete="new-password"
-                      aria-invalid={fieldErrors.password ? true : undefined}
-                      aria-describedby="user-form-password-helper"
+                      invalid={Boolean(fieldErrors.password)}
+                      describedBy="user-form-password-helper"
                       onChange={(event) => setTemporaryPassword(event.target.value)}
                       onBlur={() => handleBlur("password")}
                     />
@@ -701,16 +756,13 @@ function UserFormDialog({
                     <Label htmlFor="user-form-confirm-password">
                       Confirm Temporary Password
                     </Label>
-                    <Input
+                    <PasswordInput
                       ref={confirmPasswordRef}
                       id="user-form-confirm-password"
-                      type="password"
                       value={confirmPassword}
-                      required
                       disabled={isBusy}
-                      autoComplete="new-password"
-                      aria-invalid={fieldErrors.confirmPassword ? true : undefined}
-                      aria-describedby={
+                      invalid={Boolean(fieldErrors.confirmPassword)}
+                      describedBy={
                         fieldErrors.confirmPassword
                           ? "user-form-confirm-password-error"
                           : undefined
@@ -774,16 +826,25 @@ function UserFormDialog({
         )}
 
         <DialogFooter>
+          {/* preventDefault on mousedown keeps focus in the field, so blur
+              validation cannot re-render and shift the footer before the
+              click completes (the swallowed-first-click bug). */}
           <Button
             type="button"
             variant="outline"
             disabled={isBusy}
+            onMouseDown={(event) => event.preventDefault()}
             onClick={closeIfIdle}
           >
             {isCreate ? "Close Without Creating" : "Close Without Saving"}
           </Button>
           {/* Outside the scrollable <form>, so the click handler drives submission. */}
-          <Button type="button" disabled={isBusy} onClick={() => void doSubmit()}>
+          <Button
+            type="button"
+            disabled={isBusy}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => void doSubmit()}
+          >
             {isBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {isBusy
               ? isCreate
