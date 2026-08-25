@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   findUnique: vi.fn(),
+  listInventory: vi.fn(),
   listProducts: vi.fn(),
   requireCapability: vi.fn(),
 }));
@@ -32,9 +33,14 @@ vi.mock("@/lib/server/catalog", async () => {
   const { z } = await import("zod");
 
   return {
+    inventoryListQuerySchema: z.object({
+      page: z.coerce.number().int().min(1).default(1),
+      location: z.string().default("all"),
+    }),
     productListQuerySchema: z.object({
       page: z.coerce.number().int().min(1).default(1),
     }),
+    listInventory: mocks.listInventory,
     listProducts: mocks.listProducts,
   };
 });
@@ -42,6 +48,7 @@ vi.mock("@/lib/server/catalog", async () => {
 import { GET as getCustomerOrders } from "../../app/api/customer-orders/route";
 import { GET as getCustomers } from "../../app/api/customers/route";
 import { GET as getDashboard } from "../../app/api/dashboard/route";
+import { GET as getInventory } from "../../app/api/inventory/route";
 import { GET as getProducts } from "../../app/api/products/route";
 
 type PersistedLocation = {
@@ -59,6 +66,7 @@ type RouteSpec = {
   allowed: readonly [UserRole, PersistedLocation | null];
   denied: readonly [UserRole, PersistedLocation | null];
   protectedMarker: string;
+  service: ReturnType<typeof vi.fn> | null;
 };
 
 const stockRoom: PersistedLocation = {
@@ -83,6 +91,7 @@ const routes: readonly RouteSpec[] = [
     allowed: ["ACCOUNTING_STAFF", null],
     denied: ["ADMIN", branch],
     protectedMarker: "protected-dashboard",
+    service: null,
   },
   {
     name: "customers",
@@ -92,6 +101,7 @@ const routes: readonly RouteSpec[] = [
     allowed: ["BRANCH_STAFF", branch],
     denied: ["STOCK_STAFF", branch],
     protectedMarker: "protected-customer",
+    service: null,
   },
   {
     name: "customer orders",
@@ -101,6 +111,7 @@ const routes: readonly RouteSpec[] = [
     allowed: ["ACCOUNTING_STAFF", null],
     denied: ["BRANCH_STAFF", stockRoom],
     protectedMarker: "protected-order",
+    service: null,
   },
   {
     name: "products",
@@ -110,6 +121,17 @@ const routes: readonly RouteSpec[] = [
     allowed: ["STOCK_STAFF", stockRoom],
     denied: ["ACCOUNTING_STAFF", null],
     protectedMarker: "protected-product",
+    service: mocks.listProducts,
+  },
+  {
+    name: "inventory",
+    path: "/api/inventory?page=1&location=all",
+    capability: "inventory:view",
+    handler: getInventory,
+    allowed: ["BRANCH_STAFF", branch],
+    denied: ["ACCOUNTING_STAFF", null],
+    protectedMarker: "protected-inventory",
+    service: mocks.listInventory,
   },
 ];
 
@@ -137,10 +159,14 @@ describe.each(routes)("$name authorization", (route) => {
   beforeEach(() => {
     mocks.getSession.mockReset();
     mocks.findUnique.mockReset();
+    mocks.listInventory.mockReset();
     mocks.listProducts.mockReset();
     mocks.requireCapability.mockClear();
     mocks.listProducts.mockResolvedValue({
       data: [{ marker: "protected-product" }],
+    });
+    mocks.listInventory.mockResolvedValue({
+      data: [{ marker: "protected-inventory" }],
     });
   });
 
@@ -157,6 +183,7 @@ describe.each(routes)("$name authorization", (route) => {
     expect(JSON.stringify(body)).not.toContain(route.protectedMarker);
     expect(mocks.findUnique).not.toHaveBeenCalled();
     expect(mocks.listProducts).not.toHaveBeenCalled();
+    expect(mocks.listInventory).not.toHaveBeenCalled();
   });
 
   it("returns only the stable 403 envelope for denied persisted access", async () => {
@@ -170,13 +197,14 @@ describe.each(routes)("$name authorization", (route) => {
       error: {
         code: "FORBIDDEN",
         message:
-          route.name === "products"
+          route.name === "products" || route.name === "inventory"
             ? "Insufficient permissions"
             : "Invalid persisted access assignment",
       },
     });
     expect(JSON.stringify(body)).not.toContain(route.protectedMarker);
     expect(mocks.listProducts).not.toHaveBeenCalled();
+    expect(mocks.listInventory).not.toHaveBeenCalled();
   });
 
   it("returns protected data for an allowed persisted role and location", async () => {
@@ -191,6 +219,9 @@ describe.each(routes)("$name authorization", (route) => {
       expect.any(Headers),
       route.capability,
     );
+    if (route.service) {
+      expect(route.service).toHaveBeenCalledOnce();
+    }
   });
 });
 
@@ -205,4 +236,41 @@ it("authorizes products before parsing filters or executing its service", async 
 
   expect(response.status).toBe(401);
   expect(mocks.listProducts).not.toHaveBeenCalled();
+});
+
+it("authorizes inventory before parsing hostile filters or executing its service", async () => {
+  mocks.listInventory.mockClear();
+  mocks.requireCapability.mockClear();
+  mocks.getSession.mockResolvedValue(null);
+
+  const response = await getInventory(
+    new Request("http://localhost/api/inventory?page=not-a-number&location=SR"),
+  );
+
+  expect(response.status).toBe(401);
+  expect(mocks.requireCapability).toHaveBeenCalledWith(
+    expect.any(Headers),
+    "inventory:view",
+  );
+  expect(mocks.listInventory).not.toHaveBeenCalled();
+});
+
+it("returns a data-free 401 for an inactive persisted inventory principal", async () => {
+  mocks.getSession.mockResolvedValue({ user: { id: "inactive-user" } });
+  mocks.findUnique.mockResolvedValue({
+    ...persistedUser("BRANCH_STAFF", branch),
+    status: "INACTIVE",
+  });
+
+  const response = await getInventory(
+    new Request("http://localhost/api/inventory?location=all"),
+  );
+  const body = await response.json();
+
+  expect(response.status).toBe(401);
+  expect(body).toEqual({
+    error: { code: "UNAUTHENTICATED", message: "Active user account required" },
+  });
+  expect(JSON.stringify(body)).not.toContain("protected-inventory");
+  expect(mocks.listInventory).not.toHaveBeenCalled();
 });
