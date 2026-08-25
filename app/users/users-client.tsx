@@ -203,8 +203,10 @@ function validateName(value: string): string | undefined {
 function validateEmail(value: string): string | undefined {
   const trimmed = value.trim();
   if (!trimmed) return "Enter an email address.";
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-    return "Enter a valid email address.";
+  // Mirrors the server contract: the domain TLD needs at least two letters,
+  // so addresses like `name@a.a` are rejected before submission.
+  if (!/^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(trimmed)) {
+    return "Enter a valid email address, such as name@company.com.";
   }
   return undefined;
 }
