@@ -8,14 +8,23 @@ import {
   type FormEvent,
   type Ref,
 } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Loader2, X } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronLeft, ChevronRight, Loader2, TriangleAlert, X } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -271,6 +280,53 @@ function UsersSelect<T extends string>({
   );
 }
 
+function FieldError({ id, message }: { id: string; message: string }) {
+  return (
+    <p id={id} className="text-destructive text-xs font-semibold">
+      {message}
+    </p>
+  );
+}
+
+function ReadOnlyScopeDisplay({ label }: { label: string }) {
+  return (
+    <div
+      className="border-input bg-muted/40 text-muted-foreground flex h-8 w-full items-center rounded-lg border px-2.5 text-sm"
+      aria-live="polite"
+    >
+      {label}
+    </div>
+  );
+}
+
+function MutationAlert({
+  message,
+  retryLabel,
+  onRetry,
+  disabled,
+}: {
+  message: string;
+  retryLabel: string;
+  onRetry: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <div role="alert" className="bg-destructive/10 space-y-2 rounded-xl px-3 py-2">
+      <p className="text-destructive break-words text-sm">{message}</p>
+      <Button
+        type="button"
+        variant="destructive"
+        size="sm"
+        className="w-full"
+        disabled={disabled}
+        onClick={onRetry}
+      >
+        {retryLabel}
+      </Button>
+    </div>
+  );
+}
+
 // --- Dialog state -----------------------------------------------------------
 
 type DialogState =
@@ -283,6 +339,760 @@ type DialogState =
 type UserFormField = "name" | "email" | "branch" | "password" | "confirmPassword";
 
 type UserFormErrors = Partial<Record<UserFormField, string>>;
+
+// --- Shared user form (create + edit) ---------------------------------------
+
+function UserFormDialog({
+  mode,
+  user,
+  locations,
+  onCompleted,
+  onCancel,
+}: {
+  mode: "create" | "edit";
+  user?: ManagedUserDto;
+  locations: ReadonlyArray<UsersLocationOption>;
+  onCompleted: (bannerMessage: string) => void;
+  onCancel: () => void;
+}) {
+  const isCreate = mode === "create";
+
+  const [name, setName] = useState(user?.name ?? "");
+  const [email, setEmail] = useState(user?.email ?? "");
+  const [role, setRole] = useState<ManageableUserRole>(
+    user && user.role !== "ADMIN" ? user.role : "STOCK_STAFF",
+  );
+  const [branchLocationId, setBranchLocationId] = useState(
+    user?.location && user.location.code !== "SR" ? user.location.id : "",
+  );
+  const [temporaryPassword, setTemporaryPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [status, setStatus] = useState<UserStatusDto>("ACTIVE");
+  const [fieldErrors, setFieldErrors] = useState<UserFormErrors>({});
+  const [serverAlert, setServerAlert] = useState<string | null>(null);
+
+  const nameRef = useRef<HTMLInputElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const branchRef = useRef<HTMLButtonElement | null>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const confirmPasswordRef = useRef<HTMLInputElement>(null);
+
+  const branchOptions = useMemo(
+    () =>
+      locations
+        .filter((location) => location.type === "BRANCH")
+        .map((location) => ({
+          value: location.id,
+          label: `${location.name} (${location.code})`,
+        })),
+    [locations],
+  );
+
+  const originalLocationId = user?.location?.id ?? null;
+  const nextLocationId = role === "BRANCH_STAFF" ? branchLocationId || null : null;
+  const accessWillChange =
+    !isCreate &&
+    Boolean(user) &&
+    (role !== user!.role || nextLocationId !== originalLocationId);
+
+  function handleRoleChange(next: ManageableUserRole) {
+    setRole(next);
+    // Changing role clears an incompatible prior location before submit.
+    if (next !== "BRANCH_STAFF") {
+      setBranchLocationId("");
+    }
+    setFieldErrors((previous) => {
+      const next2 = { ...previous };
+      delete next2.branch;
+      return next2;
+    });
+  }
+
+  function validateField(field: UserFormField): string | undefined {
+    switch (field) {
+      case "name":
+        return validateName(name);
+      case "email":
+        return validateEmail(email);
+      case "branch":
+        return role === "BRANCH_STAFF"
+          ? validateBranchSelection(branchLocationId)
+          : undefined;
+      case "password":
+        return isCreate ? validateTemporaryPassword(temporaryPassword) : undefined;
+      case "confirmPassword":
+        return isCreate
+          ? validatePasswordConfirmation(temporaryPassword, confirmPassword)
+          : undefined;
+    }
+  }
+
+  function handleBlur(field: UserFormField) {
+    if (mutation.isPending) return;
+    const message = validateField(field);
+    setFieldErrors((previous) => {
+      const next = { ...previous };
+      if (message) next[field] = message;
+      else delete next[field];
+      return next;
+    });
+  }
+
+  const FIELD_ORDER: UserFormField[] = [
+    "name",
+    "email",
+    "branch",
+    "password",
+    "confirmPassword",
+  ];
+
+  function focusFirstInvalid(errors: UserFormErrors): boolean {
+    const refs: Record<UserFormField, Ref<HTMLInputElement | HTMLButtonElement>> = {
+      name: nameRef,
+      email: emailRef,
+      branch: branchRef,
+      password: passwordRef,
+      confirmPassword: confirmPasswordRef,
+    };
+    for (const field of FIELD_ORDER) {
+      if (errors[field]) {
+        const target = refs[field];
+        if (target && "current" in target && target.current) {
+          target.current.focus();
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+
+  const mutation = useMutation({
+    mutationFn: async (variables: {
+      request: CreateUserRequest | UpdateUserRequest;
+      displayName: string;
+    }) => {
+      if (isCreate) {
+        await createUser(variables.request as CreateUserRequest);
+      } else {
+        await updateUser(user!.id, variables.request as UpdateUserRequest);
+      }
+      return variables.displayName;
+    },
+    onSuccess: (displayName) => {
+      onCompleted(
+        isCreate ? createSuccessCopy(displayName) : updateSuccessCopy(displayName),
+      );
+    },
+    onError: (_error, variables) => {
+      setServerAlert(
+        isCreate ? createFailureCopy(variables.displayName) : updateFailureCopy(variables.displayName),
+      );
+    },
+  });
+
+  const isBusy = mutation.isPending;
+
+  async function doSubmit() {
+    if (isBusy) return;
+    setServerAlert(null);
+
+    const errors: UserFormErrors = {};
+    for (const field of FIELD_ORDER) {
+      const message = validateField(field);
+      if (message) errors[field] = message;
+    }
+    setFieldErrors(errors);
+    if (focusFirstInvalid(errors)) return;
+
+    const displayName = name.trim();
+    const trimmedEmail = email.trim();
+
+    if (isCreate) {
+      // Written per-branch (not spread from a shared base) so the
+      // discriminated-union create contract stays exactly satisfied.
+      const request: CreateUserRequest =
+        role === "BRANCH_STAFF"
+          ? {
+              role,
+              name: displayName,
+              email: trimmedEmail,
+              temporaryPassword,
+              locationId: branchLocationId,
+            }
+          : {
+              role,
+              name: displayName,
+              email: trimmedEmail,
+              temporaryPassword,
+            };
+      mutation.mutate({ request, displayName });
+      return;
+    }
+
+    const request: UpdateUserRequest = {
+      name: displayName,
+      email: trimmedEmail,
+      role,
+      locationId: role === "BRANCH_STAFF" ? branchLocationId : null,
+    };
+    mutation.mutate({ request, displayName });
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void doSubmit();
+  }
+
+  function closeIfIdle() {
+    if (isBusy) return;
+    onCancel();
+  }
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) closeIfIdle();
+      }}
+    >
+      <DialogContent className="flex max-h-[90vh] flex-col gap-4 sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{isCreate ? "Create User" : "Edit User"}</DialogTitle>
+          <DialogDescription>
+            {isCreate
+              ? "Set a fixed role and location scope. The temporary password is changed at first sign-in."
+              : "Update account details, fixed role, and location scope."}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="-mx-1 flex-1 overflow-y-auto px-1">
+          <form className="space-y-4" onSubmit={handleSubmit} noValidate>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="user-form-name">Full Name</Label>
+                <Input
+                  ref={nameRef}
+                  id="user-form-name"
+                  value={name}
+                  required
+                  disabled={isBusy}
+                  autoComplete="off"
+                  aria-invalid={fieldErrors.name ? true : undefined}
+                  aria-describedby={
+                    fieldErrors.name ? "user-form-name-error" : undefined
+                  }
+                  onChange={(event) => setName(event.target.value)}
+                  onBlur={() => handleBlur("name")}
+                />
+                {fieldErrors.name && (
+                  <FieldError
+                    id="user-form-name-error"
+                    message={fieldErrors.name}
+                  />
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="user-form-email">Email Address</Label>
+                <Input
+                  ref={emailRef}
+                  id="user-form-email"
+                  type="email"
+                  value={email}
+                  required
+                  disabled={isBusy}
+                  autoComplete="off"
+                  aria-invalid={fieldErrors.email ? true : undefined}
+                  aria-describedby={
+                    fieldErrors.email ? "user-form-email-error" : undefined
+                  }
+                  onChange={(event) => setEmail(event.target.value)}
+                  onBlur={() => handleBlur("email")}
+                />
+                {fieldErrors.email && (
+                  <FieldError
+                    id="user-form-email-error"
+                    message={fieldErrors.email}
+                  />
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="user-form-role">Role</Label>
+                {/* Fixed staff roles only — Admin is never an option. */}
+                <UsersSelect
+                  value={role}
+                  onValueChange={handleRoleChange}
+                  options={CREATE_ROLE_OPTIONS}
+                  ariaLabel="Role"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor={role === "BRANCH_STAFF" ? "user-form-branch" : undefined}>
+                  Location Scope
+                </Label>
+                {role === "STOCK_STAFF" && (
+                  <ReadOnlyScopeDisplay label="Stock Room (SR)" />
+                )}
+                {role === "ACCOUNTING_STAFF" && (
+                  <ReadOnlyScopeDisplay label="Business-wide" />
+                )}
+                {role === "BRANCH_STAFF" && (
+                  <>
+                    <UsersSelect
+                      value={branchLocationId}
+                      onValueChange={(next) => {
+                        setBranchLocationId(next);
+                        setFieldErrors((previous) => {
+                          const next2 = { ...previous };
+                          delete next2.branch;
+                          return next2;
+                        });
+                      }}
+                      options={branchOptions}
+                      ariaLabel="Branch"
+                      triggerRef={branchRef}
+                    />
+                    {fieldErrors.branch && (
+                      <FieldError
+                        id="user-form-branch-error"
+                        message={fieldErrors.branch}
+                      />
+                    )}
+                  </>
+                )}
+              </div>
+
+              {isCreate && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="user-form-password">Temporary Password</Label>
+                    <Input
+                      ref={passwordRef}
+                      id="user-form-password"
+                      type="password"
+                      value={temporaryPassword}
+                      required
+                      disabled={isBusy}
+                      autoComplete="new-password"
+                      aria-invalid={fieldErrors.password ? true : undefined}
+                      aria-describedby="user-form-password-helper"
+                      onChange={(event) => setTemporaryPassword(event.target.value)}
+                      onBlur={() => handleBlur("password")}
+                    />
+                    {fieldErrors.password && (
+                      <FieldError
+                        id="user-form-password-error"
+                        message={fieldErrors.password}
+                      />
+                    )}
+                    <p
+                      id="user-form-password-helper"
+                      className="text-muted-foreground text-xs"
+                    >
+                      {OFFLINE_PASSWORD_HELPER}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="user-form-confirm-password">
+                      Confirm Temporary Password
+                    </Label>
+                    <Input
+                      ref={confirmPasswordRef}
+                      id="user-form-confirm-password"
+                      type="password"
+                      value={confirmPassword}
+                      required
+                      disabled={isBusy}
+                      autoComplete="new-password"
+                      aria-invalid={fieldErrors.confirmPassword ? true : undefined}
+                      aria-describedby={
+                        fieldErrors.confirmPassword
+                          ? "user-form-confirm-password-error"
+                          : undefined
+                      }
+                      onChange={(event) => setConfirmPassword(event.target.value)}
+                      onBlur={() => handleBlur("confirmPassword")}
+                    />
+                    {fieldErrors.confirmPassword && (
+                      <FieldError
+                        id="user-form-confirm-password-error"
+                        message={fieldErrors.confirmPassword}
+                      />
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="user-form-status">Status</Label>
+                    <UsersSelect
+                      value={status}
+                      onValueChange={setStatus}
+                      options={[
+                        { value: "ACTIVE", label: "Active" },
+                        {
+                          value: "INACTIVE",
+                          label: "Inactive",
+                          // The durable create API provisions active accounts;
+                          // deactivate after creation instead of pretending.
+                          disabled: true,
+                        },
+                      ]}
+                      ariaLabel="Status"
+                    />
+                    <p className="text-muted-foreground text-xs">{STATUS_HELPER}</p>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {serverAlert && (
+              <MutationAlert
+                message={serverAlert}
+                retryLabel={isCreate ? "Try Creating User Again" : "Try Saving Changes Again"}
+                onRetry={() => void doSubmit()}
+                disabled={isBusy}
+              />
+            )}
+
+            <p className="sr-only" aria-live="polite">
+              {isBusy && (isCreate ? "Creating user…" : "Saving changes…")}
+            </p>
+          </form>
+        </div>
+
+        {!isCreate && accessWillChange && (
+          <div className="border-border bg-muted/50 flex items-start gap-2 rounded-xl border px-3 py-2">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+            <p className="text-foreground break-words text-sm">
+              {REVOCATION_WARNING_COPY}
+            </p>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isBusy}
+            onClick={closeIfIdle}
+          >
+            {isCreate ? "Close Without Creating" : "Close Without Saving"}
+          </Button>
+          {/* Outside the scrollable <form>, so the click handler drives submission. */}
+          <Button type="button" disabled={isBusy} onClick={() => void doSubmit()}>
+            {isBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isBusy
+              ? isCreate
+                ? "Creating User…"
+                : "Saving Changes…"
+              : isCreate
+                ? "Create User"
+                : "Save Changes"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// --- Credential reset dialog -------------------------------------------------
+
+function ResetPasswordDialog({
+  user,
+  onCompleted,
+  onCancel,
+}: {
+  user: ManagedUserDto;
+  onCompleted: (bannerMessage: string) => void;
+  onCancel: () => void;
+}) {
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<
+    Partial<Record<"newPassword" | "confirmPassword", string>>
+  >({});
+  const [serverAlert, setServerAlert] = useState<string | null>(null);
+
+  const newPasswordRef = useRef<HTMLInputElement>(null);
+  const confirmPasswordRef = useRef<HTMLInputElement>(null);
+
+  const mutation = useMutation({
+    mutationFn: async (variables: { newPassword: string }) =>
+      resetUserPassword(user.id, variables.newPassword),
+    onSuccess: () => onCompleted(resetSuccessCopy(user.name)),
+    onError: () => setServerAlert(resetFailureCopy(user.name)),
+  });
+
+  const isBusy = mutation.isPending;
+
+  function validate(field: "newPassword" | "confirmPassword") {
+    if (field === "newPassword") {
+      return validateTemporaryPassword(newPassword);
+    }
+    return validatePasswordConfirmation(newPassword, confirmPassword);
+  }
+
+  function handleBlur(field: "newPassword" | "confirmPassword") {
+    if (isBusy) return;
+    const message = validate(field);
+    setFieldErrors((previous) => {
+      const next = { ...previous };
+      if (message) next[field] = message;
+      else delete next[field];
+      return next;
+    });
+  }
+
+  async function doReset() {
+    if (isBusy) return;
+    setServerAlert(null);
+    const errors: Partial<
+      Record<"newPassword" | "confirmPassword", string>
+    > = {
+      newPassword: validateTemporaryPassword(newPassword),
+      confirmPassword: validatePasswordConfirmation(newPassword, confirmPassword),
+    };
+    setFieldErrors(errors);
+    if (errors.newPassword) {
+      newPasswordRef.current?.focus();
+      return;
+    }
+    if (errors.confirmPassword) {
+      confirmPasswordRef.current?.focus();
+      return;
+    }
+    mutation.mutate({ newPassword });
+  }
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !isBusy) onCancel();
+      }}
+    >
+      <DialogContent className="max-w-md gap-4">
+        <DialogHeader>
+          <DialogTitle>Reset Temporary Password</DialogTitle>
+          <DialogDescription>
+            Set a new temporary password for {user.name}. They will change it at
+            their next sign-in.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void doReset();
+          }}
+          noValidate
+        >
+          <div className="space-y-2">
+            <Label htmlFor="reset-temporary-password">Temporary Password</Label>
+            <Input
+              ref={newPasswordRef}
+              id="reset-temporary-password"
+              type="password"
+              value={newPassword}
+              required
+              disabled={isBusy}
+              autoComplete="new-password"
+              aria-invalid={fieldErrors.newPassword ? true : undefined}
+              aria-describedby={
+                fieldErrors.newPassword
+                  ? "reset-temporary-password-error"
+                  : undefined
+              }
+              onChange={(event) => setNewPassword(event.target.value)}
+              onBlur={() => handleBlur("newPassword")}
+            />
+            {fieldErrors.newPassword && (
+              <FieldError
+                id="reset-temporary-password-error"
+                message={fieldErrors.newPassword}
+              />
+            )}
+            <p className="text-muted-foreground text-xs">
+              {OFFLINE_PASSWORD_HELPER}
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="reset-confirm-password">
+              Confirm Temporary Password
+            </Label>
+            <Input
+              ref={confirmPasswordRef}
+              id="reset-confirm-password"
+              type="password"
+              value={confirmPassword}
+              required
+              disabled={isBusy}
+              autoComplete="new-password"
+              aria-invalid={fieldErrors.confirmPassword ? true : undefined}
+              aria-describedby={
+                fieldErrors.confirmPassword
+                  ? "reset-confirm-password-error"
+                  : undefined
+              }
+              onChange={(event) => setConfirmPassword(event.target.value)}
+              onBlur={() => handleBlur("confirmPassword")}
+            />
+            {fieldErrors.confirmPassword && (
+              <FieldError
+                id="reset-confirm-password-error"
+                message={fieldErrors.confirmPassword}
+              />
+            )}
+          </div>
+
+          {serverAlert && (
+            <MutationAlert
+              message={serverAlert}
+              retryLabel="Try Resetting Password Again"
+              onRetry={() => void doReset()}
+              disabled={isBusy}
+            />
+          )}
+
+          <p className="sr-only" aria-live="polite">
+            {isBusy && "Resetting password…"}
+          </p>
+
+          <DialogFooter className="flex-col gap-2 sm:flex-col sm:justify-start">
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={isBusy}
+            >
+              {isBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isBusy ? "Resetting Password…" : "Reset Password"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              disabled={isBusy}
+              onClick={onCancel}
+            >
+              Keep Current Password
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// --- Lifecycle confirmation dialog -------------------------------------------
+
+function StatusDialog({
+  mode,
+  user,
+  onCompleted,
+  onCancel,
+}: {
+  mode: "deactivate" | "reactivate";
+  user: ManagedUserDto;
+  onCompleted: (bannerMessage: string) => void;
+  onCancel: () => void;
+}) {
+  const [serverAlert, setServerAlert] = useState<string | null>(null);
+
+  const isDeactivate = mode === "deactivate";
+
+  const mutation = useMutation({
+    mutationFn: async () =>
+      setUserStatus(user.id, isDeactivate ? "INACTIVE" : "ACTIVE"),
+    onSuccess: () =>
+      onCompleted(
+        isDeactivate
+          ? deactivateSuccessCopy(user.name)
+          : reactivateSuccessCopy(user.name),
+      ),
+    onError: () =>
+      setServerAlert(
+        isDeactivate
+          ? deactivateFailureCopy(user.name)
+          : reactivateFailureCopy(user.name),
+      ),
+  });
+
+  const isBusy = mutation.isPending;
+
+  function doAction() {
+    if (isBusy) return;
+    setServerAlert(null);
+    mutation.mutate();
+  }
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !isBusy) onCancel();
+      }}
+    >
+      <DialogContent className="max-w-md gap-4">
+        <DialogHeader>
+          <DialogTitle>
+            {isDeactivate ? "Deactivate User" : "Reactivate User"}
+          </DialogTitle>
+          <DialogDescription>
+            {isDeactivate
+              ? `Deactivate ${user.name}? They will be signed out immediately and cannot sign in until reactivated.`
+              : `Reactivate ${user.name}? They will be able to sign in with their current credentials.`}
+          </DialogDescription>
+        </DialogHeader>
+
+        {serverAlert && (
+          <MutationAlert
+            message={serverAlert}
+            retryLabel={
+              isDeactivate ? "Try Deactivating Again" : "Try Reactivating Again"
+            }
+            onRetry={doAction}
+            disabled={isBusy}
+          />
+        )}
+
+        <p className="sr-only" aria-live="polite">
+          {isBusy &&
+            (isDeactivate ? "Deactivating user…" : "Reactivating user…")}
+        </p>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isBusy}
+            onClick={onCancel}
+          >
+            {isDeactivate ? "Keep User Active" : "Keep User Inactive"}
+          </Button>
+          <Button
+            type="button"
+            variant={isDeactivate ? "destructive" : "default"}
+            disabled={isBusy}
+            onClick={doAction}
+          >
+            {isBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isBusy
+              ? isDeactivate
+                ? "Deactivating…"
+                : "Reactivating…"
+              : isDeactivate
+                ? "Deactivate User"
+                : "Reactivate User"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 // --- Main page client ---------------------------------------------------------
 
@@ -741,6 +1551,41 @@ export function UsersClient({
         </Card>
       </PageShell>
 
+      {dialog.kind === "create" && (
+        <UserFormDialog
+          mode="create"
+          locations={locations}
+          onCompleted={(message) => void handleMutationSuccess(message)}
+          onCancel={closeDialog}
+        />
+      )}
+
+      {dialog.kind === "edit" && (
+        <UserFormDialog
+          mode="edit"
+          user={dialog.user}
+          locations={locations}
+          onCompleted={(message) => void handleMutationSuccess(message)}
+          onCancel={closeDialog}
+        />
+      )}
+
+      {dialog.kind === "reset" && (
+        <ResetPasswordDialog
+          user={dialog.user}
+          onCompleted={(message) => void handleMutationSuccess(message)}
+          onCancel={closeDialog}
+        />
+      )}
+
+      {dialog.kind === "status" && (
+        <StatusDialog
+          mode={dialog.mode}
+          user={dialog.user}
+          onCompleted={(message) => void handleMutationSuccess(message)}
+          onCancel={closeDialog}
+        />
+      )}
     </>
   );
 }
