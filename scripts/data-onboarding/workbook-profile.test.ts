@@ -2,11 +2,17 @@ import { createHash } from "node:crypto";
 import { mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
 
 import { profileWorkbook } from "./workbook-profile.mjs";
+import { createWorkbookFixtureBuffer } from "../../tests/fixtures/create-workbook-fixture";
+
+const HOSTILE_FIXTURE_PATH = fileURLToPath(
+  new URL("../../tests/fixtures/workbook-edge-cases.xlsx", import.meta.url),
+);
 
 describe("profileWorkbook", () => {
   let directory: string;
@@ -146,5 +152,98 @@ describe("profileWorkbook", () => {
     await expect(
       profileWorkbook(workbookPath, { sheet: "Not a sheet" }),
     ).rejects.toThrow('Sheet "Not a sheet" was not found');
+  });
+});
+
+describe("hostile workbook fixture", () => {
+  async function profileFixture(path = HOSTILE_FIXTURE_PATH) {
+    return profileWorkbook(path, { sheet: "Hostile Inventory" });
+  }
+
+  function cell(
+    profile: Awaited<ReturnType<typeof profileFixture>>,
+    address: string,
+  ) {
+    return profile.selectedSheet.cells.find(
+      (candidate) => candidate.source.address === address,
+    );
+  }
+
+  it("preserves hidden, category, spacer, formula, and cache evidence", async () => {
+    const profile = await profileFixture();
+
+    expect(profile.sheets).toContainEqual({
+      name: "Hidden history",
+      visibility: "hidden",
+    });
+    expect(cell(profile, "A2")?.rawValue).toBe("CATEGORY");
+    expect(cell(profile, "C2")?.rawValue).toBe("JIMNY ACCESSORIES");
+    expect(profile.selectedSheet.cells.some(({ source }) => source.row === 3)).toBe(
+      false,
+    );
+    expect(cell(profile, "G12")).toMatchObject({
+      formula: "D12",
+      cachedValue: 99,
+    });
+    expect(profile.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "FORMULA_CACHE_DISAGREEMENT",
+          source: expect.objectContaining({ address: "G12" }),
+          referencedValue: 4,
+        }),
+        expect.objectContaining({
+          code: "EXTERNAL_FORMULA_REFERENCE",
+          source: expect.objectContaining({ address: "G13" }),
+        }),
+      ]),
+    );
+  });
+
+  it("preserves duplicate and missing item codes without cleanup", async () => {
+    const profile = await profileFixture();
+
+    expect(cell(profile, "B4")?.rawValue).toBe("DUP-001");
+    expect(cell(profile, "B5")?.rawValue).toBe("DUP-001");
+    expect(cell(profile, "B6")).toBeUndefined();
+    expect(cell(profile, "C6")?.rawValue).toBe("Missing code item");
+  });
+
+  it("preserves negative, blank, and nonnumeric quantities", async () => {
+    const profile = await profileFixture();
+
+    expect(cell(profile, "D7")?.rawValue).toBe(-2);
+    expect(cell(profile, "D8")).toBeUndefined();
+    expect(cell(profile, "D9")?.rawValue).toBe("many");
+  });
+
+  it("preserves missing, conflicting, and nonnumeric prices", async () => {
+    const profile = await profileFixture();
+
+    expect(cell(profile, "E4")?.rawValue).toBe(100);
+    expect(cell(profile, "E5")?.rawValue).toBe(120);
+    expect(cell(profile, "E10")).toBeUndefined();
+    expect(cell(profile, "E11")?.rawValue).toBe("-");
+  });
+
+  it("rebuilds to equivalent parsed evidence", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "chezcar-fixture-rebuild-"));
+    const rebuiltPath = join(directory, "rebuilt.xlsx");
+
+    try {
+      await writeFile(rebuiltPath, createWorkbookFixtureBuffer());
+      const [checkedIn, rebuilt] = await Promise.all([
+        profileFixture(),
+        profileFixture(rebuiltPath),
+      ]);
+
+      expect(rebuilt.sheets).toEqual(checkedIn.sheets);
+      expect(rebuilt.selectedSheet).toEqual(checkedIn.selectedSheet);
+      expect(rebuilt.findings).toEqual(checkedIn.findings);
+    } finally {
+      await import("node:fs/promises").then(({ rm }) =>
+        rm(directory, { recursive: true, force: true }),
+      );
+    }
   });
 });
