@@ -12,7 +12,7 @@ Current gaps are intentional and material:
 - One initial migration and an environment-driven development seed exist. The seed provisions reference catalog data and the first Admin without committed credentials.
 - No automated tests, coverage, or CI workflow exists.
 - A clean Node.js `20.20.2` isolated verification run passes `npm run build` and `npm run typecheck`. The build emits existing Recharts zero-size prerender warnings.
-- `npm run lint` is configured but currently fails with 104 errors and 41 warnings, primarily existing explicit `any` helpers and React effect-state findings. Do not report lint as passing.
+- `npm run lint` is configured but currently fails with 96 errors and 49 warnings (2026-08-25 phase-gate baseline), primarily existing explicit `any` helpers and React effect-state findings. Do not report lint as passing.
 - `npm audit --omit=dev` reports zero production dependency findings; the full development tree currently reports one high and one low transitive tooling finding.
 
 ## Sources of truth

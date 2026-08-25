@@ -55,7 +55,7 @@ The current scripts provide these verification paths:
 | `npm run verify:phase-01 -- --validate-evidence` | Phase 1 evidence gate: asserts the disposable test target plus seed/reset environment, then records fresh migration deploy, seed, two hash-equivalent catalog reloads, full unit/integration suites, typecheck, and build in `docs/verification/phase-01-evidence.md`; captures lint's expected failure baseline separately and preserves completed manual UAT rows across reruns. |
 | `npm run build` | Creates a production Next.js build. A clean Node.js `20.20.2` isolated run passes on 2026-08-24, with existing Recharts zero-size prerender warnings. It is not a behavioral test suite. |
 | `npm run typecheck` | Runs strict TypeScript with `tsc --noEmit`. A clean Node.js `20.20.2` isolated run passes on 2026-08-24. |
-| `npm run lint` | Runs the checked-in ESLint flat configuration. It is reproducible but currently fails with 104 errors and 41 warnings from existing prototype code. |
+| `npm run lint` | Runs the checked-in ESLint flat configuration. It is reproducible but currently fails with 96 errors and 49 warnings from existing prototype code (fresh baseline captured by the 2026-08-25 phase gate). |
 | `npm audit --omit=dev` | Reports zero known production dependency findings as of 2026-08-24. The full development tree still reports one high and one low transitive tooling finding. |
 
 ## Checked-in suites

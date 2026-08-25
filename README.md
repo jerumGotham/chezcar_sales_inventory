@@ -94,7 +94,7 @@ The actual objects include price, status, reorder level, and description fields.
 - `.env.example` documents `DATABASE_URL`, Better Auth settings, and seed-only Admin variables. Never commit a populated `.env`.
 - `DATABASE_URL` and `BETTER_AUTH_SECRET` are required by the authenticated runtime; `BETTER_AUTH_URL` must match the application origin.
 - Available npm scripts include Prisma generation, development migration, seed, catalog reload, unit/integration tests, and `verify:phase-01`. The evidence gate requires the exact disposable PostgreSQL test target (`localhost:55435/chezcar_test_01_13`, no bind mount), `NODE_ENV=test`, `ALLOW_CATALOG_RESET=true`, and non-example `SEED_ADMIN_*` values; it never targets production or the bind-mounted development database.
-- `npm run lint` is reproducible but currently fails on pre-existing prototype debt (104 errors and 41 warnings as of 2026-08-25); the phase gate captures this baseline separately instead of treating it as a pass.
+- `npm run lint` is reproducible but currently fails on pre-existing prototype debt (96 errors and 49 warnings captured by the 2026-08-25 phase gate); the phase gate captures this baseline separately instead of treating it as a pass.
 - `npm run start` serves a production build and therefore requires `npm run build` first.
 
 ## Project scope

@@ -16,7 +16,8 @@
     "prisma:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
-    "db:catalog:reload": "node prisma/seed.mjs --catalog-only"
+    "db:catalog:reload": "node prisma/seed.mjs --catalog-only",
+    "verify:phase-01": "node scripts/verify-phase-01.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",
