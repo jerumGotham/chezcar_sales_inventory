@@ -26,7 +26,7 @@ created: 2026-08-25
 
 The integration suite must use a separately named disposable PostgreSQL instance and must never reset the development bind mount or an unknown database target.
 
-Plan 01-01 package legitimacy is a blocking human decision checkpoint, not an automated Nyquist test. Automated sampling starts after Plan 01-02 installs the approved exact release and proves the one-shot `npm run test -- <changed-test-file>` command.
+Plan 01-01 combines an automated registry-metadata assertion with a blocking human legitimacy/suitability decision. Normal test sampling starts after Plan 01-02 installs the approved exact release and proves the one-shot `npm run test -- <changed-test-file>` command.
 
 ---
 
@@ -45,9 +45,10 @@ Every row below is mapped to its final plan/task ID and must be preserved throug
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
+| 01-01-T1 | 01-01 | 1 | all Phase 1 requirements | T-01-SC | Candidate metadata has the exact package/version, official repository, and advertised Node 20 support before human legitimacy approval | registry preflight + human checkpoint | `npm view vitest@4.1.11 --json` piped to exact metadata assertions in Plan 01-01 | ✅ external registry | ⬜ pending |
 | 01-02-T1 | 01-02 | 2 | REQ-data-onboarding | T-DATA-01 | Source rows remain traceable and formulas are not executed | unit | `npm run test -- scripts/data-onboarding/workbook-profile.test.ts` | ❌ 01-02 | ⬜ pending |
 | 01-03-T1 | 01-03 | 3 | REQ-data-onboarding | T-DATA-02 | Duplicate codes, invalid quantities, and unresolved prices cannot enter canonical data | unit | `npm run test -- scripts/data-onboarding/canonicalize.test.ts` | ❌ 01-03 | ⬜ pending |
-| 01-13-T2 | 01-13 | 3 | REQ-role-authorization / REQ-user-management | T-HARNESS-01 | Persisted actors cover active/inactive/expired/revoked sessions and invalid role/location assignments; hostile query construction remains exact | PostgreSQL integration + unit | `npm run test:integration -- tests/helpers/factories.test.ts && npm run test -- tests/helpers/requests.test.ts` | ❌ 01-13 | ⬜ pending |
+| 01-13-T2 | 01-13 | 3 | REQ-role-authorization / REQ-user-management | T-HARNESS-01 | Persisted actors cover active/inactive/expired/revoked sessions and invalid role/location assignments; hostile query construction remains exact | PostgreSQL integration + unit | `npm run test:integration -- tests/integration/factories.test.ts && npm run test -- tests/helpers/requests.test.ts` | ❌ 01-13 | ⬜ pending |
 | 01-05-T2 | 01-05 | 5 | REQ-data-onboarding | T-DATA-03 | Approved input generates deterministic canonical output | unit | `npm run test -- scripts/data-onboarding/generate-seed.test.ts` | ❌ 01-05 | ⬜ pending |
 | 01-06-T3 | 01-06 | 6 | REQ-data-onboarding | T-DATA-04 | Fresh migration and repeat seed create exact locations/products/balances | integration | `npm run test:integration -- tests/integration/seed.test.ts` | ❌ 01-06 | ⬜ pending |
 | 01-06-T3 | 01-06 | 6 | REQ-data-onboarding | T-DATA-05 | Reset rejects production and unknown database targets | unit + integration | `npm run test -- lib/server/services/catalog-reset.test.ts` | ❌ 01-06 | ⬜ pending |
@@ -69,7 +70,7 @@ Every row below is mapped to its final plan/task ID and must be preserved throug
 
 ## Blocking Preflight and Validation Bootstrap Ownership
 
-- [ ] Plan 01-01 records the blocking human decision approving one exact legitimate Node 20-compatible Vitest release and the downstream one-shot test-command contract; this is not an automated Nyquist check.
+- [ ] Plan 01-01 runs exact registry metadata assertions, then records the blocking human decision approving one legitimate Node 20-compatible Vitest release and the downstream one-shot test-command contract.
 - [ ] Plan 01-02 installs only that approved release, creates `vitest.config.ts`, `test`/`test:integration`, the workbook profile test, and the hostile synthetic XLSX fixture.
 - [ ] Plan 01-13 adds and tests the disposable PostgreSQL lifecycle plus persisted actor/session and hostile-request helpers.
 - [ ] Remaining mapped tests stay with their final owners: 01-03 canonicalization, 01-05 generation, 01-06 migration/seed/reset, 01-07 policy/four routes, 01-08 shell scope, 01-14 Inventory scope, 01-15 proxy denial, 01-17 auth surface, 01-09 user/revocation, and 01-10 credential setup.

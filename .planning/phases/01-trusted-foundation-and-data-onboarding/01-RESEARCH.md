@@ -469,7 +469,7 @@ Nyquist validation is enabled because `.planning/config.json` is absent; no expl
 
 | Property | Value |
 |----------|-------|
-| Framework | Vitest candidate `4.1.11`; Plan 01-01 is a blocking human decision checkpoint because the package-legitimacy audit marked it SUS/too-new. This is not an automated Nyquist check. |
+| Framework | Vitest candidate `4.1.11`; Plan 01-01 first asserts exact registry metadata and advertised Node 20 support, then blocks on human legitimacy/suitability approval because the audit marked the release SUS/too-new. |
 | Config file | none initially — Plan 01-02 creates `vitest.config.ts` only after exact package/version approval. [VERIFIED: docs/TESTING.md:4-17] |
 | Quick run command | Plan 01-02 establishes `npm run test -- <changed-test-file>` and proves it runs under Node 20. [ASSUMED] |
 | Full suite command | `npm run test && npm run test:integration && npm run typecheck` after Plan 01-02 bootstrap. [ASSUMED] |
@@ -482,7 +482,7 @@ Use Vitest’s Node environment for policy, mapping, route/service, and integrat
 |--------|----------|-----------|-------------------|-------------|
 | REQ-data-onboarding | Classifies source rows and preserves raw/source mapping | unit | `npm run test -- scripts/data-onboarding/workbook-profile.test.ts` | Plan 01-02 [ASSUMED] |
 | REQ-data-onboarding | Blocks duplicate code, invalid quantity, and conflicting/missing price outcomes | unit/table-driven | `npm run test -- scripts/data-onboarding/canonicalize.test.ts` | Plan 01-03 [ASSUMED] |
-| REQ-role-authorization / REQ-user-management | Persists canonical/invalid actors and active/inactive/expired/revoked sessions; preserves hostile query construction | PostgreSQL integration + unit | `npm run test:integration -- tests/helpers/factories.test.ts && npm run test -- tests/helpers/requests.test.ts` | Plan 01-13 [ASSUMED] |
+| REQ-role-authorization / REQ-user-management | Persists canonical/invalid actors and active/inactive/expired/revoked sessions; preserves hostile query construction | PostgreSQL integration + unit | `npm run test:integration -- tests/integration/factories.test.ts && npm run test -- tests/helpers/requests.test.ts` | Plan 01-13 [ASSUMED] |
 | REQ-data-onboarding | Same approved input yields the same canonical fixture/report | unit/snapshot/hash | `npm run test -- scripts/data-onboarding/generate-seed.test.ts` | Plan 01-05 [ASSUMED] |
 | REQ-data-onboarding | Fresh migration + seed creates exact locations/products/balances; rerun is equivalent | PostgreSQL integration | `npm run test:integration -- tests/integration/seed.test.ts` | Plan 01-06 [ASSUMED] |
 | REQ-data-onboarding | Reload refuses production and unknown database targets | unit + integration | `npm run test -- lib/server/services/catalog-reset.test.ts` | Plan 01-06 [ASSUMED] |
