@@ -213,6 +213,7 @@ describe("first-login credential setup", () => {
 
       // Prompt consumption is final; repeated change stays idempotent-safe.
       const afterChange = await getCredentialState(headers);
+      expect(afterChange.status).toBe(200);
       expect(afterChange.body.data?.credentialSetupRequired).toBe(false);
 
       // Other sessions are revoked; the initiating session still works.
