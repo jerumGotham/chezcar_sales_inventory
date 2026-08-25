@@ -85,10 +85,10 @@ Prices are serialized as JSON numbers for compatibility with the current UI. Tra
 
 | Parameter | Type/default | Behavior |
 | --- | --- | --- |
-| `location` | string, `all` | Exact Location name for Admin/Stock Staff |
+| `location` | string, `all` | Admin only: `all` or one active canonical Location ID, code, or exact name |
 | `status` | `all`, `In Stock`, `Low Stock`, `Out of Stock` | Derived from on-hand and reorder level |
 
-Branch Staff requests are always scoped to the persisted `User.locationId`; a client-supplied location cannot expand this scope. Product pagination occurs before balances are loaded, so a product's matching locations are not split across pages.
+Inventory independently requires the named `inventory:view` capability. Accounting Staff is denied with `403`. Branch Staff requests are always scoped to the persisted active branch and Stock Staff requests are always scoped to persisted `SR`; client-supplied locations, including duplicate or reordered values, cannot expand either scope. Admin may request all locations or one active canonical location; conflicting duplicate Admin scope values return `400`. Product pagination occurs before balances are loaded, so a product's matching locations are not split across pages.
 
 Status is derived as:
 
