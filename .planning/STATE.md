@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 current_phase: 01
 current_phase_name: Trusted Foundation and Data Onboarding
 status: executing
-stopped_at: Completed 01-11-PLAN.md
-last_updated: "2026-08-25T14:14:30.552Z"
+stopped_at: Completed 01-12-PLAN.md
+last_updated: "2026-08-25T14:49:12.506Z"
 last_activity: 2026-08-25
 last_activity_desc: Phase 01 execution started
-state_head: bf64259a1b76d58752f9a0b9fcec590951f39b20
+state_head: d9c6af9d06daee507f7f429421eeddef578a2854
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 17
-  completed_plans: 16
+  completed_plans: 17
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-08-25)
 ## Current Position
 
 Phase: 01 (Trusted Foundation and Data Onboarding) — EXECUTING
-Plan: 12 of 17
+Plan: 13 of 17
 Status: Ready to execute
 Last activity: 2026-08-25 — Completed 01-16-PLAN.md (next incomplete plan: 01-10; 01-15/01-16/01-17 summaries exist on disk)
 
@@ -74,6 +74,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P16 | 6 min | 2 tasks | 3 files |
 | Phase 01 P10 | 20 min | 2 tasks | 5 files |
 | Phase 01 P11 | 25 min | 2 tasks | 2 files |
+| Phase 01 P12 | 33 min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -122,6 +123,8 @@ Decisions are logged in PROJECT.md. Current constraints:
 - [Phase 01]: Plan 01-10: Credential change revokes other sessions server-side (Better Auth revokeOtherSessions would also replace the initiating session); the route is a current-user-only all-roles capability gate and skip/change each consume the D-15 prompt once per arming.
 - [Phase 01]: Plan 01-11: /users renders the approved User Management UI over the durable /api/users surface behind the users:manage server gate; location options derive from canonical active locations only.
 - [Phase 01]: Plan 01-11: Create dialog disables Inactive (create API has no status field) with truthful helper copy; Last Sign-in renders Never until the DTO adds a timestamp.
+- [Phase 01]: Plan 01-12: The phase evidence runner provisions and removes its own disposable PostgreSQL container before the integration harness boots its identical instance, and treats only the lint baseline as an expected failure.
+- [Phase 01]: Plan 01-12: Fresh 2026-08-25 gate lint baseline is 96 errors / 49 warnings, superseding the stale 104/41 figures in README/TESTING/AGENTS while lint remains a failing quality gate.
 
 ### Pending Todos
 
@@ -144,6 +147,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-25T14:14:30.517Z
-Stopped at: Completed 01-11-PLAN.md
+Last session: 2026-08-25T14:49:12.474Z
+Stopped at: Completed 01-12-PLAN.md
 Resume file: None

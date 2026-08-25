@@ -10,7 +10,7 @@ A checked item means durable, authorized, verified production behavior, not an e
 
 ### Foundation and Access
 
-- [ ] **REQ-data-onboarding**: The developer can profile `excel/REALTIME INVENTORY- NEW 3.xlsx`, preserve source traceability, resolve blocking workbook ambiguities, generate canonical products/prices/locations/opening balances, and reset/reload that dataset in development/test while production reset is blocked.
+- [x] **REQ-data-onboarding**: The developer can profile `excel/REALTIME INVENTORY- NEW 3.xlsx`, preserve source traceability, resolve blocking workbook ambiguities, generate canonical products/prices/locations/opening balances, and reset/reload that dataset in development/test while production reset is blocked.
 - [x] **REQ-role-authorization**: The server enforces four fixed roles (`ADMIN`, `STOCK_STAFF`, `BRANCH_STAFF`, `ACCOUNTING_STAFF`), active-account status, and persisted location scope on every sensitive page, read, and mutation. Stock Staff is fixed to `SR`, Branch Staff to exactly one branch, and Admin/Accounting are business-wide with no location assignment. Hidden navigation never substitutes for authorization.
 - [x] **REQ-user-management**: The single owner Admin can create, view, update, deactivate, and initiate credential setup/reset for Stock Staff, Branch Staff, and Accounting Staff accounts. User Management cannot create another Admin. Stock Staff receives the fixed `SR` assignment, Branch Staff requires one assigned branch, and Accounting has no location assignment; delete means deactivate; deactivation or role/location change revokes sessions immediately.
 
@@ -52,7 +52,7 @@ A checked item means durable, authorized, verified production behavior, not an e
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REQ-data-onboarding | Phase 1 | Pending |
+| REQ-data-onboarding | Phase 1 | Complete |
 | REQ-role-authorization | Phase 1 | Complete |
 | REQ-user-management | Phase 1 | Complete |
 | REQ-sales-posting | Phase 2 | Pending |
