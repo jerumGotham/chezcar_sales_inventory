@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 current_phase: 01
 current_phase_name: Trusted Foundation and Data Onboarding
 status: executing
-stopped_at: Completed 01-05-PLAN.md
-last_updated: "2026-08-25T08:16:00.015Z"
+stopped_at: Completed 01-06-PLAN.md
+last_updated: "2026-08-25T08:46:53.622Z"
 last_activity: 2026-08-25
 last_activity_desc: Phase 01 execution started
-state_head: 6231af0dca85ed882c511eed7855649ca3ccd915
+state_head: d8d009d83c7be01ab8c4b08aecaa1b77a6d280dc
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 17
-  completed_plans: 6
+  completed_plans: 7
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-08-25)
 ## Current Position
 
 Phase: 01 (Trusted Foundation and Data Onboarding) — EXECUTING
-Plan: 7 of 17
+Plan: 8 of 17
 Status: Ready to execute
 Last activity: 2026-08-25 — Phase 01 execution started
 
@@ -64,6 +64,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P13 | 7 min | 2 tasks | 6 files |
 | Phase 01 P04 | 8 min | 1 tasks | 4 files |
 | Phase 01 P05 | 12 min | 2 tasks | 6 files |
+| Phase 01 P06 | 25 min | 3 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -91,6 +92,9 @@ Decisions are logged in PROJECT.md. Current constraints:
 - [Phase 01]: Canonical fixtures retain no-price products as inactive/non-sellable with salePrice null; no zero sale price is invented.
 - [Phase 01]: BL BEFORE remains trace-only evidence; canonical SR has no workbook source and zero opening stock.
 - [Phase 01]: Fixture and mapping outputs are byte-stable and embed reviewed input/output hashes.
+- [Phase 01]: Persist approved no-price products as inactive rows with a null Decimal price; never map null to zero.
+- [Phase 01]: Accept catalog replacement only on exact isolated identities and verify the live database name before writes.
+- [Phase 01]: Keep User.status authoritative while Better Auth Admin-plugin ban fields remain compatibility storage.
 
 ### Pending Todos
 
@@ -98,7 +102,6 @@ None yet.
 
 ### Blockers/Concerns
 
-- Canonical fixture generation is complete; Plan 01-06 must preserve nullable inactive/no-price semantics when adapting the persistence schema and loader.
 - Phase 1 `UI-SPEC.md` is approved; refresh `01-RESEARCH.md` against the reconciled scope before planning.
 - Vitest unit infrastructure, workbook coverage, and the isolated PostgreSQL integration harness now exist; CI remains pending, and lint still has documented baseline failures.
 - Existing business screens and mutations are mock/local prototypes; preserve the distinction from durable behavior.
@@ -114,6 +117,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-25T08:15:59.990Z
-Stopped at: Completed 01-05-PLAN.md
+Last session: 2026-08-25T08:46:53.598Z
+Stopped at: Completed 01-06-PLAN.md
 Resume file: None
