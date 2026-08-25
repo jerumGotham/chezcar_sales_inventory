@@ -1,33 +1,68 @@
+import type {
+  ShellCapabilityId,
+  ShellMenuIcon,
+} from "./contracts/access";
 import {
-  Bell,
   Boxes,
   ClipboardList,
   LayoutDashboard,
   Package,
-  ReceiptText,
-  RefreshCw,
-  Settings,
-  ShoppingCart,
-  Users,
   UserCog,
-  Wrench,
-  LocationEdit,
+  Users,
+  type LucideIcon,
 } from "lucide-react";
 
+export type MenuDefinition = {
+  label: string;
+  href: string;
+  icon: LucideIcon;
+  iconId: ShellMenuIcon;
+  capability: ShellCapabilityId;
+};
+
+// Navigation is deliberately closed over server-authorized capabilities. Prototype
+// routes without a policy capability stay out of the authenticated shell.
 export const menus = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  // { label: "Admin Dashboard", href: "/dashboard2", icon: LayoutDashboard },
-  // { label: "Branch Dashboard", href: "/dashboard3", icon: LayoutDashboard },
-  { label: "Customers", href: "/customers", icon: Users },
-  { label: "Products", href: "/products", icon: Package },
-  { label: "Inventory", href: "/inventory", icon: Boxes },
-  { label: "Customer Orders", href: "/customer-orders", icon: ClipboardList },
-  // { label: "POS / Sales", href: "/pos", icon: ShoppingCart },
-  { label: "Job Orders", href: "/job-orders", icon: Wrench },
-  { label: "Stock Transfers", href: "/stock-transfers", icon: RefreshCw },
-  { label: "Reports", href: "/reports", icon: ReceiptText },
-  { label: "Notifications", href: "/notifications", icon: Bell },
-  { label: "Branches", href: "/branches", icon: LocationEdit },
-  { label: "Users & Roles", href: "/users", icon: UserCog },
-  { label: "Settings", href: "/settings", icon: Settings },
-] as const;
+  {
+    label: "Dashboard",
+    href: "/dashboard",
+    icon: LayoutDashboard,
+    iconId: "dashboard",
+    capability: "dashboard:view",
+  },
+  {
+    label: "Customers",
+    href: "/customers",
+    icon: Users,
+    iconId: "customers",
+    capability: "customers:view",
+  },
+  {
+    label: "Products",
+    href: "/products",
+    icon: Package,
+    iconId: "products",
+    capability: "products:view",
+  },
+  {
+    label: "Inventory",
+    href: "/inventory",
+    icon: Boxes,
+    iconId: "inventory",
+    capability: "inventory:view",
+  },
+  {
+    label: "Customer Orders",
+    href: "/customer-orders",
+    icon: ClipboardList,
+    iconId: "customer-orders",
+    capability: "customer-orders:view",
+  },
+  {
+    label: "User Management",
+    href: "/users",
+    icon: UserCog,
+    iconId: "users",
+    capability: "users:manage",
+  },
+] as const satisfies readonly MenuDefinition[];

@@ -8,10 +8,10 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/lib/server/auth", () => ({
+vi.mock("./auth", () => ({
   auth: { api: { getSession: mocks.getSession } },
 }));
-vi.mock("@/lib/server/prisma", () => ({
+vi.mock("./prisma", () => ({
   prisma: {
     user: { findUnique: mocks.findUser },
     location: { findUnique: mocks.findLocation },
