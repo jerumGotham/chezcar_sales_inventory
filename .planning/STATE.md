@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 current_phase: 01
 current_phase_name: Trusted Foundation and Data Onboarding
 status: executing
-stopped_at: Completed 01-06-PLAN.md
-last_updated: "2026-08-25T08:46:53.622Z"
+stopped_at: Completed 01-07-PLAN.md
+last_updated: "2026-08-25T09:05:55.346Z"
 last_activity: 2026-08-25
 last_activity_desc: Phase 01 execution started
-state_head: d8d009d83c7be01ab8c4b08aecaa1b77a6d280dc
+state_head: 58387ac108a659c571f22152e8211bc5d8388cc3
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 17
-  completed_plans: 7
+  completed_plans: 8
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-08-25)
 ## Current Position
 
 Phase: 01 (Trusted Foundation and Data Onboarding) — EXECUTING
-Plan: 8 of 17
+Plan: 9 of 17
 Status: Ready to execute
 Last activity: 2026-08-25 — Phase 01 execution started
 
@@ -65,6 +65,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P04 | 8 min | 1 tasks | 4 files |
 | Phase 01 P05 | 12 min | 2 tasks | 6 files |
 | Phase 01 P06 | 25 min | 3 tasks | 16 files |
+| Phase 01 P07 | 10 min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -95,6 +96,8 @@ Decisions are logged in PROJECT.md. Current constraints:
 - [Phase 01]: Persist approved no-price products as inactive rows with a null Decimal price; never map null to zero.
 - [Phase 01]: Accept catalog replacement only on exact isolated identities and verify the live database name before writes.
 - [Phase 01]: Keep User.status authoritative while Better Auth Admin-plugin ban fields remain compatibility storage.
+- [Phase 01]: Only active SR/WAREHOUSE is valid for Stock Staff, active canonical branches are valid for Branch Staff, and Admin/Accounting require no location.
+- [Phase 01]: The four migrated reads preserve existing role reach through named capabilities; Accounting remains denied Products and Inventory.
 
 ### Pending Todos
 
@@ -117,6 +120,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-25T08:46:53.598Z
-Stopped at: Completed 01-06-PLAN.md
+Last session: 2026-08-25T09:05:55.319Z
+Stopped at: Completed 01-07-PLAN.md
 Resume file: None
