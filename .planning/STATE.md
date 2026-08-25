@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 current_phase: 01
 current_phase_name: Trusted Foundation and Data Onboarding
 status: executing
-stopped_at: Completed 01-17-PLAN.md
-last_updated: "2026-08-25T10:44:23.382Z"
+stopped_at: Completed 01-09-PLAN.md
+last_updated: "2026-08-25T11:55:34.717Z"
 last_activity: 2026-08-25
 last_activity_desc: Phase 01 execution started
-state_head: 03842f15ad574ec3d1a51914a4bd2f54d33d9a6f
+state_head: 5560efefd8174352967e5538cd505ab76f6f94fd
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 17
-  completed_plans: 12
+  completed_plans: 13
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-08-25)
 ## Current Position
 
 Phase: 01 (Trusted Foundation and Data Onboarding) — EXECUTING
-Plan: 13 of 17
+Plan: 14 of 17
 Status: Ready to execute
 Last activity: 2026-08-25 — Phase 01 execution started
 
@@ -70,6 +70,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P14 | 11 min | 2 tasks | 5 files |
 | Phase 01 P15 | 12 min | 2 tasks | 3 files |
 | Phase 01 P17 | 30 min | 2 tasks | 3 files |
+| Phase 01 P09 | 51 min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -111,6 +112,9 @@ Decisions are logged in PROJECT.md. Current constraints:
 - [Phase 01]: The /access-denied screen is a prop-free server component with exact UI-SPEC copy, making protected-data leakage structurally impossible.
 - [Phase 01]: Plan 01-17: Expose Better Auth 1.6.23 Admin-plugin credentials only through a guarded server-only internalUserAuth facade (three staff roles, owner-header resets); never mount it or expose generic Admin routes.
 - [Phase 01]: Plan 01-17: disableSignUp must live inside emailAndPassword options for Better Auth 1.6.23; a top-level flag is silently ignored.
+- [Phase 01]: Plan 01-09: Stock/Accounting create and update payloads cannot persist hostile location fields; Stock Staff resolves to active SR server-side and Accounting never carries a location.
+- [Phase 01]: Plan 01-09: Access changes and required session revocation commit in one Prisma transaction with FOR UPDATE row locking; injected failures roll back both writes.
+- [Phase 01]: Plan 01-09: Duplicate emails map to a stable EMAIL_IN_USE 409 with one user/account; repeated status/reset requests are idempotent no-ops.
 
 ### Pending Todos
 
@@ -133,6 +137,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-25T10:44:23.354Z
-Stopped at: Completed 01-17-PLAN.md
+Last session: 2026-08-25T11:55:34.688Z
+Stopped at: Completed 01-09-PLAN.md
 Resume file: None
