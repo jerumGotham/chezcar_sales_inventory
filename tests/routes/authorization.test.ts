@@ -37,6 +37,13 @@ vi.mock("@/lib/server/catalog", async () => {
       page: z.coerce.number().int().min(1).default(1),
       location: z.string().default("all"),
     }),
+    parseInventoryListQuery: (searchParams: URLSearchParams) =>
+      z
+        .object({
+          page: z.coerce.number().int().min(1).default(1),
+          location: z.string().default("all"),
+        })
+        .parse(Object.fromEntries(searchParams)),
     productListQuerySchema: z.object({
       page: z.coerce.number().int().min(1).default(1),
     }),
@@ -270,6 +277,22 @@ it("returns a data-free 401 for an inactive persisted inventory principal", asyn
   expect(response.status).toBe(401);
   expect(body).toEqual({
     error: { code: "UNAUTHENTICATED", message: "Active user account required" },
+  });
+  expect(JSON.stringify(body)).not.toContain("protected-inventory");
+  expect(mocks.listInventory).not.toHaveBeenCalled();
+});
+
+it("returns a data-free 401 for a revoked inventory session", async () => {
+  mocks.getSession.mockResolvedValue(null);
+
+  const response = await getInventory(
+    new Request("http://localhost/api/inventory?location=all"),
+  );
+  const body = await response.json();
+
+  expect(response.status).toBe(401);
+  expect(body).toEqual({
+    error: { code: "UNAUTHENTICATED", message: "Authentication required" },
   });
   expect(JSON.stringify(body)).not.toContain("protected-inventory");
   expect(mocks.listInventory).not.toHaveBeenCalled();

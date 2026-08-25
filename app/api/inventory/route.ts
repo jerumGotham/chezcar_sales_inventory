@@ -4,13 +4,17 @@ import {
   authorizationErrorResponse,
   requireCapability,
 } from "@/lib/server/authorization";
-import { inventoryListQuerySchema, listInventory } from "@/lib/server/catalog";
+import {
+  listInventory,
+  parseInventoryListQuery,
+} from "@/lib/server/catalog";
 
 export async function GET(request: Request) {
   try {
     const user = await requireCapability(request.headers, "inventory:view");
-    const query = inventoryListQuerySchema.parse(
-      Object.fromEntries(new URL(request.url).searchParams),
+    const query = parseInventoryListQuery(
+      new URL(request.url).searchParams,
+      user,
     );
 
     return Response.json(await listInventory(query, user));

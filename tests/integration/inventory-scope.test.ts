@@ -23,6 +23,9 @@ vi.mock("@/lib/server/auth", () => ({
 }));
 vi.mock("@/lib/catalog", async () => import("../../lib/catalog"));
 vi.mock("@/lib/server/prisma", async () => import("../../lib/server/prisma"));
+vi.mock("@/lib/server/policy/access", async () =>
+  import("../../lib/server/policy/access"),
+);
 vi.mock("@/lib/server/authorization", async () =>
   import("../../lib/server/authorization"),
 );

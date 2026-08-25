@@ -1,6 +1,6 @@
 import "server-only";
 
-import { Prisma, type UserRole } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
 import type {
@@ -9,6 +9,12 @@ import type {
   InventoryStatus,
   ProductsApiResponse,
 } from "@/lib/catalog";
+import { AuthorizationError } from "@/lib/server/authorization";
+import {
+  evaluateAccess,
+  type PersistedAccessContext,
+  validatePersistedAssignment,
+} from "@/lib/server/policy/access";
 import { prisma } from "@/lib/server/prisma";
 
 const baseListQuery = {
@@ -34,6 +40,78 @@ export const inventoryListQuerySchema = z.object({
 
 type ProductListQuery = z.infer<typeof productListQuerySchema>;
 type InventoryListQuery = z.infer<typeof inventoryListQuerySchema>;
+
+export type ResolvedLocationScope =
+  | { kind: "all" }
+  | { kind: "location"; locationId: string };
+
+const BRANCH_CODES = ["QC", "BL", "LU", "VC", "SP"] as const;
+
+export function parseInventoryListQuery(
+  searchParams: URLSearchParams,
+  context: PersistedAccessContext,
+): InventoryListQuery {
+  const input: Record<string, string | string[]> = {};
+  const keys = [...new Set(searchParams.keys())].sort();
+
+  for (const key of keys) {
+    if (key === "location" && context.role !== "ADMIN") {
+      input.location = "all";
+      continue;
+    }
+
+    const values = searchParams.getAll(key);
+    const distinctValues = [...new Set(values)];
+    input[key] =
+      distinctValues.length === 1 ? distinctValues[0] : distinctValues;
+  }
+
+  return inventoryListQuerySchema.parse(input);
+}
+
+export async function resolveLocationScope(
+  context: PersistedAccessContext,
+  requestedLocation: string,
+): Promise<ResolvedLocationScope> {
+  if (
+    !validatePersistedAssignment(context) ||
+    !evaluateAccess(context, "inventory:view")
+  ) {
+    throw new AuthorizationError("Invalid persisted inventory scope");
+  }
+
+  if (context.role === "BRANCH_STAFF" || context.role === "STOCK_STAFF") {
+    return { kind: "location", locationId: context.locationId as string };
+  }
+
+  if (requestedLocation === "all") {
+    return { kind: "all" };
+  }
+
+  const location = await prisma.location.findFirst({
+    where: {
+      isActive: true,
+      OR: [
+        { id: requestedLocation },
+        { code: requestedLocation },
+        { name: requestedLocation },
+      ],
+      AND: {
+        OR: [
+          { code: "SR", type: "WAREHOUSE" },
+          { code: { in: [...BRANCH_CODES] }, type: "BRANCH" },
+        ],
+      },
+    },
+    select: { id: true },
+  });
+
+  if (!location) {
+    throw new AuthorizationError("Invalid inventory location scope");
+  }
+
+  return { kind: "location", locationId: location.id };
+}
 
 function pagination(page: number, pageSize: number, total: number) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -140,16 +218,13 @@ function statusWhere(
 
 export async function listInventory(
   query: InventoryListQuery,
-  user: { role: UserRole; locationId: string | null },
+  context: PersistedAccessContext,
 ): Promise<InventoryApiResponse> {
+  const scope = await resolveLocationScope(context, query.location);
   const scopeLocationId =
-    user.role === "BRANCH_STAFF" ? user.locationId ?? "__unassigned__" : null;
+    scope.kind === "location" ? scope.locationId : undefined;
   const balanceWhere: Prisma.InventoryBalanceWhereInput = {
-    locationId: scopeLocationId ?? undefined,
-    location:
-      scopeLocationId || query.location === "all"
-        ? undefined
-        : { name: query.location },
+    locationId: scopeLocationId,
     ...statusWhere(query.status),
   };
   const productWhere: Prisma.ProductWhereInput = {
@@ -165,7 +240,7 @@ export async function listInventory(
   const [total, summaryBalances] = await Promise.all([
     prisma.product.count({ where: productWhere }),
     prisma.inventoryBalance.findMany({
-      where: { locationId: scopeLocationId ?? undefined },
+      where: { locationId: scopeLocationId },
       select: { onHand: true, reorderLevel: true },
     }),
   ]);
