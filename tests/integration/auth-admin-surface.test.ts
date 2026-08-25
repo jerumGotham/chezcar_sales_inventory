@@ -1,4 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
+import { readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.hoisted(() => {
@@ -256,4 +258,158 @@ describe("internal staff credential primitives", () => {
       expect(reloaded.banExpires).toBeNull();
     });
   }, 60_000);
+});
+
+function publicAuthRequest(
+  method: "GET" | "POST",
+  authPath: string,
+  body?: unknown,
+) {
+  return new Request(`http://localhost/api/auth${authPath}`, {
+    method,
+    headers: { "content-type": "application/json" },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+}
+
+async function countPrincipals(prisma: PrismaClient) {
+  const [users, accounts, sessions] = await Promise.all([
+    prisma.user.count(),
+    prisma.account.count(),
+    prisma.session.count(),
+  ]);
+  return { users, accounts, sessions };
+}
+
+const GENERIC_ADMIN_OPERATIONS = [
+  {
+    name: "create-user",
+    method: "POST" as const,
+    path: "/admin/create-user",
+    body: { email: "generic.owner@example.test", password: "Generic-Pass-1", name: "Generic" },
+  },
+  {
+    name: "list-users",
+    method: "GET" as const,
+    path: "/admin/list-users?limit=10",
+  },
+  {
+    name: "set-user-password",
+    method: "POST" as const,
+    path: "/admin/set-user-password",
+    body: { userId: "target", newPassword: "Generic-Pass-1" },
+  },
+  {
+    name: "set-role",
+    method: "POST" as const,
+    path: "/admin/set-role",
+    body: { userId: "target", role: "ADMIN" },
+  },
+  {
+    name: "ban-user",
+    method: "POST" as const,
+    path: "/admin/ban-user",
+    body: { userId: "target" },
+  },
+  {
+    name: "unban-user",
+    method: "POST" as const,
+    path: "/admin/unban-user",
+    body: { userId: "target" },
+  },
+  {
+    name: "remove-user",
+    method: "POST" as const,
+    path: "/admin/remove-user",
+    body: { userId: "target" },
+  },
+  {
+    name: "revoke-user-sessions",
+    method: "POST" as const,
+    path: "/admin/revoke-user-sessions",
+    body: { userId: "target" },
+  },
+];
+
+describe("public auth surface", () => {
+  afterEach(async () => {
+    await sharedPrisma.$disconnect();
+  });
+
+  it("keeps public sign-up unavailable without any database mutation", async () => {
+    await withDisposableDatabase(async ({ prisma }) => {
+      const before = await countPrincipals(prisma);
+
+      const response = await auth.handler(
+        publicAuthRequest("POST", "/sign-up/email", {
+          email: "public-signup.owner@example.test",
+          password: "Public-Pass-123",
+          name: "Public Sign Up",
+        }),
+      );
+      const body = (await response.json()) as {
+        code?: string;
+        message?: string;
+      };
+
+      expect(response.status).toBe(400);
+      expect(body.code).toBe("EMAIL_PASSWORD_SIGN_UP_DISABLED");
+
+      expect(await countPrincipals(prisma)).toEqual(before);
+    });
+  }, 60_000);
+
+  it.each(GENERIC_ADMIN_OPERATIONS)(
+    "leaves generic Admin $name unroutable through the public catch-all",
+    async (operation) => {
+      await withDisposableDatabase(async ({ prisma }) => {
+        const { fixture } = await signInOwner(prisma);
+        const before = await countPrincipals(prisma);
+        const targeted = JSON.stringify(operation.body ?? {}).replace(
+          '"target"',
+          JSON.stringify(fixture.users.branchStaff.id),
+        );
+
+        const response = await auth.handler(
+          new Request(`http://localhost/api/auth${operation.path}`, {
+            method: operation.method,
+            headers: { "content-type": "application/json" },
+            ...(operation.body === undefined
+              ? {}
+              : { body: targeted }),
+          }),
+        );
+
+        expect(response.status).toBe(404);
+        expect(await countPrincipals(prisma)).toEqual(before);
+      });
+    },
+    60_000,
+  );
+
+  it("binds the catch-all to the public auth instance only", () => {
+    const routeSource = readFileSync(
+      path.join("app", "api", "auth", "[...all]", "route.ts"),
+      "utf8",
+    );
+    const importSources = [...routeSource.matchAll(/from\s+"([^"]+)"/g)].map(
+      (match) => match[1],
+    );
+    expect(importSources).toEqual(["better-auth/next-js", "@/lib/server/auth"]);
+
+    const appFiles = readdirSync(path.join("app"), {
+      recursive: true,
+      encoding: "utf8",
+    }).filter((file) => /\.(ts|tsx|mts)$/.test(file));
+    for (const file of appFiles) {
+      const source = readFileSync(path.join("app", file), "utf8");
+      expect(source).not.toContain("internal-user-auth");
+    }
+
+    const internalSource = readFileSync(
+      path.join("lib", "server", "internal-user-auth.ts"),
+      "utf8",
+    );
+    expect(internalSource.startsWith('import "server-only";')).toBe(true);
+  });
 });
