@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 current_phase: 01
 current_phase_name: Trusted Foundation and Data Onboarding
 status: executing
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-08-25T02:35:31.126Z"
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-08-25T06:33:50.538Z"
 last_activity: 2026-08-25
 last_activity_desc: Phase 01 execution started
-state_head: d0b7e9d726f53861852195ed6630ea389c7e99bf
+state_head: e83a5243b51fa848fe53331159779567cbced061
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 17
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-08-25)
 ## Current Position
 
 Phase: 01 (Trusted Foundation and Data Onboarding) — EXECUTING
-Plan: 2 of 17
+Plan: 3 of 17
 Status: Ready to execute
 Last activity: 2026-08-25 — Phase 01 execution started
 
@@ -59,6 +59,7 @@ Progress: [░░░░░░░░░░] 0%
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 01 P01 | 5 min | 1 tasks | 3 files |
+| Phase 01 P02 | 3h 54m | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,8 @@ Decisions are logged in PROJECT.md. Current constraints:
 - ADRs 0001-0004 are accepted: simple handwritten-receipt sales, `SR`-to-branch transfers, branch confirm-or-discrepancy, Stock Staff investigation/Admin resolution, individual Accounting verification, durable notifications, browser push attempts, and limited non-negative-stock offline continuity.
 - ADR 0006 and the detailed future data model remain proposed/provisional.
 - [Phase 01]: Approved exact package vitest@4.1.11 for Plan 01-02 after registry metadata and official npm/Vitest source review confirmed vitest-dev/vitest, Node 20 support, GitHub OIDC trusted publishing, and provenance. — The blocking supply-chain checkpoint requires explicit human approval before any dependency mutation.
+- [Phase 01]: Workbook formulas remain inert source evidence; only direct same-sheet references are compared with cached values. — Detect stale caches without evaluating untrusted formulas.
+- [Phase 01]: Synthetic workbook reproducibility is measured by equivalent parsed evidence rather than XLSX container bytes. — ZIP metadata can vary while source evidence remains deterministic.
 
 ### Pending Todos
 
@@ -80,7 +83,7 @@ None yet.
 
 - Phase 1 planning must resolve the supplied workbook's duplicate codes, missing prices, formula anomalies, and August `SR`/`BL` mapping before generating canonical seed data.
 - Phase 1 `UI-SPEC.md` is approved; refresh `01-RESEARCH.md` against the reconciled scope before planning.
-- No automated tests or CI exist; lint currently has documented baseline failures. Do not treat build/type-check as behavioral coverage.
+- Vitest unit infrastructure and workbook profiler coverage now exist; database integration tests and CI remain pending, and lint still has documented baseline failures.
 - Existing business screens and mutations are mock/local prototypes; preserve the distinction from durable behavior.
 
 ## Deferred Items
@@ -94,6 +97,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-25T02:35:31.106Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-08-25T06:33:50.520Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None
