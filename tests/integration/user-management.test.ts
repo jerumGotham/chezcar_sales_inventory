@@ -18,6 +18,9 @@ vi.mock("@/lib/server/authorization", async () =>
 vi.mock("@/lib/server/internal-user-auth", async () =>
   import("../../lib/server/internal-user-auth"),
 );
+vi.mock("@/lib/server/services/users", async () =>
+  import("../../lib/server/services/users"),
+);
 vi.mock("@/lib/contracts/users", async () => import("../../lib/contracts/users"));
 
 import { auth } from "../../lib/server/auth";
@@ -251,7 +254,7 @@ describe("user management list and create", () => {
         return (await response.json()) as UserListBody;
       }
 
-      const searched = await listQuery("search=stock-staff.um-filter");
+      const searched = await listQuery("search=stock-staff.um-owner");
       expect(searched.meta?.totalItems).toBe(1);
       expect(searched.data?.map((row) => row.role)).toEqual(["STOCK_STAFF"]);
 
