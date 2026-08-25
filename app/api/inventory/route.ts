@@ -2,17 +2,13 @@ import { ZodError } from "zod";
 
 import {
   authorizationErrorResponse,
-  requireUser,
+  requireCapability,
 } from "@/lib/server/authorization";
 import { inventoryListQuerySchema, listInventory } from "@/lib/server/catalog";
 
 export async function GET(request: Request) {
   try {
-    const user = await requireUser(request.headers, [
-      "ADMIN",
-      "STOCK_STAFF",
-      "BRANCH_STAFF",
-    ]);
+    const user = await requireCapability(request.headers, "inventory:view");
     const query = inventoryListQuerySchema.parse(
       Object.fromEntries(new URL(request.url).searchParams),
     );
