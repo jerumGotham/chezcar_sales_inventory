@@ -7,7 +7,11 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
 
-import { profileWorkbook } from "./workbook-profile.mjs";
+import {
+  buildReviewPackage,
+  profileWorkbook,
+  runCli,
+} from "./workbook-profile.mjs";
 import { createWorkbookFixtureBuffer } from "../../tests/fixtures/create-workbook-fixture";
 
 const HOSTILE_FIXTURE_PATH = fileURLToPath(
@@ -245,5 +249,109 @@ describe("hostile workbook fixture", () => {
         rm(directory, { recursive: true, force: true }),
       );
     }
+  });
+
+  it("emits a deterministic fail-closed owner review package", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "chezcar-review-package-"));
+    const mappingPath = join(directory, "source-mapping.json");
+    const reportPath = join(directory, "review-report.json");
+    const resolutionsPath = join(directory, "resolutions.json");
+
+    try {
+      await runCli([
+        "--workbook",
+        HOSTILE_FIXTURE_PATH,
+        "--sheet",
+        "Hostile Inventory",
+        "--mapping-out",
+        mappingPath,
+        "--report-out",
+        reportPath,
+        "--resolutions-out",
+        resolutionsPath,
+      ]);
+
+      const mapping = JSON.parse(await readFile(mappingPath, "utf8"));
+      const report = JSON.parse(await readFile(reportPath, "utf8"));
+      const resolutions = JSON.parse(await readFile(resolutionsPath, "utf8"));
+
+      expect(mapping.workbook.sha256).toBe(report.workbook.sha256);
+      expect(mapping.selectedSources).toContainEqual(
+        expect.objectContaining({ sheet: "Hostile Inventory" }),
+      );
+      expect(mapping.rows).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ row: 2, kind: "heading", candidate: null }),
+          expect.objectContaining({ row: 3, kind: "spacer", candidate: null }),
+        ]),
+      );
+      expect(report.totals).toMatchObject({
+        canonicalCandidates: 0,
+        unresolvedFindings: expect.any(Number),
+      });
+      expect(report.findings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: "UNRESOLVED_SR_SOURCE" }),
+          expect.objectContaining({ code: "UNRESOLVED_BL_BEFORE_SOURCE" }),
+          expect.objectContaining({ code: "DUPLICATE_CODE" }),
+          expect.objectContaining({ code: "INVALID_QUANTITY_NEGATIVE" }),
+          expect.objectContaining({ code: "INVALID_QUANTITY_BLANK" }),
+          expect.objectContaining({ code: "INVALID_QUANTITY_NONNUMERIC" }),
+          expect.objectContaining({ code: "MISSING_PRICE" }),
+          expect.objectContaining({ code: "NONNUMERIC_PRICE" }),
+          expect.objectContaining({ code: "CONFLICTING_PRICE" }),
+          expect.objectContaining({ code: "PROFILE_BLOCKER" }),
+        ]),
+      );
+      expect(Object.keys(resolutions.resolutions).sort()).toEqual(
+        report.findings.map(({ id }: { id: string }) => id).sort(),
+      );
+      expect(Object.values(resolutions.resolutions)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            status: "unresolved",
+            reviewer: null,
+            decision: null,
+            canonicalValue: null,
+          }),
+        ]),
+      );
+
+      const expected = await Promise.all([
+        readFile(mappingPath),
+        readFile(reportPath),
+        readFile(resolutionsPath),
+      ]);
+      await runCli([
+        "--workbook",
+        HOSTILE_FIXTURE_PATH,
+        "--sheet",
+        "Hostile Inventory",
+        "--mapping-out",
+        mappingPath,
+        "--report-out",
+        reportPath,
+        "--resolutions-out",
+        resolutionsPath,
+      ]);
+      expect(await readFile(mappingPath)).toEqual(expected[0]);
+      expect(await readFile(reportPath)).toEqual(expected[1]);
+      expect(await readFile(resolutionsPath)).toEqual(expected[2]);
+    } finally {
+      await import("node:fs/promises").then(({ rm }) =>
+        rm(directory, { recursive: true, force: true }),
+      );
+    }
+  });
+
+  it("builds no canonical records while any review finding remains", async () => {
+    const reviewPackage = await buildReviewPackage(HOSTILE_FIXTURE_PATH, {
+      sheets: ["Hostile Inventory"],
+    });
+
+    expect(reviewPackage.report.canonicalCandidates).toEqual([]);
+    expect(reviewPackage.report.findings.every(({ blocking }) => blocking)).toBe(
+      true,
+    );
   });
 });

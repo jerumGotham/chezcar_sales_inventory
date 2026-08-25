@@ -106,6 +106,22 @@ describe("classifySourceRow", () => {
       },
     });
   });
+
+  it("treats formula-only rows as spacers and accessory labels as headings", () => {
+    const formulaOnly = row(33, {});
+    formulaOnly.cells[3].rawValue = 0;
+    formulaOnly.cells[3].normalizedValue = 0;
+    formulaOnly.cells[3].formula = "'BL AUGUST 2026'!E33";
+    formulaOnly.cells[3].cachedValue = 0;
+    formulaOnly.fields.quantities.QC = formulaOnly.cells[3];
+    const heading = row(1431, {
+      itemName: "JIMNY ACCESSORIES",
+      quantity: 0,
+    });
+
+    expect(classifySourceRow(formulaOnly).kind).toBe("spacer");
+    expect(classifySourceRow(heading).kind).toBe("heading");
+  });
 });
 
 describe("buildReviewFindings", () => {

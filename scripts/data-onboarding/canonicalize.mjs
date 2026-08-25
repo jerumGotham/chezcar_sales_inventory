@@ -147,9 +147,14 @@ export function classifySourceRow(input) {
     return { kind: "spacer", evidence, candidate: null };
   }
 
+  if (!itemCode && !itemName) {
+    return { kind: "spacer", evidence, candidate: null };
+  }
+
   if (
     ["CATEGORY", "HEADING", "HEADER"].includes(rowType) ||
-    (!itemCode && !hasQuantityOrPrice && /ACCESSORIES$/i.test(itemName))
+    (!itemCode && /ACCESSORIES$/i.test(itemName)) ||
+    (!itemCode && Boolean(itemName) && !hasQuantityOrPrice)
   ) {
     return { kind: "heading", evidence, candidate: null };
   }
@@ -235,12 +240,16 @@ export function buildReviewFindings(inputs) {
       code: "UNRESOLVED_SR_SOURCE",
       message: "Owner must identify which workbook source represents canonical SR",
       rows: [rows[0]],
+      cells: Object.values(rows[0].fields.quantities),
       details: { canonicalLocationCode: "SR" },
     }),
     makeFinding({
       code: "UNRESOLVED_BL_BEFORE_SOURCE",
       message: "Owner must explain whether and how BL BEFORE maps to canonical BL",
       rows: [rows[0]],
+      cells: Object.entries(rows[0].fields.quantities)
+        .filter(([source]) => source.toUpperCase().includes("BL BEFORE"))
+        .map(([, cell]) => cell),
       details: { canonicalLocationCode: "BL", sourceLabel: "BL BEFORE" },
     }),
   );

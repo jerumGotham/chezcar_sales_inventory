@@ -61,3 +61,43 @@ export function profileWorkbook(
   inputPath: string,
   options: WorkbookProfileOptions,
 ): Promise<WorkbookProfile>;
+
+export type ReviewPackage = {
+  sourceMapping: {
+    schemaVersion: number;
+    workbook: WorkbookProfile["workbook"];
+    selectedSources: unknown[];
+    canonicalLocations: readonly unknown[];
+    rows: unknown[];
+  };
+  report: {
+    schemaVersion: number;
+    workbook: WorkbookProfile["workbook"];
+    selectedSources: unknown[];
+    totals: {
+      sheets: number;
+      rows: number;
+      product: number;
+      heading: number;
+      spacer: number;
+      findings: number;
+      unresolvedFindings: number;
+      canonicalCandidates: 0;
+    };
+    canonicalLocations: readonly unknown[];
+    findings: import("./canonicalize.mjs").ReviewFinding[];
+    canonicalCandidates: [];
+  };
+  resolutions: {
+    schemaVersion: number;
+    workbookSha256: string;
+    resolutions: Record<string, import("./canonicalize.mjs").ResolutionRecord>;
+  };
+};
+
+export function buildReviewPackage(
+  workbookPath: string,
+  options?: { sheets?: string[] },
+): Promise<ReviewPackage>;
+
+export function runCli(args: string[]): Promise<void>;
