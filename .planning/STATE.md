@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 current_phase: 01
 current_phase_name: Trusted Foundation and Data Onboarding
 status: executing
-stopped_at: Completed 01-13-PLAN.md
-last_updated: "2026-08-25T07:03:59.506Z"
+stopped_at: Completed 01-04-PLAN.md
+last_updated: "2026-08-25T07:48:55.258Z"
 last_activity: 2026-08-25
 last_activity_desc: Phase 01 execution started
-state_head: 0e92369422464721f4dab22e87fc8f8cc9e193fd
+state_head: 96313c4462901f9be011e933fd56b83e1adc6410
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 17
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-08-25)
 ## Current Position
 
 Phase: 01 (Trusted Foundation and Data Onboarding) — EXECUTING
-Plan: 5 of 17
+Plan: 6 of 17
 Status: Ready to execute
 Last activity: 2026-08-25 — Phase 01 execution started
 
@@ -62,6 +62,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P02 | 3h 54m | 2 tasks | 10 files |
 | Phase 01 P03 | 12 min | 2 tasks | 9 files |
 | Phase 01 P13 | 7 min | 2 tasks | 6 files |
+| Phase 01 P04 | 8 min | 1 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,9 @@ Decisions are logged in PROJECT.md. Current constraints:
 - [Phase 01]: Use only the exact localhost:55435 disposable PostgreSQL 17 target with no bind mount. — A complete positive identity check prevents destructive integration work from reaching development, production, or unknown databases.
 - [Phase 01]: Represent revoked Better Auth sessions by deleted Session rows. — Immediate revocation is fail-closed without adding a noncanonical schema field.
 - [Phase 01]: Require explicit opt-in before persisting invalid role/location fixtures. — Canonical defaults stay valid while later authorization tests can deliberately prove fail-closed handling.
+- [Phase 01]: Canonical SR has no workbook source and starts at zero; BL BEFORE@J is excluded as historical/reference evidence.
+- [Phase 01]: Code 40 rows remain separate as 40 and TMP-R133; code 958 row 662 remains inactive while row 677 is excluded.
+- [Phase 01]: Missing-price products retain source opening quantities but remain inactive/non-sellable with no invented sale price.
 
 ### Pending Todos
 
@@ -90,7 +94,7 @@ None yet.
 
 ### Blockers/Concerns
 
-- Phase 1 planning must resolve the supplied workbook's duplicate codes, missing prices, formula anomalies, and August `SR`/`BL` mapping before generating canonical seed data.
+- Owner workbook decisions are resolved; Plan 01-05 must validate the approved inactive/no-price and exclusion dispositions before generating canonical seed data.
 - Phase 1 `UI-SPEC.md` is approved; refresh `01-RESEARCH.md` against the reconciled scope before planning.
 - Vitest unit infrastructure, workbook coverage, and the isolated PostgreSQL integration harness now exist; CI remains pending, and lint still has documented baseline failures.
 - Existing business screens and mutations are mock/local prototypes; preserve the distinction from durable behavior.
@@ -106,6 +110,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-25T07:03:59.482Z
-Stopped at: Completed 01-13-PLAN.md
+Last session: 2026-08-25T07:48:55.234Z
+Stopped at: Completed 01-04-PLAN.md
 Resume file: None
