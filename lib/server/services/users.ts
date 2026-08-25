@@ -12,9 +12,12 @@ import type {
   UserStatusDto,
 } from "@/lib/contracts/users";
 import { USER_LIST_PAGE_SIZE } from "@/lib/contracts/users";
+import { auth } from "@/lib/server/auth";
 import { internalUserAuth } from "@/lib/server/internal-user-auth";
 import type { PersistedAccessContext } from "@/lib/server/policy/access";
+import { CAPABILITIES } from "@/lib/server/policy/access";
 import {
+  AuthenticationError,
   AuthorizationError,
   authorizationErrorResponse,
   requireCapability,
@@ -524,4 +527,128 @@ export async function resetStaffPassword(
     select: managedUserSelect,
   });
   return toManagedUserDto(user);
+}
+
+/**
+ * First-login temporary-credential state machine (D-15).
+ *
+ * Every operation is strictly current-user scoped: the caller's own active
+ * persisted session is the only authority, and no role capability besides an
+ * authenticated account is required. Password values are verified/replaced by
+ * Better Auth and are never returned, logged, or echoed (T-01-08).
+ */
+
+/** Exact approved UI-SPEC failure copy for first-login password changes. */
+export const CREDENTIAL_CHANGE_FAILURE_COPY =
+  "We couldn’t change your password. Your current password is unchanged.";
+
+const credentialPasswordSchema = z
+  .string()
+  .min(8)
+  .max(128)
+  .regex(/[A-Za-z]/, "Password must contain a letter")
+  .regex(/\d/, "Password must contain a number");
+
+export const credentialChangeRequestSchema = z
+  .object({
+    action: z.literal("change"),
+    currentPassword: z.string().min(1).max(128),
+    newPassword: credentialPasswordSchema,
+    confirmPassword: z.string().min(1),
+  })
+  .refine((value) => value.newPassword === value.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
+
+export const credentialSkipRequestSchema = z.object({
+  action: z.literal("skip"),
+});
+
+export const credentialActionSchema = z.discriminatedUnion("action", [
+  credentialChangeRequestSchema,
+  credentialSkipRequestSchema,
+]);
+
+async function requireActiveCurrentUser(headers: Headers) {
+  // `dashboard:view` is held by every fixed role, so this is exactly an
+  // authenticated-active-persisted-identity check without any resource grant.
+  const context = await requireCapability(headers, CAPABILITIES.dashboardView);
+  const [user, session] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: context.userId },
+      select: { id: true, status: true, credentialSetupRequired: true },
+    }),
+    auth.api.getSession({ headers }),
+  ]);
+  if (!user || user.status !== "ACTIVE" || !session) {
+    throw new AuthenticationError("Active user account required");
+  }
+  return { context, user, session: session.session };
+}
+
+export async function getCredentialSetupRequired(
+  headers: Headers,
+): Promise<{ credentialSetupRequired: boolean }> {
+  const { user } = await requireActiveCurrentUser(headers);
+  return { credentialSetupRequired: user.credentialSetupRequired };
+}
+
+export async function skipCredentialSetup(
+  headers: Headers,
+): Promise<{ credentialSetupRequired: boolean }> {
+  const { context } = await requireActiveCurrentUser(headers);
+  // Idempotent final state: consuming an already-consumed prompt is a no-op.
+  await prisma.user.update({
+    where: { id: context.userId },
+    data: { credentialSetupRequired: false },
+  });
+  return { credentialSetupRequired: false };
+}
+
+export async function changeOwnCredential(
+  headers: Headers,
+  input: { currentPassword: string; newPassword: string },
+): Promise<{ credentialSetupRequired: boolean }> {
+  const {
+    context,
+    session: currentSession,
+  } = await requireActiveCurrentUser(headers);
+
+  try {
+    // Better Auth owns verification of the current credential and its hashed
+    // replacement. The built-in revokeOtherSessions flag would also replace
+    // the initiating session's cookie, so other sessions are revoked below
+    // while this login continues to the requested page.
+    await auth.api.changePassword({
+      body: {
+        currentPassword: input.currentPassword,
+        newPassword: input.newPassword,
+      },
+      headers,
+    });
+  } catch (error) {
+    // Never log or echo submitted password values; only a stable envelope.
+    if (error instanceof Error && error.name !== "APIError") {
+      console.error("Unable to change own password");
+    }
+    throw lifecycleFailure(
+      400,
+      "CREDENTIAL_CHANGE_FAILED",
+      CREDENTIAL_CHANGE_FAILURE_COPY,
+    );
+  }
+
+  // Revoke every session except the one that performed the change (T-01-03).
+  await prisma.session.deleteMany({
+    where: { userId: context.userId, id: { not: currentSession.id } },
+  });
+
+  // The prompt is consumed only after a successful change; a later Admin
+  // reset re-arms it through resetStaffPassword.
+  await prisma.user.update({
+    where: { id: context.userId },
+    data: { credentialSetupRequired: false },
+  });
+  return { credentialSetupRequired: false };
 }
