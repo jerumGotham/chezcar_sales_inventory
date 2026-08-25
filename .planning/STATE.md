@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 current_phase: 01
 current_phase_name: Trusted Foundation and Data Onboarding
 status: executing
-stopped_at: Completed 01-15-PLAN.md
-last_updated: "2026-08-25T09:56:24.887Z"
+stopped_at: Completed 01-17-PLAN.md
+last_updated: "2026-08-25T10:44:23.382Z"
 last_activity: 2026-08-25
 last_activity_desc: Phase 01 execution started
-state_head: 413cb2fbd9cc5f807d3294963356bad77842579d
+state_head: 03842f15ad574ec3d1a51914a4bd2f54d33d9a6f
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 17
-  completed_plans: 11
+  completed_plans: 12
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-08-25)
 ## Current Position
 
 Phase: 01 (Trusted Foundation and Data Onboarding) — EXECUTING
-Plan: 12 of 17
+Plan: 13 of 17
 Status: Ready to execute
 Last activity: 2026-08-25 — Phase 01 execution started
 
@@ -69,6 +69,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P08 | 12 min | 3 tasks | 9 files |
 | Phase 01 P14 | 11 min | 2 tasks | 5 files |
 | Phase 01 P15 | 12 min | 2 tasks | 3 files |
+| Phase 01 P17 | 30 min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -108,6 +109,8 @@ Decisions are logged in PROJECT.md. Current constraints:
 - [Phase 01]: Accounting remains inventory-denied and receives a data-free 403 before query parsing or catalog work.
 - [Phase 01]: Authenticated page denial redirects to a fixed /access-denied URL with no protected query, record, or retry values; only unauthenticated/inactive sessions carry a validated local callback.
 - [Phase 01]: The /access-denied screen is a prop-free server component with exact UI-SPEC copy, making protected-data leakage structurally impossible.
+- [Phase 01]: Plan 01-17: Expose Better Auth 1.6.23 Admin-plugin credentials only through a guarded server-only internalUserAuth facade (three staff roles, owner-header resets); never mount it or expose generic Admin routes.
+- [Phase 01]: Plan 01-17: disableSignUp must live inside emailAndPassword options for Better Auth 1.6.23; a top-level flag is silently ignored.
 
 ### Pending Todos
 
@@ -130,6 +133,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-25T09:56:24.858Z
-Stopped at: Completed 01-15-PLAN.md
+Last session: 2026-08-25T10:44:23.354Z
+Stopped at: Completed 01-17-PLAN.md
 Resume file: None
