@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 5
+open_count: 7
 waived_count: 0
 fixed_count: 0
-total_count: 5
-last_updated: 2026-08-25T09:36:58.083Z
+total_count: 7
+last_updated: 2026-08-25T14:13:46.244Z
 ---
 
 # Broken Windows Ledger
@@ -20,6 +20,8 @@ last_updated: 2026-08-25T09:36:58.083Z
 | 3 | 01 | deviation | scripts/data-onboarding/canonicalize.mjs |  | Formula-only identity-empty rows and accessory labels required classification correction during real-workbook profiling | open |  | 2026-08-25T06:51:13.725Z |  |
 | 4 | 01 | deviation | scripts/data-onboarding/workbook-profile.d.mts |  | Existing strict profiler declaration required review-package API exports omitted from the task file list | open |  | 2026-08-25T06:51:14.216Z |  |
 | 5 | 01 | deviation | docs/API.md |  | Synchronized the Inventory API contract as required by AGENTS.md | open |  | 2026-08-25T09:36:58.083Z |  |
+| 6 | 01 | stub | app/users/users-client.tsx | 1 | Last Sign-in column always renders Never until the list DTO exposes a sign-in timestamp | open |  | 2026-08-25T14:13:45.679Z |  |
+| 7 | 01 | deviation | app/users/users-client.tsx | 2 | Create dialog Inactive status option disabled: durable create API has no status field; deactivate after creation instead | open |  | 2026-08-25T14:13:46.244Z |  |
 
 ````json
 [
@@ -81,6 +83,30 @@ last_updated: 2026-08-25T09:36:58.083Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-25T09:36:58.083Z",
+    "resolved_at": null
+  },
+  {
+    "id": 6,
+    "kind": "stub",
+    "phase": "01",
+    "file": "app/users/users-client.tsx",
+    "line": 1,
+    "description": "Last Sign-in column always renders Never until the list DTO exposes a sign-in timestamp",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-25T14:13:45.679Z",
+    "resolved_at": null
+  },
+  {
+    "id": 7,
+    "kind": "deviation",
+    "phase": "01",
+    "file": "app/users/users-client.tsx",
+    "line": 2,
+    "description": "Create dialog Inactive status option disabled: durable create API has no status field; deactivate after creation instead",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-25T14:13:46.244Z",
     "resolved_at": null
   }
 ]
