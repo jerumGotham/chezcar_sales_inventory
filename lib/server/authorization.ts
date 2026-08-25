@@ -3,13 +3,15 @@ import "server-only";
 import type { UserRole } from "@prisma/client";
 
 import { auth } from "@/lib/server/auth";
+import {
+  evaluateAccess,
+  type Capability,
+  type PersistedAccessContext,
+  validatePersistedAssignment,
+} from "./policy/access";
 import { prisma } from "@/lib/server/prisma";
 
-export type AuthContext = {
-  userId: string;
-  role: UserRole;
-  locationId: string | null;
-};
+export type AuthContext = PersistedAccessContext;
 
 export const AUTHENTICATED_ROLES = [
   "ADMIN",
@@ -21,10 +23,9 @@ export const AUTHENTICATED_ROLES = [
 export class AuthenticationError extends Error {}
 export class AuthorizationError extends Error {}
 
-export async function requireUser(
+async function loadPersistedAccessContext(
   headers: Headers,
-  allowedRoles: readonly UserRole[],
-): Promise<AuthContext> {
+): Promise<PersistedAccessContext> {
   const session = await auth.api.getSession({ headers });
 
   if (!session) {
@@ -33,26 +34,61 @@ export async function requireUser(
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { id: true, role: true, status: true, locationId: true },
+    select: {
+      id: true,
+      role: true,
+      status: true,
+      locationId: true,
+      location: {
+        select: { id: true, code: true, type: true, isActive: true },
+      },
+    },
   });
 
   if (!user || user.status !== "ACTIVE") {
     throw new AuthenticationError("Active user account required");
   }
 
-  if (!allowedRoles.includes(user.role)) {
-    throw new AuthorizationError("Insufficient permissions");
-  }
-
-  if (user.role === "BRANCH_STAFF" && !user.locationId) {
-    throw new AuthorizationError("Branch Staff requires an assigned location");
-  }
-
-  return {
+  const context: PersistedAccessContext = {
     userId: user.id,
     role: user.role,
     locationId: user.locationId,
+    location: user.location,
   };
+
+  if (!validatePersistedAssignment(context)) {
+    throw new AuthorizationError("Invalid persisted access assignment");
+  }
+
+  return context;
+}
+
+export async function requireCapability(
+  headers: Headers,
+  capability: Capability,
+): Promise<AuthContext> {
+  const context = await loadPersistedAccessContext(headers);
+
+  if (!evaluateAccess(context, capability)) {
+    throw new AuthorizationError("Insufficient permissions");
+  }
+
+  return context;
+}
+
+// Compatibility boundary for the inventory route until its named-capability
+// migration in Plan 01-14. All persisted assignment checks still apply.
+export async function requireUser(
+  headers: Headers,
+  allowedRoles: readonly UserRole[],
+): Promise<AuthContext> {
+  const context = await loadPersistedAccessContext(headers);
+
+  if (!allowedRoles.includes(context.role)) {
+    throw new AuthorizationError("Insufficient permissions");
+  }
+
+  return context;
 }
 
 export function authorizationErrorResponse(error: unknown) {

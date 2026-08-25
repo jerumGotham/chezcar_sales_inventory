@@ -111,7 +111,7 @@ describe("fixed persisted access policy", () => {
     ],
   ] satisfies ReadonlyArray<
     readonly [UserRole, LocationInput | null, string]
-  >)("rejects %s with %s", (role, location) => {
+  >)("rejects %s with %s", (role, location, _description) => {
     expect(validatePersistedAssignment(accessContext(role, location))).toBe(false);
   });
 
