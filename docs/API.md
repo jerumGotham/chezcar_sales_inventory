@@ -3,7 +3,7 @@
 
 ## Current status
 
-The application exposes Better Auth handlers, authenticated read endpoints, an owner-Admin-only User Management surface, and a first-login credential-setup surface. `/api/products` and `/api/inventory` read PostgreSQL through Prisma. Dashboard, customers, and customer orders remain protected mock-fixture responses. No sales, receiving, transfer, or other business mutation endpoint is implemented.
+The application exposes Better Auth handlers, authenticated read endpoints, an owner-Admin-only User Management surface, durable Stock Transfer and Stock Room supplier-receiving workflows, and a first-login credential-setup surface. `/api/products`, `/api/inventory`, `/api/stock-transfers`, and `/api/stock-receipts` use PostgreSQL through Prisma. Dashboard, customers, and customer orders remain protected mock-fixture responses.
 
 All endpoints use same-origin cookie sessions. Public email/password sign-up is disabled.
 
@@ -38,6 +38,7 @@ Authorization is expressed as named capabilities in `lib/server/policy/access.ts
 | `customer-orders:view` | ✔ | ✔ | ✔ | ✔ |
 | `products:view` | ✔ | ✔ | ✘ | ✘ |
 | `inventory:view` | ✔ | ✔ | ✔ | ✘ |
+| `inventory-receiving:create` | ✘ | ✔ (active `SR` only) | ✘ | ✘ |
 | `users:manage` | ✔ (owner only) | ✘ | ✘ | ✘ |
 
 A persisted assignment that contradicts the fixed matrix (for example Stock Staff not assigned to the active `SR` warehouse, Branch Staff outside the active canonical branches, or a location held by Admin/Accounting) fails closed regardless of role. Exactly one owner Admin may exist; the database partial unique index `User_single_admin_key` backs this invariant.
@@ -52,13 +53,22 @@ A persisted assignment that contradicts the fixed matrix (for example Stock Staf
 | `GET` | `/api/customer-orders` | Protected mock fixtures | `customer-orders:view` |
 | `GET` | `/api/products` | Prisma Product/InventoryBalance | `products:view` |
 | `GET` | `/api/inventory` | Prisma Product/InventoryBalance/Location | `inventory:view` |
+| `GET`, `POST` | `/api/stock-transfers` | Prisma transfer ledger | `stock-transfers:view` plus role action policy |
+| `POST` | `/api/stock-transfers/:id/:action` | Prisma transfer/inventory transaction | `stock-transfers:view` plus role/location/state policy |
+| `GET`, `POST` | `/api/stock-receipts` | Prisma supplier-receipt/inventory transaction | `GET`: inventory monitor policy; `POST`: `inventory-receiving:create` and Stock Staff `SR` enforcement |
 | `GET`, `POST` | `/api/users` | Prisma User (+Location) | `users:manage` |
 | `PATCH` | `/api/users/:userId` | Prisma User | `users:manage` |
 | `POST` | `/api/users/:userId/status` | Prisma User | `users:manage` |
 | `POST` | `/api/users/:userId/password` | Better Auth internal + Prisma User | `users:manage` |
 | `GET`, `POST` | `/api/credential-setup` | Better Auth + Prisma User | Any authenticated active role |
 
-The application exports no business `PUT` or `DELETE` handlers. The only mutations are staff-account lifecycle changes and credential consumption; all run inside Prisma transactions with `SELECT ... FOR UPDATE` row locking where access state changes.
+Stock-transfer actions are `finalize`, `dispatch`, `confirm-receipt`, `report-discrepancy`, `investigate`, and `resolve`. They require the current transfer `version`, lock the transfer row, enforce state transitions, and use serializable transactions. Stock Staff creates/finalizes/dispatches SR-to-active-branch documents, Branch Staff is destination-scoped for receipt/discrepancy, and Admin alone resolves investigated discrepancies. Accounting is denied.
+
+## Supplier receipts
+
+`POST /api/stock-receipts` accepts `{ reference, supplier, notes?, lines: [{ productId, quantity }] }`. `reference` is unique, suppliers and references are non-empty bounded strings, every quantity is a positive integer, and every product must be active. Only Stock Staff assigned to the active canonical Stock Room can post. The server fixes the destination to `SR`; client input cannot select a branch.
+
+One serializable transaction persists the receipt, immutable item-code/name line snapshots, increments or creates each `SR` balance, and writes a positive `SUPPLIER_RECEIPT` movement with the current actor. Duplicate references return `409 DUPLICATE_REFERENCE` without changing inventory. `GET /api/stock-receipts` is available only to Stock Staff and Admin for monitoring; it does not grant posting to Admin.
 
 ## Product list
 
@@ -117,6 +127,8 @@ Status is derived as:
 - `In Stock`: `onHand > reorderLevel`
 
 `available = max(onHand - reserved, 0)` remains a client display calculation. Balance timestamps are ISO 8601 strings.
+
+The response `summary` contains user-facing totals for the active authorized location scope: `totalProducts`, `totalUnits`, `needsRestock`, and role-scoped `incomingItems`. This is the total quantity still in transit, not a document count and not sellable stock. For Branch Staff it includes only transfers destined for the persisted branch; Admin sees the selected location scope and Stock Staff sees items in transit to branches.
 
 ## User management (owner Admin only)
 

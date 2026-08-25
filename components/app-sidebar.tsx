@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import {
   Boxes,
   ClipboardList,
+  ArrowLeftRight,
   LayoutDashboard,
   Menu,
   Package,
@@ -36,6 +37,7 @@ const MENU_ICONS: Record<ShellMenuIcon, LucideIcon> = {
   inventory: Boxes,
   "customer-orders": ClipboardList,
   users: UserCog,
+  "stock-transfers": ArrowLeftRight,
 };
 
 export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {

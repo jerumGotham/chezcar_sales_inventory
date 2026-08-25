@@ -1,0 +1,19 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({ requireCapability: vi.fn(), createStockReceipt: vi.fn(), listStockReceipts: vi.fn() }));
+vi.mock("@/lib/server/authorization", () => ({ requireCapability: mocks.requireCapability, authorizationErrorResponse: (error: unknown) => { throw error; } }));
+vi.mock("@/lib/server/services/stock-receipts", () => ({ StockReceiptError: class StockReceiptError extends Error {}, createStockReceipt: mocks.createStockReceipt, listStockReceipts: mocks.listStockReceipts }));
+vi.mock("@/lib/contracts/stock-receipts", async () => import("../../lib/contracts/stock-receipts"));
+
+import { POST } from "../../app/api/stock-receipts/route";
+
+describe("stock receipt route", () => {
+  beforeEach(() => { mocks.requireCapability.mockReset(); mocks.createStockReceipt.mockReset(); });
+
+  it("requires the receiving capability before parsing or posting", async () => {
+    mocks.requireCapability.mockRejectedValue(new Error("denied"));
+    await expect(POST(new Request("http://localhost/api/stock-receipts", { method: "POST", body: "not-json" }))).resolves.toMatchObject({ status: 500 });
+    expect(mocks.requireCapability).toHaveBeenCalledWith(expect.any(Headers), "inventory-receiving:create");
+    expect(mocks.createStockReceipt).not.toHaveBeenCalled();
+  });
+});

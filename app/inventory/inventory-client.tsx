@@ -13,12 +13,11 @@ import {
   Loader2,
   PackageCheck,
   Warehouse,
-  AlertTriangle,
-  Boxes,
   Building2,
   MapPin,
   History,
   PackageSearch,
+  Truck,
 } from "lucide-react";
 
 import { LocationScopeControl } from "@/components/location-scope-control";
@@ -81,6 +80,7 @@ export type InventoryClientProps = {
 };
 
 const ALL_LOCATIONS_VALUE = "all";
+const numberFormatter = new Intl.NumberFormat("en-PH");
 
 function locationLabel(location: InventoryLocationOption): string {
   return `${location.name} (${location.code})`;
@@ -92,6 +92,7 @@ export function InventoryClient({
   locations,
 }: InventoryClientProps) {
   const isAdmin = role === "ADMIN";
+  const isStockStaff = role === "STOCK_STAFF";
 
   // Applied location starts from the server-derived scope DTO and can never
   // exceed it: only Admin may request anything besides All locations.
@@ -126,6 +127,12 @@ export function InventoryClient({
   const [appliedLocation, setAppliedLocation] =
     useState(scopedLocationValue);
   const [appliedStatus, setAppliedStatus] = useState("all");
+
+  const summaryScopeLabel = isAdmin
+    ? appliedLocation === ALL_LOCATIONS_VALUE
+      ? "all locations"
+      : optionForValue(appliedLocation).label
+    : scope.label;
 
   const [page, setPage] = useState(1);
   const pageSize = 10;
@@ -176,12 +183,6 @@ export function InventoryClient({
   const [availabilityStatusFilter, setAvailabilityStatusFilter] =
     useState<SelectOption>(STATUS_OPTIONS[0]);
 
-  // Stock mutation actions remain an Admin-only presentation affordance; the
-  // prototype mutations behind them are not durable behavior.
-  const canReceiveStock = isAdmin;
-  const canTransferToBranch = isAdmin;
-  const canAdjustStock = isAdmin;
-
   const { data, error, isLoading, isFetching } = useQuery({
     queryKey: [
       "inventory-locations",
@@ -216,10 +217,11 @@ export function InventoryClient({
     totalPages: 1,
   };
   const summary = data?.summary ?? {
-    totalItems: 0,
-    inStock: 0,
-    lowStock: 0,
-    outOfStock: 0,
+    totalProducts: 0,
+    totalUnits: 0,
+    needsRestock: 0,
+    incomingItems: 0,
+    incomingItemsLabel: "Incoming items",
   };
 
   const groupedRows = useMemo<ProductGroupRow[]>(() => {
@@ -377,58 +379,25 @@ export function InventoryClient({
     <>
       <PageShell
         title="Inventory"
-        subtitle="Receive stock into Main Warehouse, transfer multiple products to branches, do manual corrections when needed, and view stock card and availability through inquiry tools."
-        actions={
-          <div className="flex flex-wrap gap-2">
-            {canReceiveStock && (
-              <Link href={"/inventory/receive" as Route}>
-                <Button className="bg-emerald-600 text-white hover:bg-emerald-700">
-                  Receive Stock
-                </Button>
-              </Link>
-            )}
-
-            {canTransferToBranch && (
-              <Link href={"/inventory/transfer" as Route}>
-                <Button variant="outline">Transfer to Branch</Button>
-              </Link>
-            )}
-
-            {canAdjustStock && (
-              <Button variant="outline" onClick={openAdjustModal}>
-                Adjust Stock
-              </Button>
-            )}
-
-            <Button variant="outline" onClick={() => setIsStockCardOpen(true)}>
-              <History className="mr-2 h-4 w-4" />
-              Stock Movement
-            </Button>
-
-            <Button
-              variant="outline"
-              onClick={() => setIsAvailabilityOpen(true)}
-            >
-              <PackageSearch className="mr-2 h-4 w-4" />
-              Availability
-            </Button>
-          </div>
-        }
+        subtitle={`Live stock levels for ${summaryScopeLabel}. Data comes from the database and survives reload.`}
       >
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <p className="mb-4 text-sm text-slate-500">
+          Showing totals for <span className="font-semibold text-slate-700">{summaryScopeLabel}</span> only.
+        </p>
+        <div className="grid gap-4 md:grid-cols-3">
           <Card>
             <CardContent className="flex items-start justify-between p-5">
               <div>
-                <p className="text-sm text-slate-500">Inventory Records</p>
+                <p className="text-sm text-slate-500">Total Stocks</p>
                 <h3 className="mt-3 text-3xl font-bold text-foreground">
-                  {summary.totalItems}
+                  {numberFormatter.format(summary.totalUnits)}
                 </h3>
                 <p className="mt-2 text-sm text-sky-600">
-                  Product-location records
+                  Actual pieces currently in stock
                 </p>
               </div>
               <div className="rounded-full bg-sky-50 p-2">
-                <Boxes className="h-5 w-5 text-sky-600" />
+                <PackageCheck className="h-5 w-5 text-sky-600" />
               </div>
             </CardContent>
           </Card>
@@ -436,99 +405,53 @@ export function InventoryClient({
           <Card>
             <CardContent className="flex items-start justify-between p-5">
               <div>
-                <p className="text-sm text-slate-500">In Stock</p>
+                <p className="text-sm text-slate-500">Need Restock</p>
                 <h3 className="mt-3 text-3xl font-bold text-foreground">
-                  {summary.inStock}
+                  {numberFormatter.format(summary.needsRestock)}
                 </h3>
-                <p className="mt-2 text-sm text-emerald-600">
-                  Ready for sale or transfer
+                <p className="mt-2 text-sm text-red-600">
+                  Product locations that are low or out of stock
                 </p>
-              </div>
-              <div className="rounded-full bg-emerald-50 p-2">
-                <PackageCheck className="h-5 w-5 text-emerald-600" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="flex items-start justify-between p-5">
-              <div>
-                <p className="text-sm text-slate-500">Low Stock</p>
-                <h3 className="mt-3 text-3xl font-bold text-foreground">
-                  {summary.lowStock}
-                </h3>
-                <p className="mt-2 text-sm text-amber-600">
-                  Needs replenishment
-                </p>
-              </div>
-              <div className="rounded-full bg-amber-50 p-2">
-                <AlertTriangle className="h-5 w-5 text-amber-600" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="flex items-start justify-between p-5">
-              <div>
-                <p className="text-sm text-slate-500">Out of Stock</p>
-                <h3 className="mt-3 text-3xl font-bold text-foreground">
-                  {summary.outOfStock}
-                </h3>
-                <p className="mt-2 text-sm text-red-600">No usable inventory</p>
               </div>
               <div className="rounded-full bg-red-50 p-2">
                 <Warehouse className="h-5 w-5 text-red-600" />
               </div>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardContent className="flex items-start justify-between p-5">
+              <div>
+                <p className="text-sm text-slate-500">
+                  {summary.incomingItemsLabel}
+                </p>
+                <h3 className="mt-3 text-3xl font-bold text-foreground">
+                  {numberFormatter.format(summary.incomingItems)}
+                </h3>
+                <p className="mt-2 text-sm text-violet-600">
+                  Awaiting branch receipt or resolution
+                </p>
+              </div>
+              <div className="rounded-full bg-violet-50 p-2">
+                <Truck className="h-5 w-5 text-violet-600" />
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
-        <Card className="mt-6 border-emerald-100 bg-emerald-50/50">
-          <CardContent className="grid gap-3 p-5 md:grid-cols-5">
-            <div className="rounded-xl border border-emerald-100 bg-white p-4">
-              <p className="text-sm font-semibold text-emerald-700">
-                1. Receive Stock
-              </p>
-              <p className="mt-1 text-sm text-slate-600">
-                Receive one or many products into{" "}
-                <span className="font-semibold">{MAIN_WAREHOUSE}</span>.
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-emerald-100 bg-white p-4">
-              <p className="text-sm font-semibold text-emerald-700">
-                2. Transfer to Branch
-              </p>
-              <p className="mt-1 text-sm text-slate-600">
-                Transfer multiple products from warehouse to one branch.
+        <Card className="mt-6 border-violet-200 bg-violet-50/50">
+          <CardContent className="flex flex-col gap-4 p-5">
+            <div>
+              <p className="font-semibold text-violet-950">Stock Transfers</p>
+              <p className="mt-1 text-sm text-violet-800">
+                {isStockStaff
+                  ? "Create and dispatch Stock Room transfers separately from receiving."
+                  : "Review transfer work separately from inventory counts."}
               </p>
             </div>
-
-            <div className="rounded-xl border border-emerald-100 bg-white p-4">
-              <p className="text-sm font-semibold text-emerald-700">
-                3. Adjust Stock
-              </p>
-              <p className="mt-1 text-sm text-slate-600">
-                For damaged, recount mismatch, lost, or found stock only.
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-emerald-100 bg-white p-4">
-              <p className="text-sm font-semibold text-emerald-700">
-                4. Stock Movement
-              </p>
-              <p className="mt-1 text-sm text-slate-600">
-                Global audit trail with filters.
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-emerald-100 bg-white p-4">
-              <p className="text-sm font-semibold text-emerald-700">
-                5. Availability
-              </p>
-              <p className="mt-1 text-sm text-slate-600">
-                Global stock view by product and location.
-              </p>
+            <div className="flex flex-wrap gap-2">
+              {isStockStaff && <Link href="/inventory/receive"><Button className="bg-emerald-600 text-white hover:bg-emerald-700">Receive from Supplier</Button></Link>}
+              <Link href="/stock-transfers"><Button variant="outline">{isStockStaff ? "Stock Transfers" : "Open Stock Transfers"}</Button></Link>
             </div>
           </CardContent>
         </Card>
@@ -683,6 +606,10 @@ export function InventoryClient({
                   ) : (
                     groupedRows.map((group) => {
                       const isExpanded = !!expandedProducts[group.itemCode];
+                      const stockedLocations = group.locations.filter(
+                        (item) => item.onHand > 0,
+                      );
+                      const emptyLocationCount = group.locations.length - stockedLocations.length;
 
                       return (
                         <React.Fragment key={group.itemCode}>
@@ -759,130 +686,72 @@ export function InventoryClient({
                           {isExpanded && (
                             <tr>
                               <td colSpan={10} className="bg-slate-50 p-0">
-                                <div className="overflow-x-auto">
-                                  <table className="w-full min-w-[1200px]">
-                                    <thead className="bg-slate-100">
-                                      <tr className="border-b">
-                                        <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                          Location Type
-                                        </th>
-                                        <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                          Location
-                                        </th>
-                                        <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                          On Hand
-                                        </th>
-                                        <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                          Reserved
-                                        </th>
-                                        <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                          Available
-                                        </th>
-                                        <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                          Reorder Level
-                                        </th>
-                                        <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                          Status
-                                        </th>
-                                        <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                          Row Action
-                                        </th>
-                                      </tr>
-                                    </thead>
+                                <div className="p-5">
+                                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                    <div>
+                                      <p className="font-semibold text-slate-900">
+                                        Where this product is available
+                                      </p>
+                                      <p className="text-sm text-slate-500">
+                                        Only locations with stock are shown.
+                                      </p>
+                                    </div>
+                                    {emptyLocationCount > 0 && (
+                                      <p className="text-sm text-slate-500">
+                                        {emptyLocationCount} location
+                                        {emptyLocationCount === 1 ? " has" : "s have"} no stock.
+                                      </p>
+                                    )}
+                                  </div>
 
-                                    <tbody>
-                                      {group.locations.map((item) => {
-                                        const isWarehouse =
-                                          item.location === MAIN_WAREHOUSE;
+                                  {stockedLocations.length === 0 ? (
+                                    <div className="mt-4 rounded-xl border border-dashed bg-white px-5 py-6 text-sm text-slate-500">
+                                      This product has no stock in any location yet.
+                                    </div>
+                                  ) : (
+                                    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                                      {stockedLocations.map((item) => {
+                                        const isStockRoom =
+                                          item.location === "Stock Room";
+                                        const available = getAvailableStock(item);
 
                                         return (
-                                          <tr
+                                          <div
                                             key={item.id}
-                                            className="border-b bg-white hover:bg-slate-50"
+                                            className="rounded-xl border bg-white p-4"
                                           >
-                                            <td className="px-5 py-4 text-sm">
-                                              <Badge
-                                                className={
-                                                  isWarehouse
-                                                    ? "border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-50"
-                                                    : "border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-50"
-                                                }
-                                              >
-                                                {isWarehouse
-                                                  ? "Warehouse"
-                                                  : "Branch"}
-                                              </Badge>
-                                            </td>
-
-                                            <td className="px-5 py-4 text-sm">
-                                              <Badge
-                                                className={getLocationBadgeClass(
-                                                  item.location,
-                                                )}
-                                              >
-                                                {isWarehouse ? (
-                                                  <span className="inline-flex items-center gap-1">
-                                                    <Warehouse className="h-3.5 w-3.5" />
-                                                    {item.location}
-                                                  </span>
+                                            <div className="flex items-start justify-between gap-3">
+                                              <div className="flex items-center gap-2 font-semibold text-slate-900">
+                                                {isStockRoom ? (
+                                                  <Warehouse className="h-4 w-4 text-sky-600" />
                                                 ) : (
-                                                  <span className="inline-flex items-center gap-1">
-                                                    <Building2 className="h-3.5 w-3.5" />
-                                                    {item.location}
-                                                  </span>
+                                                  <Building2 className="h-4 w-4 text-violet-600" />
                                                 )}
-                                              </Badge>
-                                            </td>
-
-                                            <td className="px-5 py-4 text-sm text-slate-600">
-                                              {item.onHand}
-                                            </td>
-
-                                            <td className="px-5 py-4 text-sm text-slate-600">
-                                              {item.reserved}
-                                            </td>
-
-                                            <td className="px-5 py-4 text-sm font-semibold text-slate-700">
-                                              {getAvailableStock(item)}
-                                            </td>
-
-                                            <td className="px-5 py-4 text-sm text-slate-600">
-                                              {item.reorderLevel}
-                                            </td>
-
-                                            <td className="px-5 py-4 text-sm">
-                                              <Badge
-                                                className={getStockBadgeClass(
-                                                  item.status,
-                                                )}
-                                              >
+                                                {item.location}
+                                              </div>
+                                              <Badge className={getStockBadgeClass(item.status)}>
                                                 {item.status}
                                               </Badge>
-                                            </td>
-
-                                            <td className="px-5 py-4">
-                                              {canAdjustStock ? (
-                                                <Button
-                                                  size="sm"
-                                                  variant="outline"
-                                                  className="border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 hover:text-amber-800"
-                                                  onClick={() =>
-                                                    openQuickAdjustModal(item)
-                                                  }
-                                                >
-                                                  Quick Adjust
-                                                </Button>
-                                              ) : (
-                                                <span className="text-sm text-slate-400">
-                                                  —
-                                                </span>
-                                              )}
-                                            </td>
-                                          </tr>
+                                            </div>
+                                            <div className="mt-4 grid grid-cols-2 gap-3 border-t pt-3">
+                                              <div>
+                                                <p className="text-xs text-slate-500">On hand</p>
+                                                <p className="text-lg font-semibold text-slate-900">
+                                                  {item.onHand} pieces
+                                                </p>
+                                              </div>
+                                              <div>
+                                                <p className="text-xs text-slate-500">Ready to sell</p>
+                                                <p className="text-lg font-semibold text-emerald-700">
+                                                  {available} pieces
+                                                </p>
+                                              </div>
+                                            </div>
+                                          </div>
                                         );
                                       })}
-                                    </tbody>
-                                  </table>
+                                    </div>
+                                  )}
                                 </div>
                               </td>
                             </tr>

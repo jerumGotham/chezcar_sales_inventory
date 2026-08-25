@@ -237,11 +237,23 @@ export async function listInventory(
     category: query.category === "all" ? undefined : query.category,
     inventoryBalances: { some: balanceWhere },
   };
-  const [total, summaryBalances] = await Promise.all([
+  const [total, summaryBalances, incomingItems] = await Promise.all([
     prisma.product.count({ where: productWhere }),
     prisma.inventoryBalance.findMany({
       where: { locationId: scopeLocationId },
-      select: { onHand: true, reorderLevel: true },
+      select: { productId: true, onHand: true, reorderLevel: true },
+    }),
+    prisma.stockTransferLine.aggregate({
+      where: {
+        transfer: {
+          status: "IN_TRANSIT",
+          destinationId:
+            context.role === "BRANCH_STAFF"
+              ? (context.locationId as string)
+              : scopeLocationId,
+        },
+      },
+      _sum: { inTransitQuantity: true },
     }),
   ]);
   const { meta, skip } = pagination(query.page, query.pageSize, total);
@@ -273,18 +285,27 @@ export async function listInventory(
       status: stockStatus(balance.onHand, balance.reorderLevel),
     })),
   );
-  const statuses = summaryBalances.map((balance) =>
-    stockStatus(balance.onHand, balance.reorderLevel),
+  const totalUnits = summaryBalances.reduce(
+    (sum, balance) => sum + balance.onHand,
+    0,
   );
+  const needsRestock = summaryBalances.filter(
+    (balance) => stockStatus(balance.onHand, balance.reorderLevel) !== "In Stock",
+  ).length;
 
   return {
     data: rows,
     meta,
     summary: {
-      totalItems: summaryBalances.length,
-      inStock: statuses.filter((status) => status === "In Stock").length,
-      lowStock: statuses.filter((status) => status === "Low Stock").length,
-      outOfStock: statuses.filter((status) => status === "Out of Stock").length,
+      totalProducts: new Set(summaryBalances.map((balance) => balance.productId))
+        .size,
+      totalUnits,
+      needsRestock,
+      incomingItems: incomingItems._sum.inTransitQuantity ?? 0,
+      incomingItemsLabel:
+        context.role === "STOCK_STAFF"
+          ? "Items in transit to branches"
+          : "Incoming items",
     },
   };
 }

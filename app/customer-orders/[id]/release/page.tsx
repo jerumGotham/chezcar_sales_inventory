@@ -170,7 +170,7 @@ export default function ReleaseCustomerOrderPage() {
                   <Input placeholder="Receipt no., released by, remarks, etc." />
                 </div>
 
-                <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-700">
+                {/* <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-700">
                   In backend integration, this page should:
                   <br />
                   1. validate payment or remaining balance rule
@@ -180,7 +180,7 @@ export default function ReleaseCustomerOrderPage() {
                   3. mark order as Released
                   <br />
                   4. create release audit trail
-                </div>
+                </div> */}
 
                 <Button className="w-full bg-emerald-600 text-white hover:bg-emerald-700">
                   Confirm Release

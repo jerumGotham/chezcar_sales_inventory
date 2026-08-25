@@ -6,6 +6,7 @@ import type {
 import {
   Boxes,
   ClipboardList,
+  ArrowLeftRight,
   LayoutDashboard,
   Package,
   UserCog,
@@ -51,6 +52,13 @@ export const menus = [
     icon: Boxes,
     iconId: "inventory",
     capability: "inventory:view",
+  },
+  {
+    label: "Stock Transfers",
+    href: "/stock-transfers",
+    icon: ArrowLeftRight,
+    iconId: "stock-transfers",
+    capability: "stock-transfers:view",
   },
   {
     label: "Customer Orders",

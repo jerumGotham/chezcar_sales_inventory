@@ -3,7 +3,7 @@
 
 ## Current status
 
-PostgreSQL is now active for Better Auth, the Products primary list, and the Inventory primary list. Most other screens and every business mutation remain mock/local behavior.
+PostgreSQL is now active for Better Auth, the Products and Inventory primary lists, Stock Room supplier receiving, and the SR-to-branch Stock Transfer workflow. Most other screens and business mutations remain mock/local behavior.
 
 The implemented database boundary consists of:
 
@@ -18,6 +18,8 @@ The implemented database boundary consists of:
 - `prisma/fixtures/opening-catalog.json`: approved canonical fixture (1,432 products, 8,592 six-location opening balances) with embedded workbook/resolution/source-map hashes.
 - `scripts/data-onboarding/`: read-only workbook profiler, fail-closed canonicalizer, reviewed resolutions, and the byte-stable fixture generator (`generate-seed.mjs --check` refuses stale committed output). These are developer CLIs with no HTTP or UI surface.
 - `lib/server/services/catalog-reset.ts`: transactionally scoped catalog reload with positive target identity checks.
+- `lib/server/services/stock-transfers.ts`: authorized serializable transfer state transitions and inventory posting.
+- `lib/server/services/stock-receipts.ts`: authorized serializable Stock Room supplier receipt posting.
 - `tests/helpers/database.ts`: fixed-identity disposable PostgreSQL 17 integration lifecycle (container `chezcar_test_postgres_01_13`, port 55435, database `chezcar_test_01_13`, no bind mount).
 
 ## Implemented models
@@ -34,7 +36,15 @@ Uses unique `itemCode`, name, optional description/category/brand, nullable curr
 
 Stores one balance per `(locationId, productId)` with `onHand`, `reserved`, `reorderLevel`, Decimal `unitCost`, optimistic `version`, and timestamps.
 
-The initial SQL migration enforces non-negative reserved/reorder/cost values and a positive version, but it does not yet constrain `onHand` to be non-negative. The accepted sales/offline workflow requires future mutation services and additive database constraints to prevent negative stock. No mutation currently changes balances.
+The initial SQL migration enforces non-negative reserved/reorder/cost values and a positive version, but it does not yet constrain `onHand` to be non-negative. The transfer service prevents source balances from becoming negative through conditional updates.
+
+### Stock transfer ledger
+
+The additive `20260826000000_stock_transfers` migration introduces immutable transfer lines, branch discrepancy reports, Stock Staff investigations, Admin resolutions, and `InventoryMovement` audit records. Transit is stored as `StockTransferLine.inTransitQuantity`, not as a sellable Location or InventoryBalance. Dispatch deducts SR and marks line transit quantity; exact receipt posts destination stock; final resolution clears transit and explicitly allocates each line to destination, SR restoration, or loss.
+
+### Supplier receipt ledger
+
+The additive `20260826010000_stock_receipts` migration adds `StockReceipt`, immutable `StockReceiptLine` product snapshots, and the `SUPPLIER_RECEIPT` inventory movement type. A receipt is permanently tied to `SR`, its receipt reference is globally unique, and each movement belongs to exactly one transfer or receipt. The posting service uses a serializable transaction to persist the receipt, upsert/increment SR balances, and write its audit movements. Branch supplier receiving and manual inventory adjustments remain unimplemented.
 
 ### User and Better Auth
 
@@ -96,8 +106,8 @@ Do not delete or replace a developer's existing data directory without confirmin
 ## Current gaps
 
 - No CI database service; disposable PostgreSQL migration and seed integration tests run locally through `tests/helpers/database.ts`.
-- No immutable InventoryMovement ledger or transactional stock mutations.
-- No ProductPriceVersion, imports, receipts, transfers, sales, payments, notifications, or audit tables.
+- No ProductPriceVersion, sales, payments, manual inventory-adjustment, or notification tables.
+- Real-time delivery, offline transfer capture/sync, discrepancy photo upload, and damaged/return locations are deferred; this slice accepts structured notes/reasons only.
 - No startup-time typed environment validation.
 - No case-insensitive normalized email/item-code database strategy beyond current unique fields.
 - No production backup, restore, monitoring, or deployment migration procedure.

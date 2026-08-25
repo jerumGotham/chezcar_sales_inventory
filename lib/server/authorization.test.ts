@@ -72,6 +72,12 @@ function persistedUser(
 }
 
 describe("fixed persisted access policy", () => {
+  it("grants transfer visibility only to Admin, Stock Staff, and Branch Staff", () => {
+    expect(evaluateAccess(accessContext("ADMIN", null), "stock-transfers:view")).toBe(true);
+    expect(evaluateAccess(accessContext("STOCK_STAFF", stockRoom), "stock-transfers:view")).toBe(true);
+    expect(evaluateAccess(accessContext("BRANCH_STAFF", branch), "stock-transfers:view")).toBe(true);
+    expect(evaluateAccess(accessContext("ACCOUNTING_STAFF", null), "stock-transfers:view")).toBe(false);
+  });
   it.each([
     ["ADMIN", null],
     ["STOCK_STAFF", stockRoom],

@@ -8,7 +8,8 @@ export type AccessResource =
   | "customer-orders"
   | "products"
   | "inventory"
-  | "users";
+  | "users"
+  | "stock-transfers";
 
 export type AccessAction = "view" | "manage";
 
@@ -18,7 +19,9 @@ export type Capability =
   | "customer-orders:view"
   | "products:view"
   | "inventory:view"
-  | "users:manage";
+  | "inventory-receiving:create"
+  | "users:manage"
+  | "stock-transfers:view";
 
 export type PersistedAccessLocation = {
   id: string;
@@ -40,7 +43,9 @@ export const CAPABILITIES = {
   customerOrdersView: "customer-orders:view",
   productsView: "products:view",
   inventoryView: "inventory:view",
+  inventoryReceivingCreate: "inventory-receiving:create",
   usersManage: "users:manage",
+  stockTransfersView: "stock-transfers:view",
 } as const satisfies Record<string, Capability>;
 
 const FIXED_BRANCH_CODES = new Set(["QC", "BL", "LU", "VC", "SP"]);
@@ -53,6 +58,7 @@ const ROLE_CAPABILITIES = {
     CAPABILITIES.productsView,
     CAPABILITIES.inventoryView,
     CAPABILITIES.usersManage,
+    CAPABILITIES.stockTransfersView,
   ],
   STOCK_STAFF: [
     CAPABILITIES.dashboardView,
@@ -60,12 +66,15 @@ const ROLE_CAPABILITIES = {
     CAPABILITIES.customerOrdersView,
     CAPABILITIES.productsView,
     CAPABILITIES.inventoryView,
+    CAPABILITIES.inventoryReceivingCreate,
+    CAPABILITIES.stockTransfersView,
   ],
   BRANCH_STAFF: [
     CAPABILITIES.dashboardView,
     CAPABILITIES.customersView,
     CAPABILITIES.customerOrdersView,
     CAPABILITIES.inventoryView,
+    CAPABILITIES.stockTransfersView,
   ],
   ACCOUNTING_STAFF: [
     CAPABILITIES.dashboardView,

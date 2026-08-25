@@ -49,6 +49,7 @@ const expectedMenu = {
     "Customers",
     "Products",
     "Inventory",
+    "Stock Transfers",
     "Customer Orders",
     "User Management",
   ],
@@ -57,9 +58,10 @@ const expectedMenu = {
     "Customers",
     "Products",
     "Inventory",
+    "Stock Transfers",
     "Customer Orders",
   ],
-  BRANCH_STAFF: ["Dashboard", "Customers", "Inventory", "Customer Orders"],
+  BRANCH_STAFF: ["Dashboard", "Customers", "Inventory", "Stock Transfers", "Customer Orders"],
   ACCOUNTING_STAFF: ["Dashboard", "Customers", "Customer Orders"],
 } as const satisfies Record<UserRole, readonly string[]>;
 
@@ -71,6 +73,7 @@ const expectedCapabilities = {
     "products:view",
     "inventory:view",
     "users:manage",
+    "stock-transfers:view",
   ],
   STOCK_STAFF: [
     "dashboard:view",
@@ -78,12 +81,15 @@ const expectedCapabilities = {
     "customer-orders:view",
     "products:view",
     "inventory:view",
+    "inventory-receiving:create",
+    "stock-transfers:view",
   ],
   BRANCH_STAFF: [
     "dashboard:view",
     "customers:view",
     "customer-orders:view",
     "inventory:view",
+    "stock-transfers:view",
   ],
   ACCOUNTING_STAFF: [
     "dashboard:view",

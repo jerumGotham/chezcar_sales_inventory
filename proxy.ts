@@ -16,6 +16,7 @@ const PAGE_CAPABILITIES = {
   products: CAPABILITIES.productsView,
   inventory: CAPABILITIES.inventoryView,
   users: CAPABILITIES.usersManage,
+  "stock-transfers": CAPABILITIES.stockTransfersView,
 } as const satisfies Record<string, Capability>;
 
 function pageCapability(pathname: string): Capability | null {

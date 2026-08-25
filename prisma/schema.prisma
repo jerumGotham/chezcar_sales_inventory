@@ -29,6 +29,25 @@ enum ProductStatus {
   INACTIVE
 }
 
+enum StockTransferStatus {
+  DRAFT
+  FOR_DISPATCH
+  IN_TRANSIT
+  RECEIVED
+  DISCREPANCY_REPORTED
+  UNDER_REVIEW
+  RESOLVED
+}
+
+enum InventoryMovementType {
+  SUPPLIER_RECEIPT
+  TRANSFER_DISPATCH
+  TRANSFER_RECEIPT
+  TRANSFER_RESTORATION
+  TRANSFER_LOSS
+  TRANSFER_RESOLUTION
+}
+
 model Location {
   id                String             @id @default(cuid())
   code              String             @unique
@@ -42,6 +61,9 @@ model Location {
   isActive          Boolean            @default(true)
   inventoryBalances InventoryBalance[]
   users             User[]
+  destinationTransfers StockTransfer[] @relation("TransferDestination")
+  inventoryMovements InventoryMovement[]
+  stockReceipts     StockReceipt[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 }
@@ -56,6 +78,9 @@ model Product {
   price             Decimal?           @db.Decimal(12, 2)
   status            ProductStatus      @default(ACTIVE)
   inventoryBalances InventoryBalance[]
+  transferLines     StockTransferLine[]
+  receiptLines      StockReceiptLine[]
+  inventoryMovements InventoryMovement[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 }
@@ -95,10 +120,173 @@ model User {
   location                Location?  @relation(fields: [locationId], references: [id])
   sessions                Session[]
   accounts                Account[]
+  createdTransfers        StockTransfer[] @relation("TransferCreatedBy")
+  finalizedTransfers      StockTransfer[] @relation("TransferFinalizedBy")
+  dispatchedTransfers     StockTransfer[] @relation("TransferDispatchedBy")
+  receivedTransfers       StockTransfer[] @relation("TransferReceivedBy")
+  discrepancyReports      StockTransferDiscrepancy[] @relation("DiscrepancyReportedBy")
+  investigations          StockTransferInvestigation[] @relation("InvestigationSubmittedBy")
+  resolutions             StockTransferResolution[] @relation("ResolutionPostedBy")
+  inventoryMovements      InventoryMovement[]
+  stockReceipts           StockReceipt[] @relation("ReceiptReceivedBy")
   createdAt               DateTime   @default(now())
   updatedAt               DateTime   @updatedAt
 
   @@index([locationId])
+}
+
+model StockTransfer {
+  id              String              @id @default(cuid())
+  reference       String              @unique
+  destinationId   String
+  status          StockTransferStatus @default(DRAFT)
+  version         Int                 @default(1)
+  createdById     String
+  finalizedById   String?
+  dispatchedById  String?
+  receivedById    String?
+  finalizedAt     DateTime?
+  dispatchedAt    DateTime?
+  receivedAt      DateTime?
+  destination     Location            @relation("TransferDestination", fields: [destinationId], references: [id])
+  createdBy       User                @relation("TransferCreatedBy", fields: [createdById], references: [id])
+  finalizedBy     User?               @relation("TransferFinalizedBy", fields: [finalizedById], references: [id])
+  dispatchedBy    User?               @relation("TransferDispatchedBy", fields: [dispatchedById], references: [id])
+  receivedBy      User?               @relation("TransferReceivedBy", fields: [receivedById], references: [id])
+  lines           StockTransferLine[]
+  discrepancy     StockTransferDiscrepancy?
+  investigation   StockTransferInvestigation?
+  resolution      StockTransferResolution?
+  movements       InventoryMovement[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([destinationId, status])
+  @@index([status])
+}
+
+model StockTransferLine {
+  id                String          @id @default(cuid())
+  transferId        String
+  productId         String
+  requestedQuantity Int
+  dispatchedQuantity Int             @default(0)
+  inTransitQuantity Int              @default(0)
+  transfer          StockTransfer   @relation(fields: [transferId], references: [id], onDelete: Restrict)
+  product           Product         @relation(fields: [productId], references: [id])
+  discrepancyLines  StockTransferDiscrepancyLine[]
+  resolutionLines   StockTransferResolutionLine[]
+
+  @@unique([transferId, productId])
+}
+
+model StockTransferDiscrepancy {
+  id           String                         @id @default(cuid())
+  transferId   String                         @unique
+  reportedById String
+  notes        String                         @db.Text
+  reportedAt   DateTime                       @default(now())
+  transfer     StockTransfer                  @relation(fields: [transferId], references: [id], onDelete: Restrict)
+  reportedBy   User                           @relation("DiscrepancyReportedBy", fields: [reportedById], references: [id])
+  lines        StockTransferDiscrepancyLine[]
+}
+
+model StockTransferDiscrepancyLine {
+  id             String                   @id @default(cuid())
+  discrepancyId  String
+  transferLineId String
+  actualQuantity Int
+  reason         String
+  notes          String?                  @db.Text
+  discrepancy    StockTransferDiscrepancy @relation(fields: [discrepancyId], references: [id], onDelete: Restrict)
+  transferLine   StockTransferLine        @relation(fields: [transferLineId], references: [id])
+
+  @@unique([discrepancyId, transferLineId])
+}
+
+model StockTransferInvestigation {
+  id            String        @id @default(cuid())
+  transferId    String        @unique
+  submittedById String
+  findings      String        @db.Text
+  submittedAt   DateTime      @default(now())
+  transfer      StockTransfer @relation(fields: [transferId], references: [id], onDelete: Restrict)
+  submittedBy   User          @relation("InvestigationSubmittedBy", fields: [submittedById], references: [id])
+}
+
+model StockTransferResolution {
+  id         String                        @id @default(cuid())
+  transferId String                        @unique
+  postedById String
+  notes      String                        @db.Text
+  postedAt   DateTime                      @default(now())
+  transfer   StockTransfer                 @relation(fields: [transferId], references: [id], onDelete: Restrict)
+  postedBy   User                          @relation("ResolutionPostedBy", fields: [postedById], references: [id])
+  lines      StockTransferResolutionLine[]
+}
+
+model StockTransferResolutionLine {
+  id              String                  @id @default(cuid())
+  resolutionId    String
+  transferLineId  String
+  destinationQty  Int
+  restoreToSrQty  Int
+  lossQty         Int
+  resolution      StockTransferResolution @relation(fields: [resolutionId], references: [id], onDelete: Restrict)
+  transferLine    StockTransferLine       @relation(fields: [transferLineId], references: [id])
+
+  @@unique([resolutionId, transferLineId])
+}
+
+model StockReceipt {
+  id           String             @id @default(cuid())
+  reference    String             @unique
+  supplier     String
+  notes        String?            @db.Text
+  locationId   String
+  receivedById String
+  receivedAt   DateTime           @default(now())
+  location     Location           @relation(fields: [locationId], references: [id])
+  receivedBy   User               @relation("ReceiptReceivedBy", fields: [receivedById], references: [id])
+  lines        StockReceiptLine[]
+  movements    InventoryMovement[]
+
+  @@index([locationId, receivedAt])
+  @@index([receivedById])
+}
+
+model StockReceiptLine {
+  id              String       @id @default(cuid())
+  receiptId       String
+  productId       String
+  quantity        Int
+  productItemCode String
+  productName     String
+  receipt         StockReceipt @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  product         Product      @relation(fields: [productId], references: [id])
+
+  @@unique([receiptId, productId])
+}
+
+model InventoryMovement {
+  id          String                @id @default(cuid())
+  transferId  String?
+  receiptId   String?
+  productId   String
+  locationId  String?
+  quantity    Int
+  type        InventoryMovementType
+  actorId     String
+  occurredAt  DateTime              @default(now())
+  transfer    StockTransfer?        @relation(fields: [transferId], references: [id], onDelete: Restrict)
+  receipt     StockReceipt?         @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  product     Product               @relation(fields: [productId], references: [id])
+  location    Location?             @relation(fields: [locationId], references: [id])
+  actor       User                  @relation(fields: [actorId], references: [id])
+
+  @@index([transferId])
+  @@index([receiptId])
+  @@index([productId, locationId])
 }
 
 model Session {

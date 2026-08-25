@@ -1,0 +1,646 @@
+"use client";
+
+import { useState, useEffect, useMemo } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Trash2, AlertTriangle, CheckCircle2, X } from "lucide-react";
+
+import { PageShell } from "@/components/page-shell";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import type { ShellRole } from "@/lib/contracts/access";
+
+type TransferLine = {
+  id: string;
+  product: { id: string; itemCode: string; name: string };
+  requestedQuantity: number;
+  dispatchedQuantity: number;
+  inTransitQuantity: number;
+  discrepancy: { actualQuantity: number; reason: string } | null;
+};
+
+type Transfer = {
+  id: string;
+  reference: string;
+  status: string;
+  version: number;
+  destination: { id: string; code: string; name: string };
+  lines: TransferLine[];
+  discrepancy: { notes: string } | null;
+  investigation: { findings: string } | null;
+};
+
+type Option = { id: string; code: string; name: string };
+type Product = { id: string; itemCode: string; name: string };
+type DraftLine = { productId: string; quantity: number };
+
+async function request<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+  const response = await fetch(path, {
+    method,
+    credentials: "same-origin",
+    headers: body ? { "content-type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const json = await response.json();
+
+  if (!response.ok) {
+    throw new Error(json.error?.message ?? "Request failed");
+  }
+
+  return json.data;
+}
+
+export function StockTransfersClient({
+  role,
+  branches,
+  products,
+}: {
+  role: ShellRole;
+  branches: Option[];
+  products: Product[],
+}) {
+  const queryClient = useQueryClient();
+  const [selected, setSelected] = useState<Transfer | null>(null);
+  const [destinationId, setDestinationId] = useState("");
+  const [draftLines, setDraftLines] = useState<DraftLine[]>([
+    { productId: "", quantity: 1 },
+  ]);
+  const [editLines, setEditLines] = useState<DraftLine[]>([]);
+  const [notes, setNotes] = useState("");
+  const [actualQuantities, setActualQuantities] = useState<Record<string, number>>({});
+  const [discrepancyReason, setDiscrepancyReason] = useState("");
+  const [message, setMessage] = useState("");
+  const [messageKind, setMessageKind] = useState<"success" | "error">("success");
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+
+  function notify(text: string, kind: "success" | "error" = "success") { setMessage(text); setMessageKind(kind); }
+
+  const transfers = useQuery({
+    queryKey: ["stock-transfers"],
+    queryFn: () => request<Transfer[]>("/api/stock-transfers"),
+  });
+
+  const updateDraftMutation = useMutation({
+    mutationFn: ({ transferId, version, lines }: { transferId: string; version: number; lines: DraftLine[] }) => {
+      return request<Transfer>(`/api/stock-transfers/${transferId}/update`, "POST", { version, lines });
+    },
+    onSuccess: (transfer) => {
+      notify("Draft updated successfully.");
+      setValidationErrors([]);
+      setSelected(transfer);
+      setEditLines((transfer.lines ?? []).map((line) => ({ productId: line.product.id, quantity: line.requestedQuantity })));
+      queryClient.invalidateQueries({ queryKey: ["stock-transfers"] });
+    },
+    onError: (error: Error) => notify(error.message, "error"),
+  });
+
+  const deleteDraftMutation = useMutation({
+    mutationFn: ({ transferId }: { transferId: string }) => {
+      return request<{ id: string }>(`/api/stock-transfers/${transferId}/delete`, "POST", {});
+    },
+    onSuccess: () => {
+      notify("Draft deleted successfully.");
+      setSelected(null);
+      setDestinationId("");
+      setDraftLines([{ productId: "", quantity: 1 }]);
+      setNotes("");
+      setActualQuantities({});
+      setDiscrepancyReason("");
+      queryClient.invalidateQueries({ queryKey: ["stock-transfers"] });
+    },
+    onError: (error: Error) => notify(error.message, "error"),
+  });
+
+  const mutation = useMutation({
+    mutationFn: ({ action, body }: { action: string; body: unknown }) => {
+      if (action === "create") {
+        return request<Transfer>("/api/stock-transfers", "POST", body);
+      }
+
+      if (!selected) {
+        throw new Error("Select a transfer first.");
+      }
+
+      return request<Transfer>(
+        `/api/stock-transfers/${selected.id}/${action}`,
+        "POST",
+        body,
+      );
+    },
+    onSuccess: (transfer) => {
+      notify("Transfer created successfully.");
+      setValidationErrors([]);
+      setSelected(transfer);
+      setEditLines((transfer.lines ?? []).map((line) => ({ productId: line.product.id, quantity: line.requestedQuantity })));
+      setDestinationId("");
+      setDraftLines([{ productId: "", quantity: 1 }]);
+      queryClient.invalidateQueries({ queryKey: ["stock-transfers"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory-locations"] });
+    },
+    onError: (error: Error) => notify(error.message, "error"),
+  });
+
+  const selectTransfer = (transfer: Transfer) => {
+    if (selected?.id === transfer.id) {
+      setSelected(null);
+      setNotes("");
+      setActualQuantities({});
+      setEditLines([]);
+      return;
+    }
+
+    setSelected(transfer);
+    setNotes("");
+    setActualQuantities(
+      Object.fromEntries(
+        (transfer.lines ?? []).map((line) => [line.id, line.dispatchedQuantity]),
+      ),
+    );
+    if (transfer.status === "DRAFT") {
+      setEditLines((transfer.lines ?? []).map((line) => ({ productId: line.product.id, quantity: line.requestedQuantity })));
+    }
+  };
+
+  const createTransfer = () => {
+    const errors: string[] = [];
+
+    if (!destinationId) {
+      errors.push("Select a destination branch.");
+    }
+
+    draftLines.forEach((line, index) => {
+      if (!line.productId) {
+        errors.push(`Select a product for line ${index + 1}.`);
+      }
+
+      if (!Number.isInteger(line.quantity) || line.quantity < 1) {
+        errors.push(`Enter a valid quantity for line ${index + 1}.`);
+      }
+    });
+
+    if (hasDuplicateProducts) {
+      errors.push("Each product can be added only once per transfer.");
+    }
+
+    if (hasDuplicateDestination) {
+      errors.push("A draft for this destination already exists. Edit that draft instead.");
+    }
+
+    setValidationErrors(errors);
+    if (errors.length > 0) return;
+
+    mutation.mutate({
+      action: "create",
+      body: { destinationId, lines: draftLines },
+    });
+  };
+
+  const act = (action: string, body: object) => {
+    mutation.mutate({
+      action,
+      body: { version: selected?.version, ...body },
+    });
+  };
+
+  const hasCountDifference = selected?.lines?.some(
+    (line) => actualQuantities[line.id] !== line.dispatchedQuantity,
+  );
+
+  const hasDuplicateProducts = draftLines.some(
+    (line, index) =>
+      line.productId &&
+      draftLines.some(
+        (otherLine, otherIndex) =>
+          otherIndex !== index && otherLine.productId === line.productId,
+      ),
+  );
+
+  const hasDuplicateDestination = useMemo(() => {
+    if (!destinationId) return false;
+    return transfers.data?.some(
+      (t) => t.status === "DRAFT" && t.destination.id === destinationId,
+    ) ?? false;
+  }, [destinationId, transfers.data]);
+
+  const updateDraftProduct = (index: number, productId: string) => {
+    setValidationErrors([]);
+    setDraftLines((current) => {
+      const alreadySelected = current.some(
+        (line, lineIndex) => lineIndex !== index && line.productId === productId,
+      );
+
+      return current.map((item, itemIndex) =>
+        itemIndex === index
+          ? { ...item, productId: alreadySelected ? "" : productId }
+          : item,
+      );
+    });
+  };
+
+  useEffect(() => {
+    if (selected?.status !== "DRAFT") {
+      setDraftLines([{ productId: "", quantity: 1 }]);
+      setDestinationId("");
+    }
+  }, [selected?.status]);
+
+  return (
+    <PageShell
+      title="Stock Transfers"
+      subtitle="Move stock from Stock Room to a branch, confirm delivery, and resolve any discrepancy."
+    >
+      {message && (
+        <div className={`mb-4 flex items-start justify-between rounded-lg border px-4 py-3 text-sm ${messageKind === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-800"}`}>
+          <div className="flex items-start gap-2">
+            {messageKind === "success" ? <CheckCircle2 className="mt-0.5 size-4 shrink-0" /> : <AlertTriangle className="mt-0.5 size-4 shrink-0" />}
+            <span>{message}</span>
+          </div>
+          <button onClick={() => setMessage("")} className="ml-3 shrink-0 rounded p-0.5 opacity-60 hover:opacity-100"><X className="size-4" /></button>
+        </div>
+      )}
+
+      {role === "STOCK_STAFF" && (
+        <Card className="mb-6">
+          <CardContent className="grid gap-3 p-5">
+            <h2 className="font-semibold">Create Stock Room Transfer</h2>
+            <select
+              className="h-10 rounded-md border px-3"
+              value={destinationId}
+              onChange={(event) => {
+                setValidationErrors([]);
+                setDestinationId(event.target.value);
+              }}
+            >
+              <option value="">Destination branch</option>
+              {branches.map((branch) => (
+                <option key={branch.id} value={branch.id}>
+                  {branch.name} ({branch.code})
+                </option>
+              ))}
+            </select>
+            {draftLines.map((line, index) => (
+              <div className="flex gap-2" key={`${line.productId}-${index}`}>
+                <select
+                  className="h-10 flex-1 rounded-md border px-3"
+                  value={line.productId}
+                  onChange={(event) => updateDraftProduct(index, event.target.value)}
+                >
+                  <option value="">Product</option>
+                  {products
+                    .filter((product) => {
+                      const selectedInAnotherLine = draftLines.some(
+                        (otherLine, otherIndex) =>
+                          otherIndex !== index && otherLine.productId === product.id,
+                      );
+
+                      return product.id === line.productId || !selectedInAnotherLine;
+                    })
+                    .map((product) => (
+                      <option key={product.id} value={product.id}>
+                        {product.itemCode} - {product.name}
+                      </option>
+                    ))}
+                </select>
+                <Input
+                  className="w-24"
+                  type="number"
+                  min="1"
+                  value={line.quantity}
+                  onChange={(event) =>
+                    {
+                      setValidationErrors([]);
+                      setDraftLines((current) =>
+                        current.map((item, itemIndex) =>
+                          itemIndex === index
+                            ? { ...item, quantity: Number(event.target.value) }
+                            : item,
+                        ),
+                      );
+                    }
+                  }
+                />
+                <Button
+                  aria-label="Remove product line"
+                  disabled={draftLines.length === 1}
+                  onClick={() => {
+                    setValidationErrors([]);
+                    setDraftLines((current) =>
+                      current.filter((_, itemIndex) => itemIndex !== index),
+                    );
+                  }}
+                  size="icon"
+                  type="button"
+                  variant="outline"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+            {validationErrors.length > 0 && (
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {validationErrors.map((error) => (
+                  <p key={error}>{error}</p>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() =>
+                  setDraftLines((current) => [
+                    ...current,
+                    { productId: "", quantity: 1 },
+                  ])
+                }
+              >
+                Add product
+              </Button>
+              <Button disabled={mutation.isPending} onClick={createTransfer}>
+                Create draft
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {selected && selected.status === "DRAFT" && (
+        <Card className="mt-6">
+          <CardContent className="space-y-4 p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold">{selected.reference}</h2>
+              <Badge className="bg-slate-100 text-slate-700">{selected.status}</Badge>
+            </div>
+            {role === "STOCK_STAFF" && editLines.length > 0 && (
+              <div className="space-y-3">
+                {editLines.map((line, index) => (
+                  <div className="flex gap-2" key={`${line.productId}-${index}`}>
+                    <select
+                      className="h-10 flex-1 rounded-md border px-3"
+                      value={line.productId}
+                      onChange={(event) => {
+                        const val = event.target.value;
+                        setEditLines((current) => {
+                          const dup = current.some((l, i) => i !== index && l.productId === val);
+                          return current.map((item, i) => i === index ? { ...item, productId: dup ? "" : val } : item);
+                        });
+                      }}
+                    >
+                      <option value="">Product</option>
+                      {products.filter((p) => p.id === line.productId || !editLines.some((l, i) => i !== index && l.productId === p.id)).map((p) => (
+                        <option key={p.id} value={p.id}>{p.itemCode} - {p.name}</option>
+                      ))}
+                    </select>
+                    <Input
+                      className="w-24"
+                      type="number"
+                      min="1"
+                      value={line.quantity}
+                      onChange={(event) => setEditLines((current) => current.map((item, i) => i === index ? { ...item, quantity: Number(event.target.value) } : item))}
+                    />
+                    <Button
+                      aria-label="Remove product line"
+                      disabled={editLines.length === 1}
+                      onClick={() => setEditLines((current) => current.filter((_, i) => i !== index))}
+                      size="icon"
+                      type="button"
+                      variant="outline"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setEditLines((current) => [...current, { productId: "", quantity: 1 }])}>
+                    Add product
+                  </Button>
+                <Button
+                  className="bg-emerald-600 text-white hover:bg-emerald-700"
+                  disabled={updateDraftMutation.isPending}
+                  onClick={() => {
+                    const errs: string[] = [];
+                    if (editLines.some((l) => !l.productId)) errs.push("Select a product for every line.");
+                    if (editLines.some((l) => !Number.isInteger(l.quantity) || l.quantity < 1)) errs.push("Quantity must be a whole number at least 1.");
+                    if (editLines.some((l, i) => l.productId && editLines.some((o, j) => j !== i && o.productId === l.productId))) errs.push("Each product can appear only once.");
+                    if (errs.length > 0) { notify(errs.join(" "), "error"); return; }
+                    updateDraftMutation.mutate({ transferId: selected.id, version: selected.version, lines: editLines });
+                  }}
+                >
+                  Update draft
+                </Button>
+                </div>
+              </div>
+            )}
+            {role !== "STOCK_STAFF" && (
+              <table className="w-full text-sm">
+                <thead><tr className="text-left"><th>Product</th><th>Requested</th></tr></thead>
+                <tbody>
+                  {selected.lines?.map((line) => (
+                    <tr key={line.id}>
+                      <td>{line.product.itemCode} - {line.product.name}</td>
+                      <td>{line.requestedQuantity}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            {role === "STOCK_STAFF" && (
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800"
+                  disabled={mutation.isPending}
+                  onClick={() => act("finalize", {})}
+                >
+                  Finalize for dispatch
+                </Button>
+                <Button
+                  variant="outline"
+                  className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                  disabled={deleteDraftMutation.isPending}
+                  onClick={() => deleteDraftMutation.mutate({ transferId: selected.id })}
+                >
+                  Delete draft
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {selected && selected.status !== "DRAFT" && (
+        <Card className="mt-6">
+          <CardContent className="space-y-4 p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold">{selected.reference}</h2>
+              <Badge className="bg-slate-100 text-slate-700">{selected.status}</Badge>
+            </div>
+            <p className="text-sm text-slate-500">
+              Source is Stock Room. In-transit stock cannot be sold until the branch confirms receipt or an Admin resolves a discrepancy.
+            </p>
+            <table className="w-full text-sm">
+              <thead><tr className="text-left"><th>Product</th><th>Sent</th><th>In transit</th><th>Reported</th></tr></thead>
+              <tbody>
+                {selected.lines?.map((line) => (
+                  <tr key={line.id}>
+                    <td>{line.product.itemCode} - {line.product.name}</td>
+                    <td>{line.dispatchedQuantity || line.requestedQuantity}</td>
+                    <td>{line.inTransitQuantity}</td>
+                    <td>{line.discrepancy?.actualQuantity ?? "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {selected.discrepancy && <p className="text-sm"><b>Branch report:</b> {selected.discrepancy.notes}</p>}
+            {selected.investigation && <p className="text-sm"><b>Investigation:</b> {selected.investigation.findings}</p>}
+
+            {role === "STOCK_STAFF" && selected.status === "FOR_DISPATCH" && (
+              <Button disabled={mutation.isPending} onClick={() => act("dispatch", {})}>Dispatch from Stock Room</Button>
+            )}
+            {role === "BRANCH_STAFF" && selected.status === "IN_TRANSIT" && (
+              <div className="space-y-4 rounded-lg border p-4">
+                <div>
+                  <p className="font-medium">Count the items you received</p>
+                  <p className="text-sm text-slate-500">Use Confirm exact receipt only when every count matches the dispatch.</p>
+                </div>
+                {selected.lines?.map((line) => (
+                  <div className="flex items-center justify-between gap-4" key={line.id}>
+                    <Label htmlFor={`actual-${line.id}`}>{line.product.name} (sent: {line.dispatchedQuantity})</Label>
+                    <Input
+                      id={`actual-${line.id}`}
+                      className="w-24"
+                      type="number"
+                      min="0"
+                      max={line.dispatchedQuantity}
+                      value={actualQuantities[line.id] ?? line.dispatchedQuantity}
+                      onChange={(event) =>
+                        setActualQuantities((current) => ({
+                          ...current,
+                          [line.id]: Number(event.target.value),
+                        }))
+                      }
+                    />
+                  </div>
+                ))}
+                <div className="space-y-2">
+                  <Label htmlFor="discrepancy-notes">What happened?</Label>
+                  <Input id="discrepancy-notes" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Explain the missing, wrong, or damaged items" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="discrepancy-reason">Reason</Label>
+                  <Input id="discrepancy-reason" value={discrepancyReason} onChange={(event) => setDiscrepancyReason(event.target.value)} />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button disabled={mutation.isPending} onClick={() => act("confirm-receipt", {})}>Confirm exact receipt</Button>
+                  <Button
+                    variant="outline"
+                    disabled={mutation.isPending || !hasCountDifference || !notes.trim() || !discrepancyReason.trim()}
+                    onClick={() =>
+                      act("report-discrepancy", {
+                        notes,
+                        lines: selected.lines?.map((line) => ({
+                          lineId: line.id,
+                          actualQuantity: actualQuantities[line.id] ?? line.dispatchedQuantity,
+                          reason: discrepancyReason,
+                        })),
+                      })
+                    }
+                  >
+                    Report discrepancy
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {(role === "STOCK_STAFF" && selected.status === "DISCREPANCY_REPORTED") ||
+            (role === "ADMIN" && selected.status === "UNDER_REVIEW") ? (
+              <div className="space-y-2">
+                <Label htmlFor="transfer-notes">{role === "ADMIN" ? "Resolution notes" : "Investigation findings"}</Label>
+                <Input id="transfer-notes" value={notes} onChange={(event) => setNotes(event.target.value)} />
+              </div>
+            ) : null}
+            {role === "STOCK_STAFF" && selected.status === "DISCREPANCY_REPORTED" && (
+              <Button disabled={!notes.trim() || mutation.isPending} onClick={() => act("investigate", { findings: notes })}>Submit investigation</Button>
+            )}
+            {role === "ADMIN" && selected.status === "UNDER_REVIEW" && (
+              <Button
+                disabled={!notes.trim() || mutation.isPending}
+                onClick={() =>
+                  act("resolve", {
+                    notes,
+                    lines: selected.lines?.map((line) => ({
+                      lineId: line.id,
+                      destinationQuantity: line.discrepancy?.actualQuantity ?? 0,
+                      restoreToSrQuantity: line.inTransitQuantity - (line.discrepancy?.actualQuantity ?? 0),
+                      lossQuantity: 0,
+                    })),
+                  })
+                }
+              >
+                Post final resolution
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[700px]">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="p-3 text-left">Reference</th>
+                  <th className="p-3 text-left">Destination</th>
+                  <th className="p-3 text-left">Status</th>
+                  <th className="p-3 text-left">Products</th>
+                  <th className="p-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {transfers.isLoading ? (
+                  <tr><td className="p-6" colSpan={5}>Loading transfers...</td></tr>
+                ) : transfers.data?.length ? (
+                  transfers.data.map((transfer) => (
+                    <tr className="border-t" key={transfer.id}>
+                      <td className="p-3 font-medium">{transfer.reference}</td>
+                      <td className="p-3">{transfer.destination.name} ({transfer.destination.code})</td>
+                      <td className="p-3"><Badge className="bg-slate-100 text-slate-700">{transfer.status}</Badge></td>
+                      <td className="p-3">{transfer.lines.length}</td>
+                      <td className="p-3">
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => selectTransfer(transfer)}
+                          >
+                            {selected?.id === transfer.id ? "Hide details" : "View details"}
+                          </Button>
+                          {transfer.status === "DRAFT" && role === "STOCK_STAFF" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                              disabled={deleteDraftMutation.isPending}
+                              onClick={() => deleteDraftMutation.mutate({ transferId: transfer.id })}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr><td className="p-6 text-slate-500" colSpan={5}>No transfers yet.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+    </PageShell>
+  );
+}

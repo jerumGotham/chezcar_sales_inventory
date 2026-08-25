@@ -10,7 +10,9 @@ export type ShellCapabilityId =
   | "customer-orders:view"
   | "products:view"
   | "inventory:view"
-  | "users:manage";
+  | "inventory-receiving:create"
+  | "users:manage"
+  | "stock-transfers:view";
 
 export type ShellMenuIcon =
   | "dashboard"
@@ -18,7 +20,8 @@ export type ShellMenuIcon =
   | "products"
   | "inventory"
   | "customer-orders"
-  | "users";
+  | "users"
+  | "stock-transfers";
 
 export type ShellMenuHref =
   | "/dashboard"
@@ -26,7 +29,8 @@ export type ShellMenuHref =
   | "/products"
   | "/inventory"
   | "/customer-orders"
-  | "/users";
+  | "/users"
+  | "/stock-transfers";
 
 export type ShellMenuEntryDto = {
   label: string;

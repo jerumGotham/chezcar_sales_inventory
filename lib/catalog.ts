@@ -42,10 +42,11 @@ export type InventoryApiResponse = {
   data: InventoryRow[];
   meta: PaginationMeta;
   summary: {
-    totalItems: number;
-    inStock: number;
-    lowStock: number;
-    outOfStock: number;
+    totalProducts: number;
+    totalUnits: number;
+    needsRestock: number;
+    incomingItems: number;
+    incomingItemsLabel: string;
   };
 };
 
