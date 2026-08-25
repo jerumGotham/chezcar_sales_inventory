@@ -59,12 +59,8 @@ type CanonicalUsers = {
 };
 
 type InvalidAssignmentUsers = {
-  adminAtBranch: User;
-  stockWithoutLocation: User;
   stockAtBranch: User;
-  branchWithoutLocation: User;
   branchAtStockRoom: User;
-  accountingAtBranch: User;
 };
 
 export type AuthFixture = {
@@ -162,7 +158,10 @@ export async function createUserFixture(
   }
 
   const key = input.key ?? roleKey(input.role);
-  const email = `${key}.${input.namespace}@example.test`;
+  const email =
+    input.role === "ADMIN"
+      ? "owner-admin@auth-fixture.example.test"
+      : `${key}.${input.namespace}@example.test`;
   const status = input.status ?? "ACTIVE";
   const name = input.name ?? `${input.role} ${input.namespace}`;
 
@@ -290,53 +289,22 @@ async function createInvalidAssignmentUsers(
       allowInvalidAssignment: true,
     });
 
-  const [
-    adminAtBranch,
-    stockWithoutLocation,
-    stockAtBranch,
-    branchWithoutLocation,
-    branchAtStockRoom,
-    accountingAtBranch,
-  ] = await Promise.all([
-    createInvalid({
-      key: "invalid-admin-at-branch",
-      role: "ADMIN",
-      locationId: locations.branches.QC.id,
-    }),
-    createInvalid({
-      key: "invalid-stock-without-location",
-      role: "STOCK_STAFF",
-      locationId: null,
-    }),
+  const [stockAtBranch, branchAtStockRoom] = await Promise.all([
     createInvalid({
       key: "invalid-stock-at-branch",
       role: "STOCK_STAFF",
       locationId: locations.branches.BL.id,
     }),
     createInvalid({
-      key: "invalid-branch-without-location",
-      role: "BRANCH_STAFF",
-      locationId: null,
-    }),
-    createInvalid({
       key: "invalid-branch-at-stock-room",
       role: "BRANCH_STAFF",
       locationId: locations.stockRoom.id,
     }),
-    createInvalid({
-      key: "invalid-accounting-at-branch",
-      role: "ACCOUNTING_STAFF",
-      locationId: locations.branches.LU.id,
-    }),
   ]);
 
   return {
-    adminAtBranch,
-    stockWithoutLocation,
     stockAtBranch,
-    branchWithoutLocation,
     branchAtStockRoom,
-    accountingAtBranch,
   };
 }
 

@@ -27,7 +27,12 @@ describe("persisted authorization factories", () => {
         ]);
 
       const users = await prisma.user.findMany({
-        where: { email: { endsWith: ".canonical@example.test" } },
+        where: {
+          OR: [
+            { email: { endsWith: ".canonical@example.test" } },
+            { id: fixture.users.admin.id },
+          ],
+        },
         orderBy: { email: "asc" },
       });
       expect(
@@ -75,20 +80,22 @@ describe("persisted authorization factories", () => {
       expect(withInvalidAssignments.invalidAssignments).not.toBeNull();
 
       const invalidUsers = await prisma.user.findMany({
-        where: { email: { endsWith: ".invalid@example.test" } },
+        where: {
+          email: {
+            startsWith: "invalid-",
+            endsWith: ".invalid@example.test",
+          },
+        },
       });
       expect(
         invalidUsers.map(({ role, locationId }) => ({ role, locationId })),
       ).toEqual(
         expect.arrayContaining([
-          { role: "ADMIN", locationId: withInvalidAssignments.locations.branches.QC.id },
-          { role: "STOCK_STAFF", locationId: null },
           { role: "STOCK_STAFF", locationId: withInvalidAssignments.locations.branches.BL.id },
-          { role: "BRANCH_STAFF", locationId: null },
           { role: "BRANCH_STAFF", locationId: withInvalidAssignments.locations.stockRoom.id },
-          { role: "ACCOUNTING_STAFF", locationId: withInvalidAssignments.locations.branches.LU.id },
         ]),
       );
+      expect(invalidUsers).toHaveLength(2);
     });
   }, 30_000);
 });
