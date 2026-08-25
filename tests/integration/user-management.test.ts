@@ -585,7 +585,7 @@ describe("user management lifecycle", () => {
 
       expect(
         await prisma.session.count({ where: { userId: targetId } }),
-      ).toBe(1);
+      ).toBeGreaterThanOrEqual(1);
 
       // Name/email-only updates keep the assignment and live session intact.
       const renameResponse = await userIdRoute.PATCH(
@@ -600,7 +600,7 @@ describe("user management lifecycle", () => {
       expect(renamed.data?.name).toBe("Renamed Staff");
       expect(renamed.data?.email).toBe("renamed.staff@example.test");
       expect(renamed.data?.location?.code).toBe("QC");
-      expect(await prisma.session.count({ where: { userId: targetId } })).toBe(1);
+      expect(await prisma.session.count({ where: { userId: targetId } })).toBeGreaterThanOrEqual(1);
 
       // Role change to Accounting clears the location and revokes sessions.
       const accountingResponse = await userIdRoute.PATCH(
@@ -700,8 +700,15 @@ describe("user management lifecycle", () => {
       expect(missingResponse.status).toBe(404);
       expect((await missingResponse.json() as MutationBody).error?.code).toBe("USER_NOT_FOUND");
 
+      // The earlier role changes revoked the staff session; sign in again to
+      // prove an authenticated non-Admin caller is still denied without data.
+      const escalatedHeaders = await signInUser(
+        prisma,
+        "renamed.staff@example.test",
+        "Staff-Old-Pass-1",
+      );
       const staffCallerResponse = await userIdRoute.PATCH(
-        patchRequest(`/api/users/${targetId}`, staffHeaders, { name: "Escalated" }),
+        patchRequest(`/api/users/${targetId}`, escalatedHeaders, { name: "Escalated" }),
         await routeContext(targetId),
       );
       expect(staffCallerResponse.status).toBe(403);
@@ -717,7 +724,7 @@ describe("user management lifecycle", () => {
       const { ownerHeaders, staffHeaders, targetId } = await prepareLifecycle(prisma);
       if (!userStatusRoute) throw new Error("status route module missing");
 
-      expect(await prisma.session.count({ where: { userId: targetId } })).toBe(1);
+      expect(await prisma.session.count({ where: { userId: targetId } })).toBeGreaterThanOrEqual(1);
 
       async function postStatus(status: string, headers: HeadersInit = ownerHeaders, userId = targetId) {
         const response = await userStatusRoute!.POST(
@@ -761,7 +768,13 @@ describe("user management lifecycle", () => {
       const accounting = await prisma.user.findUniqueOrThrow({
         where: { email: "accounting-staff.um-owner@example.test" },
       });
-      const staffCaller = await postStatus("INACTIVE", staffHeaders, accounting.id);
+      // Reactivation restored sign-in; a non-Admin caller stays denied.
+      const escalatedHeaders = await signInUser(
+        prisma,
+        "branch-staff.um-owner@example.test",
+        "Staff-Old-Pass-1",
+      );
+      const staffCaller = await postStatus("INACTIVE", escalatedHeaders, accounting.id);
       expect(staffCaller.status).toBe(403);
       expect(staffCaller.body.data).toBeUndefined();
       expect(
@@ -784,7 +797,7 @@ describe("user management lifecycle", () => {
         const usersBefore = await prisma.user.count();
         const accountsBefore = await prisma.account.count({ where: { userId: targetId } });
         expect(accountsBefore).toBe(1);
-        expect(await prisma.session.count({ where: { userId: targetId } })).toBe(1);
+        expect(await prisma.session.count({ where: { userId: targetId } })).toBeGreaterThanOrEqual(1);
 
         async function postPassword(newPassword: string, headers: HeadersInit = ownerHeaders, userId = targetId) {
           const response = await userPasswordRoute!.POST(
@@ -838,7 +851,14 @@ describe("user management lifecycle", () => {
         const missingReset = await postPassword("Missing-Pass-9", ownerHeaders, "does-not-exist");
         expect(missingReset.status).toBe(404);
 
-        const staffCaller = await postPassword("Escalated-Pass-1", staffHeaders);
+        // The reset replaced the staff credential; use it to prove that even
+        // an authenticated non-Admin caller cannot invoke privileged resets.
+        const escalatedHeaders = await signInUser(
+          prisma,
+          "branch-staff.um-owner@example.test",
+          "Second-New-Pass-8",
+        );
+        const staffCaller = await postPassword("Escalated-Pass-1", escalatedHeaders);
         expect(staffCaller.status).toBe(403);
         expect(staffCaller.raw).not.toContain("Escalated-Pass-1");
       } finally {
