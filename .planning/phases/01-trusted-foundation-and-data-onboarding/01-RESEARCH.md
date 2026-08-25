@@ -101,7 +101,7 @@ The workbook was inspected without modification by reading its XLSX ZIP/XML memb
 
 ### Planning consequences
 
-- **These workbook questions are unresolved facts, not planner discretion.** Plans 01-02 and 01-03 may reproduce and package the evidence, but neither research nor execution may infer answers. Plan 01-04 is the blocking owner-decision gate for every question below, and Plan 01-05 must halt unless the resulting `01-04-SUMMARY.md` supplies a keyed answer for every blocking finding. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:19-29]
+- **The execution-gate disposition for these workbook questions is RESOLVED, while their source values remain owner-checkpoint inputs.** Plans 01-02 and 01-03 reproduce and package the evidence; Plan 01-04 owns explicit owner approval; Plan 01-05 must halt unless `01-04-SUMMARY.md`/`resolutions.json` records a keyed decision for every blocking finding. No mapping, product identity/code, or price is guessed. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:19-29]
 - **Block canonical seed generation until the owner identifies which workbook source represents `SR` and explains `BL BEFORE`.** D-03 fixes canonical location codes but does not resolve the workbook’s ambiguous source columns. [ASSUMED]
 - Treat latest opening quantities as source evidence, not as trustworthy merely because formula caches contain numbers. Recalculate row rules from the selected source columns, and report formula/cached-value disagreements. [CITED: https://docs.sheetjs.com/docs/api/parse-options/]
 - Preserve source sheet, row, column, raw value, normalized value, rule outcome, and owner resolution in the mapping/report artifact. [ASSUMED]
@@ -152,7 +152,7 @@ The existing schema already has unique product codes and unique location-product
 
 | Library | Version | Purpose | When to Use |
 |---------|---------|---------|-------------|
-| Vitest | `4.1.11` | Unit, route/service, and database integration tests | Add in Wave 0; Node is the default environment and Node 20 is supported. [CITED: https://vitest.dev/guide/] |
+| Vitest | `4.1.11` candidate | Unit, route/service, and database integration tests | Plan 01-01 performs the blocking human legitimacy/version decision; Plan 01-02 installs only the approved exact Node 20-compatible release and establishes the runnable test command. [CITED: https://vitest.dev/guide/] |
 | TanStack React Query | existing `^5.96.1` | User list queries and mutation invalidation | Use only in the focused client component; preserve complete keys and `placeholderData`. [VERIFIED: package.json:16-32] |
 | Existing Base UI/Radix primitives | existing | Dialogs, forms, feedback, tables | Reuse instead of adding another component/form system in Phase 1. [VERIFIED: AGENTS.md:73-83] |
 
@@ -267,7 +267,7 @@ tests/integration/             # Prisma seed/auth/scope tests
 
 ## Recommended Vertical Implementation Slices
 
-1. **Wave 0 — deterministic verification:** add Vitest, Node unit configuration, disposable PostgreSQL helpers, and exact package scripts; prove the fresh migration and current authorization guard before changing behavior. [ASSUMED]
+1. **Blocking preflight and deterministic verification:** Plan 01-01 records the human package decision; Plan 01-02 establishes Vitest/config/commands and workbook tracer tests; Plan 01-13 separately owns tested disposable PostgreSQL, persisted actor/session, and hostile-request helpers. [ASSUMED]
 2. **Workbook evidence:** add a read-only profiler, source hash, row classifier, mapping contract, blocking review report, and fixtures for malformed workbook rows. This slice writes no database data. [ASSUMED]
 3. **Canonical data and safe reload:** reconcile the workbook with Product/Location/InventoryBalance, add the migration and constraints, produce reviewed canonical fixtures, implement scoped environment-gated reload, and verify rerun equivalence. [ASSUMED]
 4. **Policy closure:** centralize route/action/location policy; add the access-denied page; filter menu/actions; ensure Admin all/specific, Branch fixed assignment, and Stock default SR behavior; test direct requests. [ASSUMED]
@@ -405,7 +405,7 @@ The model/field spellings `User`, `Session`, `id`, and `userId` are quoted verba
 | Prototype custom roles | Four fixed persisted roles | Implemented foundation / D-14 | Delete custom-role planning and use a fixed policy matrix. [VERIFIED: prisma/schema.prisma:15-20] |
 | Static seed fixtures | Reviewed Excel-derived canonical fixtures | Phase 1 target | Existing mock locations/products/balances must be replaced deterministically. [VERIFIED: prisma/seed.mjs:6-39] |
 | Page redirects to dashboard/inventory | Dedicated access-denied route without protected data | D-11 | Direct navigation gets explicit denial, while APIs retain 403 JSON. [VERIFIED: proxy.ts:29-46] |
-| Manual-only verification | Vitest unit/route/PostgreSQL integration layers | Phase 1 Wave 0 | Build/typecheck stop being mistaken for behavioral coverage. [VERIFIED: docs/TESTING.md:4-17] |
+| Manual-only verification | Blocking human package preflight plus plan-owned Vitest unit/route/PostgreSQL integration layers | Plans 01-01, 01-02, 01-13, then feature-plan owners | Build/typecheck stop being mistaken for behavioral coverage without misrepresenting package legitimacy as automated. [VERIFIED: docs/TESTING.md:4-17] |
 
 **Deprecated/outdated:** Vitest’s old `workspace` terminology is deprecated in favor of `projects`. [CITED: https://vitest.dev/guide/projects] The npm `xlsx` release is stale; official SheetJS docs direct Node users to CDN `0.20.3`. [CITED: https://docs.sheetjs.com/docs/getting-started/installation/nodejs/]
 
@@ -425,24 +425,24 @@ The model/field spellings `User`, `Session`, `id`, and `userId` are quoted verba
 | A13 | The identified workbook/reset/account-lifecycle failure modes require the prescribed guards | Anti-Patterns / Pitfalls | Missing or excessive controls could cause incorrect seed data, account exposure, or unnecessary complexity. |
 | A14 | A small synthetic XLSX fixture can represent parser edge cases while the owner workbook stays out of quick tests | Validation | Some workbook-specific behavior may only be reproducible against the owner file. |
 
-## Open Questions
+## RESOLVED — Workbook Owner-Checkpoint Execution Gate
 
-**Execution gate:** all three questions remain unresolved at planning time. They may be resolved only by the owner checkpoint in Plan 01-04, recorded by finding ID in `01-04-SUMMARY.md`/`resolutions.json`. Plan 01-05 has a hard precondition on that complete response and must not generate or modify `prisma/fixtures/opening-catalog.json` when any answer is absent, ambiguous, or stale for the current workbook hash.
+**Resolved disposition:** the three questions below remain checkpoint inputs rather than planner-selected workbook values. Plan 01-04 owns owner approval and records each decision by finding ID in `01-04-SUMMARY.md`/`resolutions.json`. Plan 01-05 is blocked from generating or modifying `prisma/fixtures/opening-catalog.json` whenever an answer is absent, ambiguous, or stale for the current workbook hash. No mapping, product identity/code, or price may be guessed.
 
 1. **Which workbook source is canonical for `SR`, and what is `BL BEFORE`?**
    - What we know: canonical values are fixed to `SR`, `QC`, `BL`, `LU`, `VC`, `SP`. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:19-24]
    - What's unclear: the latest rollup appears to have duplicate BL sources and no explicit SR source. [ASSUMED]
-   - Execution disposition: unresolved; Plan 01-04 owner approval is mandatory before Plan 01-05 fixture generation. [ASSUMED]
+   - **RESOLVED execution disposition:** preserve this question as a Plan 01-04 owner-checkpoint input; block Plan 01-05 until the selected `SR`/`BL BEFORE` mapping is explicitly recorded. [ASSUMED]
 
 2. **What is the exact product identity rule?**
    - What we know: the current database makes `itemCode` unique. [VERIFIED: prisma/schema.prisma:49-61]
    - What's unclear: workbook code `"40"` appears to identify two different rows and several descriptions appear under different codes. [ASSUMED]
-   - Execution disposition: unresolved; Plan 01-04 must resolve each collision, with no automatic merge or renumbering, before Plan 01-05. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:26-29]
+   - **RESOLVED execution disposition:** preserve this question as a Plan 01-04 owner-checkpoint input; block Plan 01-05 until every collision has an explicit recorded decision, with no automatic merge, code choice, or renumbering. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:26-29]
 
 3. **Which prices are required for Phase 1?**
    - What we know: Product currently requires one Decimal `price`. [VERIFIED: prisma/schema.prisma:49-61]
    - What's unclear: the workbook profile found many blank prices and one nonnumeric marker. [ASSUMED]
-   - Execution disposition: unresolved; Plan 01-04 must choose a confirmed price or explicit inactive/excluded outcome before Plan 01-05; zero must not be invented. [ASSUMED]
+   - **RESOLVED execution disposition:** preserve this question as a Plan 01-04 owner-checkpoint input; block Plan 01-05 until a confirmed price or explicit inactive/excluded outcome is recorded, and never invent zero or another price. [ASSUMED]
 
 The role/location assignment matrix and prompt-consumption behavior are not open: Stock Staff is assigned to `SR`, Branch Staff to exactly one branch, Admin/Accounting to no location, and a skipped first-login prompt is consumed until a later Admin reset. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:31-41] [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-UI-SPEC.md:202-207]
 
@@ -469,29 +469,33 @@ Nyquist validation is enabled because `.planning/config.json` is absent; no expl
 
 | Property | Value |
 |----------|-------|
-| Framework | Vitest `4.1.11` [WARNING: package-legitimacy seam marked this release SUS/too-new; human verification required before install.] |
-| Config file | none — create in Wave 0 [VERIFIED: docs/TESTING.md:4-17] |
-| Quick run command | `npm run test -- <changed-test-file>` after Wave 0 [ASSUMED] |
-| Full suite command | `npm run test && npm run test:integration && npm run typecheck` after Wave 0 [ASSUMED] |
+| Framework | Vitest candidate `4.1.11`; Plan 01-01 is a blocking human decision checkpoint because the package-legitimacy audit marked it SUS/too-new. This is not an automated Nyquist check. |
+| Config file | none initially — Plan 01-02 creates `vitest.config.ts` only after exact package/version approval. [VERIFIED: docs/TESTING.md:4-17] |
+| Quick run command | Plan 01-02 establishes `npm run test -- <changed-test-file>` and proves it runs under Node 20. [ASSUMED] |
+| Full suite command | `npm run test && npm run test:integration && npm run typecheck` after Plan 01-02 bootstrap. [ASSUMED] |
 
 Use Vitest’s Node environment for policy, mapping, route/service, and integration tests; no DOM library is required to prove server authorization. [CITED: https://vitest.dev/guide/environment] Keep database integration serial or isolated per worker so tests cannot share mutable rows. [ASSUMED]
 
 ### Phase Requirements → Test Map
 
-| Req ID | Behavior | Test Type | Automated Command | File Exists? |
+| Req ID | Behavior | Test Type | Automated Command | Final Owner |
 |--------|----------|-----------|-------------------|-------------|
-| REQ-data-onboarding | Classifies source rows and preserves raw/source mapping | unit | `npm run test -- scripts/data-onboarding/workbook-profile.test.ts` | ❌ Wave 0 [ASSUMED] |
-| REQ-data-onboarding | Blocks duplicate code, invalid quantity, and conflicting/missing price outcomes | unit/table-driven | `npm run test -- scripts/data-onboarding/canonicalize.test.ts` | ❌ Wave 0 [ASSUMED] |
-| REQ-data-onboarding | Same approved input yields the same canonical fixture/report | unit/snapshot/hash | `npm run test -- scripts/data-onboarding/generate-seed.test.ts` | ❌ Wave 0 [ASSUMED] |
-| REQ-data-onboarding | Fresh migration + seed creates exact locations/products/balances; rerun is equivalent | PostgreSQL integration | `npm run test:integration -- tests/integration/seed.test.ts` | ❌ Wave 0 [ASSUMED] |
-| REQ-data-onboarding | Reload refuses production and unknown database targets | unit + integration | `npm run test -- lib/server/services/catalog-reset.test.ts` | ❌ Wave 0 [ASSUMED] |
-| REQ-role-authorization | Unauthenticated/inactive/wrong-role/missing-branch requests return correct denial | route/service | `npm run test -- lib/server/authorization.test.ts` | ❌ Wave 0 [ASSUMED] |
-| REQ-role-authorization | Branch query manipulation cannot escape persisted location | PostgreSQL integration | `npm run test:integration -- tests/integration/inventory-scope.test.ts` | ❌ Wave 0 [ASSUMED] |
-| REQ-role-authorization | Direct forbidden page shows access denied and direct API returns 403 | route/proxy integration | `npm run test -- proxy.test.ts` | ❌ Wave 0 [ASSUMED] |
-| REQ-user-management | Only Admin lists/creates/changes/deactivates/reactivates/resets non-Admin users | route + PostgreSQL integration | `npm run test:integration -- tests/integration/user-management.test.ts` | ❌ Wave 0 [ASSUMED] |
-| REQ-user-management | Every role/location combination follows D-13 and second-Admin creation is rejected | service + DB constraint | `npm run test:integration -- tests/integration/user-management.test.ts` | ❌ Wave 0 [ASSUMED] |
-| REQ-user-management | Deactivate/role/location change revokes all old sessions immediately | auth integration | `npm run test:integration -- tests/integration/session-revocation.test.ts` | ❌ Wave 0 [ASSUMED] |
-| REQ-user-management | First login prompts once; password change and skip both consume it until reset | integration + manual UI | `npm run test:integration -- tests/integration/credential-setup.test.ts` | ❌ Wave 0 [ASSUMED] |
+| REQ-data-onboarding | Classifies source rows and preserves raw/source mapping | unit | `npm run test -- scripts/data-onboarding/workbook-profile.test.ts` | Plan 01-02 [ASSUMED] |
+| REQ-data-onboarding | Blocks duplicate code, invalid quantity, and conflicting/missing price outcomes | unit/table-driven | `npm run test -- scripts/data-onboarding/canonicalize.test.ts` | Plan 01-03 [ASSUMED] |
+| REQ-role-authorization / REQ-user-management | Persists canonical/invalid actors and active/inactive/expired/revoked sessions; preserves hostile query construction | PostgreSQL integration + unit | `npm run test:integration -- tests/helpers/factories.test.ts && npm run test -- tests/helpers/requests.test.ts` | Plan 01-13 [ASSUMED] |
+| REQ-data-onboarding | Same approved input yields the same canonical fixture/report | unit/snapshot/hash | `npm run test -- scripts/data-onboarding/generate-seed.test.ts` | Plan 01-05 [ASSUMED] |
+| REQ-data-onboarding | Fresh migration + seed creates exact locations/products/balances; rerun is equivalent | PostgreSQL integration | `npm run test:integration -- tests/integration/seed.test.ts` | Plan 01-06 [ASSUMED] |
+| REQ-data-onboarding | Reload refuses production and unknown database targets | unit + integration | `npm run test -- lib/server/services/catalog-reset.test.ts` | Plan 01-06 [ASSUMED] |
+| REQ-role-authorization | Unauthenticated/inactive/wrong-role/missing-branch requests return correct denial | route/service | `npm run test -- lib/server/authorization.test.ts` | Plan 01-07 [ASSUMED] |
+| REQ-role-authorization | Four-role shell scope/menu feedback keeps Accounting inventory-denied | unit | `npm run test -- lib/server/shell.test.ts` | Plan 01-08 [ASSUMED] |
+| REQ-role-authorization | Branch query manipulation cannot escape persisted Inventory scope | PostgreSQL integration | `npm run test:integration -- tests/integration/inventory-scope.test.ts` | Plan 01-14 [ASSUMED] |
+| REQ-role-authorization | Direct forbidden page shows access denied and direct API returns 403 | route/proxy integration | `npm run test -- proxy.test.ts` | Plan 01-15 [ASSUMED] |
+| REQ-user-management | Internal create/reset works while public sign-up/generic Admin endpoints stay unavailable | auth integration | `npm run test:integration -- tests/integration/auth-admin-surface.test.ts` | Plan 01-17 [ASSUMED] |
+| REQ-user-management | Only Admin lists/creates/changes/deactivates/reactivates/resets non-Admin users | route + PostgreSQL integration | `npm run test:integration -- tests/integration/user-management.test.ts` | Plan 01-09 [ASSUMED] |
+| REQ-user-management | Every role/location combination follows D-13 and second-Admin creation is rejected | service + DB constraint | `npm run test:integration -- tests/integration/user-management.test.ts` | Plan 01-09 [ASSUMED] |
+| REQ-user-management | Deactivate/role/location change revokes all old sessions immediately | auth integration | `npm run test:integration -- tests/integration/session-revocation.test.ts` | Plan 01-09 [ASSUMED] |
+| REQ-user-management | First login prompts once; password change and skip both consume it until reset | integration + manual UI | `npm run test:integration -- tests/integration/credential-setup.test.ts` | Plan 01-10 [ASSUMED] |
+| All Phase 1 requirements | Fresh migration/reload, full suites, build/typecheck, lint baseline, and evidence validation | evidence gate | `npm run verify:phase-01 -- --validate-evidence` | Plan 01-12 [ASSUMED] |
 
 ### Sampling Rate
 
@@ -499,13 +503,12 @@ Use Vitest’s Node environment for policy, mapping, route/service, and integrat
 - **Per wave merge:** complete unit suite; integration suite for any schema/auth/service change. [ASSUMED]
 - **Phase gate:** clean migration, seed twice, full unit/integration suite, typecheck, build, documented lint baseline, and manual role/UI matrix before `/gsd-verify-work`. [ASSUMED]
 
-### Wave 0 Gaps
+### Final Validation Ownership
 
-- [ ] Add approved `vitest` dependency and `vitest.config.ts`; add `test` and `test:integration` scripts. [ASSUMED]
-- [ ] Add disposable PostgreSQL lifecycle helper that refuses the development bind mount. [ASSUMED]
-- [ ] Add minimal role/session/location fixture factories; do not import mock UI users. [ASSUMED]
-- [ ] Add a small synthetic XLSX fixture covering formulas, hidden sheets, category rows, duplicate codes, missing codes, invalid quantities, and conflicting prices; keep the 116 MB owner workbook out of every quick test. [ASSUMED]
-- [ ] Add request/session helpers for direct route/service matrix tests. [ASSUMED]
+- [ ] Plan 01-01 records the blocking human package/version decision; no automated legitimacy result is claimed. [ASSUMED]
+- [ ] Plan 01-02 installs only the approved Vitest release, creates config/scripts, and adds the workbook profile test plus synthetic XLSX fixture. [ASSUMED]
+- [ ] Plan 01-13 adds focused tests for the disposable PostgreSQL lifecycle, persisted auth fixtures, invalid assignments, session states, and hostile requests. [ASSUMED]
+- [ ] Plans 01-03, 01-05 through 01-10, 01-14, 01-15, and 01-17 own their mapped behavior tests; Plan 01-11 owns build/manual User Management coverage; Plan 01-12 owns the complete evidence gate. [ASSUMED]
 - [ ] Keep E2E tooling deferred; manually walk `/users`, denial, navigation, first-login, responsive, and dark-mode states in this phase. [VERIFIED: AGENTS.md:69-71]
 
 ## Security Domain
