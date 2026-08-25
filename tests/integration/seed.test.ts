@@ -161,6 +161,12 @@ describe("canonical opening seed", () => {
           databaseUrl: "postgresql://postgres:postgres@localhost:55435/unknown?schema=public",
           allowCatalogReset: "true",
         },
+        {
+          nodeEnv: "development",
+          databaseUrl:
+            "postgresql://postgres:postgres@localhost:55436/chezcar_catalog_dev?schema=public",
+          allowCatalogReset: "true",
+        },
       ]) {
         await expect(
           reloadOpeningCatalog({ prisma, environment }),

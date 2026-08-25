@@ -159,6 +159,21 @@ export function assertCatalogResetEnvironment(
   }
 }
 
+async function assertConnectedDatabaseTarget(
+  tx: Prisma.TransactionClient,
+  environment: CatalogResetEnvironment,
+) {
+  const expectedDatabase = decodeURIComponent(
+    new URL(environment.databaseUrl!).pathname.slice(1),
+  );
+  const [identity] = await tx.$queryRaw<Array<{ databaseName: string }>>`
+    SELECT current_database() AS "databaseName"
+  `;
+  if (identity?.databaseName !== expectedDatabase) {
+    throw new Error("Refusing catalog replacement because the connected database identity differs");
+  }
+}
+
 export async function replaceOpeningCatalog(
   tx: Prisma.TransactionClient,
   fixture: OpeningCatalogFixture,
@@ -248,7 +263,10 @@ export async function reloadOpeningCatalog({
   const fixture = validateOpeningCatalog(fixtureInput);
 
   return prisma.$transaction(
-    (tx) => replaceOpeningCatalog(tx, fixture, { failAfterDelete }),
+    async (tx) => {
+      await assertConnectedDatabaseTarget(tx, environment);
+      return replaceOpeningCatalog(tx, fixture, { failAfterDelete });
+    },
     { timeout: 30_000 },
   );
 }
