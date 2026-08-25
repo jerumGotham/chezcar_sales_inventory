@@ -2,13 +2,13 @@ import { ZodError } from "zod";
 
 import {
   authorizationErrorResponse,
-  requireUser,
+  requireCapability,
 } from "@/lib/server/authorization";
 import { listProducts, productListQuerySchema } from "@/lib/server/catalog";
 
 export async function GET(request: Request) {
   try {
-    await requireUser(request.headers, ["ADMIN", "STOCK_STAFF"]);
+    await requireCapability(request.headers, "products:view");
     const query = productListQuerySchema.parse(
       Object.fromEntries(new URL(request.url).searchParams),
     );

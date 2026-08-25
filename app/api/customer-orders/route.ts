@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
 import { orders } from "@/lib/mock-data";
 import {
-  AUTHENTICATED_ROLES,
   authorizationErrorResponse,
-  requireUser,
+  requireCapability,
 } from "@/lib/server/authorization";
 
 export async function GET(request: Request) {
   try {
-    await requireUser(request.headers, AUTHENTICATED_ROLES);
+    await requireCapability(request.headers, "customer-orders:view");
     return NextResponse.json({ data: orders });
   } catch (error) {
     return authorizationErrorResponse(error);

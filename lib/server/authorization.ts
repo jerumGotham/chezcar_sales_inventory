@@ -13,13 +13,6 @@ import { prisma } from "@/lib/server/prisma";
 
 export type AuthContext = PersistedAccessContext;
 
-export const AUTHENTICATED_ROLES = [
-  "ADMIN",
-  "STOCK_STAFF",
-  "BRANCH_STAFF",
-  "ACCOUNTING_STAFF",
-] as const satisfies readonly UserRole[];
-
 export class AuthenticationError extends Error {}
 export class AuthorizationError extends Error {}
 
