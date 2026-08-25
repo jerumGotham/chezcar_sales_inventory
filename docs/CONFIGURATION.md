@@ -15,7 +15,7 @@ Copy the sanitized `.env.example` to an untracked `.env` and replace every place
 | `SEED_ADMIN_EMAIL` | Seed only | None | Email for the first development Admin. |
 | `SEED_ADMIN_PASSWORD` | Seed only | None | Admin password; the seed rejects examples and values shorter than 12 characters. |
 | `SEED_ADMIN_NAME` | Seed only | None | Display name for the seeded Admin. |
-| `ALLOW_CATALOG_RESET` | Catalog seed/reload only | None | Must equal `true`; still requires an exact isolated development/test URL and is always refused in production or against the checked-in bind mount. |
+| `ALLOW_CATALOG_RESET` | Catalog seed/reload and the phase gate only | None | Must equal `true`; still requires `NODE_ENV=test` with the exact disposable test URL or `NODE_ENV=development` with the exact isolated development URL, and is always refused in production or against the checked-in bind mount. |
 
 Use the credentials configured for your environment and do not commit the populated file:
 
@@ -41,21 +41,24 @@ The npm scripts in `package.json` are:
 | `npm run lint` | `eslint .` | Run the checked-in ESLint flat configuration; existing prototype findings currently make it fail. |
 | `npm run typecheck` | `tsc --noEmit` | Run strict TypeScript checking without emitting files. |
 | `npm run test` | `vitest run --project unit` | Run Node unit tests once; pass a test path after `--` for a focused run. |
-| `npm run test:integration` | `vitest run --project integration --no-file-parallelism` | Run serial tests against the fixed, no-bind-mount disposable PostgreSQL 17 harness. |
-| `npm run data:profile -- --sheet <name> [--input <path>]` | `node scripts/data-onboarding/workbook-profile.mjs` | Read one selected sheet and emit JSON evidence. Defaults to the owner workbook path, never executes formulas, and never writes beside the input. |
-| `npm run data:generate` | `node scripts/data-onboarding/generate-seed.mjs` | Reserved interface for reviewed canonical generation; the executable is intentionally deferred and must not be used before owner resolutions. |
+| `npm run test:integration` | `vitest run --project integration --no-file-parallelism` | Run serial integration tests against the fixed, no-bind-mount disposable PostgreSQL 17 harness. |
+| `npm run data:profile -- --workbook <path> [--sheet <name> ...] --mapping-out <path> --report-out <path> --resolutions-out <path>` | `node scripts/data-onboarding/workbook-profile.mjs` | Read one selected sheet and emit JSON source evidence. Defaults to the owner workbook path, never executes formulas, and never writes beside the input. `--help` prints the contract. |
+| `npm run data:generate -- --profile <path> --resolutions <path> --fixture-out <path> --mapping-out <path> [--check]` | `node scripts/data-onboarding/generate-seed.mjs` | Generate the byte-stable canonical fixture and source map from reviewed profile plus owner resolutions. `--check` refuses any byte-stale committed output. Requires complete one-to-one resolution coverage for the current workbook hash. |
 | `npm run prisma:generate` | `prisma generate` | Regenerate Prisma Client from the checked-in schema. |
 | `npm run db:migrate` | `prisma migrate dev` | Create/apply development migrations. Production uses `prisma migrate deploy`. |
 | `npm run db:seed` | `prisma db seed` | Transactionally load the approved canonical opening catalog and environment-supplied owner Admin on an explicitly allowed isolated target. |
 | `npm run db:catalog:reload` | `node prisma/seed.mjs --catalog-only` | Transactionally replace only canonical locations/products/opening balances while preserving auth; uses the same positive reset gates. |
+| `npm run verify:phase-01 -- [--validate-evidence]` | `node scripts/verify-phase-01.mjs` | Phase 1 evidence gate: asserts the disposable test target and seed/reset environment, then runs fresh migration deploy, seed, two equivalent catalog reloads, full unit/integration suites, typecheck, and build; captures lint's expected failure baseline separately and writes/validates `docs/verification/phase-01-evidence.md`. |
 
 `package-lock.json` is present, so npm is the repository's locked package manager.
 
 ### Vitest and workbook tooling
 
-`vitest.config.ts` defines a Node unit project and a serial integration project. Vitest is pinned to the human-approved `4.1.11` release. SheetJS CE is locked to the official `0.20.3` CDN tarball rather than the stale npm-registry release.
+`vitest.config.ts` defines a Node unit project and a serial integration project (`tests/integration/**`, `--no-file-parallelism`). Vitest is pinned to the human-approved `4.1.11` release. SheetJS CE is locked to the official `0.20.3` CDN tarball rather than the stale npm-registry release.
 
-The workbook profiler is a developer CLI, not an upload or import endpoint. Its `.mjs` entry point runs directly on Node 20, while `workbook-profile.d.mts` supplies the strict TypeScript contract. The checked-in hostile XLSX fixture is synthetic; the owner workbook remains read-only input and is excluded from quick tests.
+The workbook profiler, canonicalizer, and fixture generator are developer CLIs, not upload or import endpoints; they have no HTTP or UI surface. Their `.mjs` entry points run directly on Node 20 with strict `.d.mts` TypeScript contracts. The checked-in hostile XLSX fixture is synthetic; the owner workbook remains read-only input and is excluded from quick tests.
+
+The integration harness in `tests/helpers/database.ts` accepts only the fixed disposable identity — container `chezcar_test_postgres_01_13`, port `55435`, database `chezcar_test_01_13`, user/password `postgres`, no bind mount — starts it with Docker, applies committed migrations, and tears down only the container it started. The phase evidence gate uses the same target for its fresh migration/seed/reload sequence and removes the container before the integration project boots its own instance.
 
 ### Next.js
 
@@ -122,7 +125,7 @@ No custom global mutation defaults, retry override, `gcTime` override, persisten
 
 ### Prisma
 
-`prisma/schema.prisma` contains the implemented foundation only: Location, Product, InventoryBalance, User, Session, Account, and Verification. `lib/server/prisma.ts` owns the hot-reload-safe server client. `lib/server/auth.ts` configures Better Auth with the Prisma adapter and disabled public sign-up.
+`prisma/schema.prisma` contains the implemented foundation only: Location, Product, InventoryBalance, User, Session, Account, and Verification. `lib/server/prisma.ts` owns the hot-reload-safe server client. `lib/server/auth.ts` configures the public Better Auth instance with the Prisma adapter and disabled public sign-up; `lib/server/internal-user-auth.ts` holds the server-only unmounted Admin-plugin credential engine used exclusively by staff-lifecycle services.
 
 ## Required vs optional settings
 
