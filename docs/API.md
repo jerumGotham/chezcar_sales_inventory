@@ -48,11 +48,15 @@ A persisted assignment that contradicts the fixed matrix (for example Stock Staf
 | Method | Path | Data source | Authorization |
 | --- | --- | --- | --- |
 | `GET`, `POST` | `/api/auth/[...all]` | Better Auth + PostgreSQL | Endpoint-specific; public sign-up disabled; generic admin operations unroutable |
-| `GET` | `/api/dashboard` | Protected mock fixtures plus persisted user notifications | `dashboard:view` |
+| `GET` | `/api/dashboard` | Prisma sales/orders/inventory/accounting plus persisted notifications | `dashboard:view` |
 | `GET`, `PATCH` | `/api/notifications` | Prisma Notification inbox | `dashboard:view` |
 | `POST` | `/api/notifications/:notificationId/read` | Prisma Notification read timestamp | `dashboard:view` |
-| `GET` | `/api/customers` | Protected mock fixtures | `customers:view` |
-| `GET` | `/api/customer-orders` | Protected mock fixtures | `customer-orders:view` |
+| `GET`, `POST` | `/api/customers` | Prisma Customer | `customers:view`; Accounting/Stock mutation denied by service policy |
+| `GET`, `POST` | `/api/customer-orders` | Prisma CustomerOrder/Customer/InventoryBalance | `customer-orders:view` plus Branch/Admin mutation policy |
+| `POST` | `/api/customer-orders/:orderId/:action` | Prisma CustomerOrder/Sale/InventoryMovement | `customer-orders:view`; actions `release`, `cancel` |
+| `GET`, `POST` | `/api/sales` | Prisma Sale/SaleLine/InventoryMovement | `customer-orders:view`; Branch/Admin direct sale policy |
+| `POST` | `/api/sales/:saleId/review` | Prisma SaleAccountingReview | `customer-orders:view`; Accounting/Admin review policy |
+| `GET` | `/api/reports` | Prisma sales/orders/accounting/inventory summaries | `reports:view` |
 | `GET`, `POST` | `/api/products` | Prisma Product/InventoryBalance | `GET`: `products:view`; `POST`: Admin role |
 | `PATCH`, `DELETE` | `/api/products/:productId` | Prisma Product | Admin role |
 | `GET` | `/api/inventory` | Prisma Product/InventoryBalance/Location | `inventory:view` |
@@ -67,6 +71,18 @@ A persisted assignment that contradicts the fixed matrix (for example Stock Staf
 | `POST` | `/api/users/:userId/status` | Prisma User | `users:manage` |
 | `POST` | `/api/users/:userId/password` | Better Auth internal + Prisma User | `users:manage` |
 | `GET`, `POST` | `/api/credential-setup` | Better Auth + Prisma User | Any authenticated active role |
+
+## Customer orders, sales, and Accounting
+
+`POST /api/customer-orders` creates or reuses a customer, snapshots product item code/name/current price, validates active products, and creates one order in a serializable transaction. Branch Staff may create only for their persisted branch; Admin is reserved for broad monitoring and future corrections. Reservation orders validate available branch stock (`onHand - reserved`) and increment `reserved` without decrementing `onHand`. Waiting-stock orders do not reserve stock. DP reservations require `downpaymentAmount > 0` and globally unique `downpaymentReceiptNumber`.
+
+`POST /api/customer-orders/:orderId/release` requires a final manual receipt number and exact remaining balance payment. Release decrements `onHand`, decrements `reserved`, creates a posted `Sale`, creates `CUSTOMER_ORDER_RELEASE` inventory movements, registers the receipt globally, creates an unverified Accounting review row, and marks the order completed in one transaction.
+
+`POST /api/customer-orders/:orderId/cancel` releases reserved stock. Branch Staff may cancel own-branch no-DP orders. DP cancellation is Admin-only and requires a note.
+
+`POST /api/sales` posts direct branch sales with globally unique `manualReceiptNumber`, deducts available branch stock immediately, creates `DIRECT_SALE` inventory movements, and creates an unverified Accounting review row. `POST /api/sales/:saleId/review` lets Accounting Staff or Admin mark a sale `VERIFIED` or `FLAGGED`; flagged reviews require category and notes.
+
+`GET /api/dashboard` returns live role-scoped summary metrics for sales, open orders, low/out stock, Accounting queue counts, and notification preview. `GET /api/reports` returns live read-only Sales, Accounting/Reconciliation, Orders, and Admin-only Inventory summaries; `?format=pdf` returns a PDF-download response for the same authorized data.
 
 Stock-transfer actions are `finalize`, `dispatch`, `confirm-receipt`, `report-discrepancy`, `investigate`, and `resolve`. They require the current transfer `version`, lock the transfer row, enforce state transitions, and use serializable transactions. Stock Staff creates/finalizes/dispatches SR-to-active-branch documents, Branch Staff is destination-scoped for receipt/discrepancy, and Admin alone resolves investigated discrepancies. Accounting is denied. Admin transfer responses include `timeline` and `movements` audit arrays for the selected transfer; other roles receive the operational transfer fields without the Admin-only audit view.
 

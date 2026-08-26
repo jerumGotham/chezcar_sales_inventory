@@ -3,7 +3,7 @@
 
 ## Current status
 
-PostgreSQL is now active for Better Auth, the Products and Inventory primary lists, Stock Room supplier receiving, and the SR-to-branch Stock Transfer workflow. Most other screens and business mutations remain mock/local behavior.
+PostgreSQL is now active for Better Auth, Products, Inventory, Stock Room supplier receiving, SR-to-branch Stock Transfers, Customers, Customer Orders, Direct Sales, Accounting review state, dashboards, notifications, and simple reports. Job Orders and advanced CRM/offline workflows remain mock/local or deferred behavior.
 
 The implemented database boundary consists of:
 
@@ -20,6 +20,7 @@ The implemented database boundary consists of:
 - `lib/server/services/catalog-reset.ts`: transactionally scoped catalog reload with positive target identity checks.
 - `lib/server/services/stock-transfers.ts`: authorized serializable transfer state transitions and inventory posting.
 - `lib/server/services/stock-receipts.ts`: authorized serializable Stock Room supplier receipt posting.
+- `lib/server/services/customer-sales.ts`: customer/order/sale/accounting transactions plus dashboard/report summaries.
 - `tests/helpers/database.ts`: fixed-identity disposable PostgreSQL 17 integration lifecycle (container `chezcar_test_postgres_01_13`, port 55435, database `chezcar_test_01_13`, no bind mount).
 
 ## Implemented models
@@ -69,7 +70,13 @@ The application reloads the User on protected API requests instead of treating a
 
 ## Deliberately absent models
 
-The former draft Customer, CustomerOrder, JobOrder, Sale, and StockTransfer Prisma models were not included in the initial migration. Their old shapes conflicted with the accepted product contract and would have created misleading persistence claims.
+JobOrder and advanced CRM/service models remain absent. The former draft Customer, CustomerOrder, Sale, and StockTransfer shapes were not reused; the implemented models now follow the accepted manual-receipt, reservation, inventory movement, and Accounting review rules.
+
+### Customers, orders, sales, and Accounting
+
+The additive `20260826050000_customer_orders_sales_accounting` migration introduces `Customer`, `CustomerOrder`, `CustomerOrderLine`, `ManualReceipt`, `Sale`, `SaleLine`, and `SaleAccountingReview`. Manual receipt numbers are globally unique through `ManualReceipt.number` and unique nullable receipt fields on order/sale records.
+
+Reservation orders increment `InventoryBalance.reserved` while keeping physical `onHand` unchanged. Final order release creates a posted sale, clears reservation, decrements `onHand`, and writes `CUSTOMER_ORDER_RELEASE` movements. Direct sales decrement available branch stock immediately and write `DIRECT_SALE` movements. Each sale starts with one `UNVERIFIED` Accounting review row; Accounting/Admin may verify or flag it without editing sale, payment, order, or stock facts.
 
 Add transactional models only when implementing their vertical workflow, including canonical lines, snapshots, actors, statuses, invariants, idempotency, and auditability. The full proposed shape remains in `docs/product/PROVISIONAL-DATA-MODEL.md`.
 

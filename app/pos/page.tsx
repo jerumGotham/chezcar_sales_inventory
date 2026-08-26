@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Select from "react-select";
+import type { StylesConfig } from "react-select";
 import {
   Search,
   Plus,
@@ -33,6 +35,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { products } from "@/lib/mock-data";
+import { fetchProducts } from "@/lib/catalog";
 import {
   Dialog,
   DialogContent,
@@ -54,6 +57,7 @@ type Product = {
 };
 
 type CartItem = {
+  productId: string;
   sku: string;
   name: string;
   category?: string;
@@ -144,8 +148,8 @@ function formatPeso(amount: number) {
   }).format(amount);
 }
 
-const selectStyles = {
-  control: (base: any, state: any) => ({
+const selectStyles: StylesConfig<SelectOption, false> = {
+  control: (base, state) => ({
     ...base,
     minHeight: 44,
     borderRadius: 12,
@@ -155,22 +159,22 @@ const selectStyles = {
       borderColor: "#16a34a",
     },
   }),
-  menu: (base: any) => ({
+  menu: (base) => ({
     ...base,
     borderRadius: 12,
     overflow: "hidden",
     zIndex: 50,
   }),
-  valueContainer: (base: any) => ({
+  valueContainer: (base) => ({
     ...base,
     paddingLeft: 12,
     paddingRight: 12,
   }),
-  placeholder: (base: any) => ({
+  placeholder: (base) => ({
     ...base,
     color: "#94a3b8",
   }),
-  option: (base: any, state: any) => ({
+  option: (base, state) => ({
     ...base,
     backgroundColor: state.isSelected
       ? "#16a34a"
@@ -392,15 +396,44 @@ function AddCustomerDialog({
 }
 
 function PosTab() {
-  const productList = useMemo(() => {
-    return (products as Product[]).map((item) => ({
-      ...item,
+  const { data: productsData, isLoading: isProductsLoading } = useQuery({
+    queryKey: ["pos-products"],
+    queryFn: () =>
+      fetchProducts({
+        page: 1,
+        pageSize: 100,
+        status: "Active",
+        stockStatus: "has-stock",
+        itemCode: "",
+        name: "",
+        category: "all",
+        brand: "all",
+      }),
+  });
+
+  const productList = useMemo<Product[]>(() => {
+    const persisted = productsData?.data.map((item) => ({
+      id: item.id,
+      sku: item.itemCode,
+      name: item.name,
+      price: item.price ?? 0,
+      stock: item.hasStock ? 1 : 0,
+      barcode: item.itemCode,
+      category: item.category,
+    })) ?? [];
+
+    if (persisted.length > 0) return persisted;
+
+    return products.map((item) => ({
+      id: String(item.sku),
+      sku: item.sku,
+      name: item.name,
       price: parsePrice(item.price),
       stock: item.stock ?? 20,
-      barcode: item.barcode ?? item.sku,
+      barcode: item.sku,
       category: item.category ?? "Uncategorized",
     }));
-  }, []);
+  }, [productsData?.data]);
 
   const categoryOptions = useMemo<SelectOption[]>(() => {
     const uniqueCategories = Array.from(
@@ -427,6 +460,9 @@ function PosTab() {
     mockCustomers[0],
   );
   const [paymentType, setPaymentType] = useState<SelectOption | null>(null);
+  const [manualReceiptNumber, setManualReceiptNumber] = useState("");
+  const [checkoutError, setCheckoutError] = useState("");
+  const [isCheckoutPending, setIsCheckoutPending] = useState(false);
 
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
   const [customerForm, setCustomerForm] =
@@ -518,6 +554,7 @@ function PosTab() {
         ...prev,
         {
           sku: product.sku,
+          productId: String(product.id ?? product.sku),
           name: product.name,
           category: product.category,
           price: Number(product.price),
@@ -549,30 +586,56 @@ function PosTab() {
       customerOptions.find((c) => c.value === "guest") ?? null,
     );
     setPaymentType(null);
+    setManualReceiptNumber("");
+    setCheckoutError("");
     setSearch("");
     setSelectedCategory(categoryOptions[0]);
   };
 
   const handleCheckout = async () => {
-    const payload = {
-      customerId:
-        selectedCustomer?.value === "guest" ? null : selectedCustomer?.value,
-      customerName: selectedCustomer?.label ?? null,
-      customerType:
-        selectedCustomer?.value === "guest" ? "GUEST" : "REGISTERED",
-      paymentType: paymentType?.value ?? null,
-      items: cart.map((item) => ({
-        sku: item.sku,
-        quantity: item.qty,
-        unitPrice: item.price,
-        lineTotal: item.qty * item.price,
-      })),
-      subtotal,
-      discount,
-      total,
+    setCheckoutError("");
+    setIsCheckoutPending(true);
+    const paymentMap: Record<string, string> = {
+      cash: "CASH",
+      gcash: "GCASH",
+      maya: "MAYA",
+      bank_transfer: "BANK_TRANSFER",
+      credit_card: "CREDIT_CARD",
+      split: "SPLIT",
     };
 
-    console.log("POS CHECKOUT PAYLOAD", payload);
+    try {
+      const response = await fetch("/api/sales", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerId:
+            selectedCustomer?.value && !["guest", "cust-1", "cust-2", "cust-3", "cust-4"].includes(selectedCustomer.value)
+              ? selectedCustomer.value
+              : undefined,
+          manualReceiptNumber,
+          paymentMethod: paymentMap[paymentType?.value ?? "cash"] ?? "CASH",
+          amountPaid: total,
+          lines: cart.map((item) => ({
+            productId: item.productId,
+            quantity: item.qty,
+            unitPrice: item.price,
+          })),
+        }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        throw new Error(payload?.error?.message ?? "Unable to complete sale");
+      }
+      clearSale();
+    } catch (error) {
+      setCheckoutError(error instanceof Error ? error.message : "Unable to complete sale");
+    } finally {
+      setIsCheckoutPending(false);
+    }
   };
 
   return (
@@ -773,10 +836,24 @@ function PosTab() {
               />
             </div>
 
+            <div className="space-y-3">
+              <Label htmlFor="manual-receipt-number">Manual Receipt Number</Label>
+              <Input
+                id="manual-receipt-number"
+                value={manualReceiptNumber}
+                onChange={(event) => setManualReceiptNumber(event.target.value)}
+                placeholder="Official handwritten receipt number"
+              />
+            </div>
+
             <Separator />
 
             <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
-              {cart.length === 0 ? (
+              {isProductsLoading ? (
+                <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-slate-500">
+                  Loading products...
+                </div>
+              ) : cart.length === 0 ? (
                 <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-slate-500">
                   No items yet. Add products from the left panel.
                 </div>
@@ -855,6 +932,11 @@ function PosTab() {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
+              {checkoutError && (
+                <p className="text-sm font-medium text-red-600 sm:col-span-2">
+                  {checkoutError}
+                </p>
+              )}
               <Button variant="outline" onClick={clearSale}>
                 Reset
               </Button>
@@ -862,10 +944,10 @@ function PosTab() {
                 className="w-full"
                 size="lg"
                 onClick={handleCheckout}
-                disabled={!cart.length || !paymentType}
+                disabled={!cart.length || !paymentType || !manualReceiptNumber.trim() || isCheckoutPending}
               >
                 <CreditCard className="mr-2 size-4" />
-                Complete Sale
+                {isCheckoutPending ? "Posting Sale..." : "Complete Sale"}
               </Button>
             </div>
           </CardContent>

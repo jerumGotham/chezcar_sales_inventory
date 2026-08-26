@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import {
   Boxes,
   ClipboardList,
+  FileText,
   ArrowLeftRight,
   LayoutDashboard,
   Menu,
@@ -37,6 +38,7 @@ const MENU_ICONS: Record<ShellMenuIcon, LucideIcon> = {
   inventory: Boxes,
   "customer-orders": ClipboardList,
   users: UserCog,
+  reports: FileText,
   "stock-transfers": ArrowLeftRight,
 };
 

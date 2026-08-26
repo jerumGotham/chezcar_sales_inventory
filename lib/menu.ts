@@ -9,6 +9,7 @@ import {
   ArrowLeftRight,
   LayoutDashboard,
   Package,
+  FileText,
   UserCog,
   Users,
   type LucideIcon,
@@ -66,6 +67,13 @@ export const menus = [
     icon: ClipboardList,
     iconId: "customer-orders",
     capability: "customer-orders:view",
+  },
+  {
+    label: "Reports",
+    href: "/reports",
+    icon: FileText,
+    iconId: "reports",
+    capability: "reports:view",
   },
   {
     label: "User Management",

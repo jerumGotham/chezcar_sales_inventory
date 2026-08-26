@@ -2,8 +2,10 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import type { Route } from "next";
 import { useQuery } from "@tanstack/react-query";
 import Select from "react-select";
+import type { StylesConfig } from "react-select";
 import {
   ChevronLeft,
   ChevronRight,
@@ -91,79 +93,6 @@ const PAYMENT_STATUS_OPTIONS: SelectOption[] = [
   { value: "Paid", label: "Paid" },
 ];
 
-const MOCK_ORDERS: CustomerOrderRow[] = [
-  {
-    id: "ORD-1001",
-    orderNo: "CO-2026-0001",
-    customer: "Juan Dela Cruz",
-    itemSummary: "3M Tint Medium Black, Seat Cover Set",
-    totalItems: 2,
-    status: "Reserved",
-    paymentStatus: "Partial",
-    downpayment: 3000,
-    totalAmount: 14500,
-    balance: 11500,
-    orderDate: "2026-04-01",
-    releaseDate: "2026-04-10",
-  },
-  {
-    id: "ORD-1002",
-    orderNo: "CO-2026-0002",
-    customer: "Maria Santos",
-    itemSummary: "Android Head Unit 9in",
-    totalItems: 1,
-    status: "Pending",
-    paymentStatus: "Unpaid",
-    downpayment: 0,
-    totalAmount: 12500,
-    balance: 12500,
-    orderDate: "2026-04-02",
-    releaseDate: "2026-04-12",
-  },
-  {
-    id: "ORD-1003",
-    orderNo: "CO-2026-0003",
-    customer: "Paolo Reyes",
-    itemSummary: "LED Fog Lamp Set, LED Headlight Bulb",
-    totalItems: 2,
-    status: "For Release",
-    paymentStatus: "Partial",
-    downpayment: 5000,
-    totalAmount: 5700,
-    balance: 700,
-    orderDate: "2026-04-03",
-    releaseDate: "2026-04-08",
-  },
-  {
-    id: "ORD-1004",
-    orderNo: "CO-2026-0004",
-    customer: "Angela Villanueva",
-    itemSummary: "Nano Ceramic Tint",
-    totalItems: 1,
-    status: "Released",
-    paymentStatus: "Paid",
-    downpayment: 14500,
-    totalAmount: 14500,
-    balance: 0,
-    orderDate: "2026-03-29",
-    releaseDate: "2026-04-03",
-  },
-  {
-    id: "ORD-1005",
-    orderNo: "CO-2026-0005",
-    customer: "Mark Bautista",
-    itemSummary: "Premium Seat Cover Beige, Rear Spoiler",
-    totalItems: 2,
-    status: "Pending",
-    paymentStatus: "Partial",
-    downpayment: 4000,
-    totalAmount: 14000,
-    balance: 10000,
-    orderDate: "2026-04-04",
-    releaseDate: "2026-04-14",
-  },
-];
-
 function formatPeso(value: number) {
   return `₱${value.toLocaleString("en-PH")}`;
 }
@@ -206,7 +135,7 @@ function getPaymentStatusBadgeClass(status: PaymentStatus) {
   }
 }
 
-async function mockFetchCustomerOrders(params: {
+async function fetchCustomerOrders(params: {
   page: number;
   pageSize: number;
   orderNo: string;
@@ -217,9 +146,10 @@ async function mockFetchCustomerOrders(params: {
   const { page, pageSize, orderNo, customer, orderStatus, paymentStatus } =
     params;
 
-  await new Promise((resolve) => setTimeout(resolve, 400));
-
-  let filtered = [...MOCK_ORDERS];
+  const response = await fetch("/api/customer-orders", { credentials: "same-origin" });
+  if (!response.ok) throw new Error("Unable to load customer orders");
+  const payload = (await response.json()) as { data: CustomerOrderRow[] };
+  let filtered = [...payload.data];
 
   if (orderNo.trim()) {
     const keyword = orderNo.trim().toLowerCase();
@@ -261,16 +191,16 @@ async function mockFetchCustomerOrders(params: {
       totalPages,
     },
     summary: {
-      totalOrders: MOCK_ORDERS.length,
-      pendingOrders: MOCK_ORDERS.filter(
+      totalOrders: payload.data.length,
+      pendingOrders: payload.data.filter(
         (item) => item.status === "Pending" || item.status === "Reserved",
       ).length,
-      forReleaseOrders: MOCK_ORDERS.filter(
+      forReleaseOrders: payload.data.filter(
         (item) => item.status === "For Release",
       ).length,
-      releasedOrders: MOCK_ORDERS.filter((item) => item.status === "Released")
+      releasedOrders: payload.data.filter((item) => item.status === "Released")
         .length,
-      totalDownpayments: MOCK_ORDERS.reduce(
+      totalDownpayments: payload.data.reduce(
         (sum, item) => sum + item.downpayment,
         0,
       ),
@@ -278,8 +208,8 @@ async function mockFetchCustomerOrders(params: {
   };
 }
 
-const reactSelectStyles = {
-  control: (base: any, state: any) => ({
+const reactSelectStyles: StylesConfig<SelectOption, false> = {
+  control: (base, state) => ({
     ...base,
     minHeight: "40px",
     borderRadius: "0.75rem",
@@ -289,27 +219,27 @@ const reactSelectStyles = {
       borderColor: "#10b981",
     },
   }),
-  valueContainer: (base: any) => ({
+  valueContainer: (base) => ({
     ...base,
     paddingLeft: "10px",
     paddingRight: "10px",
   }),
-  input: (base: any) => ({
+  input: (base) => ({
     ...base,
     color: "#0f172a",
   }),
-  placeholder: (base: any) => ({
+  placeholder: (base) => ({
     ...base,
     color: "#94a3b8",
     fontSize: "14px",
   }),
-  menu: (base: any) => ({
+  menu: (base) => ({
     ...base,
     borderRadius: "0.75rem",
     overflow: "hidden",
     zIndex: 50,
   }),
-  option: (base: any, state: any) => ({
+  option: (base, state) => ({
     ...base,
     backgroundColor: state.isSelected
       ? "#10b981"
@@ -357,7 +287,7 @@ export default function CustomerOrdersPage() {
       },
     ],
     queryFn: () =>
-      mockFetchCustomerOrders({
+      fetchCustomerOrders({
         page,
         pageSize,
         orderNo: appliedOrderNo,
@@ -369,12 +299,15 @@ export default function CustomerOrdersPage() {
   });
 
   const rows = data?.data ?? [];
-  const meta = data?.meta ?? {
-    page: 1,
-    pageSize,
-    total: 0,
-    totalPages: 1,
-  };
+  const meta = useMemo(
+    () => data?.meta ?? {
+      page: 1,
+      pageSize,
+      total: 0,
+      totalPages: 1,
+    },
+    [data?.meta, pageSize],
+  );
   const summary = data?.summary ?? {
     totalOrders: 0,
     pendingOrders: 0,
@@ -694,7 +627,7 @@ export default function CustomerOrdersPage() {
                       </td>
                       <td className="px-5 py-4">
                         <div className="flex flex-wrap gap-2">
-                          <Link href={`/customer-orders/${order.id}` as any}>
+                          <Link href={`/customer-orders/${order.id}` as Route}>
                             <Button size="sm" variant="outline">
                               View / Edit
                             </Button>
@@ -725,7 +658,7 @@ export default function CustomerOrdersPage() {
                           {order.status !== "Released" && (
                             <Link
                               href={
-                                `/customer-orders/${order.id}/release` as any
+                                `/customer-orders/${order.id}/release` as Route
                               }
                             >
                               <Button size="sm" variant="secondary">

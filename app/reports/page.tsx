@@ -1,197 +1,86 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { FileText, Loader2 } from "lucide-react";
+
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { FileSpreadsheet, FileText, Search } from "lucide-react";
 
-const reports = [
-  {
-    name: "Daily Sales Report",
-    category: "Sales",
-    description: "Export daily sales transactions by date range and branch.",
-  },
-  {
-    name: "Customer Orders Report",
-    category: "Sales",
-    description: "Export customer orders, balances, and order statuses.",
-  },
-  {
-    name: "Inventory Movement Report",
-    category: "Inventory",
-    description: "Export stock in, stock out, transfers, and adjustments.",
-  },
-  {
-    name: "Low Stock Report",
-    category: "Inventory",
-    description: "Export products below reorder level.",
-  },
-  {
-    name: "Transfer Monitoring Report",
-    category: "Inventory",
-    description: "Export transfer requests and receiving statuses.",
-  },
-  {
-    name: "Job Order Report",
-    category: "Service",
-    description: "Export service transactions, parts usage, and job status.",
-  },
-];
+type ReportsResponse = {
+  data: {
+    sales: { totalSales: number; transactionCount: number; rows: Array<{ id: string; manualReceiptNumber: string; branch: string; customer: string; totalAmount: number; reviewStatus: string }> };
+    accounting: { unverified: number; verified: number; flagged: number; flaggedRows: Array<{ id: string; manualReceiptNumber: string; branch: string; customer: string }> };
+    orders: { open: number; rows: Array<{ id: string; orderNo: string; customer: string; status: string; balance: number }> };
+    inventory: Array<{ itemCode: string; name: string; location: string; onHand: number; reserved: number; available: number; reorderLevel: number }>;
+  };
+};
+
+async function fetchReports() {
+  const response = await fetch("/api/reports", { credentials: "same-origin" });
+  if (!response.ok) throw new Error("Unable to load reports");
+  return (await response.json()) as ReportsResponse;
+}
+
+function formatPeso(value: number) {
+  return new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
+}
 
 export default function ReportsPage() {
-  const [search, setSearch] = useState("");
-  const [selectedReport, setSelectedReport] = useState<string>(reports[0].name);
-  const [branch, setBranch] = useState("all");
-
-  const filteredReports = useMemo(() => {
-    const keyword = search.toLowerCase().trim();
-    if (!keyword) return reports;
-
-    return reports.filter(
-      (report) =>
-        report.name.toLowerCase().includes(keyword) ||
-        report.category.toLowerCase().includes(keyword) ||
-        report.description.toLowerCase().includes(keyword),
-    );
-  }, [search]);
-
-  const activeReport =
-    reports.find((report) => report.name === selectedReport) ?? reports[0];
-
-  const handleExport = (format: "excel" | "pdf") => {
-    console.log("Export:", {
-      report: activeReport.name,
-      format,
-      branch,
-    });
-  };
+  const { data, isLoading, error } = useQuery({ queryKey: ["reports-summary"], queryFn: fetchReports });
+  const reports = data?.data;
 
   return (
-    <PageShell
-      title="Reports"
-      subtitle="Generate and export operational reports"
-      actions={<Button>Generate Report</Button>}
-    >
-      <div className="grid gap-6 lg:grid-cols-[380px_minmax(0,1fr)]">
-        <div className="space-y-4">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search report..."
-              className="pl-9"
-            />
+    <PageShell title="Reports" subtitle="Read-only live summaries for Sales, Accounting/Reconciliation, and Admin Inventory.">
+      {isLoading ? (
+        <Card><CardContent className="flex items-center gap-2 p-6 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading reports...</CardContent></Card>
+      ) : error || !reports ? (
+        <Card><CardContent className="p-6 text-sm text-red-600">{error?.message ?? "Reports unavailable"}</CardContent></Card>
+      ) : (
+        <div className="space-y-6">
+          <div className="flex justify-end">
+            <a href="/api/reports?format=pdf">
+              <Button className="bg-emerald-600 text-white hover:bg-emerald-700">
+                <FileText className="mr-2 h-4 w-4" />Export PDF
+              </Button>
+            </a>
           </div>
 
-          <div className="space-y-3">
-            {filteredReports.map((report) => {
-              const isActive = selectedReport === report.name;
+          <div className="grid gap-4 md:grid-cols-3">
+            <SummaryCard label="Sales Total" value={formatPeso(reports.sales.totalSales)} hint={`${reports.sales.transactionCount} posted transaction(s)`} />
+            <SummaryCard label="Accounting Queue" value={String(reports.accounting.unverified)} hint={`${reports.accounting.flagged} flagged, ${reports.accounting.verified} verified`} />
+            <SummaryCard label="Open Orders" value={String(reports.orders.open)} hint="Reservations and waiting-stock orders" />
+          </div>
 
-              return (
-                <Card
-                  key={report.name}
-                  onClick={() => setSelectedReport(report.name)}
-                  className={`cursor-pointer transition-all ${
-                    isActive
-                      ? "border-primary shadow-sm"
-                      : "hover:border-primary/40"
-                  }`}
-                >
-                  <CardContent className="p-4">
-                    <Badge className="mb-2">{report.category}</Badge>
-                    <h3 className="text-sm font-semibold md:text-base">
-                      {report.name}
-                    </h3>
-                    <p className="mt-1 text-sm text-slate-500">
-                      {report.description}
-                    </p>
-                  </CardContent>
-                </Card>
-              );
-            })}
-
-            {filteredReports.length === 0 && (
-              <Card>
-                <CardContent className="p-4 text-sm text-slate-500">
-                  No reports found.
-                </CardContent>
-              </Card>
-            )}
+          <div className="grid gap-6 xl:grid-cols-2">
+            <ReportTable title="Receipt-Level Sales" rows={reports.sales.rows.slice(0, 10).map((sale) => [sale.manualReceiptNumber, sale.branch, sale.customer, formatPeso(sale.totalAmount), sale.reviewStatus])} headers={["Receipt", "Branch", "Customer", "Total", "Review"]} />
+            <ReportTable title="Flagged Accounting Detail" rows={reports.accounting.flaggedRows.slice(0, 10).map((sale) => [sale.manualReceiptNumber, sale.branch, sale.customer])} headers={["Receipt", "Branch", "Customer"]} />
+            <ReportTable title="Customer Orders" rows={reports.orders.rows.slice(0, 10).map((order) => [order.orderNo, order.customer, order.status, formatPeso(order.balance)])} headers={["Order", "Customer", "Status", "Balance"]} />
+            <ReportTable title="Inventory Summary" rows={reports.inventory.slice(0, 10).map((item) => [item.itemCode, item.name, item.location, String(item.onHand), String(item.reserved), String(item.available)])} headers={["Code", "Name", "Location", "On Hand", "Reserved", "Available"]} />
           </div>
         </div>
-
-        <Card>
-          <CardContent className="space-y-6 p-6">
-            <div>
-              <Badge className="mb-3">{activeReport.category}</Badge>
-              <h2 className="text-xl font-semibold">{activeReport.name}</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                {activeReport.description}
-              </p>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="space-y-2">
-                <Label>Date From</Label>
-                <Input type="date" />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Date To</Label>
-                <Input type="date" />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Branch</Label>
-                <Select
-                  value={branch}
-                  onValueChange={(value) => value && setBranch(value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select branch" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Branches</SelectItem>
-                    <SelectItem value="main">Main Warehouse</SelectItem>
-                    <SelectItem value="branch-1">Branch 1</SelectItem>
-                    <SelectItem value="branch-2">Branch 2</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="rounded-xl border bg-slate-50 p-4 text-sm text-slate-600">
-              This page is optimized for export only. The system will generate
-              the file directly instead of rendering large report tables on the
-              screen.
-            </div>
-
-            <div className="flex flex-wrap gap-3">
-              <Button onClick={() => handleExport("excel")}>
-                <FileSpreadsheet className="mr-2 h-4 w-4" />
-                Export Excel
-              </Button>
-
-              <Button variant="outline" onClick={() => handleExport("pdf")}>
-                <FileText className="mr-2 h-4 w-4" />
-                Export PDF
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      )}
     </PageShell>
+  );
+}
+
+function SummaryCard({ label, value, hint }: { label: string; value: string; hint: string }) {
+  return <Card><CardContent className="p-5"><p className="text-sm text-slate-500">{label}</p><p className="mt-3 text-2xl font-bold">{value}</p><p className="mt-2 text-sm text-slate-500">{hint}</p></CardContent></Card>;
+}
+
+function ReportTable({ title, headers, rows }: { title: string; headers: string[]; rows: string[][] }) {
+  return (
+    <Card>
+      <CardContent className="p-5">
+        <div className="mb-4 flex items-center justify-between gap-3"><h2 className="font-semibold">{title}</h2><Badge variant="outline">Live DB</Badge></div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[560px] text-sm">
+            <thead><tr className="border-b">{headers.map((header) => <th key={header} className="px-3 py-2 text-left font-medium text-slate-500">{header}</th>)}</tr></thead>
+            <tbody>{rows.length === 0 ? <tr><td className="px-3 py-6 text-slate-500" colSpan={headers.length}>No rows.</td></tr> : rows.map((row, index) => <tr key={index} className="border-b last:border-0">{row.map((cell, cellIndex) => <td key={`${index}-${cellIndex}`} className="px-3 py-2">{cell}</td>)}</tr>)}</tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

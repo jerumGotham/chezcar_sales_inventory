@@ -6,6 +6,9 @@ const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
   listInventory: vi.fn(),
   listProducts: vi.fn(),
+  getDashboardSummary: vi.fn(),
+  listCustomers: vi.fn(),
+  listCustomerOrders: vi.fn(),
   notificationFindMany: vi.fn(),
   requireCapability: vi.fn(),
 }));
@@ -55,6 +58,14 @@ vi.mock("@/lib/server/catalog", async () => {
     listProducts: mocks.listProducts,
   };
 });
+vi.mock("../../lib/server/services/customer-sales", () => ({
+  getDashboardSummary: mocks.getDashboardSummary,
+  listCustomers: mocks.listCustomers,
+  listCustomerOrders: mocks.listCustomerOrders,
+  CustomerSalesError: class CustomerSalesError extends Error {
+    constructor(public readonly code: string, message: string, public readonly status = 400) { super(message); }
+  },
+}));
 
 import { GET as getCustomerOrders } from "../../app/api/customer-orders/route";
 import { GET as getCustomers } from "../../app/api/customers/route";
@@ -112,7 +123,7 @@ const routes: readonly RouteSpec[] = [
     allowed: ["BRANCH_STAFF", branch],
     denied: ["STOCK_STAFF", branch],
     protectedMarker: "protected-customer",
-    service: null,
+    service: mocks.listCustomers,
   },
   {
     name: "customer orders",
@@ -122,7 +133,7 @@ const routes: readonly RouteSpec[] = [
     allowed: ["ACCOUNTING_STAFF", null],
     denied: ["BRANCH_STAFF", stockRoom],
     protectedMarker: "protected-order",
-    service: null,
+    service: mocks.listCustomerOrders,
   },
   {
     name: "products",
@@ -172,6 +183,9 @@ describe.each(routes)("$name authorization", (route) => {
     mocks.findUnique.mockReset();
     mocks.listInventory.mockReset();
     mocks.listProducts.mockReset();
+    mocks.getDashboardSummary.mockReset();
+    mocks.listCustomers.mockReset();
+    mocks.listCustomerOrders.mockReset();
     mocks.notificationFindMany.mockReset();
     mocks.requireCapability.mockClear();
     mocks.listProducts.mockResolvedValue({
@@ -181,6 +195,9 @@ describe.each(routes)("$name authorization", (route) => {
       data: [{ marker: "protected-inventory" }],
     });
     mocks.notificationFindMany.mockResolvedValue([]);
+    mocks.getDashboardSummary.mockResolvedValue({ marker: "protected-dashboard" });
+    mocks.listCustomers.mockResolvedValue([{ marker: "protected-customer" }]);
+    mocks.listCustomerOrders.mockResolvedValue([{ marker: "protected-order" }]);
   });
 
   it("returns only the stable 401 envelope when the session is missing", async () => {

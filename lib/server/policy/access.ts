@@ -9,6 +9,7 @@ export type AccessResource =
   | "products"
   | "inventory"
   | "users"
+  | "reports"
   | "stock-transfers";
 
 export type AccessAction = "view" | "manage";
@@ -20,6 +21,7 @@ export type Capability =
   | "products:view"
   | "inventory:view"
   | "inventory-receiving:create"
+  | "reports:view"
   | "users:manage"
   | "stock-transfers:view";
 
@@ -44,6 +46,7 @@ export const CAPABILITIES = {
   productsView: "products:view",
   inventoryView: "inventory:view",
   inventoryReceivingCreate: "inventory-receiving:create",
+  reportsView: "reports:view",
   usersManage: "users:manage",
   stockTransfersView: "stock-transfers:view",
 } as const satisfies Record<string, Capability>;
@@ -57,6 +60,7 @@ const ROLE_CAPABILITIES = {
     CAPABILITIES.customerOrdersView,
     CAPABILITIES.productsView,
     CAPABILITIES.inventoryView,
+    CAPABILITIES.reportsView,
     CAPABILITIES.usersManage,
     CAPABILITIES.stockTransfersView,
   ],
@@ -80,6 +84,7 @@ const ROLE_CAPABILITIES = {
     CAPABILITIES.dashboardView,
     CAPABILITIES.customersView,
     CAPABILITIES.customerOrdersView,
+    CAPABILITIES.reportsView,
   ],
 } as const satisfies Record<UserRole, readonly Capability[]>;
 

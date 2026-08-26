@@ -11,6 +11,7 @@ export type ShellCapabilityId =
   | "products:view"
   | "inventory:view"
   | "inventory-receiving:create"
+  | "reports:view"
   | "users:manage"
   | "stock-transfers:view";
 
@@ -20,6 +21,7 @@ export type ShellMenuIcon =
   | "products"
   | "inventory"
   | "customer-orders"
+  | "reports"
   | "users"
   | "stock-transfers";
 
@@ -29,6 +31,7 @@ export type ShellMenuHref =
   | "/products"
   | "/inventory"
   | "/customer-orders"
+  | "/reports"
   | "/users"
   | "/stock-transfers";
 

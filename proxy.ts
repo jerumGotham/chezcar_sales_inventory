@@ -15,6 +15,7 @@ const PAGE_CAPABILITIES = {
   "customer-orders": CAPABILITIES.customerOrdersView,
   products: CAPABILITIES.productsView,
   inventory: CAPABILITIES.inventoryView,
+  reports: CAPABILITIES.reportsView,
   users: CAPABILITIES.usersManage,
   "stock-transfers": CAPABILITIES.stockTransfersView,
 } as const satisfies Record<string, Capability>;
