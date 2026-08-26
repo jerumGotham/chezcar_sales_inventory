@@ -63,7 +63,7 @@ export async function createNotifications(
     title: string;
     description: string;
     type: NotificationType;
-    relatedType?: "STOCK_TRANSFER" | "INVENTORY_BALANCE";
+    relatedType?: "STOCK_TRANSFER" | "INVENTORY_BALANCE" | "SALE";
     relatedId?: string;
     relatedReference?: string;
   }>,

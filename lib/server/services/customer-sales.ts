@@ -42,6 +42,7 @@ export const cancelOrderSchema = z.object({ note: z.string().trim().max(1_000).o
 export const directSaleSchema = z.object({
   customerId: z.string().optional(),
   customer: customerMutationSchema.optional(),
+  receiptBooklet: z.string().trim().max(50).default(""),
   manualReceiptNumber: z.string().trim().min(1).max(100),
   paymentMethod: z.enum(["CASH", "GCASH", "MAYA", "BANK_TRANSFER", "CREDIT_CARD", "SPLIT"]).default("CASH"),
   amountPaid: money,
@@ -50,9 +51,7 @@ export const directSaleSchema = z.object({
 });
 
 export const accountingReviewSchema = z.object({
-  status: z.enum(["VERIFIED", "FLAGGED"]),
-  mismatchCategory: z.string().trim().max(100).optional(),
-  notes: z.string().trim().max(1_000).optional(),
+  status: z.enum(["VERIFIED"]),
 });
 
 export class CustomerSalesError extends Error {
@@ -64,7 +63,11 @@ function assertBranchOrAdmin(actor: AuthContext) {
 }
 
 function assertAccounting(actor: AuthContext) {
-  if (actor.role !== "ACCOUNTING_STAFF" && actor.role !== "ADMIN") throw new CustomerSalesError("FORBIDDEN", "Accounting access required", 403);
+  if (actor.role !== "ACCOUNTING_STAFF") throw new CustomerSalesError("FORBIDDEN", "Accounting access required", 403);
+}
+
+function assertAccountingStrict(actor: AuthContext) {
+  if (actor.role !== "ACCOUNTING_STAFF") throw new CustomerSalesError("FORBIDDEN", "Accounting Staff access required", 403);
 }
 
 function actorLocationId(actor: AuthContext) {
@@ -113,10 +116,20 @@ async function deductSaleLines(tx: Prisma.TransactionClient, locationId: string,
   }
 }
 
-async function registerReceipt(tx: Prisma.TransactionClient, number: string, purpose: string, ids: { orderId?: string; saleId?: string }) {
+async function registerReceipt(tx: Prisma.TransactionClient, number: string, purpose: string, ids: { orderId?: string; saleId?: string; locationId?: string; receiptBooklet?: string }) {
   if (!number) return;
-  try { await tx.manualReceipt.create({ data: { number, purpose, orderId: ids.orderId, saleId: ids.saleId } }); }
-  catch (error) {
+  try {
+    await tx.manualReceipt.create({
+      data: {
+        number,
+        purpose,
+        orderId: ids.orderId,
+        saleId: ids.saleId,
+        locationId: ids.locationId ?? null,
+        receiptBooklet: ids.receiptBooklet ?? "",
+      },
+    });
+  } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") throw new CustomerSalesError("DUPLICATE_RECEIPT", "Manual receipt number already exists", 409);
     throw error;
   }
@@ -176,7 +189,7 @@ export async function createCustomerOrder(actor: AuthContext, input: z.infer<typ
       },
       include: ORDER_INCLUDE,
     });
-    if (input.downpaymentReceiptNumber) await registerReceipt(tx, input.downpaymentReceiptNumber, "CUSTOMER_ORDER_DOWNPAYMENT", { orderId: order.id });
+    if (input.downpaymentReceiptNumber) await registerReceipt(tx, input.downpaymentReceiptNumber, "CUSTOMER_ORDER_DOWNPAYMENT", { orderId: order.id, locationId, receiptBooklet: "" });
     return serializeOrder(order);
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
@@ -203,8 +216,8 @@ export async function releaseCustomerOrder(actor: AuthContext, id: string, input
     if (order.status !== "RESERVED" && order.status !== "READY_FOR_RELEASE") throw new CustomerSalesError("INVALID_STATUS", "Only reserved orders can be released", 409);
     if (input.amountPaid !== order.remainingBalance.toNumber()) throw new CustomerSalesError("INVALID_BALANCE", "Amount paid must match remaining balance", 400);
     await releaseReservedLines(tx, order.locationId, order.lines);
-    const sale = await tx.sale.create({ data: { reference: `SALE-${randomUUID()}`, manualReceiptNumber: input.finalReceiptNumber, locationId: order.locationId, customerId: order.customerId, orderId: order.id, paymentMethod: input.paymentMethod as PaymentMethod, totalAmount: order.totalAmount, amountPaid: decimal(input.amountPaid), notes: input.notes || null, postedById: actor.userId, lines: { create: order.lines.map((line) => ({ productId: line.productId, productItemCode: line.productItemCode, productName: line.productName, quantity: line.quantity, unitPrice: line.finalUnitPrice })) }, accountingReview: { create: {} } } });
-    await registerReceipt(tx, input.finalReceiptNumber, "CUSTOMER_ORDER_FINAL", { orderId: order.id, saleId: sale.id });
+    const sale = await tx.sale.create({ data: { reference: `SALE-${randomUUID()}`, manualReceiptNumber: input.finalReceiptNumber, receiptBooklet: "", locationId: order.locationId, customerId: order.customerId, orderId: order.id, paymentMethod: input.paymentMethod as PaymentMethod, totalAmount: order.totalAmount, amountPaid: decimal(input.amountPaid), notes: input.notes || null, postedById: actor.userId, lines: { create: order.lines.map((line) => ({ productId: line.productId, productItemCode: line.productItemCode, productName: line.productName, quantity: line.quantity, unitPrice: line.finalUnitPrice })) }, accountingReview: { create: {} } } });
+    await registerReceipt(tx, input.finalReceiptNumber, "CUSTOMER_ORDER_FINAL", { orderId: order.id, saleId: sale.id, locationId: order.locationId, receiptBooklet: "" });
     for (const line of order.lines) await tx.inventoryMovement.create({ data: { productId: line.productId, locationId: order.locationId, quantity: -line.quantity, type: "CUSTOMER_ORDER_RELEASE", actorId: actor.userId, reference: input.finalReceiptNumber, remarks: `Released order ${order.reference}` } });
     const updated = await tx.customerOrder.update({ where: { id: order.id }, data: { status: "COMPLETED", finalReceiptNumber: input.finalReceiptNumber, remainingBalance: decimal(0), releasedById: actor.userId, releasedAt: new Date() }, include: ORDER_INCLUDE });
     return serializeOrder(updated);
@@ -242,9 +255,9 @@ export async function createDirectSale(actor: AuthContext, input: z.infer<typeof
     const total = input.lines.reduce((sum, line) => sum + line.quantity * (line.unitPrice ?? products.get(line.productId)!.price?.toNumber() ?? 0), 0);
     if (input.amountPaid !== total) throw new CustomerSalesError("INVALID_PAYMENT", "Direct sale payment must match total", 400);
     await deductSaleLines(tx, locationId, input.lines);
-    const sale = await tx.sale.create({ data: { reference: `SALE-${randomUUID()}`, manualReceiptNumber: input.manualReceiptNumber, locationId, customerId, paymentMethod: input.paymentMethod as PaymentMethod, totalAmount: decimal(total), amountPaid: decimal(input.amountPaid), notes: input.notes || null, postedById: actor.userId, lines: { create: input.lines.map((line) => { const product = products.get(line.productId)!; return { productId: product.id, productItemCode: product.itemCode, productName: product.name, quantity: line.quantity, unitPrice: decimal(line.unitPrice ?? product.price?.toNumber() ?? 0) }; }) }, accountingReview: { create: {} } }, include: SALE_INCLUDE });
-    await registerReceipt(tx, input.manualReceiptNumber, "DIRECT_SALE", { saleId: sale.id });
-    for (const line of input.lines) await tx.inventoryMovement.create({ data: { productId: line.productId, locationId, quantity: -line.quantity, type: "DIRECT_SALE", actorId: actor.userId, reference: input.manualReceiptNumber, remarks: `Direct sale ${sale.reference}` } });
+    const sale = await tx.sale.create({ data: { reference: `SALE-${randomUUID()}`, manualReceiptNumber: input.manualReceiptNumber, receiptBooklet: input.receiptBooklet ?? "", locationId, customerId, paymentMethod: input.paymentMethod as PaymentMethod, totalAmount: decimal(total), amountPaid: decimal(input.amountPaid), notes: input.notes || null, postedById: actor.userId, lines: { create: input.lines.map((line) => { const product = products.get(line.productId)!; return { productId: product.id, productItemCode: product.itemCode, productName: product.name, quantity: line.quantity, unitPrice: decimal(line.unitPrice ?? product.price?.toNumber() ?? 0) }; }) }, accountingReview: { create: {} } }, include: SALE_INCLUDE });
+    await registerReceipt(tx, input.manualReceiptNumber, "DIRECT_SALE", { saleId: sale.id, locationId, receiptBooklet: input.receiptBooklet ?? "" });
+    for (const line of input.lines) await tx.inventoryMovement.create({ data: { productId: line.productId, locationId, quantity: -line.quantity, type: "DIRECT_SALE", actorId: actor.userId, reference: input.receiptBooklet ? `${input.receiptBooklet}-${input.manualReceiptNumber}` : input.manualReceiptNumber, remarks: `Direct sale ${sale.reference}` } });
     return serializeSale(sale);
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
@@ -261,10 +274,35 @@ export async function listSales(actor: AuthContext) {
   return sales.map(serializeSale);
 }
 
+export async function getSaleById(actor: AuthContext, saleId: string) {
+  const sale = await prisma.sale.findUnique({ where: { id: saleId }, include: SALE_INCLUDE });
+  if (!sale) throw new CustomerSalesError("NOT_FOUND", "Sale not found", 404);
+  if (actor.role === "BRANCH_STAFF" && sale.locationId !== actorLocationId(actor)) throw new CustomerSalesError("FORBIDDEN", "Sale is outside assigned branch", 403);
+  return serializeSale(sale);
+}
+
 export async function reviewSale(actor: AuthContext, saleId: string, input: z.infer<typeof accountingReviewSchema>) {
-  assertAccounting(actor);
-  if (input.status === "FLAGGED" && (!input.mismatchCategory || !input.notes)) throw new CustomerSalesError("FLAG_DETAILS_REQUIRED", "Flagged reviews require category and notes", 400);
-  return prisma.saleAccountingReview.upsert({ where: { saleId }, create: { saleId, status: input.status, mismatchCategory: input.mismatchCategory || null, notes: input.notes || null, reviewedById: actor.userId, reviewedAt: new Date() }, update: { status: input.status, mismatchCategory: input.mismatchCategory || null, notes: input.notes || null, reviewedById: actor.userId, reviewedAt: new Date() } });
+  assertAccountingStrict(actor);
+  return prisma.$transaction(async (tx) => {
+    // Lock sale and review for Serializable safety
+    await tx.$queryRaw`SELECT id FROM "Sale" WHERE id = ${saleId} FOR UPDATE`;
+    const sale = await tx.sale.findUnique({ where: { id: saleId }, include: { accountingReview: true } });
+    if (!sale) throw new CustomerSalesError("NOT_FOUND", "Sale not found", 404);
+    if (sale.status !== "POSTED") throw new CustomerSalesError("INVALID_STATE", "Only posted sales can be verified", 409);
+    const review = sale.accountingReview ?? await tx.saleAccountingReview.findUnique({ where: { saleId } });
+    if (!review) throw new CustomerSalesError("NOT_FOUND", "Accounting review not found", 404);
+    // Lock review row as well
+    await tx.$queryRaw`SELECT id FROM "SaleAccountingReview" WHERE id = ${review.id} FOR UPDATE`;
+    const freshReview = await tx.saleAccountingReview.findUnique({ where: { id: review.id } });
+    if (!freshReview) throw new CustomerSalesError("NOT_FOUND", "Accounting review not found", 404);
+    if (freshReview.status !== "UNVERIFIED") throw new CustomerSalesError("INVALID_STATE", "Sale has already been verified", 409);
+    if (input.status !== "VERIFIED") throw new CustomerSalesError("INVALID_STATE", "Only VERIFIED is allowed", 400);
+    const updated = await tx.saleAccountingReview.update({
+      where: { id: freshReview.id },
+      data: { status: "VERIFIED", reviewedById: actor.userId, reviewedAt: new Date(), mismatchCategory: null, notes: null },
+    });
+    return updated;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
 function dayStart(date = new Date()) {
@@ -293,7 +331,7 @@ export async function getDashboardSummary(actor: AuthContext) {
     prisma.sale.aggregate({ where: { ...scopedSales, status: "POSTED", postedAt: { gte: month } }, _sum: { totalAmount: true }, _count: true }),
     prisma.customerOrder.count({ where: { ...scopedOrders, status: { in: ["RESERVED", "WAITING_STOCK", "READY_FOR_RELEASE"] } } }),
     prisma.customerOrder.count({ where: { ...scopedOrders, status: "READY_FOR_RELEASE" } }),
-    prisma.saleAccountingReview.count({ where: { status: "FLAGGED", sale: scopedSales } }),
+    prisma.saleAccountingReview.count({ where: { status: "MISMATCH_REPORTED", sale: scopedSales } }),
     prisma.saleAccountingReview.count({ where: { status: "UNVERIFIED", sale: scopedSales } }),
     prisma.inventoryBalance.findMany({
       where: actor.role === "BRANCH_STAFF" ? { locationId: actorLocationId(actor) } : {},
@@ -336,8 +374,8 @@ export async function getReportsSummary(actor: AuthContext) {
     accounting: {
       unverified: sales.filter((sale) => sale.reviewStatus === "UNVERIFIED").length,
       verified: sales.filter((sale) => sale.reviewStatus === "VERIFIED").length,
-      flagged: sales.filter((sale) => sale.reviewStatus === "FLAGGED").length,
-      flaggedRows: sales.filter((sale) => sale.reviewStatus === "FLAGGED"),
+      flagged: sales.filter((sale) => sale.reviewStatus === "MISMATCH_REPORTED").length,
+      flaggedRows: sales.filter((sale) => sale.reviewStatus === "MISMATCH_REPORTED"),
     },
     orders: { open: orders.filter((order) => !["Released", "Cancelled"].includes(order.status)).length, rows: orders },
     inventory: inventory.map((balance) => ({ itemCode: balance.product.itemCode, name: balance.product.name, category: balance.product.category, brand: balance.product.brand, productStatus: balance.product.status, location: balance.location.name, onHand: balance.onHand, reserved: balance.reserved, available: balance.onHand - balance.reserved, reorderLevel: balance.reorderLevel })),
@@ -356,5 +394,5 @@ function serializeOrder(order: Prisma.CustomerOrderGetPayload<{ include: typeof 
 }
 
 function serializeSale(sale: Prisma.SaleGetPayload<{ include: typeof SALE_INCLUDE }>) {
-  return { id: sale.id, reference: sale.reference, manualReceiptNumber: sale.manualReceiptNumber, branch: sale.location.name, customer: sale.customer?.name ?? "Guest", totalAmount: serializeMoney(sale.totalAmount), amountPaid: serializeMoney(sale.amountPaid), paymentMethod: sale.paymentMethod, status: sale.status, postedAt: sale.postedAt.toISOString(), postedBy: sale.postedBy.name, reviewStatus: sale.accountingReview?.status ?? "UNVERIFIED", lines: sale.lines.map((line) => ({ productId: line.productId, itemCode: line.productItemCode, name: line.productName, quantity: line.quantity, unitPrice: serializeMoney(line.unitPrice) })) };
+  return { id: sale.id, reference: sale.reference, manualReceiptNumber: sale.manualReceiptNumber, receiptBooklet: (sale as unknown as { receiptBooklet: string }).receiptBooklet ?? "", version: (sale as unknown as { version: number }).version ?? 1, branch: sale.location.name, customer: sale.customer?.name ?? "Guest", totalAmount: serializeMoney(sale.totalAmount), amountPaid: serializeMoney(sale.amountPaid), paymentMethod: sale.paymentMethod, status: sale.status, postedAt: sale.postedAt.toISOString(), postedBy: sale.postedBy.name, reviewStatus: sale.accountingReview?.status ?? "UNVERIFIED", lines: sale.lines.map((line) => ({ productId: line.productId, itemCode: line.productItemCode, name: line.productName, quantity: line.quantity, unitPrice: serializeMoney(line.unitPrice) })) };
 }

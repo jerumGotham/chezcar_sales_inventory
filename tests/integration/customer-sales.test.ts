@@ -50,7 +50,7 @@ describe("customer orders, direct sales, accounting", () => {
 
       expect(released).toMatchObject({ status: "Released", balance: 0 });
       await expect(prisma.inventoryBalance.findFirstOrThrow({ where: { productId: product.id } })).resolves.toMatchObject({ onHand: 3, reserved: 0 });
-      await expect(prisma.sale.findUniqueOrThrow({ where: { manualReceiptNumber: "FINAL-0001" }, include: { accountingReview: true } })).resolves.toMatchObject({ totalAmount: expect.anything(), accountingReview: { status: "UNVERIFIED" } });
+      await expect(prisma.sale.findFirstOrThrow({ where: { manualReceiptNumber: "FINAL-0001" }, include: { accountingReview: true } })).resolves.toMatchObject({ totalAmount: expect.anything(), accountingReview: { status: "UNVERIFIED" } });
       await expect(prisma.inventoryMovement.findMany({ where: { productId: product.id, type: "CUSTOMER_ORDER_RELEASE" } })).resolves.toHaveLength(1);
     });
   }, 30_000);
@@ -83,12 +83,12 @@ describe("customer orders, direct sales, accounting", () => {
       const branchActor = actor(fixture.users.branchStaff, fixture.locations.branches.QC);
       const accountingActor = actor(fixture.users.accountingStaff, null);
 
-      const sale = await createDirectSale(branchActor, { manualReceiptNumber: "SALE-0001", amountPaid: 75, paymentMethod: "GCASH", lines: [{ productId: product.id, quantity: 1 }] });
+      const sale = await createDirectSale(branchActor, { receiptBooklet: "", manualReceiptNumber: "SALE-0001", amountPaid: 75, paymentMethod: "GCASH", lines: [{ productId: product.id, quantity: 1 }] });
 
       expect(sale).toMatchObject({ manualReceiptNumber: "SALE-0001", totalAmount: 75, reviewStatus: "UNVERIFIED" });
       await expect(prisma.inventoryBalance.findFirstOrThrow({ where: { productId: product.id } })).resolves.toMatchObject({ onHand: 2, reserved: 1 });
-      await expect(createDirectSale(branchActor, { manualReceiptNumber: "SALE-0001", amountPaid: 75, paymentMethod: "GCASH", lines: [{ productId: product.id, quantity: 1 }] })).rejects.toMatchObject({ code: "DUPLICATE_RECEIPT" });
-      await expect(reviewSale(accountingActor, sale.id, { status: "FLAGGED", mismatchCategory: "receipt-total", notes: "Receipt total differs" })).resolves.toMatchObject({ status: "FLAGGED", reviewedById: fixture.users.accountingStaff.id });
+      await expect(createDirectSale(branchActor, { receiptBooklet: "", manualReceiptNumber: "SALE-0001", amountPaid: 75, paymentMethod: "GCASH", lines: [{ productId: product.id, quantity: 1 }] })).rejects.toMatchObject({ code: "DUPLICATE_RECEIPT" });
+      await expect(reviewSale(accountingActor, sale.id, { status: "VERIFIED" })).resolves.toMatchObject({ status: "VERIFIED", reviewedById: fixture.users.accountingStaff.id });
     });
   }, 30_000);
 });

@@ -87,7 +87,7 @@ enum PaymentMethod {
 enum AccountingReviewStatus {
   UNVERIFIED
   VERIFIED
-  FLAGGED
+  MISMATCH_REPORTED
 }
 
 enum NotificationType {
@@ -99,6 +99,7 @@ enum NotificationType {
 enum NotificationRelatedType {
   STOCK_TRANSFER
   INVENTORY_BALANCE
+  SALE
 }
 
 model Location {
@@ -119,6 +120,7 @@ model Location {
   stockReceipts     StockReceipt[]
   customerOrders    CustomerOrder[]
   sales             Sale[]
+  manualReceipts    ManualReceipt[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 }
@@ -394,15 +396,20 @@ model Customer {
 }
 
 model ManualReceipt {
-  id        String   @id @default(cuid())
-  number    String   @unique
-  purpose   String
-  orderId   String?
-  saleId    String?
-  createdAt DateTime @default(now())
+  id             String    @id @default(cuid())
+  number         String
+  purpose        String
+  orderId        String?
+  saleId         String?
+  locationId     String?
+  receiptBooklet String    @default("")
+  location       Location? @relation(fields: [locationId], references: [id])
+  createdAt      DateTime  @default(now())
 
+  @@unique([locationId, receiptBooklet, number])
   @@index([orderId])
   @@index([saleId])
+  @@index([locationId])
 }
 
 model CustomerOrder {
@@ -460,7 +467,9 @@ model CustomerOrderLine {
 model Sale {
   id                  String                @id @default(cuid())
   reference           String                @unique
-  manualReceiptNumber String                @unique
+  manualReceiptNumber String
+  receiptBooklet      String                @default("")
+  version             Int                   @default(1)
   locationId          String
   customerId          String?
   orderId             String?               @unique
@@ -480,6 +489,7 @@ model Sale {
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt
 
+  @@unique([locationId, receiptBooklet, manualReceiptNumber])
   @@index([locationId, postedAt])
   @@index([postedById])
   @@index([customerId])
