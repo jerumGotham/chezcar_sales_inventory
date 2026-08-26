@@ -342,3 +342,62 @@ export async function createAuthFixture(
     invalidAssignments,
   };
 }
+
+export async function createBranchStaffFixture(
+  prisma: PrismaClient,
+  locations: LocationFixtures,
+  namespace: string,
+  branchCode: BranchCode,
+  key: string,
+) {
+  return createUserFixture(prisma, locations, {
+    namespace,
+    key,
+    role: "BRANCH_STAFF",
+    locationId: locations.branches[branchCode].id,
+  });
+}
+
+export async function createProductFixture(
+  prisma: PrismaClient,
+  overrides: { itemCode: string; name: string; price?: number | string; status?: "ACTIVE" | "INACTIVE" } & Record<string, unknown>,
+) {
+  const price = overrides.price ?? 100;
+  return prisma.product.create({
+    data: {
+      itemCode: overrides.itemCode,
+      name: overrides.name,
+      price: price as unknown as number,
+      status: (overrides.status as "ACTIVE" | "INACTIVE") ?? "ACTIVE",
+    },
+  });
+}
+
+export async function createInventoryBalanceFixture(
+  prisma: PrismaClient,
+  input: { locationId: string; productId: string; onHand: number; reserved?: number; reorderLevel?: number; unitCost?: number; version?: number },
+) {
+  return prisma.inventoryBalance.create({
+    data: {
+      locationId: input.locationId,
+      productId: input.productId,
+      onHand: input.onHand,
+      reserved: input.reserved ?? 0,
+      reorderLevel: input.reorderLevel ?? 1,
+      unitCost: input.unitCost ?? 10,
+      version: input.version ?? 1,
+    },
+  });
+}
+
+export function authContextFor(
+  user: User,
+  location: Location | null,
+): import("@/lib/server/authorization").AuthContext {
+  return {
+    userId: user.id,
+    role: user.role,
+    locationId: user.locationId,
+    location: location ? { id: location.id, code: location.code, type: location.type, isActive: location.isActive } : null,
+  };
+}
