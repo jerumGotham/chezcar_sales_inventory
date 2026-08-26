@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Trash2, AlertTriangle, CheckCircle2, X } from "lucide-react";
 
@@ -70,7 +70,9 @@ export function StockTransfersClient({
   const [editLines, setEditLines] = useState<DraftLine[]>([]);
   const [notes, setNotes] = useState("");
   const [actualQuantities, setActualQuantities] = useState<Record<string, number>>({});
-  const [discrepancyReason, setDiscrepancyReason] = useState("");
+  const discrepancyNotesRef = useRef<HTMLSelectElement>(null);
+  const discrepancyReasonRef = useRef<HTMLInputElement>(null);
+  const [affectedQuantity, setAffectedQuantity] = useState("");
   const [message, setMessage] = useState("");
   const [messageKind, setMessageKind] = useState<"success" | "error">("success");
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
@@ -107,7 +109,7 @@ export function StockTransfersClient({
       setDraftLines([{ productId: "", quantity: 1 }]);
       setNotes("");
       setActualQuantities({});
-      setDiscrepancyReason("");
+      setAffectedQuantity("");
       queryClient.invalidateQueries({ queryKey: ["stock-transfers"] });
     },
     onError: (error: Error) => notify(error.message, "error"),
@@ -147,17 +149,15 @@ export function StockTransfersClient({
       setSelected(null);
       setNotes("");
       setActualQuantities({});
+      setAffectedQuantity("");
       setEditLines([]);
       return;
     }
 
     setSelected(transfer);
     setNotes("");
-    setActualQuantities(
-      Object.fromEntries(
-        (transfer.lines ?? []).map((line) => [line.id, line.dispatchedQuantity]),
-      ),
-    );
+    setActualQuantities({});
+    setAffectedQuantity("");
     if (transfer.status === "DRAFT") {
       setEditLines((transfer.lines ?? []).map((line) => ({ productId: line.product.id, quantity: line.requestedQuantity })));
     }
@@ -204,8 +204,10 @@ export function StockTransfersClient({
     });
   };
 
+  const affectedQtyValue = Number(affectedQuantity);
+  const hasAffectedQuantity = Number.isInteger(affectedQtyValue) && affectedQtyValue >= 1;
   const hasCountDifference = selected?.lines?.some(
-    (line) => actualQuantities[line.id] !== line.dispatchedQuantity,
+    (line) => actualQuantities[line.id] !== undefined && actualQuantities[line.id] !== line.dispatchedQuantity,
   );
 
   const hasDuplicateProducts = draftLines.some(
@@ -526,27 +528,63 @@ export function StockTransfersClient({
                 ))}
                 <div className="space-y-2">
                   <Label htmlFor="discrepancy-notes">What happened?</Label>
-                  <Input id="discrepancy-notes" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Explain the missing, wrong, or damaged items" />
+                  <select
+                    id="discrepancy-notes"
+                    ref={discrepancyNotesRef}
+                    defaultValue="Items missing"
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="Items missing">Items missing</option>
+                    <option value="Wrong item delivered">Wrong item delivered</option>
+                    <option value="Items damaged">Items damaged</option>
+                    <option value="Seal broken / tampered">Seal broken / tampered</option>
+                    <option value="Short delivery">Short delivery</option>
+                    <option value="Other">Other</option>
+                  </select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="discrepancy-reason">Reason</Label>
-                  <Input id="discrepancy-reason" value={discrepancyReason} onChange={(event) => setDiscrepancyReason(event.target.value)} />
+                  <Label htmlFor="discrepancy-quantity">Missing / damaged quantity *</Label>
+                  <Input
+                    id="discrepancy-quantity"
+                    type="number"
+                    min="1"
+                    step="1"
+                    required
+                    value={affectedQuantity}
+                    onChange={(event) => setAffectedQuantity(event.target.value)}
+                    placeholder="How many items are affected?"
+                  />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="discrepancy-reason">Reason (optional details)</Label>
+                  <Input id="discrepancy-reason" ref={discrepancyReasonRef} placeholder="Optional: add details" />
+                </div>
+                {!hasAffectedQuantity && (
+                  <p className="text-sm text-slate-500">Tip: enter how many items are missing or damaged to enable the report.</p>
+                )}
                 <div className="flex flex-wrap gap-2">
                   <Button disabled={mutation.isPending} onClick={() => act("confirm-receipt", {})}>Confirm exact receipt</Button>
                   <Button
                     variant="outline"
-                    disabled={mutation.isPending || !hasCountDifference || !notes.trim() || !discrepancyReason.trim()}
-                    onClick={() =>
+                    disabled={mutation.isPending || !hasAffectedQuantity}
+                    onClick={() => {
+                      const affected = affectedQtyValue;
+                      const manualCounts = Object.keys(actualQuantities).length > 0;
                       act("report-discrepancy", {
-                        notes,
-                        lines: selected.lines?.map((line) => ({
-                          lineId: line.id,
-                          actualQuantity: actualQuantities[line.id] ?? line.dispatchedQuantity,
-                          reason: discrepancyReason,
-                        })),
-                      })
-                    }
+                        notes: `${discrepancyNotesRef.current?.value ?? "Items missing"}${discrepancyReasonRef.current?.value ? ` - ${discrepancyReasonRef.current.value}` : ""} (affected: ${affected})`,
+                        lines: selected.lines?.map((line, index) => {
+                          const counted = actualQuantities[line.id] ?? line.dispatchedQuantity;
+                          const actualQuantity = !manualCounts && index === 0
+                            ? Math.max(0, line.dispatchedQuantity - affected)
+                            : counted;
+                          return {
+                            lineId: line.id,
+                            actualQuantity,
+                            reason: discrepancyNotesRef.current?.value ?? "Items missing",
+                          };
+                        }),
+                      });
+                    }}
                   >
                     Report discrepancy
                   </Button>

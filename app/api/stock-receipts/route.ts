@@ -6,7 +6,8 @@ import { createStockReceipt, listStockReceipts, StockReceiptError } from "@/lib/
 
 function errorResponse(error: unknown) {
   if (error instanceof ZodError) {
-    return Response.json({ error: { code: "INVALID_INPUT", message: "Invalid supplier receipt input" } }, { status: 400 });
+    const details = error.issues.map((i) => i.path.join(".") + ": " + i.message).join("; ");
+    return Response.json({ error: { code: "INVALID_INPUT", message: details || "Invalid supplier receipt input" } }, { status: 400 });
   }
   if (error instanceof StockReceiptError) {
     return Response.json({ error: { code: error.code, message: error.message } }, { status: error.status });
