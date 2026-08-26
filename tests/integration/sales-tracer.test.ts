@@ -108,7 +108,7 @@ describe("sales tracer — per-branch receipt, stock deduction, Accounting VERIF
         createDirectSale(blActor, {
           receiptBooklet: "BK-01",
           manualReceiptNumber: "0099",
-          amountPaid: 500,
+          amountPaid: 1000,
           paymentMethod: "CASH",
           lines: [{ productId: product.id, quantity: 20 }],
         }),
