@@ -16,7 +16,7 @@ A checked item means durable, authorized, verified production behavior, not an e
 
 ### Sales and Accounting
 
-- [ ] **REQ-sales-posting**: After issuing the handwritten receipt and releasing goods, assigned Branch Staff can encode one sale using branch + receipt series/booklet + number, items, quantities, prices, optional customer, optional discount, and payment. Successful posting atomically records the sale, deducts branch stock without going negative, creates movements, and updates monitoring immediately.
+- [x] **REQ-sales-posting**: After issuing the handwritten receipt and releasing goods, assigned Branch Staff can encode one sale using branch + receipt series/booklet + number, items, quantities, prices, optional customer, optional discount, and payment. Successful posting atomically records the sale, deducts branch stock without going negative, creates movements, and updates monitoring immediately.
 - [ ] **REQ-sales-reconciliation**: Accounting Staff can compare every sale's receipt identity, items, quantities, prices, discounts, payment, and total with the handwritten receipt, then mark it `VERIFIED` or submit a structured mismatch. Accounting cannot edit sales or stock; Admin resolves linked issues auditably.
 - [ ] **REQ-dashboard-monitoring**: Admin can monitor current sales, stock by location, low-stock items, transfers, discrepancies, and reconciliation status; Branch Staff and Accounting receive only their role-scoped operational views.
 
@@ -55,7 +55,7 @@ A checked item means durable, authorized, verified production behavior, not an e
 | REQ-data-onboarding | Phase 1 | Complete |
 | REQ-role-authorization | Phase 1 | Complete |
 | REQ-user-management | Phase 1 | Complete |
-| REQ-sales-posting | Phase 2 | Pending |
+| REQ-sales-posting | Phase 2 | Complete |
 | REQ-sales-reconciliation | Phase 2 | Pending |
 | REQ-dashboard-monitoring | Phase 5 | Pending |
 | REQ-durable-notifications | Phase 3 | Pending |

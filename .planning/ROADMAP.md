@@ -98,7 +98,14 @@ Plans:
   4. Admin can resolve a mismatch through a linked auditable correction; posted sales are not silently edited or hard-deleted.
   5. Admin sales totals, branch stock, low-stock state, and Accounting's queue reflect the committed sale without an end-of-day batch.
 
-**Plans**: TBD
+**Plans**: 1/4 plans executed
+Plans:
+
+- [x] 02-01-PLAN.md — Tracer per-branch receipt sale + Accounting VERIFIED
+- [ ] 02-02-PLAN.md — Structured mismatch enum + photoUrl + notification fan-out
+- [ ] 02-03-PLAN.md — Void-and-replace correction + confirm-correct (one-way)
+- [ ] 02-04-PLAN.md — Operational UI, dashboard/reports hardening, docs/tests
+
 **UI hint**: yes - improve the current Chezcar style
 
 ### Phase 3: Durable Realtime Notifications
@@ -183,7 +190,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Trusted Foundation and Data Onboarding | 17/17 | In Progress|  |
-| 2. Receipt Sales and Accounting Verification | 0/TBD | Not started | - |
+| 2. Receipt Sales and Accounting Verification | 1/4 | In Progress|  |
 | 3. Durable Realtime Notifications | 0/TBD | Not started | - |
 | 4. Stock Room Receiving and Transfer Dispatch | 0/TBD | Not started | - |
 | 5. Branch Receipt, Discrepancy Resolution, and Monitoring | 0/TBD | Not started | - |
