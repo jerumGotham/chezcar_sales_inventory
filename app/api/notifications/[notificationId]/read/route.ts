@@ -4,7 +4,7 @@ import {
   authorizationErrorResponse,
   requireCapability,
 } from "@/lib/server/authorization";
-import { markNotificationRead, NotificationError } from "@/lib/server/services/notifications";
+import { markNotificationRead, NotificationError } from "../../../../../lib/server/services/notifications";
 
 type Context = { params: Promise<{ notificationId: string }> };
 

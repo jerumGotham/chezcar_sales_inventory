@@ -5,6 +5,7 @@ const positiveInt = z.number().int().positive();
 export const createTransferSchema = z.object({
   destinationId: z.string().min(1),
   lines: z.array(z.object({ productId: z.string().min(1), quantity: positiveInt })).min(1),
+  replacementForTransferId: z.string().min(1).optional(),
 });
 
 export const updateDraftTransferSchema = createTransferSchema.extend({

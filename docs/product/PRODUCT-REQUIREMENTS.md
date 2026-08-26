@@ -1,10 +1,10 @@
 # Chezcar Sales and Inventory MVP
 
 **Status:** Confirmed MVP process
-**Last updated:** 2026-08-25
+**Last updated:** 2026-08-26
 **Source:** Owner discussion, real inventory workbook, and current UI prototype
 
-> **Current-state warning:** The checked-in application is still primarily a UI prototype. Authentication and Product/Inventory reads have a PostgreSQL-backed foundation, but the sales, dashboard, notification, transfer, discrepancy, Accounting, user-management, and offline workflows below are not complete until implemented and verified.
+> **Current-state warning:** The checked-in application is still partly a UI prototype. Authentication, Product/Inventory reads, user management, Stock Room receiving, SR-to-branch transfers/discrepancy resolution, and durable notification rows have a PostgreSQL-backed foundation. Customer orders, direct sales, dashboard production metrics, Accounting verification, offline workflows, and many business mutations below are not complete until implemented and verified.
 
 ## Product Summary
 
@@ -61,7 +61,7 @@ All MVP replenishment enters `SR`. Transfers are `SR` to branch only. Branch-to-
 
 ### Deferred
 
-- Customer Orders, downpayments, Job Orders, and advanced CRM
+- Inquiry-only CRM/leads, Job Orders, and advanced CRM
 - Branch-to-branch transfers
 - Direct supplier delivery to branches
 - Customer return, exchange, and refund workflow
@@ -115,6 +115,12 @@ All MVP replenishment enters `SR`. Transfers are `SR` to branch only. Branch-to-
 - Cannot adjust stock
 
 ## Workflow 1: Sales
+
+### Customer Orders And Reservations
+
+Customer orders are now accepted production scope for the next backend phase. Orders may originate from walk-in, Messenger, Facebook, or messages. Supported order types are reserved without downpayment, reserved with downpayment, and waiting-stock/special order. Inquiry-only records remain deferred.
+
+Available branch stock is reserved immediately for reservation orders by increasing `InventoryBalance.reserved` while leaving `onHand` unchanged. There is no automatic reservation expiry; stale reservations must be visible for manual follow-up. Downpayments store amount plus a globally unique manual receipt number. Final release stores the final manual receipt number and remaining balance, deducts stock, clears reservation, and completes the order. DP cancellations are Admin-only and require a refund/cancellation note.
 
 1. A customer buys items at a branch.
 2. Branch Staff writes the handwritten receipt and releases the goods.
@@ -179,12 +185,14 @@ If anything does not match:
 ### Admin Dashboard
 
 - Today's sales total and transaction count overall and by branch
+- Month-to-date sales total and sales by branch
 - Recent sales with receipt identity and encoded-by user
 - Current `SR` and branch stock
 - Low-stock items and urgent low-stock notifications
 - Transfers for dispatch and in transit
 - Open branch discrepancy forms and aging cases
 - Unverified sales and Accounting mismatch reports
+- Aged reservations/orders older than 7 days
 
 ### Branch View
 
@@ -200,6 +208,15 @@ If anything does not match:
 - Sales by date and branch
 - Full receipt-linked sale details
 - Unverified, verified, and mismatch counts/totals
+
+### Reports
+
+- Reports are read-only and available only to Admin and Accounting Staff.
+- Admin can access Sales, Accounting/Reconciliation, and Inventory reports.
+- Accounting Staff can access Sales and Accounting/Reconciliation reports only.
+- Reports support date presets plus custom date ranges.
+- Reports export to PDF only; CSV report export is deferred.
+- Report data is queried live from the database; saved report snapshots are deferred.
 
 ## Notifications
 

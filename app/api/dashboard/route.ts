@@ -4,7 +4,7 @@ import {
   authorizationErrorResponse,
   requireCapability,
 } from "@/lib/server/authorization";
-import { listNotifications } from "@/lib/server/services/notifications";
+import { listNotifications } from "../../../lib/server/services/notifications";
 
 export async function GET(request: Request) {
   try {

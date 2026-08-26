@@ -11,6 +11,7 @@
 | Available Stock | Sellable quantity at one location after excluding stock in non-sellable states. The MVP never permits a posted sale to make stock negative, including during offline synchronization. In-transit stock is separately accountable and is unavailable at both source and destination until receipt is posted. |
 | Branch | A retail location that sells items and receives stock from the central Stock Room. |
 | Branch Staff | A branch-scoped user who records sales, views branch inventory, confirms transfer receipt, and reports discrepancies. This role cannot directly adjust stock balances. |
+| Customer Order | A branch customer commitment for reserved stock, reserved stock with downpayment, or waiting-stock/special-order fulfillment. It requires customer identity and is completed through final release. |
 | Correction | A new auditable action that fixes a posted transaction without rewriting its original history. |
 | Daily Reconciliation | An informational dashboard summary of individual receipt-level verification for a branch and date. It is not a submitted closing. Formal daily closing and actual-cash reconciliation are deferred. |
 | Discrepancy | In the MVP, a difference between an `SR` transfer dispatch and the destination branch's physical count or item identity. Standalone cycle-count and general physical-stock discrepancy workflows are deferred. |
@@ -21,8 +22,10 @@
 | In Transit | Stock that has left `SR` but has not yet been accepted into destination branch stock. The transfer remains `IN_TRANSIT` while the branch physically checks it; there is no separate `DELIVERED` status. |
 | Inventory Adjustment | An authorized stock movement used to correct a confirmed count or variance. Branch Staff cannot create a posted adjustment directly. |
 | Inventory Balance | The current quantity derived from or maintained consistently with recorded inventory movements for one product and location. |
+| Inventory Correction | An Admin-only manual inventory adjustment with required reason/note, used for wrong opening balance, found/lost/damaged stock, or physical count mismatch not tied to a transfer. |
 | Inventory Movement | An immutable increase or decrease linked to a reason and source transaction, such as Stock Room receipt, sale, transfer dispatch, transfer receipt, reversal, or variance. |
-| Manual Receipt Number | The identifier from the handwritten receipt linked to one internal sale. It is unique within a branch and receipt booklet or series. |
+| Manual Receipt Number | The identifier from the handwritten receipt linked to an internal downpayment, final order release, or direct sale. It is globally unique across the company in the locked production workflow. |
+| Reservation | A customer order state that holds available branch stock by increasing reserved quantity while keeping physical on-hand stock unchanged until final release. |
 | Master Data | Relatively stable records such as products, prices, branches, and users. These may be edited or deactivated according to role permissions. |
 | Non-sellable Stock | Physically accountable stock that cannot be sold, including damaged goods pending resolution. Damage, return, loss, and write-off remain explicit movement reasons or resolution outcomes rather than separate sellable balances. |
 | Needs Review | A synchronized or aged offline operation that represents a real physical event but cannot be posted automatically and requires authenticated Admin or Stock Staff investigation. It is never silently discarded. |
@@ -32,6 +35,7 @@
 | Offline Snapshot | The last synchronized products, branch stock, transfers, and notifications stored locally with a visible timestamp. It may be stale. |
 | Pending Sync | A local operation that has not yet been accepted by the cloud server and must not be presented as globally completed. If it ages beyond the allowed synchronization period, it is preserved and routed to `NEEDS_REVIEW` rather than discarded or posted automatically. |
 | Primary Offline Device | The physical branch device operationally assigned the one logical server activation permitted to synchronize offline sales and transfer receipt/discrepancy evidence. Browser storage alone cannot cryptographically prove physical-device uniqueness. |
+| Product | A sellable or historically accountable item identified by a unique item code. Active products require a positive current price; inactive products remain visible for inventory/history but cannot be selected for new business flows. |
 | Posted Sale | A finalized internal sale that has created sale lines and stock deduction movements. It cannot be silently edited or hard-deleted. |
 | Reconciliation Issue | A mismatch reported by Accounting Staff between any system sale line, quantity, price, discount, payment, total, or receipt identity and the handwritten receipt. Admin resolves it through verification, void, replacement, or correction. |
 | Received Transfer | A transfer for which assigned Branch Staff submitted a complete physical count and confirmed that every item and quantity matches the `SR` dispatch. A mismatch does not become `RECEIVED`; it enters the discrepancy path. There is no separate `CONFIRMED` status. |

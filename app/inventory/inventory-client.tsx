@@ -2,9 +2,8 @@
 
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
-import type { Route } from "next";
 import Select from "react-select";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
   ChevronLeft,
@@ -15,8 +14,6 @@ import {
   Warehouse,
   Building2,
   MapPin,
-  History,
-  PackageSearch,
   Truck,
 } from "lucide-react";
 
@@ -42,7 +39,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { fetchInventory } from "@/lib/catalog";
+import { correctInventory, fetchInventory, fetchInventoryMovements, updateInventoryReorderLevel } from "@/lib/catalog";
 import type { LocationScopeDto, ShellRole } from "@/lib/contracts/access";
 
 import {
@@ -51,13 +48,11 @@ import {
   LOCATION_OPTIONS,
   MAIN_WAREHOUSE,
   MOCK_INVENTORY,
-  MOCK_STOCK_MOVEMENTS,
   MOVEMENT_TYPE_OPTIONS,
   PRODUCT_OPTIONS,
   STATUS_OPTIONS,
   getAvailableStock,
   getGroupedStatus,
-  getLocationBadgeClass,
   getStockBadgeClass,
   formatPeso,
   reactSelectStyles,
@@ -91,6 +86,7 @@ export function InventoryClient({
   scope,
   locations,
 }: InventoryClientProps) {
+  const queryClient = useQueryClient();
   const isAdmin = role === "ADMIN";
   const isStockStaff = role === "STOCK_STAFF";
 
@@ -145,6 +141,7 @@ export function InventoryClient({
 
   const [isAdjustOpen, setIsAdjustOpen] = useState(false);
   const [isQuickAdjustOpen, setIsQuickAdjustOpen] = useState(false);
+  const [isReorderOpen, setIsReorderOpen] = useState(false);
   const [isStockCardOpen, setIsStockCardOpen] = useState(false);
   const [isAvailabilityOpen, setIsAvailabilityOpen] = useState(false);
 
@@ -159,6 +156,16 @@ export function InventoryClient({
   const [quickAdjustType, setQuickAdjustType] = useState<SelectOption | null>(
     ADJUSTMENT_TYPE_OPTIONS[0],
   );
+  const [adjustQuantity, setAdjustQuantity] = useState("");
+  const [adjustReference, setAdjustReference] = useState("");
+  const [adjustReason, setAdjustReason] = useState("");
+  const [adjustRemarks, setAdjustRemarks] = useState("");
+  const [quickAdjustQuantity, setQuickAdjustQuantity] = useState("");
+  const [quickAdjustReference, setQuickAdjustReference] = useState("");
+  const [quickAdjustReason, setQuickAdjustReason] = useState("");
+  const [quickAdjustRemarks, setQuickAdjustRemarks] = useState("");
+  const [reorderLevel, setReorderLevel] = useState("");
+  const [mutationError, setMutationError] = useState("");
 
   const [stockCardProductFilter, setStockCardProductFilter] =
     useState<SelectOption>({
@@ -209,13 +216,76 @@ export function InventoryClient({
     placeholderData: (previousData) => previousData,
   });
 
-  const flatRows = data?.data ?? [];
-  const meta = data?.meta ?? {
-    page: 1,
-    pageSize,
-    total: 0,
-    totalPages: 1,
+  const { data: movementsData, isLoading: isMovementsLoading } = useQuery({
+    queryKey: [
+      "inventory-movements",
+      {
+        product: stockCardProductFilter.value,
+        location: stockCardLocationFilter.value,
+        type: stockCardMovementTypeFilter.value,
+        reference: stockCardReference,
+      },
+    ],
+    queryFn: () =>
+      fetchInventoryMovements({
+        page: 1,
+        pageSize: 100,
+        product: stockCardProductFilter.value,
+        location: stockCardLocationFilter.value,
+        type: stockCardMovementTypeFilter.value,
+        reference: stockCardReference,
+      }),
+    enabled: isStockCardOpen,
+  });
+
+  const refreshInventory = () => {
+    void queryClient.invalidateQueries({ queryKey: ["inventory-locations"] });
   };
+
+  const correctionMutation = useMutation({
+    mutationFn: (payload: {
+      balanceId: string;
+      type: "increase" | "decrease";
+      quantity: number;
+      reference?: string;
+      reason: string;
+      remarks?: string;
+    }) => correctInventory(payload.balanceId, payload),
+    onSuccess: () => {
+      refreshInventory();
+      setIsAdjustOpen(false);
+      setIsQuickAdjustOpen(false);
+      resetAdjustmentFields();
+    },
+    onError: (saveError) => setMutationError(saveError.message),
+  });
+
+  const reorderMutation = useMutation({
+    mutationFn: (payload: { balanceId: string; reorderLevel: number }) =>
+      updateInventoryReorderLevel(payload.balanceId, payload.reorderLevel),
+    onSuccess: () => {
+      refreshInventory();
+      setIsReorderOpen(false);
+      setSelectedItem(null);
+      setReorderLevel("");
+    },
+    onError: (saveError) => setMutationError(saveError.message),
+  });
+
+  const flatRows = useMemo(() => data?.data ?? [], [data?.data]);
+  const balanceOptions: SelectOption[] = flatRows.map((item) => ({
+    value: item.id,
+    label: `${item.itemCode} - ${item.name} (${item.location})`,
+  }));
+  const meta = useMemo(
+    () => data?.meta ?? {
+      page: 1,
+      pageSize,
+      total: 0,
+      totalPages: 1,
+    },
+    [data?.meta, pageSize],
+  );
   const summary = data?.summary ?? {
     totalProducts: 0,
     totalUnits: 0,
@@ -263,31 +333,7 @@ export function InventoryClient({
     });
   }, [flatRows]);
 
-  const stockCardRows = useMemo(() => {
-    return MOCK_STOCK_MOVEMENTS.filter((movement) => {
-      const byProduct =
-        stockCardProductFilter.value === "all" ||
-        movement.itemCode === stockCardProductFilter.value;
-      const byLocation =
-        stockCardLocationFilter.value === "all" ||
-        movement.location === stockCardLocationFilter.value;
-      const byMovementType =
-        stockCardMovementTypeFilter.value === "all" ||
-        movement.type === stockCardMovementTypeFilter.value;
-      const byReference =
-        !stockCardReference.trim() ||
-        movement.reference
-          .toLowerCase()
-          .includes(stockCardReference.trim().toLowerCase());
-
-      return byProduct && byLocation && byMovementType && byReference;
-    });
-  }, [
-    stockCardProductFilter,
-    stockCardLocationFilter,
-    stockCardMovementTypeFilter,
-    stockCardReference,
-  ]);
+  const stockCardRows = movementsData?.data ?? [];
 
   const availabilityRows = useMemo<BranchAvailabilityRow[]>(() => {
     return MOCK_INVENTORY.filter((item) => {
@@ -366,13 +412,66 @@ export function InventoryClient({
     setAdjustProduct(null);
     setAdjustLocation(null);
     setAdjustType(ADJUSTMENT_TYPE_OPTIONS[0]);
+    resetAdjustmentFields();
     setIsAdjustOpen(true);
   };
 
   const openQuickAdjustModal = (item: InventoryRow) => {
     setSelectedItem(item);
     setQuickAdjustType(ADJUSTMENT_TYPE_OPTIONS[0]);
+    resetAdjustmentFields();
     setIsQuickAdjustOpen(true);
+  };
+
+  const openReorderModal = (item: InventoryRow) => {
+    setSelectedItem(item);
+    setReorderLevel(String(item.reorderLevel));
+    setMutationError("");
+    setIsReorderOpen(true);
+  };
+
+  function resetAdjustmentFields() {
+    setAdjustQuantity("");
+    setAdjustReference("");
+    setAdjustReason("");
+    setAdjustRemarks("");
+    setQuickAdjustQuantity("");
+    setQuickAdjustReference("");
+    setQuickAdjustReason("");
+    setQuickAdjustRemarks("");
+    setMutationError("");
+  }
+
+  const submitQuickAdjustment = () => {
+    if (!selectedItem || !quickAdjustType) return;
+    correctionMutation.mutate({
+      balanceId: selectedItem.id,
+      type: quickAdjustType.value === "decrease" ? "decrease" : "increase",
+      quantity: Number(quickAdjustQuantity),
+      reference: quickAdjustReference,
+      reason: quickAdjustReason,
+      remarks: quickAdjustRemarks,
+    });
+  };
+
+  const submitAdjustment = () => {
+    if (!adjustProduct || !adjustType) return;
+    correctionMutation.mutate({
+      balanceId: adjustProduct.value,
+      type: adjustType.value === "decrease" ? "decrease" : "increase",
+      quantity: Number(adjustQuantity),
+      reference: adjustReference,
+      reason: adjustReason,
+      remarks: adjustRemarks,
+    });
+  };
+
+  const submitReorderLevel = () => {
+    if (!selectedItem) return;
+    reorderMutation.mutate({
+      balanceId: selectedItem.id,
+      reorderLevel: Number(reorderLevel),
+    });
   };
 
   return (
@@ -451,6 +550,7 @@ export function InventoryClient({
             </div>
             <div className="flex flex-wrap gap-2">
               {isStockStaff && <Link href="/inventory/receive"><Button className="bg-emerald-600 text-white hover:bg-emerald-700">Receive from Supplier</Button></Link>}
+              {isAdmin && <Button className="bg-amber-600 text-white hover:bg-amber-700" onClick={openAdjustModal}>Adjust Stock</Button>}
               <Link href="/stock-transfers"><Button variant="outline">{isStockStaff ? "Stock Transfers" : "Open Stock Transfers"}</Button></Link>
             </div>
           </CardContent>
@@ -747,6 +847,24 @@ export function InventoryClient({
                                                 </p>
                                               </div>
                                             </div>
+                                            {isAdmin && (
+                                              <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
+                                                <Button
+                                                  variant="outline"
+                                                  size="sm"
+                                                  onClick={() => openQuickAdjustModal(item)}
+                                                >
+                                                  Quick Adjust
+                                                </Button>
+                                                <Button
+                                                  variant="outline"
+                                                  size="sm"
+                                                  onClick={() => openReorderModal(item)}
+                                                >
+                                                  Reorder Level
+                                                </Button>
+                                              </div>
+                                            )}
                                           </div>
                                         );
                                       })}
@@ -821,14 +939,14 @@ export function InventoryClient({
           <div className="grid gap-6 py-2">
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2 md:col-span-2">
-                <Label>Product</Label>
+                <Label>Inventory Balance</Label>
                 <Select
                   instanceId="adjust-product"
-                  options={PRODUCT_OPTIONS}
+                  options={balanceOptions}
                   value={adjustProduct}
                   onChange={(option) => setAdjustProduct(option)}
                   isSearchable
-                  placeholder="Select product"
+                  placeholder="Select product and location from current results"
                   styles={reactSelectStyles}
                 />
               </div>
@@ -862,12 +980,12 @@ export function InventoryClient({
 
               <div className="space-y-2">
                 <Label htmlFor="adjustment-qty">Quantity</Label>
-                <Input id="adjustment-qty" type="number" placeholder="0" />
+                <Input id="adjustment-qty" type="number" min="1" placeholder="0" value={adjustQuantity} onChange={(event) => setAdjustQuantity(event.target.value)} />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="adjustment-reference">Reference No.</Label>
-                <Input id="adjustment-reference" placeholder="ADJ-000123" />
+                <Input id="adjustment-reference" placeholder="ADJ-000123" value={adjustReference} onChange={(event) => setAdjustReference(event.target.value)} />
               </div>
 
               <div className="space-y-2 md:col-span-2">
@@ -875,6 +993,8 @@ export function InventoryClient({
                 <Input
                   id="adjustment-reason"
                   placeholder="Damaged item, recount correction, missing stock, found stock, expired item, etc."
+                  value={adjustReason}
+                  onChange={(event) => setAdjustReason(event.target.value)}
                 />
               </div>
 
@@ -883,9 +1003,13 @@ export function InventoryClient({
                 <Input
                   id="adjustment-remarks"
                   placeholder="Additional notes for this stock adjustment"
+                  value={adjustRemarks}
+                  onChange={(event) => setAdjustRemarks(event.target.value)}
                 />
               </div>
             </div>
+
+            {mutationError && <p className="text-sm font-medium text-red-600">{mutationError}</p>}
 
             <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700">
               Use stock adjustment only when the actual physical count does not
@@ -899,9 +1023,10 @@ export function InventoryClient({
             </Button>
             <Button
               className="bg-amber-600 text-white hover:bg-amber-700"
-              onClick={() => setIsAdjustOpen(false)}
+              onClick={submitAdjustment}
+              disabled={correctionMutation.isPending || !adjustProduct || !adjustReason.trim() || Number(adjustQuantity) <= 0}
             >
-              Save Adjustment
+              {correctionMutation.isPending ? "Saving..." : "Save Adjustment"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -958,12 +1083,12 @@ export function InventoryClient({
 
               <div className="space-y-2">
                 <Label htmlFor="quick-adjust-qty">Quantity</Label>
-                <Input id="quick-adjust-qty" type="number" placeholder="0" />
+                <Input id="quick-adjust-qty" type="number" min="1" placeholder="0" value={quickAdjustQuantity} onChange={(event) => setQuickAdjustQuantity(event.target.value)} />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="quick-adjust-reference">Reference No.</Label>
-                <Input id="quick-adjust-reference" placeholder="ADJ-000124" />
+                <Input id="quick-adjust-reference" placeholder="ADJ-000124" value={quickAdjustReference} onChange={(event) => setQuickAdjustReference(event.target.value)} />
               </div>
 
               <div className="space-y-2">
@@ -971,6 +1096,8 @@ export function InventoryClient({
                 <Input
                   id="quick-adjust-reason"
                   placeholder="Wrong encoding, recount mismatch, damaged, etc."
+                  value={quickAdjustReason}
+                  onChange={(event) => setQuickAdjustReason(event.target.value)}
                 />
               </div>
 
@@ -979,9 +1106,13 @@ export function InventoryClient({
                 <Input
                   id="quick-adjust-remarks"
                   placeholder="Additional notes"
+                  value={quickAdjustRemarks}
+                  onChange={(event) => setQuickAdjustRemarks(event.target.value)}
                 />
               </div>
             </div>
+
+            {mutationError && <p className="text-sm font-medium text-red-600">{mutationError}</p>}
 
             <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700">
               Product and location are locked because this quick adjust only
@@ -998,9 +1129,69 @@ export function InventoryClient({
             </Button>
             <Button
               className="bg-amber-600 text-white hover:bg-amber-700"
-              onClick={() => setIsQuickAdjustOpen(false)}
+              onClick={submitQuickAdjustment}
+              disabled={correctionMutation.isPending || !quickAdjustReason.trim() || Number(quickAdjustQuantity) <= 0}
             >
-              Save Quick Adjust
+              {correctionMutation.isPending ? "Saving..." : "Save Quick Adjust"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isReorderOpen}
+        onOpenChange={(open) => {
+          setIsReorderOpen(open);
+          if (!open) {
+            setSelectedItem(null);
+            setReorderLevel("");
+            setMutationError("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Update Reorder Level</DialogTitle>
+            <DialogDescription>
+              Set the low-stock threshold for this product at the selected location.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-2">
+            <div className="space-y-2">
+              <Label>Product</Label>
+              <Input
+                value={selectedItem ? `${selectedItem.itemCode} - ${selectedItem.name}` : ""}
+                disabled
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Location</Label>
+              <Input value={selectedItem?.location ?? ""} disabled />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="reorder-level">Reorder Level</Label>
+              <Input
+                id="reorder-level"
+                type="number"
+                min="0"
+                value={reorderLevel}
+                onChange={(event) => setReorderLevel(event.target.value)}
+              />
+            </div>
+            {mutationError && <p className="text-sm font-medium text-red-600">{mutationError}</p>}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsReorderOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-emerald-600 text-white hover:bg-emerald-700"
+              onClick={submitReorderLevel}
+              disabled={reorderMutation.isPending || Number(reorderLevel) < 0}
+            >
+              {reorderMutation.isPending ? "Saving..." : "Save Reorder Level"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1053,10 +1244,10 @@ export function InventoryClient({
               <Label>Location</Label>
               <Select
                 instanceId="stockcard-location-filter"
-                options={LOCATION_OPTIONS}
+                options={locationOptions}
                 value={stockCardLocationFilter}
                 onChange={(option) =>
-                  setStockCardLocationFilter(option ?? LOCATION_OPTIONS[0])
+                  setStockCardLocationFilter(option ?? locationOptions[0])
                 }
                 isSearchable
                 styles={reactSelectStyles}
@@ -1119,7 +1310,13 @@ export function InventoryClient({
               </thead>
 
               <tbody>
-                {stockCardRows.length === 0 ? (
+                {isMovementsLoading ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-12 text-center text-sm text-slate-500">
+                      Loading stock movement records...
+                    </td>
+                  </tr>
+                ) : stockCardRows.length === 0 ? (
                   <tr>
                     <td
                       colSpan={7}

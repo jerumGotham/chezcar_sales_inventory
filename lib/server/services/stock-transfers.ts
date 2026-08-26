@@ -6,7 +6,7 @@ import { Prisma, type StockTransferStatus } from "@prisma/client";
 import type { AuthContext } from "@/lib/server/authorization";
 import type { CreateTransferInput, DiscrepancyInput, InvestigationInput, ResolutionInput } from "@/lib/contracts/stock-transfers";
 import { prisma } from "@/lib/server/prisma";
-import { createNotifications } from "@/lib/server/services/notifications";
+import { createNotifications } from "./notifications";
 
 export class TransferError extends Error {
   constructor(public readonly code: string, message: string, public readonly status = 409) { super(message); }
@@ -144,17 +144,39 @@ export async function createTransfer(actor: AuthContext, input: CreateTransferIn
   assertStockStaff(actor);
   const productIds = input.lines.map((line) => line.productId);
   if (new Set(productIds).size !== productIds.length) throw new TransferError("INVALID_LINES", "A product may appear only once", 400);
-  const products = await prisma.product.findMany({
-    where: { id: { in: productIds }, status: "ACTIVE" },
-    select: { id: true },
-  });
-  if (products.length !== productIds.length) {
-    throw new TransferError("INVALID_LINES", "Every transfer product must be active", 400);
-  }
-  const destination = await prisma.location.findFirst({ where: { id: input.destinationId, type: "BRANCH", isActive: true, code: { in: ["QC", "BL", "LU", "VC", "SP"] } } });
-  if (!destination) throw new TransferError("INVALID_DESTINATION", "Destination must be an active branch", 400);
-  const transfer = await prisma.stockTransfer.create({ data: { reference: `ST-${randomUUID()}`, destinationId: destination.id, createdById: actor.userId, lines: { create: input.lines.map((line) => ({ productId: line.productId, requestedQuantity: line.quantity })) } }, include: TRANSFER_INCLUDE });
-  return serializeTransfer(transfer, actor.role === "ADMIN");
+  return prisma.$transaction(async (tx) => {
+    const products = await tx.product.findMany({
+      where: { id: { in: productIds }, status: "ACTIVE" },
+      select: { id: true },
+    });
+    if (products.length !== productIds.length) {
+      throw new TransferError("INVALID_LINES", "Every transfer product must be active", 400);
+    }
+    const destination = await tx.location.findFirst({ where: { id: input.destinationId, type: "BRANCH", isActive: true, code: { in: ["QC", "BL", "LU", "VC", "SP"] } } });
+    if (!destination) throw new TransferError("INVALID_DESTINATION", "Destination must be an active branch", 400);
+
+    let replacementReference = "";
+    if (input.replacementForTransferId) {
+      const sourceTransfer = await tx.stockTransfer.findFirst({
+        where: { id: input.replacementForTransferId, destinationId: destination.id, status: "RESOLVED" },
+        select: { reference: true },
+      });
+      if (!sourceTransfer) throw new TransferError("INVALID_REPLACEMENT", "Replacement source must be a resolved transfer for the same branch", 400);
+      replacementReference = sourceTransfer.reference;
+    }
+
+    const transfer = await tx.stockTransfer.create({ data: { reference: `ST-${randomUUID()}`, destinationId: destination.id, createdById: actor.userId, lines: { create: input.lines.map((line) => ({ productId: line.productId, requestedQuantity: line.quantity })) } }, include: TRANSFER_INCLUDE });
+
+    if (replacementReference) {
+      await notifyUsersForTransfer(tx, transfer, [{ role: "STOCK_STAFF", locationId: await stockRoomId(tx) }], {
+        title: "Replacement transfer draft created",
+        description: `${transfer.reference} was created as a replacement draft for shortage from ${replacementReference}.`,
+        type: "INFO",
+      });
+    }
+
+    return serializeTransfer(transfer, actor.role === "ADMIN");
+  }, { isolationLevel: "Serializable" });
 }
 
 export async function updateDraftTransfer(actor: AuthContext, id: string, version: number, lines: { productId: string; quantity: number }[]) {

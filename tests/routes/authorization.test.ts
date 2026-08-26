@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
   listInventory: vi.fn(),
   listProducts: vi.fn(),
+  notificationFindMany: vi.fn(),
   requireCapability: vi.fn(),
 }));
 
@@ -14,7 +15,10 @@ vi.mock("@/lib/server/auth", () => ({
   auth: { api: { getSession: mocks.getSession } },
 }));
 vi.mock("@/lib/server/prisma", () => ({
-  prisma: { user: { findUnique: mocks.findUnique } },
+  prisma: {
+    user: { findUnique: mocks.findUnique },
+    notification: { findMany: mocks.notificationFindMany },
+  },
 }));
 vi.mock("@/lib/server/authorization", async () => {
   const actual = await import("../../lib/server/authorization");
@@ -168,6 +172,7 @@ describe.each(routes)("$name authorization", (route) => {
     mocks.findUnique.mockReset();
     mocks.listInventory.mockReset();
     mocks.listProducts.mockReset();
+    mocks.notificationFindMany.mockReset();
     mocks.requireCapability.mockClear();
     mocks.listProducts.mockResolvedValue({
       data: [{ marker: "protected-product" }],
@@ -175,6 +180,7 @@ describe.each(routes)("$name authorization", (route) => {
     mocks.listInventory.mockResolvedValue({
       data: [{ marker: "protected-inventory" }],
     });
+    mocks.notificationFindMany.mockResolvedValue([]);
   });
 
   it("returns only the stable 401 envelope when the session is missing", async () => {

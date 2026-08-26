@@ -46,6 +46,7 @@ enum InventoryMovementType {
   TRANSFER_RESTORATION
   TRANSFER_LOSS
   TRANSFER_RESOLUTION
+  MANUAL_ADJUSTMENT
 }
 
 enum NotificationType {
@@ -56,6 +57,7 @@ enum NotificationType {
 
 enum NotificationRelatedType {
   STOCK_TRANSFER
+  INVENTORY_BALANCE
 }
 
 model Location {
@@ -91,8 +93,21 @@ model Product {
   transferLines     StockTransferLine[]
   receiptLines      StockReceiptLine[]
   inventoryMovements InventoryMovement[]
+  createdById       String?
+  updatedById       String?
+  deactivatedById   String?
+  reactivatedById   String?
+  createdBy         User?              @relation("ProductCreatedBy", fields: [createdById], references: [id])
+  updatedBy         User?              @relation("ProductUpdatedBy", fields: [updatedById], references: [id])
+  deactivatedBy     User?              @relation("ProductDeactivatedBy", fields: [deactivatedById], references: [id])
+  reactivatedBy     User?              @relation("ProductReactivatedBy", fields: [reactivatedById], references: [id])
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
+
+  @@index([createdById])
+  @@index([updatedById])
+  @@index([deactivatedById])
+  @@index([reactivatedById])
 }
 
 model InventoryBalance {
@@ -140,6 +155,10 @@ model User {
   inventoryMovements      InventoryMovement[]
   stockReceipts           StockReceipt[] @relation("ReceiptReceivedBy")
   notifications           Notification[]
+  createdProducts         Product[] @relation("ProductCreatedBy")
+  updatedProducts         Product[] @relation("ProductUpdatedBy")
+  deactivatedProducts     Product[] @relation("ProductDeactivatedBy")
+  reactivatedProducts     Product[] @relation("ProductReactivatedBy")
   createdAt               DateTime   @default(now())
   updatedAt               DateTime   @updatedAt
 
@@ -288,6 +307,8 @@ model InventoryMovement {
   quantity    Int
   type        InventoryMovementType
   actorId     String
+  reference   String?
+  remarks     String?               @db.Text
   occurredAt  DateTime              @default(now())
   transfer    StockTransfer?        @relation(fields: [transferId], references: [id], onDelete: Restrict)
   receipt     StockReceipt?         @relation(fields: [receiptId], references: [id], onDelete: Restrict)

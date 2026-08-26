@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Select from "react-select";
+import type { StylesConfig } from "react-select";
 import {
   ChevronLeft,
   ChevronRight,
@@ -32,6 +33,7 @@ import {
   type ProductRow,
   type ProductStatus,
 } from "@/lib/catalog";
+import { useShellAccess } from "@/components/shell-access-context";
 
 type SelectOption = {
   value: string;
@@ -53,6 +55,49 @@ const STATUS_OPTIONS: SelectOption[] = [
   { value: "Inactive", label: "Inactive" },
 ];
 
+const STOCK_STATUS_OPTIONS: SelectOption[] = [
+  { value: "all", label: "All Stock" },
+  { value: "has-stock", label: "Has Stock" },
+  { value: "no-stock", label: "No Stock" },
+  { value: "inactive-with-stock", label: "Inactive With Stock" },
+];
+
+type ProductForm = {
+  itemCode: string;
+  name: string;
+  category: string;
+  brand: string;
+  description: string;
+  price: string;
+  status: "ACTIVE" | "INACTIVE";
+};
+
+const EMPTY_PRODUCT_FORM: ProductForm = {
+  itemCode: "",
+  name: "",
+  category: "",
+  brand: "",
+  description: "",
+  price: "",
+  status: "ACTIVE",
+};
+
+async function productRequest(path: string, method: string, body?: unknown) {
+  const response = await fetch(path, {
+    method,
+    credentials: "same-origin",
+    headers: body ? { "content-type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const json = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+
+  if (!response.ok) {
+    throw new Error(json?.error?.message ?? "Unable to save product");
+  }
+
+  return json;
+}
+
 function formatPeso(value: number | null) {
   return value === null ? "—" : `₱${value.toLocaleString("en-PH")}`;
 }
@@ -65,8 +110,8 @@ function getStatusBadgeClass(status: ProductStatus) {
   return "border border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-100";
 }
 
-const reactSelectStyles = {
-  control: (base: any, state: any) => ({
+const reactSelectStyles: StylesConfig<SelectOption, false> = {
+  control: (base, state) => ({
     ...base,
     minHeight: "40px",
     borderRadius: "0.75rem",
@@ -76,27 +121,27 @@ const reactSelectStyles = {
       borderColor: "#10b981",
     },
   }),
-  valueContainer: (base: any) => ({
+  valueContainer: (base) => ({
     ...base,
     paddingLeft: "10px",
     paddingRight: "10px",
   }),
-  input: (base: any) => ({
+  input: (base) => ({
     ...base,
     color: "#0f172a",
   }),
-  placeholder: (base: any) => ({
+  placeholder: (base) => ({
     ...base,
     color: "#94a3b8",
     fontSize: "14px",
   }),
-  menu: (base: any) => ({
+  menu: (base) => ({
     ...base,
     borderRadius: "0.75rem",
     overflow: "hidden",
     zIndex: 50,
   }),
-  option: (base: any, state: any) => ({
+  option: (base, state) => ({
     ...base,
     backgroundColor: state.isSelected
       ? "#10b981"
@@ -109,15 +154,22 @@ const reactSelectStyles = {
 };
 
 export default function ProductsPage() {
+  const access = useShellAccess();
+  const isAdmin = access.identity?.role === "ADMIN";
+  const queryClient = useQueryClient();
   const [itemCode, setItemCode] = useState("");
   const [name, setName] = useState("");
   const [category, setCategory] = useState<SelectOption>(CATEGORY_OPTIONS[0]);
+  const [brand, setBrand] = useState<SelectOption>({ value: "all", label: "All Brands" });
   const [status, setStatus] = useState<SelectOption>(STATUS_OPTIONS[0]);
+  const [stockStatus, setStockStatus] = useState<SelectOption>(STOCK_STATUS_OPTIONS[0]);
 
   const [appliedItemCode, setAppliedItemCode] = useState("");
   const [appliedName, setAppliedName] = useState("");
   const [appliedCategory, setAppliedCategory] = useState("all");
+  const [appliedBrand, setAppliedBrand] = useState("all");
   const [appliedStatus, setAppliedStatus] = useState("all");
+  const [appliedStockStatus, setAppliedStockStatus] = useState("all");
 
   const [page, setPage] = useState(1);
   const pageSize = 10;
@@ -126,6 +178,8 @@ export default function ProductsPage() {
     null,
   );
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [form, setForm] = useState<ProductForm>(EMPTY_PRODUCT_FORM);
+  const [formError, setFormError] = useState("");
 
   const { data, error, isLoading, isFetching } = useQuery({
     queryKey: [
@@ -136,7 +190,9 @@ export default function ProductsPage() {
         itemCode: appliedItemCode,
         name: appliedName,
         category: appliedCategory,
+        brand: appliedBrand,
         status: appliedStatus,
+        stockStatus: appliedStockStatus,
       },
     ],
     queryFn: () =>
@@ -146,18 +202,53 @@ export default function ProductsPage() {
         itemCode: appliedItemCode,
         name: appliedName,
         category: appliedCategory,
+        brand: appliedBrand,
         status: appliedStatus,
+        stockStatus: appliedStockStatus,
       }),
     placeholderData: (previousData) => previousData,
   });
 
-  const rows = data?.data ?? [];
-  const meta = data?.meta ?? {
+  const rows = useMemo(() => data?.data ?? [], [data?.data]);
+  const brandOptions = useMemo(() => {
+    const values = [...new Set(rows.map((product) => product.brand).filter(Boolean))].sort();
+    return [{ value: "all", label: "All Brands" }, ...values.map((value) => ({ value, label: value }))];
+  }, [rows]);
+  const saveMutation = useMutation({
+    mutationFn: () => {
+      const payload = {
+        itemCode: form.itemCode,
+        name: form.name,
+        category: form.category || undefined,
+        brand: form.brand || undefined,
+        description: form.description || undefined,
+        price: form.price ? Number(form.price) : null,
+        status: form.status,
+      };
+      return selectedProduct
+        ? productRequest(`/api/products/${selectedProduct.id}`, "PATCH", payload)
+        : productRequest("/api/products", "POST", payload);
+    },
+    onSuccess: () => {
+      setIsEditOpen(false);
+      setSelectedProduct(null);
+      setForm(EMPTY_PRODUCT_FORM);
+      setFormError("");
+      queryClient.invalidateQueries({ queryKey: ["products-master-list"] });
+    },
+    onError: (error: Error) => setFormError(error.message),
+  });
+  const deleteMutation = useMutation({
+    mutationFn: (productId: string) => productRequest(`/api/products/${productId}`, "DELETE"),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["products-master-list"] }),
+    onError: (error: Error) => setFormError(error.message),
+  });
+  const meta = useMemo(() => data?.meta ?? {
     page: 1,
     pageSize,
     total: 0,
     totalPages: 1,
-  };
+  }, [data?.meta, pageSize]);
   const summary = data?.summary ?? {
     totalProducts: 0,
     activeProducts: 0,
@@ -180,33 +271,63 @@ export default function ProductsPage() {
     setAppliedItemCode(itemCode);
     setAppliedName(name);
     setAppliedCategory(category.value);
+    setAppliedBrand(brand.value);
     setAppliedStatus(status.value);
+    setAppliedStockStatus(stockStatus.value);
   };
 
   const handleResetFilters = () => {
     setItemCode("");
     setName("");
     setCategory(CATEGORY_OPTIONS[0]);
+    setBrand({ value: "all", label: "All Brands" });
     setStatus(STATUS_OPTIONS[0]);
+    setStockStatus(STOCK_STATUS_OPTIONS[0]);
 
     setAppliedItemCode("");
     setAppliedName("");
     setAppliedCategory("all");
+    setAppliedBrand("all");
     setAppliedStatus("all");
+    setAppliedStockStatus("all");
     setPage(1);
+  };
+
+  const openProductDialog = (product?: ProductRow) => {
+    setSelectedProduct(product ?? null);
+    setForm(product
+      ? {
+        itemCode: product.itemCode,
+        name: product.name,
+        category: product.category === "Uncategorized" ? "" : product.category,
+        brand: product.brand === "Unbranded" ? "" : product.brand,
+        description: product.description ?? "",
+        price: product.price?.toString() ?? "",
+        status: product.status === "Active" ? "ACTIVE" : "INACTIVE",
+      }
+      : EMPTY_PRODUCT_FORM);
+    setFormError("");
+    setIsEditOpen(true);
+  };
+
+  const submitProduct = () => {
+    if (!isAdmin) return;
+    setFormError("");
+    saveMutation.mutate();
   };
 
   return (
     <>
       <PageShell
         title="Products"
-        subtitle="View the database-backed product catalog. Product mutations remain disabled until their authorized workflow is implemented."
+        subtitle="Manage product master data. Admin controls product edits while Stock Staff keeps read-only catalog visibility."
         actions={
           <>
             <Button
               className="bg-emerald-600 text-white hover:bg-emerald-700"
-              disabled
-              title="Product mutations are not implemented"
+              disabled={!isAdmin}
+              onClick={() => openProductDialog()}
+              title={isAdmin ? "Create product" : "Admin access required"}
             >
               Add Product
             </Button>
@@ -284,7 +405,7 @@ export default function ProductsPage() {
         </div>
 
         <Card className="mt-6">
-          <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-5">
+          <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-7">
             <Input
               placeholder="Item Code"
               value={itemCode}
@@ -319,6 +440,30 @@ export default function ProductsPage() {
                 onChange={(option) => setStatus(option ?? STATUS_OPTIONS[0])}
                 isSearchable
                 placeholder="Select status"
+                styles={reactSelectStyles}
+              />
+            </div>
+
+            <div className="w-full">
+              <Select
+                instanceId="products-brand-filter"
+                options={brandOptions}
+                value={brand}
+                onChange={(option) => setBrand(option ?? brandOptions[0])}
+                isSearchable
+                placeholder="Select brand"
+                styles={reactSelectStyles}
+              />
+            </div>
+
+            <div className="w-full">
+              <Select
+                instanceId="products-stock-status-filter"
+                options={STOCK_STATUS_OPTIONS}
+                value={stockStatus}
+                onChange={(option) => setStockStatus(option ?? STOCK_STATUS_OPTIONS[0])}
+                isSearchable
+                placeholder="Stock status"
                 styles={reactSelectStyles}
               />
             </div>
@@ -370,6 +515,9 @@ export default function ProductsPage() {
                       Category
                     </th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Brand
+                    </th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Price
                     </th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -390,7 +538,7 @@ export default function ProductsPage() {
                 <tbody>
                   {isLoading ? (
                     <tr>
-                      <td colSpan={8} className="px-5 py-16 text-center">
+                      <td colSpan={9} className="px-5 py-16 text-center">
                         <div className="flex items-center justify-center gap-2 text-slate-500">
                           <Loader2 className="h-4 w-4 animate-spin" />
                           Loading products...
@@ -400,7 +548,7 @@ export default function ProductsPage() {
                   ) : error ? (
                     <tr>
                       <td
-                        colSpan={8}
+                        colSpan={9}
                         className="px-5 py-16 text-center text-red-600"
                       >
                         {error.message}
@@ -409,7 +557,7 @@ export default function ProductsPage() {
                   ) : rows.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={8}
+                        colSpan={9}
                         className="px-5 py-16 text-center text-slate-500"
                       >
                         No products found.
@@ -429,6 +577,9 @@ export default function ProductsPage() {
                         </td>
                         <td className="px-5 py-4 text-sm text-slate-600">
                           {product.category}
+                        </td>
+                        <td className="px-5 py-4 text-sm text-slate-600">
+                          {product.brand}
                         </td>
                         <td className="px-5 py-4 text-sm font-medium text-slate-700">
                           {formatPeso(product.price)}
@@ -455,8 +606,9 @@ export default function ProductsPage() {
                                 size="sm"
                                 variant="outline"
                                 className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
-                                disabled
-                                title="Product mutations are not implemented"
+                                disabled={!isAdmin}
+                                onClick={() => openProductDialog(product)}
+                                title={isAdmin ? "Edit product" : "Admin access required"}
                               >
                                 Edit
                               </Button>
@@ -467,8 +619,9 @@ export default function ProductsPage() {
                                 size="sm"
                                 variant="outline"
                                 className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
-                                disabled
-                                title="Product mutations are not implemented"
+                                disabled={!isAdmin || !product.canDelete || deleteMutation.isPending}
+                                onClick={() => deleteMutation.mutate(product.id)}
+                                title={!isAdmin ? "Admin access required" : product.canDelete ? "Delete unused product" : "Products with balances or history cannot be deleted"}
                               >
                                 Delete
                               </Button>
@@ -540,16 +693,22 @@ export default function ProductsPage() {
                 <Label htmlFor="itemCode">Item Code</Label>
                 <Input
                   id="itemCode"
-                  defaultValue={selectedProduct?.itemCode ?? ""}
+                  value={form.itemCode}
+                  disabled={Boolean(selectedProduct && !selectedProduct.canEditItemCode)}
+                  onChange={(event) => setForm((current) => ({ ...current, itemCode: event.target.value }))}
                   placeholder="ITM-0013"
                 />
+                {selectedProduct && !selectedProduct.canEditItemCode && (
+                  <p className="text-xs text-slate-500">Item code is locked because this product already has balances or history.</p>
+                )}
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="productName">Product Name</Label>
                 <Input
                   id="productName"
-                  defaultValue={selectedProduct?.name ?? ""}
+                  value={form.name}
+                  onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
                   placeholder="Product name"
                 />
               </div>
@@ -558,8 +717,19 @@ export default function ProductsPage() {
                 <Label htmlFor="category">Category</Label>
                 <Input
                   id="category"
-                  defaultValue={selectedProduct?.category ?? ""}
+                  value={form.category}
+                  onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}
                   placeholder="Tint"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="brand">Brand</Label>
+                <Input
+                  id="brand"
+                  value={form.brand}
+                  onChange={(event) => setForm((current) => ({ ...current, brand: event.target.value }))}
+                  placeholder="Brand"
                 />
               </div>
 
@@ -568,7 +738,10 @@ export default function ProductsPage() {
                 <Input
                   id="price"
                   type="number"
-                  defaultValue={selectedProduct?.price ?? undefined}
+                  min="0.01"
+                  step="0.01"
+                  value={form.price}
+                  onChange={(event) => setForm((current) => ({ ...current, price: event.target.value }))}
                 />
               </div>
 
@@ -578,6 +751,7 @@ export default function ProductsPage() {
                   id="reorderLevel"
                   type="number"
                   defaultValue={selectedProduct?.reorderLevel ?? 0}
+                  disabled
                 />
                 <p className="text-xs text-slate-500">
                   Used by inventory monitoring to identify low stock items.
@@ -586,27 +760,44 @@ export default function ProductsPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="status">Status</Label>
-                <Input
+                <select
                   id="status"
-                  defaultValue={selectedProduct?.status ?? "Active"}
-                  placeholder="Active"
-                />
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={form.status}
+                  onChange={(event) => setForm((current) => ({ ...current, status: event.target.value as ProductForm["status"] }))}
+                >
+                  <option value="ACTIVE">Active</option>
+                  <option value="INACTIVE">Inactive</option>
+                </select>
               </div>
 
               <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="description">Description</Label>
                 <Input
                   id="description"
-                  defaultValue={selectedProduct?.description ?? ""}
+                  value={form.description}
+                  onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
                   placeholder="Product description"
                 />
               </div>
             </div>
 
+            {form.status === "INACTIVE" && selectedProduct?.hasStock && (
+              <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                This product has stock or reservations. It will remain visible in inventory/history but cannot be selected for new workflows after deactivation.
+              </div>
+            )}
+
+            {formError && (
+              <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {formError}
+              </div>
+            )}
+
             {!selectedProduct && (
               <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-700">
                 After creating this product, use the Inventory module to receive
-                opening stock into Main Warehouse or directly to a branch.
+                opening stock into Stock Room through the Inventory module.
               </div>
             )}
           </div>
@@ -618,7 +809,8 @@ export default function ProductsPage() {
 
             <Button
               className="bg-emerald-600 text-white hover:bg-emerald-700"
-              onClick={() => setIsEditOpen(false)}
+              disabled={saveMutation.isPending}
+              onClick={submitProduct}
             >
               {selectedProduct ? "Save Changes" : "Create Product"}
             </Button>

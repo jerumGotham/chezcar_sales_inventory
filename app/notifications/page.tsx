@@ -67,6 +67,8 @@ export default function NotificationsPage() {
   const notificationsQuery = useQuery({
     queryKey: ["notifications"],
     queryFn: fetchNotifications,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   });
   const markReadMutation = useMutation({
     mutationFn: markNotificationRead,

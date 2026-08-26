@@ -72,14 +72,17 @@ export function StockTransfersClient({
   role,
   branches,
   products,
+  initialTransferId,
 }: {
   role: ShellRole;
   branches: Option[];
   products: Product[],
+  initialTransferId?: string;
 }) {
   const queryClient = useQueryClient();
-  const [selected, setSelected] = useState<Transfer | null>(null);
+  const [selectedTransferId, setSelectedTransferId] = useState(initialTransferId ?? "");
   const [destinationId, setDestinationId] = useState("");
+  const [replacementForTransferId, setReplacementForTransferId] = useState("");
   const [draftLines, setDraftLines] = useState<DraftLine[]>([
     { productId: "", quantity: 1 },
   ]);
@@ -100,6 +103,19 @@ export function StockTransfersClient({
     queryKey: ["stock-transfers"],
     queryFn: () => request<Transfer[]>("/api/stock-transfers"),
   });
+  const selected = selectedTransferId
+    ? transfers.data?.find((transfer) => transfer.id === selectedTransferId) ?? null
+    : null;
+  const rememberTransfer = (transfer: Transfer) => {
+    setSelectedTransferId(transfer.id);
+    queryClient.setQueryData<Transfer[]>(["stock-transfers"], (current) => {
+      if (!current) return [transfer];
+      const exists = current.some((item) => item.id === transfer.id);
+      return exists
+        ? current.map((item) => item.id === transfer.id ? transfer : item)
+        : [transfer, ...current];
+    });
+  };
 
   const updateDraftMutation = useMutation({
     mutationFn: ({ transferId, version, lines }: { transferId: string; version: number; lines: DraftLine[] }) => {
@@ -108,7 +124,7 @@ export function StockTransfersClient({
     onSuccess: (transfer) => {
       notify("Draft updated successfully.");
       setValidationErrors([]);
-      setSelected(transfer);
+      rememberTransfer(transfer);
       setEditLines((transfer.lines ?? []).map((line) => ({ productId: line.product.id, quantity: line.requestedQuantity })));
       queryClient.invalidateQueries({ queryKey: ["stock-transfers"] });
     },
@@ -121,8 +137,9 @@ export function StockTransfersClient({
     },
     onSuccess: () => {
       notify("Draft deleted successfully.");
-      setSelected(null);
+      setSelectedTransferId("");
       setDestinationId("");
+      setReplacementForTransferId("");
       setDraftLines([{ productId: "", quantity: 1 }]);
       setNotes("");
       setActualQuantities({});
@@ -152,9 +169,10 @@ export function StockTransfersClient({
     onSuccess: (transfer) => {
       notify("Transfer created successfully.");
       setValidationErrors([]);
-      setSelected(transfer);
+      rememberTransfer(transfer);
       setEditLines((transfer.lines ?? []).map((line) => ({ productId: line.product.id, quantity: line.requestedQuantity })));
       setDestinationId("");
+      setReplacementForTransferId("");
       setDraftLines([{ productId: "", quantity: 1 }]);
       queryClient.invalidateQueries({ queryKey: ["stock-transfers"] });
       queryClient.invalidateQueries({ queryKey: ["inventory-locations"] });
@@ -164,7 +182,7 @@ export function StockTransfersClient({
 
   const selectTransfer = (transfer: Transfer) => {
     if (selected?.id === transfer.id) {
-      setSelected(null);
+      setSelectedTransferId("");
       setNotes("");
       setActualQuantities({});
       setShortageResolutions({});
@@ -173,7 +191,7 @@ export function StockTransfersClient({
       return;
     }
 
-    setSelected(transfer);
+    setSelectedTransferId(transfer.id);
     setNotes("");
     setActualQuantities({});
     setShortageResolutions({});
@@ -213,7 +231,7 @@ export function StockTransfersClient({
 
     mutation.mutate({
       action: "create",
-      body: { destinationId, lines: draftLines },
+      body: { destinationId, lines: draftLines, replacementForTransferId: replacementForTransferId || undefined },
     });
   };
 
@@ -269,8 +287,9 @@ export function StockTransfersClient({
     if (!selected || shortageDraftLines.length === 0) return;
 
     setDestinationId(selected.destination.id);
+    setReplacementForTransferId(selected.id);
     setDraftLines(shortageDraftLines);
-    setSelected(null);
+    setSelectedTransferId("");
     setValidationErrors([]);
     notify("Replacement draft started from the resolved shortage. Review quantities before creating.");
   };

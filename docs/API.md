@@ -53,8 +53,12 @@ A persisted assignment that contradicts the fixed matrix (for example Stock Staf
 | `POST` | `/api/notifications/:notificationId/read` | Prisma Notification read timestamp | `dashboard:view` |
 | `GET` | `/api/customers` | Protected mock fixtures | `customers:view` |
 | `GET` | `/api/customer-orders` | Protected mock fixtures | `customer-orders:view` |
-| `GET` | `/api/products` | Prisma Product/InventoryBalance | `products:view` |
+| `GET`, `POST` | `/api/products` | Prisma Product/InventoryBalance | `GET`: `products:view`; `POST`: Admin role |
+| `PATCH`, `DELETE` | `/api/products/:productId` | Prisma Product | Admin role |
 | `GET` | `/api/inventory` | Prisma Product/InventoryBalance/Location | `inventory:view` |
+| `PATCH` | `/api/inventory/:balanceId` | Prisma InventoryBalance | Admin role |
+| `POST` | `/api/inventory/:balanceId/adjustment` | Prisma InventoryBalance/InventoryMovement/Notification | Admin role |
+| `GET` | `/api/inventory/movements` | Prisma InventoryMovement | `inventory:view` |
 | `GET`, `POST` | `/api/stock-transfers` | Prisma transfer ledger | `stock-transfers:view` plus role action policy |
 | `POST` | `/api/stock-transfers/:id/:action` | Prisma transfer/inventory transaction | `stock-transfers:view` plus role/location/state policy |
 | `GET`, `POST` | `/api/stock-receipts` | Prisma supplier-receipt/inventory transaction | `GET`: inventory monitor policy; `POST`: `inventory-receiving:create` and Stock Staff `SR` enforcement |
@@ -66,9 +70,9 @@ A persisted assignment that contradicts the fixed matrix (for example Stock Staf
 
 Stock-transfer actions are `finalize`, `dispatch`, `confirm-receipt`, `report-discrepancy`, `investigate`, and `resolve`. They require the current transfer `version`, lock the transfer row, enforce state transitions, and use serializable transactions. Stock Staff creates/finalizes/dispatches SR-to-active-branch documents, Branch Staff is destination-scoped for receipt/discrepancy, and Admin alone resolves investigated discrepancies. Accounting is denied. Admin transfer responses include `timeline` and `movements` audit arrays for the selected transfer; other roles receive the operational transfer fields without the Admin-only audit view.
 
-Stock-transfer transitions create persisted per-user notifications in the same database transaction as the triggering workflow update. `FOR_DISPATCH` alerts Stock Staff assigned to `SR`, `IN_TRANSIT` alerts Branch Staff assigned to the destination, exact `RECEIVED` alerts Stock Staff, `DISCREPANCY_REPORTED` alerts Stock Staff, `UNDER_REVIEW` alerts Admin, and `RESOLVED` alerts Admin plus destination Branch Staff.
+Stock-transfer transitions create persisted per-user notifications in the same database transaction as the triggering workflow update. `FOR_DISPATCH` alerts Stock Staff assigned to `SR`, `IN_TRANSIT` alerts Branch Staff assigned to the destination, exact `RECEIVED` alerts Stock Staff, `DISCREPANCY_REPORTED` alerts Stock Staff, `UNDER_REVIEW` alerts Admin, `RESOLVED` alerts Admin plus destination Branch Staff, and replacement drafts created from resolved shortages alert Stock Staff.
 
-`GET /api/notifications` returns only the authenticated user's persisted notification rows. `PATCH /api/notifications` marks all of that user's unread notifications read. `POST /api/notifications/:notificationId/read` marks one owned notification read. Users cannot read or modify another user's notification rows. Mark-unread, push delivery, cross-user notification audit, and automatic escalation remain deferred.
+`GET /api/notifications` returns only the authenticated user's persisted notification rows. The current client polls this endpoint every 30 seconds and refetches on window focus; SSE and browser push are still deferred. `PATCH /api/notifications` marks all of that user's unread notifications read. `POST /api/notifications/:notificationId/read` marks one owned notification read. Users cannot read or modify another user's notification rows. Mark-unread, push delivery, cross-user notification audit, and automatic escalation remain deferred.
 
 ## Supplier receipts
 
@@ -77,6 +81,8 @@ Stock-transfer transitions create persisted per-user notifications in the same d
 One serializable transaction persists the receipt, immutable item-code/name line snapshots, increments or creates each `SR` balance, and writes a positive `SUPPLIER_RECEIPT` movement with the current actor. Duplicate references return `409 DUPLICATE_REFERENCE` without changing inventory. `GET /api/stock-receipts` is available only to Stock Staff and Admin for monitoring; it does not grant posting to Admin.
 
 ## Product list
+
+`POST /api/products` and `PATCH /api/products/:productId` are Admin-only. Active products require a positive current price; inactive products may have null price. Item code is globally unique and cannot be changed after the product has inventory balances or receipt/transfer/movement history. `DELETE /api/products/:productId` is Admin-only and allowed only for products with no inventory balance rows and no usage/history.
 
 `GET /api/products` accepts:
 
@@ -122,17 +128,21 @@ Prices are serialized as JSON numbers for compatibility with the current UI. Tra
 | Parameter | Type/default | Behavior |
 | --- | --- | --- |
 | `location` | string, `all` | Admin only: `all` or one active canonical Location ID, code, or exact name |
-| `status` | `all`, `In Stock`, `Low Stock`, `Out of Stock` | Derived from on-hand and reorder level |
+| `status` | `all`, `In Stock`, `Low Stock`, `Out of Stock` | Derived from available stock and reorder level |
 
 Inventory independently requires the named `inventory:view` capability. Accounting Staff is denied with `403`. Branch Staff requests are always scoped to the persisted active branch and Stock Staff requests are always scoped to persisted `SR`; client-supplied locations, including duplicate or reordered values, cannot expand either scope. Admin may request all locations or one active canonical location; conflicting duplicate Admin scope values return `400`. Product pagination occurs before balances are loaded, so a product's matching locations are not split across pages.
 
-Status is derived as:
+Status is derived from `available = onHand - reserved` as:
 
-- `Out of Stock`: `onHand <= 0`
-- `Low Stock`: `0 < onHand <= reorderLevel`
-- `In Stock`: `onHand > reorderLevel`
+- `Out of Stock`: `available <= 0`
+- `Low Stock`: `0 < available <= reorderLevel`
+- `In Stock`: `available > reorderLevel`
 
-`available = max(onHand - reserved, 0)` remains a client display calculation. Balance timestamps are ISO 8601 strings.
+Balance timestamps are ISO 8601 strings.
+
+`PATCH /api/inventory/:balanceId` accepts `{ "reorderLevel": number }` and is Admin-only. `POST /api/inventory/:balanceId/adjustment` accepts `{ "type": "increase" | "decrease", "quantity": number, "reference"?, "reason", "remarks"? }`, requires a non-empty reason, writes a `MANUAL_ADJUSTMENT` movement with optional reference/remarks, increments the balance version, and rejects negative corrections that would make `onHand < reserved` with `409 BELOW_RESERVED`. If the correction moves a balance into low or out status, Admin and users assigned to that location receive persisted inventory-balance notifications.
+
+`GET /api/inventory/movements` accepts `page`, `pageSize`, `product` item code or `all`, `location`, `type`, and `reference`. It applies the same persisted location scope as `/api/inventory`; Admin may see all or one canonical location, Stock Staff remains scoped to `SR`, Branch Staff remains scoped to their persisted branch, and Accounting is denied.
 
 The response `summary` contains user-facing totals for the active authorized location scope: `totalProducts`, `totalUnits`, `needsRestock`, and role-scoped `incomingItems`. This is the total quantity still in transit, not a document count and not sellable stock. For Branch Staff it includes only transfers destined for the persisted branch; Admin sees the selected location scope and Stock Staff sees items in transit to branches.
 

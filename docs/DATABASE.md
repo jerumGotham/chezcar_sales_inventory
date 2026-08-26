@@ -13,7 +13,7 @@ The implemented database boundary consists of:
 - `lib/server/prisma.ts`: server-only development-safe Prisma singleton.
 - `lib/server/auth.ts`: Better Auth Prisma adapter configuration (public instance, sign-up disabled).
 - `lib/server/internal-user-auth.ts`: server-only unmounted Better Auth Admin-plugin credential engine used only by staff-lifecycle services.
-- `lib/server/catalog.ts`: validated product and inventory reads.
+- `lib/server/catalog.ts`: validated product reads plus inventory reads, Admin corrections, reorder-level updates, and movement listing.
 - `prisma/seed.mjs`: validated canonical opening catalog and environment-driven first Admin.
 - `prisma/fixtures/opening-catalog.json`: approved canonical fixture (1,432 products, 8,592 six-location opening balances) with embedded workbook/resolution/source-map hashes.
 - `scripts/data-onboarding/`: read-only workbook profiler, fail-closed canonicalizer, reviewed resolutions, and the byte-stable fixture generator (`generate-seed.mjs --check` refuses stale committed output). These are developer CLIs with no HTTP or UI surface.
@@ -32,9 +32,11 @@ Represents both the central `WAREHOUSE` and each `BRANCH`. It has a unique busin
 
 Uses unique `itemCode`, name, optional description/category/brand, nullable current Decimal price, `ACTIVE`/`INACTIVE` status, and timestamps. A null price is an approved value only for inactive, non-sellable opening products; it is not converted to zero. Historical price versions are not implemented yet.
 
+The additive `20260826030000_product_management_audit` migration adds nullable actor fields for product create/update/deactivate/reactivate accountability. Existing seeded/imported products may have null actor fields; Admin product mutations populate the relevant actor fields going forward.
+
 ### InventoryBalance
 
-Stores one balance per `(locationId, productId)` with `onHand`, `reserved`, `reorderLevel`, Decimal `unitCost`, optimistic `version`, and timestamps.
+Stores one balance per `(locationId, productId)` with `onHand`, `reserved`, `reorderLevel`, Decimal `unitCost`, optimistic `version`, and timestamps. Inventory list status is computed from available stock (`onHand - reserved`) rather than gross on-hand stock.
 
 The initial SQL migration enforces non-negative reserved/reorder/cost values and a positive version, but it does not yet constrain `onHand` to be non-negative. The transfer service prevents source balances from becoming negative through conditional updates.
 
@@ -44,7 +46,9 @@ The additive `20260826000000_stock_transfers` migration introduces immutable tra
 
 ### Supplier receipt ledger
 
-The additive `20260826010000_stock_receipts` migration adds `StockReceipt`, immutable `StockReceiptLine` product snapshots, and the `SUPPLIER_RECEIPT` inventory movement type. A receipt is permanently tied to `SR`, its receipt reference is globally unique, and each movement belongs to exactly one transfer or receipt. The posting service uses a serializable transaction to persist the receipt, upsert/increment SR balances, and write its audit movements. Branch supplier receiving and manual inventory adjustments remain unimplemented.
+The additive `20260826010000_stock_receipts` migration adds `StockReceipt`, immutable `StockReceiptLine` product snapshots, and the `SUPPLIER_RECEIPT` inventory movement type. A receipt is permanently tied to `SR`, its receipt reference is globally unique, and each movement belongs to exactly one transfer or receipt unless it is an Admin `MANUAL_ADJUSTMENT`. The posting service uses a serializable transaction to persist the receipt, upsert/increment SR balances, and write its audit movements. Branch supplier receiving remains unimplemented.
+
+Admin manual corrections use `InventoryMovement.type = MANUAL_ADJUSTMENT` with optional `reference` and required reason stored in `remarks`. The additive `20260826040000_inventory_manual_adjustment_constraint` migration relaxes the movement source check only for source-less manual adjustment rows; transfer and receipt movements must still keep exactly one source.
 
 ### Notifications
 
@@ -110,7 +114,7 @@ Do not delete or replace a developer's existing data directory without confirmin
 ## Current gaps
 
 - No CI database service; disposable PostgreSQL migration and seed integration tests run locally through `tests/helpers/database.ts`.
-- No ProductPriceVersion, sales, payments, or manual inventory-adjustment tables.
+- No ProductPriceVersion, sales, payments, or separate manual inventory-adjustment header table; manual corrections are currently audited as `InventoryMovement` rows.
 - Real-time delivery, offline transfer capture/sync, discrepancy photo upload, and damaged/return locations are deferred; this slice accepts structured notes/reasons only.
 - No startup-time typed environment validation.
 - No case-insensitive normalized email/item-code database strategy beyond current unique fields.
