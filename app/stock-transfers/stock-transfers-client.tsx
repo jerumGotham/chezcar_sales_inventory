@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Trash2, AlertTriangle, CheckCircle2, X } from "lucide-react";
 
@@ -19,6 +19,18 @@ type TransferLine = {
   dispatchedQuantity: number;
   inTransitQuantity: number;
   discrepancy: { actualQuantity: number; reason: string } | null;
+  resolution?: { destinationQty: number; restoreToSrQty: number; lossQty: number } | null;
+};
+
+type TransferTimelineItem = { label: string; actor: string; at: string; notes?: string };
+type TransferMovement = {
+  id: string;
+  type: string;
+  quantity: number;
+  occurredAt: string;
+  actor: string;
+  product: { itemCode: string; name: string };
+  location: { code: string; name: string } | null;
 };
 
 type Transfer = {
@@ -30,11 +42,15 @@ type Transfer = {
   lines: TransferLine[];
   discrepancy: { notes: string } | null;
   investigation: { findings: string } | null;
+  resolution: { notes: string; postedAt: string } | null;
+  timeline?: TransferTimelineItem[];
+  movements?: TransferMovement[];
 };
 
 type Option = { id: string; code: string; name: string };
 type Product = { id: string; itemCode: string; name: string };
 type DraftLine = { productId: string; quantity: number };
+type ShortageResolution = "loss" | "restore";
 
 async function request<T>(path: string, method = "GET", body?: unknown): Promise<T> {
   const response = await fetch(path, {
@@ -70,6 +86,7 @@ export function StockTransfersClient({
   const [editLines, setEditLines] = useState<DraftLine[]>([]);
   const [notes, setNotes] = useState("");
   const [actualQuantities, setActualQuantities] = useState<Record<string, number>>({});
+  const [shortageResolutions, setShortageResolutions] = useState<Record<string, ShortageResolution>>({});
   const discrepancyNotesRef = useRef<HTMLSelectElement>(null);
   const discrepancyReasonRef = useRef<HTMLInputElement>(null);
   const [affectedQuantity, setAffectedQuantity] = useState("");
@@ -109,6 +126,7 @@ export function StockTransfersClient({
       setDraftLines([{ productId: "", quantity: 1 }]);
       setNotes("");
       setActualQuantities({});
+      setShortageResolutions({});
       setAffectedQuantity("");
       queryClient.invalidateQueries({ queryKey: ["stock-transfers"] });
     },
@@ -149,6 +167,7 @@ export function StockTransfersClient({
       setSelected(null);
       setNotes("");
       setActualQuantities({});
+      setShortageResolutions({});
       setAffectedQuantity("");
       setEditLines([]);
       return;
@@ -157,6 +176,7 @@ export function StockTransfersClient({
     setSelected(transfer);
     setNotes("");
     setActualQuantities({});
+    setShortageResolutions({});
     setAffectedQuantity("");
     if (transfer.status === "DRAFT") {
       setEditLines((transfer.lines ?? []).map((line) => ({ productId: line.product.id, quantity: line.requestedQuantity })));
@@ -206,10 +226,6 @@ export function StockTransfersClient({
 
   const affectedQtyValue = Number(affectedQuantity);
   const hasAffectedQuantity = Number.isInteger(affectedQtyValue) && affectedQtyValue >= 1;
-  const hasCountDifference = selected?.lines?.some(
-    (line) => actualQuantities[line.id] !== undefined && actualQuantities[line.id] !== line.dispatchedQuantity,
-  );
-
   const hasDuplicateProducts = draftLines.some(
     (line, index) =>
       line.productId &&
@@ -219,12 +235,45 @@ export function StockTransfersClient({
       ),
   );
 
-  const hasDuplicateDestination = useMemo(() => {
-    if (!destinationId) return false;
-    return transfers.data?.some(
+  const hasDuplicateDestination = destinationId
+    ? transfers.data?.some(
       (t) => t.status === "DRAFT" && t.destination.id === destinationId,
-    ) ?? false;
-  }, [destinationId, transfers.data]);
+    ) ?? false
+    : false;
+
+  const resolutionLines = selected?.lines?.map((line) => {
+    const actualQuantity = line.discrepancy?.actualQuantity ?? 0;
+    const shortageQuantity = Math.max(0, line.inTransitQuantity - actualQuantity);
+    const resolution = shortageResolutions[line.id] ?? "loss";
+
+    return {
+      lineId: line.id,
+      destinationQuantity: actualQuantity,
+      restoreToSrQuantity: resolution === "restore" ? shortageQuantity : 0,
+      lossQuantity: resolution === "loss" ? shortageQuantity : 0,
+    };
+  }) ?? [];
+
+  const shortageDraftLines = selected?.lines
+    ?.map((line) => {
+      const actualQuantity = line.discrepancy?.actualQuantity ?? line.dispatchedQuantity;
+      const resolvedShortage = line.resolution
+        ? line.resolution.restoreToSrQty + line.resolution.lossQty
+        : Math.max(0, line.dispatchedQuantity - actualQuantity);
+
+      return { productId: line.product.id, quantity: resolvedShortage };
+    })
+    .filter((line) => line.quantity > 0) ?? [];
+
+  const startReplacementDraft = () => {
+    if (!selected || shortageDraftLines.length === 0) return;
+
+    setDestinationId(selected.destination.id);
+    setDraftLines(shortageDraftLines);
+    setSelected(null);
+    setValidationErrors([]);
+    notify("Replacement draft started from the resolved shortage. Review quantities before creating.");
+  };
 
   const updateDraftProduct = (index: number, productId: string) => {
     setValidationErrors([]);
@@ -240,13 +289,6 @@ export function StockTransfersClient({
       );
     });
   };
-
-  useEffect(() => {
-    if (selected?.status !== "DRAFT") {
-      setDraftLines([{ productId: "", quantity: 1 }]);
-      setDestinationId("");
-    }
-  }, [selected?.status]);
 
   return (
     <PageShell
@@ -497,6 +539,44 @@ export function StockTransfersClient({
 
             {selected.discrepancy && <p className="text-sm"><b>Branch report:</b> {selected.discrepancy.notes}</p>}
             {selected.investigation && <p className="text-sm"><b>Investigation:</b> {selected.investigation.findings}</p>}
+            {selected.status === "RESOLVED" && selected.resolution && (
+              <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/60 p-4">
+                <div>
+                  <p className="font-medium text-emerald-900">Transfer closed by Admin resolution</p>
+                  <p className="text-sm text-emerald-800">
+                    The original discrepancy transfer is final. Create a separate replacement transfer if the branch still needs the shortage.
+                  </p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[680px] text-sm">
+                    <thead>
+                      <tr className="text-left text-emerald-900">
+                        <th className="py-2 pr-3">Product</th>
+                        <th className="py-2 pr-3">Branch stock posted</th>
+                        <th className="py-2 pr-3">Restored to SR</th>
+                        <th className="py-2 pr-3">Written off</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selected.lines?.map((line) => (
+                        <tr className="border-t border-emerald-200" key={line.id}>
+                          <td className="py-3 pr-3">{line.product.itemCode} - {line.product.name}</td>
+                          <td className="py-3 pr-3">{line.resolution?.destinationQty ?? 0}</td>
+                          <td className="py-3 pr-3">{line.resolution?.restoreToSrQty ?? 0}</td>
+                          <td className="py-3 pr-3">{line.resolution?.lossQty ?? 0}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-sm text-emerald-900"><b>Resolution notes:</b> {selected.resolution.notes}</p>
+                {role === "STOCK_STAFF" && shortageDraftLines.length > 0 && (
+                  <Button variant="outline" onClick={startReplacementDraft}>
+                    Create replacement draft for shortage
+                  </Button>
+                )}
+              </div>
+            )}
 
             {role === "STOCK_STAFF" && selected.status === "FOR_DISPATCH" && (
               <Button disabled={mutation.isPending} onClick={() => act("dispatch", {})}>Dispatch from Stock Room</Button>
@@ -592,10 +672,9 @@ export function StockTransfersClient({
               </div>
             )}
 
-            {(role === "STOCK_STAFF" && selected.status === "DISCREPANCY_REPORTED") ||
-            (role === "ADMIN" && selected.status === "UNDER_REVIEW") ? (
+            {role === "STOCK_STAFF" && selected.status === "DISCREPANCY_REPORTED" ? (
               <div className="space-y-2">
-                <Label htmlFor="transfer-notes">{role === "ADMIN" ? "Resolution notes" : "Investigation findings"}</Label>
+                <Label htmlFor="transfer-notes">Investigation findings</Label>
                 <Input id="transfer-notes" value={notes} onChange={(event) => setNotes(event.target.value)} />
               </div>
             ) : null}
@@ -603,22 +682,118 @@ export function StockTransfersClient({
               <Button disabled={!notes.trim() || mutation.isPending} onClick={() => act("investigate", { findings: notes })}>Submit investigation</Button>
             )}
             {role === "ADMIN" && selected.status === "UNDER_REVIEW" && (
-              <Button
-                disabled={!notes.trim() || mutation.isPending}
-                onClick={() =>
-                  act("resolve", {
-                    notes,
-                    lines: selected.lines?.map((line) => ({
-                      lineId: line.id,
-                      destinationQuantity: line.discrepancy?.actualQuantity ?? 0,
-                      restoreToSrQuantity: line.inTransitQuantity - (line.discrepancy?.actualQuantity ?? 0),
-                      lossQuantity: 0,
-                    })),
-                  })
-                }
-              >
-                Post final resolution
-              </Button>
+              <div className="space-y-4 rounded-lg border p-4">
+                <div>
+                  <p className="font-medium">Approve discrepancy resolution</p>
+                  <p className="text-sm text-slate-500">
+                    Actual received stock goes to the branch. Shortage is written off by default unless it was found in Stock Room.
+                  </p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[720px] text-sm">
+                    <thead>
+                      <tr className="text-left">
+                        <th className="py-2 pr-3">Product</th>
+                        <th className="py-2 pr-3">Sent</th>
+                        <th className="py-2 pr-3">Actual</th>
+                        <th className="py-2 pr-3">Shortage</th>
+                        <th className="py-2 pr-3">Admin decision</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selected.lines?.map((line) => {
+                        const actualQuantity = line.discrepancy?.actualQuantity ?? 0;
+                        const shortageQuantity = Math.max(0, line.inTransitQuantity - actualQuantity);
+
+                        return (
+                          <tr className="border-t" key={line.id}>
+                            <td className="py-3 pr-3">{line.product.itemCode} - {line.product.name}</td>
+                            <td className="py-3 pr-3">{line.dispatchedQuantity}</td>
+                            <td className="py-3 pr-3">{actualQuantity}</td>
+                            <td className="py-3 pr-3">{shortageQuantity}</td>
+                            <td className="py-3 pr-3">
+                              {shortageQuantity > 0 ? (
+                                <select
+                                  className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                                  value={shortageResolutions[line.id] ?? "loss"}
+                                  onChange={(event) =>
+                                    setShortageResolutions((current) => ({
+                                      ...current,
+                                      [line.id]: event.target.value as ShortageResolution,
+                                    }))
+                                  }
+                                >
+                                  <option value="loss">Write off shortage</option>
+                                  <option value="restore">Restore shortage to SR</option>
+                                </select>
+                              ) : (
+                                <span className="text-slate-500">No shortage</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="transfer-notes">Resolution notes</Label>
+                  <Input
+                    id="transfer-notes"
+                    value={notes}
+                    onChange={(event) => setNotes(event.target.value)}
+                    placeholder="Example: Approved shortage write-off after investigation."
+                  />
+                </div>
+                <Button
+                  disabled={!notes.trim() || mutation.isPending}
+                  onClick={() => act("resolve", { notes, lines: resolutionLines })}
+                >
+                  Approve resolution
+                </Button>
+              </div>
+            )}
+            {role === "ADMIN" && selected.timeline && selected.movements && (
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="space-y-3 rounded-lg border p-4">
+                  <div>
+                    <p className="font-medium">Admin history</p>
+                    <p className="text-sm text-slate-500">Transfer lifecycle events and responsible users.</p>
+                  </div>
+                  <div className="space-y-3">
+                    {selected.timeline.map((item) => (
+                      <div className="rounded-md bg-slate-50 p-3 text-sm" key={`${item.label}-${item.at}`}>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-medium">{item.label}</span>
+                          <span className="text-xs text-slate-500">{new Date(item.at).toLocaleString()}</span>
+                        </div>
+                        <p className="text-slate-600">{item.actor}</p>
+                        {item.notes && <p className="mt-1 text-slate-500">{item.notes}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-3 rounded-lg border p-4">
+                  <div>
+                    <p className="font-medium">Inventory audit</p>
+                    <p className="text-sm text-slate-500">Posted movements from dispatch, receipt, restoration, or loss.</p>
+                  </div>
+                  <div className="space-y-3">
+                    {selected.movements.length > 0 ? selected.movements.map((movement) => (
+                      <div className="rounded-md bg-slate-50 p-3 text-sm" key={movement.id}>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-medium">{movement.type.replaceAll("_", " ")}</span>
+                          <span className={movement.quantity < 0 ? "text-red-600" : "text-emerald-700"}>{movement.quantity > 0 ? "+" : ""}{movement.quantity}</span>
+                        </div>
+                        <p className="text-slate-600">{movement.product.itemCode} - {movement.product.name}</p>
+                        <p className="text-slate-500">{movement.location ? `${movement.location.name} (${movement.location.code})` : "No stock location"} · {movement.actor} · {new Date(movement.occurredAt).toLocaleString()}</p>
+                      </div>
+                    )) : (
+                      <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-500">No inventory movements posted yet.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>

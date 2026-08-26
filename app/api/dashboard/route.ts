@@ -4,14 +4,16 @@ import {
   authorizationErrorResponse,
   requireCapability,
 } from "@/lib/server/authorization";
+import { listNotifications } from "@/lib/server/services/notifications";
 
 export async function GET(request: Request) {
   try {
-    await requireCapability(request.headers, "dashboard:view");
+    const actor = await requireCapability(request.headers, "dashboard:view");
+    const persistedNotifications = await listNotifications(actor);
     return NextResponse.json({
       stats: dashboardStats,
       lowStock,
-      notifications,
+      notifications: [...persistedNotifications.slice(0, 10), ...notifications],
       orders,
     });
   } catch (error) {

@@ -1,7 +1,7 @@
 # Chezcar Domain Glossary
 
 **Status:** Working glossary
-**Last updated:** 2026-08-25
+**Last updated:** 2026-08-26
 
 | Term | Working definition |
 | --- | --- |
@@ -26,7 +26,7 @@
 | Master Data | Relatively stable records such as products, prices, branches, and users. These may be edited or deactivated according to role permissions. |
 | Non-sellable Stock | Physically accountable stock that cannot be sold, including damaged goods pending resolution. Damage, return, loss, and write-off remain explicit movement reasons or resolution outcomes rather than separate sellable balances. |
 | Needs Review | A synchronized or aged offline operation that represents a real physical event but cannot be posted automatically and requires authenticated Admin or Stock Staff investigation. It is never silently discarded. |
-| Notification | A durable per-user server record with an immutable ID and monotonic sequence cursor. Only users with an actionable role receive it. Every notification also attempts browser push when permission and delivery are available; the durable in-app record, live update, polling, and reconnect catch-up remain authoritative. |
+| Notification | A durable per-user server record that alerts a responsible user about an actionable workflow event or final outcome. Read state belongs to the recipient user. Notification creation is partial evidence that the system attempted to inform the user, while the business audit remains the stock-transfer timeline and inventory movements. Browser push, realtime delivery, escalation, and cross-user notification audit are deferred. |
 | Offline Operation | A branch-scoped action recorded on a registered device while the cloud server cannot be reached and queued for later synchronization. |
 | Offline Sale Submission | Immutable server intake of an authenticated offline-sale command. It becomes a canonical sale only when validation, including the non-negative-stock rule, succeeds; otherwise it remains evidence in `NEEDS_REVIEW`. |
 | Offline Snapshot | The last synchronized products, branch stock, transfers, and notifications stored locally with a visible timestamp. It may be stale. |

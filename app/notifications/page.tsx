@@ -1,31 +1,86 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Bell, CheckCircle2, AlertTriangle, Info } from "lucide-react";
-import { notifications as mockNotifications } from "@/lib/mock-data";
+import { CheckCircle2, AlertTriangle, Info } from "lucide-react";
 
 type Notification = {
+  id: string;
   title: string;
   description: string;
   time: string;
   type?: "info" | "warning" | "success";
   read?: boolean;
+  relatedType?: string | null;
+  relatedId?: string | null;
+  relatedReference?: string | null;
 };
+
+async function fetchNotifications() {
+  const response = await fetch("/api/notifications", { credentials: "same-origin" });
+  const json = await response.json();
+
+  if (!response.ok) {
+    throw new Error(json.error?.message ?? "Unable to load notifications");
+  }
+
+  return json.data as Notification[];
+}
+
+async function markNotificationRead(id: string) {
+  const response = await fetch(`/api/notifications/${id}/read`, {
+    method: "POST",
+    credentials: "same-origin",
+  });
+  const json = await response.json();
+
+  if (!response.ok) {
+    throw new Error(json.error?.message ?? "Unable to mark notification read");
+  }
+
+  return json.data as Notification;
+}
+
+async function markNotificationsRead() {
+  const response = await fetch("/api/notifications", {
+    method: "PATCH",
+    credentials: "same-origin",
+  });
+  const json = await response.json();
+
+  if (!response.ok) {
+    throw new Error(json.error?.message ?? "Unable to mark notifications read");
+  }
+
+  return json.data as Notification[];
+}
 
 export default function NotificationsPage() {
   const [activeTab, setActiveTab] = useState("all");
-  const [notifications, setNotifications] = useState<Notification[]>(
-    mockNotifications.map((n) => ({
-      ...n,
-      type: (n as any).type || "info",
-      read: false,
-    })),
-  );
+  const queryClient = useQueryClient();
+  const notificationsQuery = useQuery({
+    queryKey: ["notifications"],
+    queryFn: fetchNotifications,
+  });
+  const markReadMutation = useMutation({
+    mutationFn: markNotificationRead,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+  });
+  const markAllReadMutation = useMutation({
+    mutationFn: markNotificationsRead,
+    onSuccess: (notifications) => queryClient.setQueryData(["notifications"], notifications),
+  });
+
+  const notifications = useMemo(() => (notificationsQuery.data ?? []).map((notification) => ({
+    ...notification,
+    type: notification.type ?? "info",
+  })), [notificationsQuery.data]);
 
   const filteredNotifications = useMemo(() => {
     if (activeTab === "unread") {
@@ -35,13 +90,13 @@ export default function NotificationsPage() {
   }, [activeTab, notifications]);
 
   const markAsRead = (index: number) => {
-    setNotifications((prev) =>
-      prev.map((n, i) => (i === index ? { ...n, read: true } : n)),
-    );
+    const notification = filteredNotifications[index];
+    if (!notification) return;
+    markReadMutation.mutate(notification.id);
   };
 
   const markAllAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    markAllReadMutation.mutate();
   };
 
   const getCardClass = (type?: string, read?: boolean) => {
@@ -102,6 +157,7 @@ export default function NotificationsPage() {
         <Button
           variant="outline"
           onClick={markAllAsRead}
+          disabled={markAllReadMutation.isPending || notifications.every((notification) => notification.read)}
           className="border-green-200 text-green-700 hover:bg-green-50 hover:text-green-800"
         >
           Mark all as read
@@ -126,7 +182,23 @@ export default function NotificationsPage() {
       </Tabs>
 
       <div className="grid gap-4">
-        {filteredNotifications.length === 0 && (
+        {notificationsQuery.isLoading && (
+          <Card className="border-dashed border-green-200 bg-green-50/40">
+            <CardContent className="p-6 text-center text-sm text-slate-500">
+              Loading notifications...
+            </CardContent>
+          </Card>
+        )}
+
+        {notificationsQuery.isError && (
+          <Card className="border-red-200 bg-red-50/80">
+            <CardContent className="p-6 text-center text-sm text-red-700">
+              {(notificationsQuery.error as Error).message}
+            </CardContent>
+          </Card>
+        )}
+
+        {!notificationsQuery.isLoading && !notificationsQuery.isError && filteredNotifications.length === 0 && (
           <Card className="border-dashed border-green-200 bg-green-50/40">
             <CardContent className="p-6 text-center text-sm text-slate-500">
               No notifications available.
@@ -163,6 +235,15 @@ export default function NotificationsPage() {
                     {item.description}
                   </p>
 
+                  {item.relatedType === "STOCK_TRANSFER" && item.relatedId && (
+                    <Link
+                      className="mt-2 inline-flex text-sm font-medium text-green-700 hover:text-green-800"
+                      href={`/stock-transfers?transferId=${item.relatedId}`}
+                    >
+                      View {item.relatedReference ?? "transfer"}
+                    </Link>
+                  )}
+
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <Badge
                       variant="secondary"
@@ -194,6 +275,7 @@ export default function NotificationsPage() {
                   <Button
                     size="sm"
                     onClick={() => markAsRead(index)}
+                    disabled={markReadMutation.isPending}
                     className="bg-green-600 text-white hover:bg-green-700"
                   >
                     Mark as read

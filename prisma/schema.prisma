@@ -48,6 +48,16 @@ enum InventoryMovementType {
   TRANSFER_RESOLUTION
 }
 
+enum NotificationType {
+  INFO
+  WARNING
+  SUCCESS
+}
+
+enum NotificationRelatedType {
+  STOCK_TRANSFER
+}
+
 model Location {
   id                String             @id @default(cuid())
   code              String             @unique
@@ -129,6 +139,7 @@ model User {
   resolutions             StockTransferResolution[] @relation("ResolutionPostedBy")
   inventoryMovements      InventoryMovement[]
   stockReceipts           StockReceipt[] @relation("ReceiptReceivedBy")
+  notifications           Notification[]
   createdAt               DateTime   @default(now())
   updatedAt               DateTime   @updatedAt
 
@@ -287,6 +298,23 @@ model InventoryMovement {
   @@index([transferId])
   @@index([receiptId])
   @@index([productId, locationId])
+}
+
+model Notification {
+  id               String                  @id @default(cuid())
+  userId           String
+  title            String
+  description      String                  @db.Text
+  type             NotificationType        @default(INFO)
+  relatedType      NotificationRelatedType?
+  relatedId        String?
+  relatedReference String?
+  readAt           DateTime?
+  createdAt        DateTime                @default(now())
+  user             User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@index([relatedType, relatedId])
 }
 
 model Session {

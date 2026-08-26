@@ -3,9 +3,9 @@
 
 ## System overview
 
-Chezcar Sales & Inventory is a Next.js 16 App Router modular monolith. It is still primarily a UI prototype with one implemented production-oriented foundation: database-backed authentication (plus a guarded internal credential engine), fixed role/location authorization from pages through APIs, owner-Admin user management with immediate session revocation, a first-login credential prompt, capability-aware shell navigation, scoped Product/Inventory reads, deterministic catalog onboarding tooling, and a disposable-database test harness.
+Chezcar Sales & Inventory is a Next.js 16 App Router modular monolith. It is still primarily a UI prototype with a growing production-oriented foundation: database-backed authentication (plus a guarded internal credential engine), fixed role/location authorization from pages through APIs, owner-Admin user management with immediate session revocation, a first-login credential prompt, capability-aware shell navigation, scoped Product/Inventory reads, durable Stock Room transfers and supplier receipts, persistent per-user workflow notifications, deterministic catalog onboarding tooling, and a disposable-database test harness.
 
-Most screens, all business mutations, stock-card history, availability inquiry, reports, notifications, and transaction workflows remain page-local or fixture-backed. Their presence in the UI is not evidence of persistence.
+Most sales/customer/order screens, stock-card history, availability inquiry, reports, and offline workflows remain page-local or fixture-backed. Their presence in the UI is not evidence of persistence unless documented here or in `docs/API.md`.
 
 ## Active boundaries
 
@@ -51,6 +51,9 @@ graph TD
 | Provisioning | Environment-driven owner Admin plus deterministic six-location canonical catalog seed/reload behind positive disposable-target gates | `prisma/seed.mjs`, `lib/server/services/catalog-reset.ts`, `.env.example` |
 | Data onboarding tooling | Read-only workbook profiler, fail-closed canonicalizer with keyed owner resolutions, and byte-stable fixture generator — developer CLIs only, no HTTP/UI surface | `scripts/data-onboarding/`, `prisma/fixtures/opening-catalog.json` |
 | User management | Owner-Admin-only `/api/users` lifecycle (list/create/update/status/password) with transactional session revocation and safe DTOs | `app/api/users/`, `lib/server/services/users.ts`, `app/users/` |
+| Stock transfers | Durable SR-to-branch transfer lifecycle with discrepancy investigation, Admin resolution, inventory movements, Admin audit view, and persisted workflow notifications | `app/api/stock-transfers/`, `lib/server/services/stock-transfers.ts`, `app/stock-transfers/` |
+| Stock receipts | Durable Stock Room supplier receipts that increment SR balances and write inventory movements | `app/api/stock-receipts/route.ts`, `app/inventory/receive/`, `lib/server/services/stock-receipts.ts` |
+| Notifications | Per-user persisted inbox rows with transfer links and read timestamps; realtime/push/escalation deferred | `app/api/notifications/`, `lib/server/services/notifications.ts`, `app/notifications/page.tsx` |
 | First-login credential prompt | Authenticated GET/POST `/api/credential-setup` state machine consumed exactly once per arming; blocking dialog after sign-in | `app/api/credential-setup/route.ts`, `components/credential-setup-dialog.tsx` |
 | Access-aware shell | Server-derived serializable access DTO hydrates a focused client context; sidebar renders only permitted entries without forbidden-link flash | `lib/server/shell.ts`, `components/app-layout-shell-client.tsx`, `components/shell-access-context.tsx` |
 | Test harness | Vitest Node unit project plus serial integration project over a fixed-identity disposable PostgreSQL 17 lifecycle | `vitest.config.ts`, `tests/helpers/database.ts`, `tests/helpers/factories.ts`, `tests/helpers/requests.ts` |
@@ -114,12 +117,15 @@ The committed schema intentionally includes only models implemented by this slic
 - Location (`WAREHOUSE` or `BRANCH`)
 - Product (nullable price for inactive, non-sellable opening products)
 - InventoryBalance
+- StockTransfer, transfer lines, discrepancy, investigation, resolution, and InventoryMovement
+- StockReceipt and receipt lines
+- Notification with per-user read state
 - User with four fixed roles, `ACTIVE`/`INACTIVE` status, optional Location assignment, and `credentialSetupRequired`
 - Better Auth Session (with plugin-compatible `impersonatedBy`), Account, and Verification
 
 The additive trusted-foundation migration enforces the role/location nullability matrix with a CHECK constraint, backs the singleton owner Admin with a partial unique index, and adds Better Auth 1.6.23 Admin-plugin compatibility fields that lifecycle services keep inert (`User.status` remains the sole activation authority).
 
-Unimplemented draft order, sale, job, transfer, payment, and movement models are kept out of migration history until their canonical workflow is built. See `docs/product/PROVISIONAL-DATA-MODEL.md`.
+Unimplemented draft order, sale, job, payment, and general adjustment models are kept out of migration history until their canonical workflow is built. See `docs/product/PROVISIONAL-DATA-MODEL.md`.
 
 ## Security properties
 
@@ -136,11 +142,11 @@ Unimplemented draft order, sale, job, transfer, payment, and movement models are
 
 ## Known risks
 
-1. Most visible workflows and all mutations (sales, receiving, transfers, stock cards, reports, notifications, offline) remain non-durable prototypes.
+1. Sales, customer orders, job orders, stock cards, reports, general adjustments, and offline workflows remain non-durable prototypes.
 2. Automated Vitest unit and integration suites now cover the implemented foundation, but no CI workflow runs them; coverage tooling is absent.
 3. The local Compose bind mount can contain machine-specific/corrupt PostgreSQL state; use logical backups and the disposable test target for migration verification.
 4. Product price is a current Decimal serialized as a number for legacy UI compatibility; canonical price history and money transport are unresolved.
-5. Inventory has no immutable movement ledger, transaction service, or concurrency-tested mutation path.
+5. Inventory movements currently cover transfer and supplier-receipt postings only; sales, manual adjustments, damaged/return locations, and stock cards remain incomplete.
 6. Sidebar visibility is capability-aware for implemented pages, but visibility remains presentation feedback only; server endpoints are the security boundary.
 7. Other page-local product, branch, user, and inventory fixtures still disagree with canonical records; the users list DTO carries no last sign-in timestamp yet (`Never` renders until the API adds it).
 8. No rate limiting, password-reset delivery channel, startup environment validation, monitoring, or deployment procedure exists.
@@ -153,5 +159,5 @@ Unimplemented draft order, sale, job, transfer, payment, and movement models are
 2. Keep navigation and page affordances reflecting persisted role/location scope without treating visibility as authorization.
 3. Define the inventory movement ledger and product import contract before any stock mutation.
 4. Implement one transactional workflow at a time behind validated, authorized application services.
-5. Add durable notifications and offline behavior only after online transaction invariants are proven.
+5. Add realtime notification delivery and offline behavior only after online transaction invariants are proven.
 6. Add CI and coverage only after local commands remain reliable across environments.

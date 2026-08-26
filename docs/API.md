@@ -48,7 +48,9 @@ A persisted assignment that contradicts the fixed matrix (for example Stock Staf
 | Method | Path | Data source | Authorization |
 | --- | --- | --- | --- |
 | `GET`, `POST` | `/api/auth/[...all]` | Better Auth + PostgreSQL | Endpoint-specific; public sign-up disabled; generic admin operations unroutable |
-| `GET` | `/api/dashboard` | Protected mock fixtures | `dashboard:view` |
+| `GET` | `/api/dashboard` | Protected mock fixtures plus persisted user notifications | `dashboard:view` |
+| `GET`, `PATCH` | `/api/notifications` | Prisma Notification inbox | `dashboard:view` |
+| `POST` | `/api/notifications/:notificationId/read` | Prisma Notification read timestamp | `dashboard:view` |
 | `GET` | `/api/customers` | Protected mock fixtures | `customers:view` |
 | `GET` | `/api/customer-orders` | Protected mock fixtures | `customer-orders:view` |
 | `GET` | `/api/products` | Prisma Product/InventoryBalance | `products:view` |
@@ -62,7 +64,11 @@ A persisted assignment that contradicts the fixed matrix (for example Stock Staf
 | `POST` | `/api/users/:userId/password` | Better Auth internal + Prisma User | `users:manage` |
 | `GET`, `POST` | `/api/credential-setup` | Better Auth + Prisma User | Any authenticated active role |
 
-Stock-transfer actions are `finalize`, `dispatch`, `confirm-receipt`, `report-discrepancy`, `investigate`, and `resolve`. They require the current transfer `version`, lock the transfer row, enforce state transitions, and use serializable transactions. Stock Staff creates/finalizes/dispatches SR-to-active-branch documents, Branch Staff is destination-scoped for receipt/discrepancy, and Admin alone resolves investigated discrepancies. Accounting is denied.
+Stock-transfer actions are `finalize`, `dispatch`, `confirm-receipt`, `report-discrepancy`, `investigate`, and `resolve`. They require the current transfer `version`, lock the transfer row, enforce state transitions, and use serializable transactions. Stock Staff creates/finalizes/dispatches SR-to-active-branch documents, Branch Staff is destination-scoped for receipt/discrepancy, and Admin alone resolves investigated discrepancies. Accounting is denied. Admin transfer responses include `timeline` and `movements` audit arrays for the selected transfer; other roles receive the operational transfer fields without the Admin-only audit view.
+
+Stock-transfer transitions create persisted per-user notifications in the same database transaction as the triggering workflow update. `FOR_DISPATCH` alerts Stock Staff assigned to `SR`, `IN_TRANSIT` alerts Branch Staff assigned to the destination, exact `RECEIVED` alerts Stock Staff, `DISCREPANCY_REPORTED` alerts Stock Staff, `UNDER_REVIEW` alerts Admin, and `RESOLVED` alerts Admin plus destination Branch Staff.
+
+`GET /api/notifications` returns only the authenticated user's persisted notification rows. `PATCH /api/notifications` marks all of that user's unread notifications read. `POST /api/notifications/:notificationId/read` marks one owned notification read. Users cannot read or modify another user's notification rows. Mark-unread, push delivery, cross-user notification audit, and automatic escalation remain deferred.
 
 ## Supplier receipts
 

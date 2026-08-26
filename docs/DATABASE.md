@@ -46,6 +46,10 @@ The additive `20260826000000_stock_transfers` migration introduces immutable tra
 
 The additive `20260826010000_stock_receipts` migration adds `StockReceipt`, immutable `StockReceiptLine` product snapshots, and the `SUPPLIER_RECEIPT` inventory movement type. A receipt is permanently tied to `SR`, its receipt reference is globally unique, and each movement belongs to exactly one transfer or receipt. The posting service uses a serializable transaction to persist the receipt, upsert/increment SR balances, and write its audit movements. Branch supplier receiving and manual inventory adjustments remain unimplemented.
 
+### Notifications
+
+The additive `20260826020000_persistent_notifications` migration introduces durable per-user `Notification` rows. Stock-transfer workflow transitions create notifications in the same serializable transaction as the business state change. Each row stores recipient user, title, description, severity type, optional related stock-transfer identifiers, creation time, and per-user `readAt` timestamp. Users can list and mark only their own notifications read. Realtime streaming, browser push, mark-unread, cross-user notification audit, retention/archive policy, and automatic escalation remain deferred.
+
 ### User and Better Auth
 
 User contains Better Auth's identity fields plus fixed `UserRole`, `ACTIVE`/`INACTIVE` status, optional Location assignment, `credentialSetupRequired`, and the pinned Better Auth 1.6.23 Admin-plugin compatibility fields. `User.status` is the sole application activation authority; lifecycle services keep `banned`, `banReason`, and `banExpires` false/null. Session includes the plugin-compatible nullable `impersonatedBy` field.
@@ -106,7 +110,7 @@ Do not delete or replace a developer's existing data directory without confirmin
 ## Current gaps
 
 - No CI database service; disposable PostgreSQL migration and seed integration tests run locally through `tests/helpers/database.ts`.
-- No ProductPriceVersion, sales, payments, manual inventory-adjustment, or notification tables.
+- No ProductPriceVersion, sales, payments, or manual inventory-adjustment tables.
 - Real-time delivery, offline transfer capture/sync, discrepancy photo upload, and damaged/return locations are deferred; this slice accepts structured notes/reasons only.
 - No startup-time typed environment validation.
 - No case-insensitive normalized email/item-code database strategy beyond current unique fields.

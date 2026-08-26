@@ -20,11 +20,11 @@ The framework baseline was upgraded to Next.js `16.3.2`, React `19.2.8`, and Tai
 - **Inventory** — the primary product/location list uses authorized PostgreSQL reads clamped to each role's persisted scope (Admin selectable, Stock Staff fixed to `SR`, Branch Staff fixed to its branch, Accounting denied). Stock Staff supplier receiving is durable and SR-only; stock cards, availability, and adjustments remain prototypes.
 - **Customer and job orders** — list, create, detail, edit, and release-oriented prototype flows.
 - **Stock transfers** — durable SR-to-active-branch transfer ledger with exact receipt/discrepancy, investigation, and final resolution; real-time/offline/evidence uploads remain deferred.
-- **Reports and notifications** — mock reporting and operational alert screens.
+- **Reports and notifications** — reports remain mock/prototype; notifications use persisted per-user workflow rows with read timestamps and stock-transfer links.
 - **User Management** — owner-Admin-only `/users` page over durable `/api/users` lifecycle APIs with immediate session revocation and a first-login temporary-password prompt; roles remain fixed and no second Admin can be created. The old Roles/Settings screens remain administrative prototypes.
 - **Shared application shell** — responsive navigation, capability-filtered sidebar, scope feedback header, dedicated access-denied screen, page shells, and reusable UI components under `components/`.
 - **Mock data and helpers** — prototype records and dashboard utilities under `lib/`.
-- **API routes** — Better Auth handlers, protected mock reads, protected Prisma-backed product/inventory reads, the owner-Admin user-management surface, and first-login credential setup under `app/api/`.
+- **API routes** — Better Auth handlers, protected mock reads, protected Prisma-backed product/inventory/notification reads, the stock-transfer and supplier-receipt workflows, the owner-Admin user-management surface, and first-login credential setup under `app/api/`.
 - **Data onboarding tooling** — read-only workbook profiler, fail-closed canonicalizer with reviewed resolutions, byte-stable fixture generator, and gated catalog seed/reload under `scripts/data-onboarding/` and `prisma/`; developer CLIs with no HTTP or UI surface.
 - **Test harness** — Vitest unit/integration projects, a disposable PostgreSQL 17 lifecycle, persisted actor/request helpers, and the phase evidence runner under `tests/` and `scripts/verify-phase-01.mjs`.
 
