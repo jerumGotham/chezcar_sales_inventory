@@ -1,10 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Select from "react-select";
+import type { StylesConfig } from "react-select";
 
 import { PageShell } from "@/components/page-shell";
+import { useShellAccess } from "@/components/shell-access-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -38,10 +40,32 @@ type CustomerRow = {
   lastTransaction: string;
   email?: string;
   branch?: string;
-  totalSpend?: string;
+  totalSpend?: number | string;
   vehicle?: string;
   pendingOrders?: number;
   activeJobOrders?: number;
+  source?: string | null;
+  notes?: string | null;
+};
+
+type CustomerFormState = {
+  firstName: string;
+  lastName: string;
+  mobile: string;
+  email: string;
+  address: string;
+  source: string;
+  notes: string;
+};
+
+const EMPTY_CUSTOMER_FORM: CustomerFormState = {
+  firstName: "",
+  lastName: "",
+  mobile: "",
+  email: "",
+  address: "",
+  source: "",
+  notes: "",
 };
 
 type CustomersApiResponse = {
@@ -75,8 +99,6 @@ const BRANCH_OPTIONS: SelectOption[] = [
 const STATUS_OPTIONS: SelectOption[] = [
   { value: "all", label: "All Status" },
   { value: "active", label: "Active" },
-  { value: "with-pending-order", label: "With Pending Order" },
-  { value: "with-active-job-order", label: "With Active Job Order" },
   { value: "inactive", label: "Inactive" },
 ];
 
@@ -365,8 +387,21 @@ async function mockFetchCustomers(params: {
   };
 }
 
-const reactSelectStyles = {
-  control: (base: any, state: any) => ({
+async function fetchCustomers(params: { page: number; pageSize: number; name: string; status: string }) {
+  const searchParams = new URLSearchParams({ page: String(params.page), pageSize: String(params.pageSize), name: params.name, status: params.status });
+  const response = await fetch(`/api/customers?${searchParams}`, { credentials: "same-origin" });
+  const json = await response.json();
+  if (!response.ok) throw new Error(json.error?.message ?? "Unable to load customers");
+  return json.data as CustomersApiResponse;
+}
+
+function formatCustomerSpend(value?: number | string) {
+  if (typeof value === "number") return `₱${value.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
+  return value ?? "₱0.00";
+}
+
+const reactSelectStyles: StylesConfig<SelectOption, false> = {
+  control: (base, state) => ({
     ...base,
     minHeight: "40px",
     borderRadius: "0.75rem",
@@ -376,27 +411,27 @@ const reactSelectStyles = {
       borderColor: "#10b981",
     },
   }),
-  valueContainer: (base: any) => ({
+  valueContainer: (base) => ({
     ...base,
     paddingLeft: "10px",
     paddingRight: "10px",
   }),
-  input: (base: any) => ({
+  input: (base) => ({
     ...base,
     color: "#0f172a",
   }),
-  placeholder: (base: any) => ({
+  placeholder: (base) => ({
     ...base,
     color: "#94a3b8",
     fontSize: "14px",
   }),
-  menu: (base: any) => ({
+  menu: (base) => ({
     ...base,
     borderRadius: "0.75rem",
     overflow: "hidden",
     zIndex: 50,
   }),
-  option: (base: any, state: any) => ({
+  option: (base, state) => ({
     ...base,
     backgroundColor: state.isSelected
       ? "#10b981"
@@ -409,12 +444,13 @@ const reactSelectStyles = {
 };
 
 export default function CustomersPage() {
+  const access = useShellAccess();
+  const canManageCustomers = access.identity?.role !== "STOCK_STAFF" && access.identity?.role !== "ACCOUNTING_STAFF";
+  const queryClient = useQueryClient();
   const [name, setName] = useState("");
-  const [branch, setBranch] = useState<SelectOption>(BRANCH_OPTIONS[0]);
   const [status, setStatus] = useState<SelectOption>(STATUS_OPTIONS[0]);
 
   const [appliedName, setAppliedName] = useState("");
-  const [appliedBranch, setAppliedBranch] = useState("all");
   const [appliedStatus, setAppliedStatus] = useState("all");
 
   const [page, setPage] = useState(1);
@@ -423,26 +459,40 @@ export default function CustomersPage() {
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerRow | null>(
     null,
   );
+  const [customerForm, setCustomerForm] = useState<CustomerFormState>(EMPTY_CUSTOMER_FORM);
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
-  const { data, isLoading, isFetching } = useQuery({
+  const openCustomerForm = (customer: CustomerRow | null) => {
+    setSelectedCustomer(customer);
+    setCustomerForm(customer ? {
+      firstName: customer.name.split(" ")[0] ?? "",
+      lastName: customer.name.split(" ").slice(1).join(" "),
+      mobile: customer.mobile ?? "",
+      email: customer.email ?? "",
+      address: customer.city ?? "",
+      source: customer.source ?? "",
+      notes: customer.notes ?? "",
+    } : EMPTY_CUSTOMER_FORM);
+    saveCustomerMutation.reset();
+    setIsAddCustomerOpen(true);
+  };
+
+  const { data, error, isLoading, isFetching } = useQuery({
     queryKey: [
       "customers",
       {
         page,
         pageSize,
         name: appliedName,
-        branch: appliedBranch,
-        status: appliedStatus,
+         status: appliedStatus,
       },
     ],
     queryFn: () =>
-      mockFetchCustomers({
+      fetchCustomers({
         page,
         pageSize,
         name: appliedName,
-        branch: appliedBranch,
         status: appliedStatus,
       }),
     placeholderData: (previousData) => previousData,
@@ -462,6 +512,38 @@ export default function CustomersPage() {
     activeJobOrders: 0,
   };
 
+  const saveCustomerMutation = useMutation({
+    mutationFn: async () => {
+      const name = `${customerForm.firstName} ${customerForm.lastName}`.trim();
+      if (!name) throw new Error("Customer name is required.");
+      const body = { name, mobile: customerForm.mobile.trim(), email: customerForm.email.trim(), address: customerForm.address.trim(), source: customerForm.source.trim(), notes: customerForm.notes.trim() };
+      const response = await fetch(selectedCustomer ? `/api/customers/${selectedCustomer.id}` : "/api/customers", {
+        method: selectedCustomer ? "PATCH" : "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error?.message ?? "Unable to save customer");
+      return json.data;
+    },
+    onSuccess: () => {
+      setIsAddCustomerOpen(false);
+      setSelectedCustomer(null);
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+    },
+  });
+
+  const deleteCustomerMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/customers/${id}`, { method: "DELETE", credentials: "same-origin" });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error?.message ?? "Unable to deactivate customer");
+      return json.data;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["customers"] }),
+  });
+
   const showingFrom = useMemo(() => {
     if (meta.total === 0) return 0;
     return (meta.page - 1) * meta.pageSize + 1;
@@ -475,18 +557,15 @@ export default function CustomersPage() {
   const handleApplyFilters = () => {
     setPage(1);
     setAppliedName(name);
-    setAppliedBranch(branch.value);
-    setAppliedStatus(status.value);
+     setAppliedStatus(status.value);
   };
 
   const handleResetFilters = () => {
-    setName("");
-    setBranch(BRANCH_OPTIONS[0]);
-    setStatus(STATUS_OPTIONS[0]);
+     setName("");
+     setStatus(STATUS_OPTIONS[0]);
 
-    setAppliedName("");
-    setAppliedBranch("all");
-    setAppliedStatus("all");
+     setAppliedName("");
+     setAppliedStatus("all");
     setPage(1);
   };
 
@@ -494,20 +573,18 @@ export default function CustomersPage() {
     <>
       <PageShell
         title="Customers"
-        subtitle="Manage customer records, vehicle details, and complete transaction history across sales, orders, and job orders."
+        subtitle="Manage customer records and review persisted sales and customer orders."
         actions={
-          <>
+          canManageCustomers ? (
             <Button
               className="bg-emerald-600 text-white hover:bg-emerald-700"
               onClick={() => {
-                setSelectedCustomer(null);
-                setIsAddCustomerOpen(true);
+                openCustomerForm(null);
               }}
             >
               Add Customer
             </Button>
-            {/* <Button variant="outline">Export List</Button> */}
-          </>
+          ) : null
         }
       >
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -547,38 +624,15 @@ export default function CustomersPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="p-5">
-              <p className="text-sm text-slate-500">With Active Job Orders</p>
-              <h3 className="mt-3 text-3xl font-bold text-foreground">
-                {summary.activeJobOrders}
-              </h3>
-              <p className="mt-2 text-sm text-red-600">
-                Installation and service in progress
-              </p>
-            </CardContent>
-          </Card>
         </div>
 
         <Card className="mt-6">
-          <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-5">
+          <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
             <Input
               placeholder="Search customer name"
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
-
-            <div className="w-full">
-              <Select
-                instanceId="branch-filter"
-                options={BRANCH_OPTIONS}
-                value={branch}
-                onChange={(option) => setBranch(option ?? BRANCH_OPTIONS[0])}
-                isSearchable
-                placeholder="Select branch"
-                styles={reactSelectStyles}
-              />
-            </div>
 
             <div className="w-full">
               <Select
@@ -637,9 +691,6 @@ export default function CustomersPage() {
                       Mobile
                     </th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Vehicle
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Branch
                     </th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -663,17 +714,21 @@ export default function CustomersPage() {
                 <tbody>
                   {isLoading ? (
                     <tr>
-                      <td colSpan={10} className="px-5 py-16 text-center">
+                      <td colSpan={9} className="px-5 py-16 text-center">
                         <div className="flex items-center justify-center gap-2 text-slate-500">
                           <Loader2 className="h-4 w-4 animate-spin" />
                           Loading customers...
                         </div>
                       </td>
                     </tr>
+                  ) : error ? (
+                    <tr>
+                      <td colSpan={9} className="px-5 py-16 text-center text-red-600">{(error as Error).message}</td>
+                    </tr>
                   ) : rows.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={10}
+                        colSpan={9}
                         className="px-5 py-16 text-center text-slate-500"
                       >
                         No customers found.
@@ -695,9 +750,6 @@ export default function CustomersPage() {
                           {customer.mobile}
                         </td>
                         <td className="px-5 py-4 text-sm text-slate-600">
-                          {customer.vehicle ?? "-"}
-                        </td>
-                        <td className="px-5 py-4 text-sm text-slate-600">
                           {customer.branch ?? "-"}
                         </td>
                         <td className="px-5 py-4 text-sm text-slate-600">
@@ -716,7 +768,7 @@ export default function CustomersPage() {
                           {customer.lastTransaction}
                         </td>
                         <td className="px-5 py-4 text-sm font-medium text-slate-700">
-                          {customer.totalSpend ?? "₱0"}
+                          {formatCustomerSpend(customer.totalSpend)}
                         </td>
                         <td className="px-5 py-4">
                           <div className="flex flex-wrap gap-2">
@@ -732,31 +784,29 @@ export default function CustomersPage() {
                               View
                             </Button>
 
-                            <Button
+                            {canManageCustomers && <Button
                               size="sm"
                               variant="outline"
                               className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
                               onClick={() => {
-                                setSelectedCustomer(customer);
-                                setIsAddCustomerOpen(true);
-                              }}
+                                openCustomerForm(customer);
+                               }}
                             >
                               Edit
-                            </Button>
+                            </Button>}
 
-                            <div className="flex flex-wrap gap-2">
+                            {canManageCustomers && <div className="flex flex-wrap gap-2">
                               <Button
                                 size="sm"
                                 variant="outline"
                                 className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
-                                onClick={() => {
-                                  setSelectedCustomer(customer);
-                                  setIsAddCustomerOpen(true);
-                                }}
+                                 onClick={() => {
+                                   if (window.confirm(`Deactivate ${customer.name}?`)) deleteCustomerMutation.mutate(customer.id);
+                                 }}
                               >
                                 Delete
                               </Button>
-                            </div>
+                            </div>}
                           </div>
                         </td>
                       </tr>
@@ -803,7 +853,10 @@ export default function CustomersPage() {
         open={isAddCustomerOpen}
         onOpenChange={(open) => {
           setIsAddCustomerOpen(open);
-          if (!open) setSelectedCustomer(null);
+          if (!open) {
+            setSelectedCustomer(null);
+            setCustomerForm(EMPTY_CUSTOMER_FORM);
+          }
         }}
       >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
@@ -812,7 +865,7 @@ export default function CustomersPage() {
               {selectedCustomer ? "Edit Customer" : "Add Customer"}
             </DialogTitle>
             <DialogDescription>
-              Save customer profile details and one primary vehicle.
+              Save customer details used by POS, Customer Orders, and transaction history.
             </DialogDescription>
           </DialogHeader>
 
@@ -820,65 +873,23 @@ export default function CustomersPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="firstName">First Name</Label>
-                <Input
-                  id="firstName"
-                  defaultValue={selectedCustomer?.name.split(" ")[0] ?? ""}
-                />
+                 <Input id="firstName" value={customerForm.firstName} onChange={(event) => setCustomerForm((current) => ({ ...current, firstName: event.target.value }))} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="lastName">Last Name</Label>
-                <Input
-                  id="lastName"
-                  defaultValue={
-                    selectedCustomer?.name.split(" ").slice(1).join(" ") ?? ""
-                  }
-                />
+                 <Input id="lastName" value={customerForm.lastName} onChange={(event) => setCustomerForm((current) => ({ ...current, lastName: event.target.value }))} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="mobile">Mobile Number</Label>
-                <Input
-                  id="mobile"
-                  defaultValue={selectedCustomer?.mobile ?? ""}
-                />
+                 <Input id="mobile" value={customerForm.mobile} onChange={(event) => setCustomerForm((current) => ({ ...current, mobile: event.target.value }))} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  defaultValue={selectedCustomer?.email ?? ""}
-                />
+                 <Input id="email" value={customerForm.email} onChange={(event) => setCustomerForm((current) => ({ ...current, email: event.target.value }))} />
               </div>
               <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="address">Address</Label>
-                <Input
-                  id="address"
-                  placeholder="Street, barangay, city"
-                  defaultValue={selectedCustomer?.city ?? ""}
-                />
-              </div>
-            </div>
-
-            <div>
-              <h3 className="mb-3 text-sm font-semibold text-slate-700">
-                Vehicle Information
-              </h3>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="vehicleMake">Vehicle Make</Label>
-                  <Input id="vehicleMake" placeholder="Toyota" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="vehicleModel">Vehicle Model</Label>
-                  <Input id="vehicleModel" placeholder="Rush" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="vehicleYear">Year</Label>
-                  <Input id="vehicleYear" placeholder="2022" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="plateNumber">Plate Number</Label>
-                  <Input id="plateNumber" placeholder="ABC-1234" />
-                </div>
+                 <Input id="address" placeholder="Street, barangay, city" value={customerForm.address} onChange={(event) => setCustomerForm((current) => ({ ...current, address: event.target.value }))} />
               </div>
             </div>
 
@@ -888,17 +899,12 @@ export default function CustomersPage() {
               </h3>
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="branch">Preferred Branch</Label>
-                  <Input
-                    id="branch"
-                    defaultValue={selectedCustomer?.branch ?? ""}
-                  />
-                </div>
-                <div className="space-y-2">
                   <Label htmlFor="source">Source / Referred By</Label>
                   <Input
                     id="source"
                     placeholder="Walk-in / Facebook / Referral"
+                     value={customerForm.source}
+                     onChange={(event) => setCustomerForm((current) => ({ ...current, source: event.target.value }))}
                   />
                 </div>
                 <div className="space-y-2 md:col-span-2">
@@ -906,6 +912,8 @@ export default function CustomersPage() {
                   <Input
                     id="notes"
                     placeholder="Customer preferences, reminders, tint shade request, etc."
+                     value={customerForm.notes}
+                     onChange={(event) => setCustomerForm((current) => ({ ...current, notes: event.target.value }))}
                   />
                 </div>
               </div>
@@ -921,11 +929,13 @@ export default function CustomersPage() {
             </Button>
             <Button
               className="bg-emerald-600 text-white hover:bg-emerald-700"
-              onClick={() => setIsAddCustomerOpen(false)}
+              onClick={() => saveCustomerMutation.mutate()}
+              disabled={saveCustomerMutation.isPending}
             >
-              {selectedCustomer ? "Save Changes" : "Create Customer"}
+              {saveCustomerMutation.isPending ? "Saving..." : selectedCustomer ? "Save Changes" : "Create Customer"}
             </Button>
           </DialogFooter>
+          {saveCustomerMutation.error ? <p className="text-sm font-medium text-red-600">{(saveCustomerMutation.error as Error).message}</p> : null}
         </DialogContent>
       </Dialog>
 
@@ -956,8 +966,7 @@ export default function CustomersPage() {
                 {selectedCustomer?.name ?? "Customer Details"}
               </SheetTitle>
               <SheetDescription className="text-sm text-slate-500">
-                View customer profile, vehicle information, and transaction
-                history.
+                 View customer profile and transaction history.
               </SheetDescription>
             </SheetHeader>
 
@@ -1041,14 +1050,6 @@ export default function CustomersPage() {
                             </p>
                           </div>
 
-                          <div>
-                            <p className="text-sm text-slate-500">
-                              Primary Vehicle
-                            </p>
-                            <p className="font-medium text-slate-900">
-                              {selectedCustomer.vehicle || "—"}
-                            </p>
-                          </div>
                         </CardContent>
                       </Card>
                     </div>

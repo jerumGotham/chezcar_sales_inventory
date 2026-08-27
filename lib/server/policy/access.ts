@@ -18,6 +18,10 @@ export type Capability =
   | "dashboard:view"
   | "customers:view"
   | "customer-orders:view"
+  | "sales:post"
+  | "sales:verify:view"
+  | "sales:verify"
+  | "sales:resolve"
   | "products:view"
   | "inventory:view"
   | "inventory-receiving:create"
@@ -43,6 +47,10 @@ export const CAPABILITIES = {
   dashboardView: "dashboard:view",
   customersView: "customers:view",
   customerOrdersView: "customer-orders:view",
+  salesPost: "sales:post",
+  salesVerifyView: "sales:verify:view",
+  salesVerify: "sales:verify",
+  salesResolve: "sales:resolve",
   productsView: "products:view",
   inventoryView: "inventory:view",
   inventoryReceivingCreate: "inventory-receiving:create",
@@ -58,8 +66,12 @@ const ROLE_CAPABILITIES = {
     CAPABILITIES.dashboardView,
     CAPABILITIES.customersView,
     CAPABILITIES.customerOrdersView,
+    CAPABILITIES.salesPost,
+    CAPABILITIES.salesVerifyView,
+    CAPABILITIES.salesResolve,
     CAPABILITIES.productsView,
     CAPABILITIES.inventoryView,
+    CAPABILITIES.inventoryReceivingCreate,
     CAPABILITIES.reportsView,
     CAPABILITIES.usersManage,
     CAPABILITIES.stockTransfersView,
@@ -77,6 +89,7 @@ const ROLE_CAPABILITIES = {
     CAPABILITIES.dashboardView,
     CAPABILITIES.customersView,
     CAPABILITIES.customerOrdersView,
+    CAPABILITIES.salesPost,
     CAPABILITIES.inventoryView,
     CAPABILITIES.stockTransfersView,
   ],
@@ -84,6 +97,9 @@ const ROLE_CAPABILITIES = {
     CAPABILITIES.dashboardView,
     CAPABILITIES.customersView,
     CAPABILITIES.customerOrdersView,
+    CAPABILITIES.salesVerify,
+    CAPABILITIES.salesVerifyView,
+    CAPABILITIES.salesResolve,
     CAPABILITIES.reportsView,
   ],
 } as const satisfies Record<UserRole, readonly Capability[]>;

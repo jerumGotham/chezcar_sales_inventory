@@ -377,17 +377,18 @@ export async function createInventoryBalanceFixture(
   prisma: PrismaClient,
   input: { locationId: string; productId: string; onHand: number; reserved?: number; reorderLevel?: number; unitCost?: number; version?: number },
 ) {
-  return prisma.inventoryBalance.create({
+  const balance = await prisma.inventoryBalance.create({
     data: {
       locationId: input.locationId,
       productId: input.productId,
       onHand: input.onHand,
       reserved: input.reserved ?? 0,
-      reorderLevel: input.reorderLevel ?? 1,
       unitCost: input.unitCost ?? 10,
       version: input.version ?? 1,
     },
   });
+  if (input.reorderLevel !== undefined) await prisma.product.update({ where: { id: input.productId }, data: { reorderLevel: input.reorderLevel } });
+  return balance;
 }
 
 export function authContextFor(

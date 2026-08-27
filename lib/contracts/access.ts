@@ -8,6 +8,10 @@ export type ShellCapabilityId =
   | "dashboard:view"
   | "customers:view"
   | "customer-orders:view"
+  | "sales:post"
+  | "sales:verify:view"
+  | "sales:verify"
+  | "sales:resolve"
   | "products:view"
   | "inventory:view"
   | "inventory-receiving:create"
@@ -18,9 +22,11 @@ export type ShellCapabilityId =
 export type ShellMenuIcon =
   | "dashboard"
   | "customers"
+  | "customer-sales"
   | "products"
   | "inventory"
   | "customer-orders"
+  | "receipt-verification"
   | "reports"
   | "users"
   | "stock-transfers";
@@ -28,9 +34,11 @@ export type ShellMenuIcon =
 export type ShellMenuHref =
   | "/dashboard"
   | "/customers"
+  | "/pos"
   | "/products"
   | "/inventory"
   | "/customer-orders"
+  | "/accounting/receipt-verification"
   | "/reports"
   | "/users"
   | "/stock-transfers";

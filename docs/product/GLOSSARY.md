@@ -48,6 +48,9 @@
 | Sync Operation | A queued command identified by device and idempotency key, with a canonical request hash, activation epoch, type, status, dependencies, occurrence time, and business payload. |
 | Variance Movement | A separate inventory movement recording a confirmed missing, excess, damaged, loss, or correction quantity during discrepancy resolution. |
 | Void and Replace | The recommended correction pattern for a materially incorrect sale: reverse the original through an auditable void, then post a corrected sale. |
+| Verification | Accounting Staff comparison of an encoded sale against its handwritten receipt. Outcomes are `VERIFIED` or `MISMATCH_REPORTED`. |
+| Mismatch Report | A structured Accounting filing on an `UNVERIFIED` sale with a closed category (`PRICE_MISMATCH`, `QUANTITY_MISMATCH`, `ITEM_MISMATCH`, `TOTAL_MISMATCH`, `RECEIPT_NOT_FOUND`, `OTHER`), notes, optional photo, and actor/time. It does not itself correct stock. |
+| Voided Sale | A posted sale marked voided and preserved for audit, replaced by a linked corrected sale. |
 | Warehouse | Legacy synonym for Stock Room. Owner-facing language should use Stock Room and code `SR`. |
 
 ## Naming Decisions Still Open

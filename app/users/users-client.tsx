@@ -1245,6 +1245,8 @@ export function UsersClient({
   useEffect(() => {
     if (!data) return;
     if (data.meta.totalItems > 0 && page > data.meta.totalPages) {
+      // Keep the paginator inside the server-reported page range.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPage(data.meta.totalPages);
     }
   }, [data, page]);

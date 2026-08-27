@@ -59,6 +59,7 @@ vi.mock("@/lib/server/catalog", async () => {
   };
 });
 vi.mock("../../lib/server/services/customer-sales", () => ({
+  customerListQuerySchema: { parse: () => ({ page: 1, pageSize: 10, name: "", status: "all" }) },
   getDashboardSummary: mocks.getDashboardSummary,
   listCustomers: mocks.listCustomers,
   listCustomerOrders: mocks.listCustomerOrders,
@@ -120,7 +121,7 @@ const routes: readonly RouteSpec[] = [
     path: "/api/customers",
     capability: "customers:view",
     handler: getCustomers,
-    allowed: ["BRANCH_STAFF", branch],
+    allowed: ["STOCK_STAFF", stockRoom],
     denied: ["STOCK_STAFF", branch],
     protectedMarker: "protected-customer",
     service: mocks.listCustomers,
@@ -253,6 +254,30 @@ describe.each(routes)("$name authorization", (route) => {
       expect(route.service).toHaveBeenCalledOnce();
     }
   });
+});
+
+it("allows owner Admin to list products", async () => {
+  mocks.getSession.mockReset();
+  mocks.findUnique.mockReset();
+  mocks.listProducts.mockReset();
+  mocks.requireCapability.mockClear();
+  mocks.listProducts.mockResolvedValue({
+    data: [{ marker: "protected-product" }],
+  });
+  authenticate("ADMIN", null);
+
+  const response = await getProducts(
+    new Request("http://localhost/api/products?page=1"),
+  );
+  const body = await response.json();
+
+  expect(response.status).toBe(200);
+  expect(JSON.stringify(body)).toContain("protected-product");
+  expect(mocks.requireCapability).toHaveBeenCalledWith(
+    expect.any(Headers),
+    "products:view",
+  );
+  expect(mocks.listProducts).toHaveBeenCalledOnce();
 });
 
 it("authorizes products before parsing filters or executing its service", async () => {

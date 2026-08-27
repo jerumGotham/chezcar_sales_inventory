@@ -43,3 +43,7 @@ next-env.d.ts
 
 
 /data
+
+# local source workbook and Windows shell artifact
+/excel/
+/nul

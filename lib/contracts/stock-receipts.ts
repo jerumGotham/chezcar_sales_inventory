@@ -7,6 +7,7 @@ export const createStockReceiptSchema = z.object({
   lines: z.array(z.object({
     productId: z.string().min(1),
     quantity: z.number().int().positive(),
+    unitCost: z.number().positive(),
   })).min(1),
 });
 

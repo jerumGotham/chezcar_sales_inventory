@@ -12,6 +12,8 @@ import { prisma } from "@/lib/server/prisma";
 const PAGE_CAPABILITIES = {
   dashboard: CAPABILITIES.dashboardView,
   customers: CAPABILITIES.customersView,
+  pos: CAPABILITIES.salesPost,
+  accounting: CAPABILITIES.salesVerifyView,
   "customer-orders": CAPABILITIES.customerOrdersView,
   products: CAPABILITIES.productsView,
   inventory: CAPABILITIES.inventoryView,

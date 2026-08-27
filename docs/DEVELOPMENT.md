@@ -146,9 +146,9 @@ Existing `react-select` style objects use `any` and literal colors, and several 
 
 1. Decide the boundary first. Use a server page for static or server-loaded content; create a small client component only for interactive behavior.
 2. Add `app/<route>/page.tsx`. Use `[id]` folders for dynamic segments and make the route parameter select real data rather than a fixed fixture.
-3. Wrap standard business content in `PageShell`. The `/pos` area is intentionally full-width through `AppLayoutShell`; do not bypass the shell for other routes without a documented layout requirement.
+3. Wrap standard business content in `PageShell`. Customer Sales at `/pos` uses the same authenticated shell and sidebar as the other business routes.
 4. Reuse `components/ui/` primitives and `cn()`. Add a shared component under `components/` only when it has a cross-route responsibility.
-5. Add a visible navigation entry to `lib/menu.ts` if users should reach the route from the sidebar. A route can exist without a menu entry, as `/dashboard2`, `/dashboard3`, and `/pos` currently do.
+5. Add a visible navigation entry to `lib/menu.ts` if users should reach the route from the sidebar. A route can exist without a menu entry, as `/dashboard2` and `/dashboard3` currently do.
 6. For a list prototype, follow the applied-filter/query-key pattern above. For real data, define one canonical contract, validate input on the server, and keep secrets and persistence out of client bundles.
 7. Check mobile and desktop layouts, light and dark themes, keyboard focus, labels, loading/empty/error states, and direct navigation to dynamic URLs.
 8. Run the available verification commands and document any command that cannot complete.

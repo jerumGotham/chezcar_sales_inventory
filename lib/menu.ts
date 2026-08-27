@@ -12,6 +12,7 @@ import {
   FileText,
   UserCog,
   Users,
+  ShoppingCart,
   type LucideIcon,
 } from "lucide-react";
 
@@ -41,6 +42,27 @@ export const menus = [
     capability: "customers:view",
   },
   {
+    label: "Customer Sales",
+    href: "/pos",
+    icon: ShoppingCart,
+    iconId: "customer-sales",
+    capability: "sales:post",
+  },
+  {
+    label: "Receipt Verification",
+    href: "/accounting/receipt-verification",
+    icon: FileText,
+    iconId: "receipt-verification",
+   capability: "sales:verify:view",
+  },
+  {
+    label: "Customer Orders",
+    href: "/customer-orders",
+    icon: ClipboardList,
+    iconId: "customer-orders",
+    capability: "customer-orders:view",
+  },
+  {
     label: "Products",
     href: "/products",
     icon: Package,
@@ -60,13 +82,6 @@ export const menus = [
     icon: ArrowLeftRight,
     iconId: "stock-transfers",
     capability: "stock-transfers:view",
-  },
-  {
-    label: "Customer Orders",
-    href: "/customer-orders",
-    icon: ClipboardList,
-    iconId: "customer-orders",
-    capability: "customer-orders:view",
   },
   {
     label: "Reports",

@@ -3,7 +3,7 @@
 
 ## Current status
 
-Vitest `4.1.11` is configured with Node unit and serial integration projects. The unit project covers the workbook profiler, canonicalizer, fixture generator, catalog-reset gates, access policy, shell DTOs, proxy denial, and the disposable-database/request helpers. The serial integration project covers migration application, seed/reload determinism, persisted authorization factories, inventory scope, the Better Auth admin surface, user management, session revocation, and first-login credential setup over a fixed-identity disposable PostgreSQL 17 container. No DOM testing library, browser runner, coverage tool, or CI workflow is checked in. The application remains a Next.js UI prototype: authentication, product/inventory reads, user management, and credential setup use PostgreSQL, while most screens and all sales/receiving/transfer mutations remain mock/local.
+Vitest `4.1.11` is configured with Node unit and serial integration projects. The unit project covers the workbook profiler, canonicalizer, fixture generator, catalog-reset gates, access policy, shell DTOs, proxy denial, and the disposable-database/request helpers. The serial integration project covers migration application, seed/reload determinism, persisted authorization factories, inventory scope, the Better Auth admin surface, user management, session revocation, and first-login credential setup over a fixed-identity disposable PostgreSQL 17 container. No DOM testing library, browser runner, coverage tool, or CI workflow is checked in. Authentication, products/inventory, customers, customer orders, and POS sales now use PostgreSQL; browser coverage for these workflows remains a gap.
 
 | Capability | Current state |
 | --- | --- |
@@ -101,10 +101,10 @@ npm run dev
 Use the local URL printed by Next.js, then check the following current-prototype smoke path. This inventory includes deferred screens so current prototype regressions remain visible; it is not the MVP acceptance scope:
 
 1. Confirm an unauthenticated `/` request redirects to `/sign-in`; after sign-in, `/` redirects to `/dashboard`.
-2. Navigate through Customers, Products, Inventory, Customer Orders, Job Orders, Stock Transfers, Reports, Notifications, Branches, Users, Roles, and Settings from the application shell.
+2. Navigate through Dashboard, Customers, Customer Sales, Customer Orders, Products, Inventory, Stock Transfers, Reports, and User Management from the application shell.
 3. On list screens, exercise search, filters, pagination, dialogs, and loading states.
 4. Exercise the inventory receive and transfer forms, customer-order create/detail/release screens, job-order create/edit screens, and stock-transfer state controls.
-5. Confirm Products and the primary Inventory list survive reload because they are database reads; other UI changes generally remain non-persistent.
+5. Confirm Customers, Customer Sales, Customer Orders, Products, and the primary Inventory list survive reload because they use database-backed APIs.
 6. Check narrow and wide viewports, sidebar behavior, and light/dark theme selection.
 
 Authenticated route handlers can be inspected while the development server is running. Supply a Better Auth session cookie:
@@ -117,7 +117,7 @@ curl --fail --cookie "<session-cookie>" http://localhost:3000/api/inventory
 curl --fail --cookie "<session-cookie>" http://localhost:3000/api/customer-orders
 ```
 
-Products and inventory return validated, paginated PostgreSQL data. Dashboard, customers, and customer orders remain protected fixtures. Unauthenticated calls should return `401`; a Branch Staff inventory call must return only its assigned location even when another location is requested.
+Products, inventory, customers, customer orders, and POS sales return validated PostgreSQL data. Unauthenticated calls should return `401`; a Branch Staff inventory/order call must return only its assigned location even when another location is requested.
 
 ## Writing new tests
 

@@ -3,7 +3,7 @@
 
 ## Current status
 
-The application exposes Better Auth handlers, authenticated read endpoints, an owner-Admin-only User Management surface, durable Stock Transfer and Stock Room supplier-receiving workflows, and a first-login credential-setup surface. `/api/products`, `/api/inventory`, `/api/stock-transfers`, and `/api/stock-receipts` use PostgreSQL through Prisma. Dashboard, customers, and customer orders remain protected mock-fixture responses.
+The application exposes Better Auth handlers, authenticated read endpoints, an owner-Admin-only User Management surface, durable Stock Transfer and Stock Room supplier-receiving workflows, customer CRUD/history, customer-order creation, Accounting receipt verification, and a first-login credential-setup surface. `/api/products`, `/api/inventory`, `/api/customers`, `/api/customer-orders`, `/api/stock-transfers`, `/api/stock-receipts`, and `/api/accounting/receipts` use PostgreSQL through Prisma.
 
 All endpoints use same-origin cookie sessions. Public email/password sign-up is disabled.
 
@@ -36,9 +36,13 @@ Authorization is expressed as named capabilities in `lib/server/policy/access.ts
 | `dashboard:view` | ✔ | ✔ | ✔ | ✔ |
 | `customers:view` | ✔ | ✔ | ✔ | ✔ |
 | `customer-orders:view` | ✔ | ✔ | ✔ | ✔ |
+| `sales:post` | ✔ | ✘ | ✔ | ✘ |
+| `sales:verify:view` | ✔ | ✘ | ✘ | ✔ |
+| `sales:verify` | ✘ | ✘ | ✘ | ✔ |
+| `sales:resolve` | ✔ | ✘ | ✘ | ✔ |
 | `products:view` | ✔ | ✔ | ✘ | ✘ |
 | `inventory:view` | ✔ | ✔ | ✔ | ✘ |
-| `inventory-receiving:create` | ✘ | ✔ (active `SR` only) | ✘ | ✘ |
+| `inventory-receiving:create` | ✔ | ✔ (active `SR` only) | ✘ | ✘ |
 | `users:manage` | ✔ (owner only) | ✘ | ✘ | ✘ |
 
 A persisted assignment that contradicts the fixed matrix (for example Stock Staff not assigned to the active `SR` warehouse, Branch Staff outside the active canonical branches, or a location held by Admin/Accounting) fails closed regardless of role. Exactly one owner Admin may exist; the database partial unique index `User_single_admin_key` backs this invariant.
@@ -52,20 +56,25 @@ A persisted assignment that contradicts the fixed matrix (for example Stock Staf
 | `GET`, `PATCH` | `/api/notifications` | Prisma Notification inbox | `dashboard:view` |
 | `POST` | `/api/notifications/:notificationId/read` | Prisma Notification read timestamp | `dashboard:view` |
 | `GET`, `POST` | `/api/customers` | Prisma Customer | `customers:view`; Accounting/Stock mutation denied by service policy |
+| `GET`, `PATCH`, `DELETE` | `/api/customers/:id` | Prisma Customer, sales, and customer orders | `customers:view`; delete deactivates the customer |
+| `GET` | `/api/customer-orders/options?locationId=<branchId>` | Active customers and products with available branch stock | `customer-orders:view`; Admin supplies a branch, Branch Staff scope is persisted |
 | `GET`, `POST` | `/api/customer-orders` | Prisma CustomerOrder/Customer/InventoryBalance | `customer-orders:view` plus Branch/Admin mutation policy |
 | `POST` | `/api/customer-orders/:orderId/:action` | Prisma CustomerOrder/Sale/InventoryMovement | `customer-orders:view`; actions `release`, `cancel` |
 | `GET`, `POST` | `/api/sales` | Prisma Sale/SaleLine/InventoryMovement | `customer-orders:view`; Branch/Admin direct sale policy |
-| `POST` | `/api/sales/:saleId/review` | Prisma SaleAccountingReview | `customer-orders:view`; Accounting/Admin review policy |
+| `GET` | `/api/accounting/receipts` | Prisma Sale/SaleLine/SaleAccountingReview | `sales:verify:view` |
+| `POST` | `/api/accounting/receipts/:saleId/review` | Prisma SaleAccountingReview/Notification | `sales:verify`; Accounting Staff only |
+| `POST` | `/api/accounting/receipts/:saleId/resolve` | Prisma Sale/SaleLine/SaleAccountingReview/InventoryMovement/Notification | `sales:resolve`; Admin or Accounting Staff |
+| `POST`, `GET` | `/api/accounting/receipts/:saleId/photo` | Coolify persistent receipt-evidence storage | `sales:verify` for upload; `sales:verify:view` for read |
 | `GET` | `/api/reports` | Prisma sales/orders/accounting/inventory summaries | `reports:view` |
 | `GET`, `POST` | `/api/products` | Prisma Product/InventoryBalance | `GET`: `products:view`; `POST`: Admin role |
 | `PATCH`, `DELETE` | `/api/products/:productId` | Prisma Product | Admin role |
 | `GET` | `/api/inventory` | Prisma Product/InventoryBalance/Location | `inventory:view` |
-| `PATCH` | `/api/inventory/:balanceId` | Prisma InventoryBalance | Admin role |
-| `POST` | `/api/inventory/:balanceId/adjustment` | Prisma InventoryBalance/InventoryMovement/Notification | Admin role |
+| `PATCH` | `/api/inventory/:balanceId` | Prisma Product/InventoryBalance | Admin role; reorder-level updates write the shared Product setting, while unit-cost updates remain balance-scoped |
+| `POST` | `/api/inventory/:balanceId/adjustment` | Prisma InventoryBalance/InventoryMovement/Notification | Admin role; quantity-only correction |
 | `GET` | `/api/inventory/movements` | Prisma InventoryMovement | `inventory:view` |
 | `GET`, `POST` | `/api/stock-transfers` | Prisma transfer ledger | `stock-transfers:view` plus role action policy |
 | `POST` | `/api/stock-transfers/:id/:action` | Prisma transfer/inventory transaction | `stock-transfers:view` plus role/location/state policy |
-| `GET`, `POST` | `/api/stock-receipts` | Prisma supplier-receipt/inventory transaction | `GET`: inventory monitor policy; `POST`: `inventory-receiving:create` and Stock Staff `SR` enforcement |
+| `GET`, `POST` | `/api/stock-receipts` | Prisma supplier-receipt/inventory transaction | `GET`: inventory monitor policy; `POST`: `inventory-receiving:create`; Admin/Stock Staff only, destination fixed to `SR` |
 | `GET`, `POST` | `/api/users` | Prisma User (+Location) | `users:manage` |
 | `PATCH` | `/api/users/:userId` | Prisma User | `users:manage` |
 | `POST` | `/api/users/:userId/status` | Prisma User | `users:manage` |
@@ -74,13 +83,13 @@ A persisted assignment that contradicts the fixed matrix (for example Stock Staf
 
 ## Customer orders, sales, and Accounting
 
-`POST /api/customer-orders` creates or reuses a customer, snapshots product item code/name/current price, validates active products, and creates one order in a serializable transaction. Branch Staff may create only for their persisted branch; Admin is reserved for broad monitoring and future corrections. Reservation orders validate available branch stock (`onHand - reserved`) and increment `reserved` without decrementing `onHand`. Waiting-stock orders do not reserve stock. DP reservations require `downpaymentAmount > 0` and globally unique `downpaymentReceiptNumber`.
+`POST /api/customer-orders` creates or reuses a customer, snapshots product item code/name/current price, validates active products, and creates one order in a serializable transaction. Branch Staff may create only for their persisted branch; Admin must select an active branch. The create-screen options endpoint returns only products with positive available stock (`onHand - reserved`) at that branch. Reservation orders validate available branch stock and increment `reserved` without decrementing `onHand`. Waiting-stock orders do not reserve stock. DP reservations require `downpaymentAmount > 0` and globally unique `downpaymentReceiptNumber`.
 
 `POST /api/customer-orders/:orderId/release` requires a final manual receipt number and exact remaining balance payment. Release decrements `onHand`, decrements `reserved`, creates a posted `Sale`, creates `CUSTOMER_ORDER_RELEASE` inventory movements, registers the receipt globally, creates an unverified Accounting review row, and marks the order completed in one transaction.
 
 `POST /api/customer-orders/:orderId/cancel` releases reserved stock. Branch Staff may cancel own-branch no-DP orders. DP cancellation is Admin-only and requires a note.
 
-`POST /api/sales` posts direct branch sales with globally unique `manualReceiptNumber`, deducts available branch stock immediately, creates `DIRECT_SALE` inventory movements, and creates an unverified Accounting review row. `POST /api/sales/:saleId/review` lets Accounting Staff or Admin mark a sale `VERIFIED` or `FLAGGED`; flagged reviews require category and notes.
+`POST /api/sales` posts direct branch sales with branch-scoped receipt identity, an optional `discountAmount` not exceeding the subtotal, deducts available branch stock immediately, creates `DIRECT_SALE` inventory movements, and creates an unverified Accounting review row. Branch Staff use their persisted branch; Admin must supply an active `locationId`. Branch Staff select a customer from the shared customer master before clicking `Complete Sale`. `GET /api/accounting/receipts` is visible to Admin and Accounting Staff; only Accounting Staff can confirm a receipt or report a mismatch through the review endpoint. Mismatch reports require a closed category and notes and may include an optional receipt photo data URL; durable notifications are created for active Admin users and the posting user.
 
 `GET /api/dashboard` returns live role-scoped summary metrics for sales, open orders, low/out stock, Accounting queue counts, and notification preview. `GET /api/reports` returns live read-only Sales, Accounting/Reconciliation, Orders, and Admin-only Inventory summaries; `?format=pdf` returns a PDF-download response for the same authorized data.
 
@@ -92,13 +101,13 @@ Stock-transfer transitions create persisted per-user notifications in the same d
 
 ## Supplier receipts
 
-`POST /api/stock-receipts` accepts `{ reference, supplier, notes?, lines: [{ productId, quantity }] }`. `reference` is unique, suppliers and references are non-empty bounded strings, every quantity is a positive integer, and every product must be active. Only Stock Staff assigned to the active canonical Stock Room can post. The server fixes the destination to `SR`; client input cannot select a branch.
+`POST /api/stock-receipts` accepts `{ reference, supplier, notes?, lines: [{ productId, quantity, unitCost }] }`. `reference` is unique, suppliers and references are non-empty bounded strings, every quantity is a positive integer, every unit cost must be greater than zero, and every product must be active. Admin or Stock Staff assigned to the active canonical Stock Room can post. The server fixes the destination to `SR`; client input cannot select a branch.
 
-One serializable transaction persists the receipt, immutable item-code/name line snapshots, increments or creates each `SR` balance, and writes a positive `SUPPLIER_RECEIPT` movement with the current actor. Duplicate references return `409 DUPLICATE_REFERENCE` without changing inventory. `GET /api/stock-receipts` is available only to Stock Staff and Admin for monitoring; it does not grant posting to Admin.
+One serializable transaction persists the receipt, immutable item-code/name line snapshots, increments or creates each `SR` balance with the latest received unit cost, and writes a positive `SUPPLIER_RECEIPT` movement with the current actor. Duplicate references return `409 DUPLICATE_REFERENCE` without changing inventory. `GET /api/stock-receipts` is available only to Stock Staff and Admin for monitoring.
 
 ## Product list
 
-`POST /api/products` and `PATCH /api/products/:productId` are Admin-only. Active products require a positive current price; inactive products may have null price. Item code is globally unique and cannot be changed after the product has inventory balances or receipt/transfer/movement history. `DELETE /api/products/:productId` is Admin-only and allowed only for products with no inventory balance rows and no usage/history.
+`POST /api/products` and `PATCH /api/products/:productId` are Admin-only. Active products require a positive current price; inactive products may have null price. `reorderLevel` is stored once on Product and applies to every location. Item code is globally unique and cannot be changed after the product has inventory balances or receipt/transfer/movement history. `DELETE /api/products/:productId` is Admin-only and allowed only for products with no inventory balance rows and no usage/history.
 
 `GET /api/products` accepts:
 
@@ -156,7 +165,7 @@ Status is derived from `available = onHand - reserved` as:
 
 Balance timestamps are ISO 8601 strings.
 
-`PATCH /api/inventory/:balanceId` accepts `{ "reorderLevel": number }` and is Admin-only. `POST /api/inventory/:balanceId/adjustment` accepts `{ "type": "increase" | "decrease", "quantity": number, "reference"?, "reason", "remarks"? }`, requires a non-empty reason, writes a `MANUAL_ADJUSTMENT` movement with optional reference/remarks, increments the balance version, and rejects negative corrections that would make `onHand < reserved` with `409 BELOW_RESERVED`. If the correction moves a balance into low or out status, Admin and users assigned to that location receive persisted inventory-balance notifications.
+`PATCH /api/inventory/:balanceId` accepts either `{ "reorderLevel": number }`, which updates the shared Product threshold, or an Admin-only audited unit-cost update `{ "unitCost": number, "reference"?, "reason", "remarks"? }`. `POST /api/inventory/:balanceId/adjustment` accepts `{ "type": "increase" | "decrease", "quantity": number, "reference"?, "reason", "remarks"? }`, requires a positive quantity and non-empty reason, writes a `MANUAL_ADJUSTMENT` movement with optional reference/remarks, increments the balance version, and rejects negative corrections that would make `onHand < reserved` with `409 BELOW_RESERVED`. If the correction moves a balance into low or out status, Admin and users assigned to that location receive persisted inventory-balance notifications.
 
 `GET /api/inventory/movements` accepts `page`, `pageSize`, `product` item code or `all`, `location`, `type`, and `reference`. It applies the same persisted location scope as `/api/inventory`; Admin may see all or one canonical location, Stock Staff remains scoped to `SR`, Branch Staff remains scoped to their persisted branch, and Accounting is denied.
 

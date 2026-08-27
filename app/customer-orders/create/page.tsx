@@ -1,9 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Route } from "next";
+import { useRouter } from "next/navigation";
 import Select from "react-select";
+import type { StylesConfig } from "react-select";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Trash2, UserRound, Package2 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
@@ -12,6 +15,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { useShellAccess } from "@/components/shell-access-context";
 
 type SelectOption = {
   value: string;
@@ -24,50 +28,13 @@ type OrderItemRow = {
   unitPrice: number;
 };
 
-const CUSTOMER_OPTIONS: SelectOption[] = [
-  { value: "cust-1", label: "Juan Dela Cruz" },
-  { value: "cust-2", label: "Maria Santos" },
-  { value: "cust-3", label: "Paolo Reyes" },
-  { value: "cust-4", label: "Angela Villanueva" },
-  { value: "cust-5", label: "Mark Bautista" },
-];
-
-const ITEM_OPTIONS: SelectOption[] = [
-  { value: "3M Tint Medium Black", label: "3M Tint Medium Black" },
-  { value: "Seat Cover Set", label: "Seat Cover Set" },
-  { value: "Android Head Unit 9in", label: "Android Head Unit 9in" },
-  { value: "LED Fog Lamp Set", label: "LED Fog Lamp Set" },
-  { value: "Nano Ceramic Tint", label: "Nano Ceramic Tint" },
-  { value: "Premium Seat Cover Beige", label: "Premium Seat Cover Beige" },
-  { value: "LED Headlight Bulb", label: "LED Headlight Bulb" },
-  { value: "Rear Spoiler", label: "Rear Spoiler" },
-];
-
-const ITEM_PRICE_MAP: Record<string, number> = {
-  "3M Tint Medium Black": 8500,
-  "Seat Cover Set": 6000,
-  "Android Head Unit 9in": 12500,
-  "LED Fog Lamp Set": 3500,
-  "Nano Ceramic Tint": 14500,
-  "Premium Seat Cover Beige": 7200,
-  "LED Headlight Bulb": 2200,
-  "Rear Spoiler": 6800,
-};
-
 const STATUS_OPTIONS: SelectOption[] = [
-  { value: "Reserved", label: "Reserved" },
-  { value: "Pending", label: "Pending" },
-  { value: "For Release", label: "For Release" },
+  { value: "RESERVED", label: "Reserved" },
+  { value: "WAITING_STOCK", label: "Waiting for stock" },
 ];
 
-const PAYMENT_OPTIONS: SelectOption[] = [
-  { value: "Unpaid", label: "Unpaid" },
-  { value: "Partial", label: "Partial" },
-  { value: "Paid", label: "Paid" },
-];
-
-const reactSelectStyles = {
-  control: (base: any, state: any) => ({
+const reactSelectStyles: StylesConfig<SelectOption, false> = {
+  control: (base, state) => ({
     ...base,
     minHeight: "40px",
     borderRadius: "0.75rem",
@@ -77,27 +44,27 @@ const reactSelectStyles = {
       borderColor: "#10b981",
     },
   }),
-  valueContainer: (base: any) => ({
+  valueContainer: (base) => ({
     ...base,
     paddingLeft: "10px",
     paddingRight: "10px",
   }),
-  input: (base: any) => ({
+  input: (base) => ({
     ...base,
     color: "#0f172a",
   }),
-  placeholder: (base: any) => ({
+  placeholder: (base) => ({
     ...base,
     color: "#94a3b8",
     fontSize: "14px",
   }),
-  menu: (base: any) => ({
+  menu: (base) => ({
     ...base,
     borderRadius: "0.75rem",
     overflow: "hidden",
     zIndex: 50,
   }),
-  option: (base: any, state: any) => ({
+  option: (base, state) => ({
     ...base,
     backgroundColor: state.isSelected
       ? "#10b981"
@@ -113,13 +80,35 @@ function formatPeso(value: number) {
   return `₱${value.toLocaleString("en-PH")}`;
 }
 
+type OrderOptions = {
+  customers: Array<{ id: string; name: string }>;
+  products: Array<{ id: string; itemCode: string; name: string; price: number; availableQuantity: number }>;
+  branches: Array<{ id: string; code: string; name: string }>;
+};
+
+async function fetchOrderOptions(locationId: string) {
+  const response = await fetch(`/api/customer-orders/options?locationId=${encodeURIComponent(locationId)}`, { credentials: "same-origin" });
+  const json = await response.json();
+  if (!response.ok) throw new Error(json.error?.message ?? "Unable to load order options");
+  return json.data as OrderOptions;
+}
+
 export default function CreateCustomerOrderPage() {
+  const router = useRouter();
+  const access = useShellAccess();
+  const role = access.authenticated ? access.identity.role : null;
+  const [location, setLocation] = useState<SelectOption | null>(null);
+  const branchStaffLocationId = access.authenticated ? access.scope.locationId : null;
+  const activeLocationId = role === "ADMIN" ? location?.value ?? null : branchStaffLocationId;
+  const optionsQuery = useQuery({
+    queryKey: ["customer-order-options", activeLocationId],
+    queryFn: () => fetchOrderOptions(activeLocationId ?? ""),
+    enabled: role === "ADMIN" || Boolean(activeLocationId),
+  });
   const [customer, setCustomer] = useState<SelectOption | null>(null);
-  const [status, setStatus] = useState<SelectOption>(STATUS_OPTIONS[0]);
-  const [paymentStatus, setPaymentStatus] = useState<SelectOption>(
-    PAYMENT_OPTIONS[0],
-  );
+  const [status, setStatus] = useState<SelectOption>(STATUS_OPTIONS[1]);
   const [downpayment, setDownpayment] = useState("0");
+  const [downpaymentReceiptNumber, setDownpaymentReceiptNumber] = useState("");
   const [releaseDate, setReleaseDate] = useState("");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<OrderItemRow[]>([
@@ -129,6 +118,53 @@ export default function CreateCustomerOrderPage() {
       unitPrice: 0,
     },
   ]);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const customerOptions = optionsQuery.data?.customers.map((item) => ({ value: item.id, label: item.name })) ?? [];
+  const itemOptions = optionsQuery.data?.products.map((item) => ({ value: item.id, label: `${item.itemCode} - ${item.name} (${item.availableQuantity} available)` })) ?? [];
+  const productById = new Map((optionsQuery.data?.products ?? []).map((item) => [item.id, item]));
+
+  useEffect(() => {
+    // Location changes reset the draft to avoid carrying lines across branches.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setItems([{ item: null, quantity: 1, unitPrice: 0 }]);
+  }, [activeLocationId]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!customer) throw new Error("Select a customer.");
+      if (role === "ADMIN" && !location) throw new Error("Select a branch.");
+      if (items.some((item) => !item.item || item.quantity < 1)) throw new Error("Select a product and valid quantity for every line.");
+      if (items.some((item) => item.item && item.quantity > (productById.get(item.item.value)?.availableQuantity ?? 0))) throw new Error("Order quantity cannot exceed available branch stock.");
+      const orderType = status.value === "WAITING_STOCK"
+        ? "WAITING_STOCK"
+        : Number(downpayment) > 0
+          ? "RESERVATION_WITH_DP"
+          : "RESERVATION_NO_DP";
+      if (orderType === "RESERVATION_WITH_DP" && !downpaymentReceiptNumber.trim()) throw new Error("Downpayment receipt number is required when an amount is entered.");
+
+      const response = await fetch("/api/customer-orders", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customer: { id: customer.value, name: customer.label },
+          locationId: location?.value,
+          type: orderType,
+          expectedReleaseDate: releaseDate || undefined,
+          notes: notes || undefined,
+          downpaymentAmount: orderType === "RESERVATION_WITH_DP" ? Number(downpayment) : 0,
+          downpaymentReceiptNumber: orderType === "RESERVATION_WITH_DP" ? downpaymentReceiptNumber : undefined,
+          lines: items.map((item) => ({ productId: item.item!.value, quantity: item.quantity, finalUnitPrice: item.unitPrice })),
+        }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error?.message ?? "Unable to save customer order");
+      return json.data as { reference: string };
+    },
+    onSuccess: (order) => router.push(`/customer-orders?created=${order.reference}`),
+    onError: (error: Error) => setErrorMessage(error.message),
+  });
 
   const handleAddItem = () => {
     setItems((prev) => [
@@ -152,7 +188,7 @@ export default function CreateCustomerOrderPage() {
           ? {
               ...row,
               item: option,
-              unitPrice: option ? (ITEM_PRICE_MAP[option.value] ?? 0) : 0,
+               unitPrice: option ? (productById.get(option.value)?.price ?? 0) : 0,
             }
           : row,
       ),
@@ -191,12 +227,15 @@ export default function CreateCustomerOrderPage() {
               Back
             </Button>
           </Link>
-          <Button className="bg-emerald-600 text-white hover:bg-emerald-700">
-            Save Order
+           <Button className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => { setErrorMessage(""); saveMutation.mutate(); }} disabled={saveMutation.isPending || optionsQuery.isLoading}>
+             {saveMutation.isPending ? "Saving..." : "Save Order"}
           </Button>
         </div>
       }
     >
+      {!activeLocationId ? <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">Select a branch to load available stock before adding order items.</p> : null}
+      {optionsQuery.isError ? <p className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{(optionsQuery.error as Error).message}</p> : null}
+      {errorMessage ? <p className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{errorMessage}</p> : null}
       <div className="grid gap-6 xl:grid-cols-[1.5fr_0.9fr]">
         <div className="space-y-6">
           <Card>
@@ -210,16 +249,20 @@ export default function CreateCustomerOrderPage() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Customer</Label>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label>Customer</Label>
+                    <Link href="/customers" className="text-xs font-semibold text-emerald-700 hover:text-emerald-800">Manage customers</Link>
+                  </div>
                   <Select
                     instanceId="create-order-customer"
-                    options={CUSTOMER_OPTIONS}
+                     options={customerOptions}
                     value={customer}
                     onChange={(option) => setCustomer(option)}
                     isSearchable
                     placeholder="Select customer"
                     styles={reactSelectStyles}
                   />
+                  {optionsQuery.data && customerOptions.length === 0 ? <p className="text-xs text-amber-700">No active customers yet. Add one from the Customers page.</p> : null}
                 </div>
 
                 <div className="space-y-2">
@@ -238,7 +281,7 @@ export default function CreateCustomerOrderPage() {
                     options={STATUS_OPTIONS}
                     value={status}
                     onChange={(option) =>
-                      setStatus(option ?? STATUS_OPTIONS[0])
+                       setStatus(option ?? STATUS_OPTIONS[1])
                     }
                     isSearchable
                     styles={reactSelectStyles}
@@ -246,18 +289,34 @@ export default function CreateCustomerOrderPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Payment Status</Label>
-                  <Select
-                    instanceId="create-order-payment-status"
-                    options={PAYMENT_OPTIONS}
-                    value={paymentStatus}
-                    onChange={(option) =>
-                      setPaymentStatus(option ?? PAYMENT_OPTIONS[0])
-                    }
-                    isSearchable
-                    styles={reactSelectStyles}
-                  />
+                  <Label>Branch</Label>
+                  {role === "ADMIN" ? (
+                    <Select
+                      instanceId="create-order-location"
+                      options={optionsQuery.data?.branches.map((item) => ({ value: item.id, label: `${item.name} (${item.code})` })) ?? []}
+                      value={location}
+                      onChange={(option) => setLocation(option)}
+                      isSearchable
+                      placeholder="Select branch"
+                      styles={reactSelectStyles}
+                    />
+                  ) : (
+                    <Input value={access.authenticated ? access.scope.label : ""} disabled />
+                  )}
                 </div>
+
+                {status.value === "RESERVED" ? (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Downpayment Amount</Label>
+                      <Input type="number" min="0.01" value={downpayment} onChange={(e) => setDownpayment(e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Downpayment Receipt No.</Label>
+                      <Input value={downpaymentReceiptNumber} onChange={(e) => setDownpaymentReceiptNumber(e.target.value)} placeholder="OR-000123" />
+                    </div>
+                  </>
+                ) : null}
 
                 <div className="space-y-2 md:col-span-2">
                   <Label>Notes</Label>
@@ -281,13 +340,14 @@ export default function CreateCustomerOrderPage() {
                   </h3>
                 </div>
 
-                <Button variant="outline" onClick={handleAddItem}>
+                  <Button variant="outline" onClick={handleAddItem} disabled={!optionsQuery.data || itemOptions.length === 0}>
                   <Plus className="mr-2 h-4 w-4" />
                   Add Item
                 </Button>
               </div>
 
               <div className="space-y-4">
+                {optionsQuery.data && itemOptions.length === 0 ? <div className="rounded-xl border border-dashed border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">No available stock at this branch. Receive or transfer inventory before creating an order.</div> : null}
                 {items.map((row, index) => {
                   const amount = row.quantity * row.unitPrice;
 
@@ -318,11 +378,10 @@ export default function CreateCustomerOrderPage() {
                           <Label>Product</Label>
                           <Select
                             instanceId={`create-order-item-${index}`}
-                            options={ITEM_OPTIONS}
+                             options={itemOptions}
                             value={row.item}
-                            onChange={(option) =>
-                              handleChangeItem(index, option)
-                            }
+                             onChange={(option) => handleChangeItem(index, option)}
+                             isDisabled={!optionsQuery.data || itemOptions.length === 0}
                             isSearchable
                             placeholder="Select product"
                             styles={reactSelectStyles}
@@ -330,10 +389,11 @@ export default function CreateCustomerOrderPage() {
                         </div>
 
                         <div className="space-y-2">
-                          <Label>Quantity</Label>
-                          <Input
-                            type="number"
-                            min={1}
+                           <Label>Quantity {row.item ? `(max ${productById.get(row.item.value)?.availableQuantity ?? 0})` : ""}</Label>
+                           <Input
+                             type="number"
+                             min={1}
+                             max={row.item ? productById.get(row.item.value)?.availableQuantity : undefined}
                             value={row.quantity}
                             onChange={(e) =>
                               handleChangeQuantity(
@@ -388,11 +448,12 @@ export default function CreateCustomerOrderPage() {
 
                 <div className="space-y-2">
                   <Label>Downpayment</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={downpayment}
-                    onChange={(e) => setDownpayment(e.target.value)}
+                   <Input
+                     type="number"
+                     min={0}
+                     value={downpayment}
+                     onChange={(e) => setDownpayment(e.target.value)}
+                     disabled={status.value !== "RESERVED"}
                   />
                 </div>
 
@@ -401,8 +462,8 @@ export default function CreateCustomerOrderPage() {
                   <span>{formatPeso(balance)}</span>
                 </div>
 
-                <Button className="w-full bg-emerald-600 text-white hover:bg-emerald-700">
-                  Save Order
+                 <Button className="w-full bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => { setErrorMessage(""); saveMutation.mutate(); }} disabled={saveMutation.isPending || optionsQuery.isLoading}>
+                   {saveMutation.isPending ? "Saving..." : "Save Order"}
                 </Button>
               </div>
             </CardContent>

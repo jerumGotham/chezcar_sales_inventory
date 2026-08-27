@@ -13,7 +13,7 @@ function errorResponse(error: unknown) {
 
 export async function POST(request: Request, context: Context) {
   try {
-    const actor = await requireCapability(request.headers, "customer-orders:view");
+    const actor = await requireCapability(request.headers, "sales:verify");
     const { saleId } = await context.params;
     return Response.json({ data: await reviewSale(actor, saleId, accountingReviewSchema.parse(await request.json())) });
   } catch (error) {

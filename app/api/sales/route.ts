@@ -20,7 +20,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const actor = await requireCapability(request.headers, "customer-orders:view");
+    const actor = await requireCapability(request.headers, "sales:post");
     return Response.json({ data: await createDirectSale(actor, directSaleSchema.parse(await request.json())) });
   } catch (error) {
     return errorResponse(error);

@@ -6,8 +6,8 @@ import {
 } from "@/lib/server/authorization";
 import {
   InventoryMutationError,
-  reorderLevelSchema,
-  updateInventoryReorderLevel,
+  inventoryUnitCostSchema,
+  updateInventoryUnitCost,
 } from "@/lib/server/catalog";
 
 type Context = { params: Promise<{ balanceId: string }> };
@@ -42,9 +42,9 @@ export async function PATCH(request: Request, context: Context) {
   try {
     const actor = await requireCapability(request.headers, "inventory:view");
     const { balanceId } = await context.params;
-    const input = reorderLevelSchema.parse(await request.json());
-
-    return Response.json({ data: await updateInventoryReorderLevel(actor, balanceId, input) });
+    const body = await request.json();
+    const input = inventoryUnitCostSchema.parse(body);
+    return Response.json({ data: await updateInventoryUnitCost(actor, balanceId, input) });
   } catch (error) {
     return errorResponse(error);
   }

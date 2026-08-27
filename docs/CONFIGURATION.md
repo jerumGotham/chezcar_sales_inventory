@@ -23,9 +23,10 @@ Use the credentials configured for your environment and do not commit the popula
 DATABASE_URL="postgresql://<user>:<password>@localhost:5435/<database>?schema=public"
 BETTER_AUTH_SECRET="<at-least-32-random-characters>"
 BETTER_AUTH_URL="http://localhost:3000"
+RECEIPT_STORAGE_PATH="./data/receipt-photos"
 ```
 
-Seed variables are needed only for `npm run db:seed`; keep production provisioning in a controlled operational workflow.
+`RECEIPT_STORAGE_PATH` controls the private receipt-evidence volume. For Coolify, mount a persistent volume or bind mount at `/app/storage` and set `RECEIPT_STORAGE_PATH=/app/storage/receipts`; Coolify documents `/app` as the container base directory for persistent storage. Do not expose this directory as a public static folder. Seed variables are needed only for `npm run db:seed`; keep production provisioning in a controlled operational workflow.
 
 ## Config file format
 

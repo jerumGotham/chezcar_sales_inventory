@@ -4,13 +4,29 @@ import Image from "next/image";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, LogOut, MapPin, Moon, Sun } from "lucide-react";
+import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
+import { Bell, ChevronDown, LogOut, MapPin, Moon, Sun, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useShellAccess } from "@/components/shell-access-context";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth-client";
 
 const THEME_KEY = "chezcar-theme";
+
+type HeaderNotification = {
+  id: string;
+  title: string;
+  description: string;
+  read: boolean;
+};
+
+async function fetchHeaderNotifications() {
+  const response = await fetch("/api/notifications", { credentials: "same-origin" });
+  if (!response.ok) return [] as HeaderNotification[];
+  const json = (await response.json()) as { data: HeaderNotification[] };
+  return json.data;
+}
 
 function applyTheme(theme: "light" | "dark") {
   document.documentElement.classList.toggle("dark", theme === "dark");
@@ -29,7 +45,39 @@ export function AppHeader({
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [isReady, setIsReady] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [toast, setToast] = useState<HeaderNotification | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const seenNotificationIds = useRef(new Set<string>());
+  const notificationsQuery = useQuery({
+    queryKey: ["notifications"],
+    queryFn: fetchHeaderNotifications,
+    enabled: access.authenticated,
+    refetchInterval: 5_000,
+    refetchOnWindowFocus: true,
+  });
+  const unreadCount = notificationsQuery.data?.filter((notification) => !notification.read).length ?? 0;
+
+  useEffect(() => {
+    const notifications = notificationsQuery.data;
+    if (!notifications) return;
+
+    if (seenNotificationIds.current.size === 0) {
+      notifications.forEach((notification) => seenNotificationIds.current.add(notification.id));
+      return;
+    }
+
+    const newNotification = notifications.find(
+      (notification) => !notification.read && !seenNotificationIds.current.has(notification.id),
+    );
+    notifications.forEach((notification) => seenNotificationIds.current.add(notification.id));
+    if (newNotification) setToast(newNotification);
+  }, [notificationsQuery.data]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 7_000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   useEffect(() => {
     const storedTheme = window.localStorage.getItem(THEME_KEY);
@@ -40,6 +88,8 @@ export function AppHeader({
           ? "dark"
           : "light";
 
+    // Hydrate the persisted theme after the browser becomes available.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTheme(nextTheme);
     applyTheme(nextTheme);
     setIsReady(true);
@@ -94,6 +144,21 @@ export function AppHeader({
               </span>
             </span>
           </div>
+        ) : null}
+
+        {access.authenticated ? (
+          <Link
+            href="/notifications"
+            className="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+            aria-label={unreadCount > 0 ? `${unreadCount} unread notifications` : "Notifications"}
+          >
+            <Bell className="h-5 w-5" />
+            {unreadCount > 0 ? (
+              <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-red-600 px-1 text-center text-[11px] font-bold leading-5 text-white">
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            ) : null}
+          </Link>
         ) : null}
 
         <Button
@@ -181,6 +246,20 @@ export function AppHeader({
           </div>
         ) : null}
       </div>
+      {toast ? (
+        <div className="fixed right-4 top-4 z-50 w-[min(24rem,calc(100vw-2rem))] rounded-2xl border border-brand-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900" role="status" aria-live="polite">
+          <div className="flex items-start gap-3">
+            <Link href="/notifications" className="min-w-0 flex-1" onClick={() => setToast(null)}>
+              <p className="text-xs font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">New notification</p>
+              <p className="mt-1 font-semibold text-foreground">{toast.title}</p>
+              <p className="mt-1 line-clamp-2 text-sm text-slate-500 dark:text-slate-400">{toast.description}</p>
+            </Link>
+            <button type="button" className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => setToast(null)} aria-label="Dismiss notification">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

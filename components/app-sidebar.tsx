@@ -18,6 +18,7 @@ import {
   PinOff,
   UserCog,
   Users,
+  ShoppingCart,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -34,11 +35,13 @@ const DESKTOP_PIN_KEY = "chezcar-sidebar-pinned";
 const MENU_ICONS: Record<ShellMenuIcon, LucideIcon> = {
   dashboard: LayoutDashboard,
   customers: Users,
+  "customer-sales": ShoppingCart,
   products: Package,
   inventory: Boxes,
   "customer-orders": ClipboardList,
   users: UserCog,
   reports: FileText,
+  "receipt-verification": FileText,
   "stock-transfers": ArrowLeftRight,
 };
 
@@ -53,6 +56,8 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
 
     if (storedPinned !== null) {
       const nextPinned = storedPinned === "true";
+      // Hydrate the user preference after localStorage becomes available.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsDesktopPinned(nextPinned);
       setIsDesktopExpanded(nextPinned);
     }
@@ -71,6 +76,8 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
   }, [isMobileOpen]);
 
   useEffect(() => {
+    // Close mobile navigation whenever the route changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsMobileOpen(false);
 
     if (!isDesktopPinned) {
@@ -105,7 +112,7 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
         return (
           <Link
             key={menuItem.href}
-            href={menuItem.href}
+            href={menuItem.href as never}
             aria-label={menuItem.label}
             title={menuItem.label}
             className={cn(

@@ -12,7 +12,10 @@ export class StockReceiptError extends Error {
   }
 }
 
-function assertStockRoomStaff(actor: AuthContext) {
+function assertStockRoomReceivingActor(actor: AuthContext) {
+  if (actor.role === "ADMIN") {
+    return;
+  }
   if (
     actor.role !== "STOCK_STAFF" ||
     actor.locationId === null ||
@@ -21,7 +24,7 @@ function assertStockRoomStaff(actor: AuthContext) {
     actor.location.type !== "WAREHOUSE" ||
     !actor.location.isActive
   ) {
-    throw new StockReceiptError("FORBIDDEN", "Only Stock Staff assigned to Stock Room may post supplier receipts", 403);
+    throw new StockReceiptError("FORBIDDEN", "Only Admin or Stock Staff assigned to Stock Room may post supplier receipts", 403);
   }
 }
 
@@ -61,7 +64,7 @@ export async function listStockReceipts(actor: AuthContext) {
 }
 
 export async function createStockReceipt(actor: AuthContext, input: CreateStockReceiptInput) {
-  assertStockRoomStaff(actor);
+  assertStockRoomReceivingActor(actor);
   const productIds = input.lines.map((line) => line.productId);
   if (new Set(productIds).size !== productIds.length) {
     throw new StockReceiptError("INVALID_LINES", "A product may appear only once", 400);
@@ -70,7 +73,9 @@ export async function createStockReceipt(actor: AuthContext, input: CreateStockR
   try {
     return await prisma.$transaction(async (tx) => {
       const stockRoom = await tx.location.findFirst({
-        where: { id: actor.locationId!, code: "SR", type: "WAREHOUSE", isActive: true },
+        where: actor.role === "ADMIN"
+          ? { code: "SR", type: "WAREHOUSE", isActive: true }
+          : { id: actor.locationId!, code: "SR", type: "WAREHOUSE", isActive: true },
         select: { id: true, code: true, name: true },
       });
       if (!stockRoom) {
@@ -114,8 +119,8 @@ export async function createStockReceipt(actor: AuthContext, input: CreateStockR
       for (const line of input.lines) {
         await tx.inventoryBalance.upsert({
           where: { locationId_productId: { locationId: stockRoom.id, productId: line.productId } },
-          create: { locationId: stockRoom.id, productId: line.productId, onHand: line.quantity },
-          update: { onHand: { increment: line.quantity }, version: { increment: 1 } },
+          create: { locationId: stockRoom.id, productId: line.productId, onHand: line.quantity, unitCost: new Prisma.Decimal(line.unitCost) },
+          update: { onHand: { increment: line.quantity }, unitCost: new Prisma.Decimal(line.unitCost), version: { increment: 1 } },
         });
         await tx.inventoryMovement.create({
           data: {

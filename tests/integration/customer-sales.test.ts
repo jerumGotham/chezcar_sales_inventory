@@ -24,7 +24,7 @@ describe("customer orders, direct sales, accounting", () => {
     await withDisposableDatabase(async ({ prisma }) => {
       const fixture = await createAuthFixture(prisma, { namespace: "customer-order" });
       const product = await prisma.product.create({ data: { itemCode: "ORDER-ITEM", name: "Order Item", price: 100, status: "ACTIVE" } });
-      await prisma.inventoryBalance.create({ data: { locationId: fixture.locations.branches.QC.id, productId: product.id, onHand: 5, reserved: 0, reorderLevel: 1, unitCost: 10 } });
+       await prisma.inventoryBalance.create({ data: { locationId: fixture.locations.branches.QC.id, productId: product.id, onHand: 5, reserved: 0, unitCost: 10 } });
       const { createCustomerOrder, releaseCustomerOrder } = await import("../../lib/server/services/customer-sales");
       const branchActor = actor(fixture.users.branchStaff, fixture.locations.branches.QC);
 
@@ -59,7 +59,7 @@ describe("customer orders, direct sales, accounting", () => {
     await withDisposableDatabase(async ({ prisma }) => {
       const fixture = await createAuthFixture(prisma, { namespace: "customer-order-cancel" });
       const product = await prisma.product.create({ data: { itemCode: "CANCEL-ITEM", name: "Cancel Item", price: 100, status: "ACTIVE" } });
-      await prisma.inventoryBalance.create({ data: { locationId: fixture.locations.branches.QC.id, productId: product.id, onHand: 4, reorderLevel: 1, unitCost: 10 } });
+       await prisma.inventoryBalance.create({ data: { locationId: fixture.locations.branches.QC.id, productId: product.id, onHand: 4, unitCost: 10 } });
       const { cancelCustomerOrder, createCustomerOrder } = await import("../../lib/server/services/customer-sales");
       const branchActor = actor(fixture.users.branchStaff, fixture.locations.branches.QC);
       const adminActor = actor(fixture.users.admin, null);
@@ -78,7 +78,7 @@ describe("customer orders, direct sales, accounting", () => {
     await withDisposableDatabase(async ({ prisma }) => {
       const fixture = await createAuthFixture(prisma, { namespace: "direct-sale" });
       const product = await prisma.product.create({ data: { itemCode: "SALE-ITEM", name: "Sale Item", price: 75, status: "ACTIVE" } });
-      await prisma.inventoryBalance.create({ data: { locationId: fixture.locations.branches.QC.id, productId: product.id, onHand: 3, reserved: 1, reorderLevel: 1, unitCost: 10 } });
+       await prisma.inventoryBalance.create({ data: { locationId: fixture.locations.branches.QC.id, productId: product.id, onHand: 3, reserved: 1, unitCost: 10 } });
       const { createDirectSale, reviewSale } = await import("../../lib/server/services/customer-sales");
       const branchActor = actor(fixture.users.branchStaff, fixture.locations.branches.QC);
       const accountingActor = actor(fixture.users.accountingStaff, null);
@@ -88,7 +88,24 @@ describe("customer orders, direct sales, accounting", () => {
       expect(sale).toMatchObject({ manualReceiptNumber: "SALE-0001", totalAmount: 75, reviewStatus: "UNVERIFIED" });
       await expect(prisma.inventoryBalance.findFirstOrThrow({ where: { productId: product.id } })).resolves.toMatchObject({ onHand: 2, reserved: 1 });
       await expect(createDirectSale(branchActor, { receiptBooklet: "", manualReceiptNumber: "SALE-0001", amountPaid: 75, paymentMethod: "GCASH", lines: [{ productId: product.id, quantity: 1 }] })).rejects.toMatchObject({ code: "DUPLICATE_RECEIPT" });
-      await expect(reviewSale(accountingActor, sale.id, { status: "VERIFIED" })).resolves.toMatchObject({ status: "VERIFIED", reviewedById: fixture.users.accountingStaff.id });
+       await expect(reviewSale(accountingActor, sale.id, { status: "VERIFIED", comparison: { receiptBooklet: "", receiptNumber: "SALE-0001", paymentMethod: "GCASH", discountAmount: 0, amountPaid: 75, totalAmount: 75, lines: [{ itemCode: "SALE-ITEM", quantity: 1, unitPrice: 75 }] } })).resolves.toMatchObject({ status: "VERIFIED", reviewedById: fixture.users.accountingStaff.id });
+    });
+  }, 30_000);
+
+  it("lets Admin load reports summaries", async () => {
+    await withDisposableDatabase(async ({ prisma }) => {
+      const fixture = await createAuthFixture(prisma, { namespace: "reports-admin" });
+      const { getReportsSummary } = await import("../../lib/server/services/customer-sales");
+      const adminActor = actor(fixture.users.admin, null);
+      const branchActor = actor(fixture.users.branchStaff, fixture.locations.branches.QC);
+
+      await expect(getReportsSummary(adminActor)).resolves.toMatchObject({
+        sales: expect.any(Object),
+        accounting: expect.any(Object),
+        orders: expect.any(Object),
+        inventory: expect.any(Array),
+      });
+      await expect(getReportsSummary(branchActor)).rejects.toMatchObject({ code: "FORBIDDEN" });
     });
   }, 30_000);
 });

@@ -10,6 +10,11 @@ The implemented database boundary consists of:
 - `prisma/schema.prisma`: implemented foundation models only.
 - `prisma/migrations/20260824000000_initial_foundation/migration.sql`: reproducible initial PostgreSQL migration.
 - `prisma/migrations/20260825_trusted_foundation/migration.sql`: additive nullable-price, account-state, Better Auth compatibility, role-scope, and singleton-Admin migration.
+- `prisma/migrations/20260827010000_sale_discount/migration.sql`: additive direct-sale discount amount migration.
+- `prisma/migrations/20260827030000_product_reorder_level/migration.sql`: shared product-level reorder threshold migration.
+- `prisma/migrations/20260827040000_accounting_receipt_photo/migration.sql`: optional receipt-photo evidence migration.
+- `prisma/migrations/20260827050000_receipt_correction_audit/migration.sql`: receipt comparison snapshots, correction links, resolution audit, and correction movement types.
+- `prisma/migrations/20260827060000_remove_balance_reorder_level/migration.sql`: removes the obsolete per-location reorder column.
 - `lib/server/prisma.ts`: server-only development-safe Prisma singleton.
 - `lib/server/auth.ts`: Better Auth Prisma adapter configuration (public instance, sign-up disabled).
 - `lib/server/internal-user-auth.ts`: server-only unmounted Better Auth Admin-plugin credential engine used only by staff-lifecycle services.
@@ -37,7 +42,7 @@ The additive `20260826030000_product_management_audit` migration adds nullable a
 
 ### InventoryBalance
 
-Stores one balance per `(locationId, productId)` with `onHand`, `reserved`, `reorderLevel`, Decimal `unitCost`, optimistic `version`, and timestamps. Inventory list status is computed from available stock (`onHand - reserved`) rather than gross on-hand stock.
+Stores one balance per `(locationId, productId)` with `onHand`, `reserved`, Decimal `unitCost`, optimistic `version`, and timestamps. The shared reorder threshold is stored on Product and applies to every location. Inventory list status is computed from available stock (`onHand - reserved`) rather than gross on-hand stock.
 
 The initial SQL migration enforces non-negative reserved/reorder/cost values and a positive version, but it does not yet constrain `onHand` to be non-negative. The transfer service prevents source balances from becoming negative through conditional updates.
 
@@ -74,9 +79,9 @@ JobOrder and advanced CRM/service models remain absent. The former draft Custome
 
 ### Customers, orders, sales, and Accounting
 
-The additive `20260826050000_customer_orders_sales_accounting` migration introduces `Customer`, `CustomerOrder`, `CustomerOrderLine`, `ManualReceipt`, `Sale`, `SaleLine`, and `SaleAccountingReview`. Manual receipt numbers are globally unique through `ManualReceipt.number` and unique nullable receipt fields on order/sale records.
+The additive `20260826050000_customer_orders_sales_accounting` migration introduces `Customer`, `CustomerOrder`, `CustomerOrderLine`, `ManualReceipt`, `Sale`, `SaleLine`, and `SaleAccountingReview`. Manual receipt identity is unique per branch, booklet, and receipt number. Accounting reviews store `UNVERIFIED`, `VERIFIED`, or `MISMATCH_REPORTED` state, structured mismatch details, and optional receipt-photo evidence.
 
-Reservation orders increment `InventoryBalance.reserved` while keeping physical `onHand` unchanged. Final order release creates a posted sale, clears reservation, decrements `onHand`, and writes `CUSTOMER_ORDER_RELEASE` movements. Direct sales decrement available branch stock immediately and write `DIRECT_SALE` movements. Each sale starts with one `UNVERIFIED` Accounting review row; Accounting/Admin may verify or flag it without editing sale, payment, order, or stock facts.
+Reservation orders increment `InventoryBalance.reserved` while keeping physical `onHand` unchanged. Final order release creates a posted sale, clears reservation, decrements `onHand`, and writes `CUSTOMER_ORDER_RELEASE` movements. Direct sales decrement available branch stock immediately and write `DIRECT_SALE` movements; direct-sale discounts are stored as `Sale.discountAmount` and cannot exceed the sale subtotal. Each sale starts with one `UNVERIFIED` Accounting review row; Accounting Staff may verify or report a mismatch without editing sale, payment, order, or stock facts. Mismatch reports notify active Admin users and the posting user.
 
 Add transactional models only when implementing their vertical workflow, including canonical lines, snapshots, actors, statuses, invariants, idempotency, and auditability. The full proposed shape remains in `docs/product/PROVISIONAL-DATA-MODEL.md`.
 

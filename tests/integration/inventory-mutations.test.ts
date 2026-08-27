@@ -49,7 +49,6 @@ describe("inventory corrections and reorder levels", () => {
           productId: product.id,
           onHand: 8,
           reserved: 2,
-          reorderLevel: 3,
           unitCost: 1,
         },
       });
@@ -94,7 +93,6 @@ describe("inventory corrections and reorder levels", () => {
           productId: product.id,
           onHand: 5,
           reserved: 4,
-          reorderLevel: 1,
           unitCost: 1,
         },
       });
@@ -115,6 +113,38 @@ describe("inventory corrections and reorder levels", () => {
     });
   }, 30_000);
 
+  it("lets Admin correct unit cost without changing stock quantity", async () => {
+    await withDisposableDatabase(async ({ prisma }) => {
+      const fixture = await createAuthFixture(prisma, { namespace: "inventory-unit-cost" });
+      const product = await prisma.product.create({
+        data: { itemCode: "UNIT-COST-FIX", name: "Unit Cost Fix", status: "ACTIVE" },
+      });
+      const balance = await prisma.inventoryBalance.create({
+        data: {
+          locationId: fixture.locations.stockRoom.id,
+          productId: product.id,
+          onHand: 100,
+          reserved: 0,
+          unitCost: 0,
+        },
+      });
+      const { updateInventoryUnitCost } = await import("../../lib/server/catalog");
+
+      const updated = await updateInventoryUnitCost(actor(fixture.users.admin, null), balance.id, {
+        unitCost: 88.5,
+        reason: "Correct supplier cost",
+      });
+
+      expect(updated).toMatchObject({ onHand: 100, unitCost: 88.5 });
+      await expect(prisma.inventoryBalance.findUniqueOrThrow({ where: { id: balance.id } })).resolves.toMatchObject({ onHand: 100 });
+      const persisted = await prisma.inventoryBalance.findUniqueOrThrow({ where: { id: balance.id } });
+      expect(persisted.unitCost.toNumber()).toBe(88.5);
+      await expect(prisma.inventoryMovement.findMany({ where: { productId: product.id } })).resolves.toMatchObject([
+         expect.objectContaining({ quantity: 0, type: "MANUAL_ADJUSTMENT", remarks: "Correct supplier cost - Unit cost changed from 0 to 88.5" }),
+      ]);
+    });
+  }, 30_000);
+
   it("updates reorder level and filters inventory status by available stock", async () => {
     await withDisposableDatabase(async ({ prisma }) => {
       const fixture = await createAuthFixture(prisma, { namespace: "inventory-reorder" });
@@ -127,14 +157,12 @@ describe("inventory corrections and reorder levels", () => {
           productId: product.id,
           onHand: 5,
           reserved: 5,
-          reorderLevel: 0,
           unitCost: 1,
         },
       });
-      const { listInventory, updateInventoryReorderLevel } = await import("../../lib/server/catalog");
+       const { listInventory } = await import("../../lib/server/catalog");
       const adminActor = actor(fixture.users.admin, null);
 
-      await expect(updateInventoryReorderLevel(adminActor, balance.id, { reorderLevel: 7 })).resolves.toMatchObject({ reorderLevel: 7 });
       await expect(listInventory({ page: 1, pageSize: 10, itemCode: "AVAILABLE-FILTER", name: "", category: "all", location: "all", status: "Out of Stock" }, adminActor)).resolves.toMatchObject({
         data: [expect.objectContaining({ itemCode: "AVAILABLE-FILTER", status: "Out of Stock" })],
         meta: expect.objectContaining({ total: 1 }),

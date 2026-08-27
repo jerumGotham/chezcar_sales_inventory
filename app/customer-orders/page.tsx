@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { Route } from "next";
+import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import Select from "react-select";
 import type { StylesConfig } from "react-select";
@@ -75,6 +76,22 @@ type CustomerOrdersApiResponse = {
     releasedOrders: number;
     totalDownpayments: number;
   };
+};
+
+type DirectSaleRow = {
+  id: string;
+  reference: string;
+  manualReceiptNumber: string;
+  branch: string;
+  customer: string;
+  totalAmount: number;
+  discountAmount: number;
+  amountPaid: number;
+  paymentMethod: string;
+  status: string;
+  postedAt: string;
+  postedBy: string;
+  reviewStatus: string;
 };
 
 const ORDER_STATUS_OPTIONS: SelectOption[] = [
@@ -208,6 +225,13 @@ async function fetchCustomerOrders(params: {
   };
 }
 
+async function fetchDirectSales(): Promise<DirectSaleRow[]> {
+  const response = await fetch("/api/sales", { credentials: "same-origin" });
+  if (!response.ok) throw new Error("Unable to load direct sales");
+  const payload = (await response.json()) as { data: DirectSaleRow[] };
+  return payload.data;
+}
+
 const reactSelectStyles: StylesConfig<SelectOption, false> = {
   control: (base, state) => ({
     ...base,
@@ -252,6 +276,10 @@ const reactSelectStyles: StylesConfig<SelectOption, false> = {
 };
 
 export default function CustomerOrdersPage() {
+  const searchParams = useSearchParams();
+  const [activeView, setActiveView] = useState<"orders" | "sales">(
+    searchParams.get("view") === "sales" ? "sales" : "orders",
+  );
   const [orderNo, setOrderNo] = useState("");
   const [customer, setCustomer] = useState("");
   const [orderStatus, setOrderStatus] = useState<SelectOption>(
@@ -273,6 +301,8 @@ export default function CustomerOrdersPage() {
 
   const [page, setPage] = useState(1);
   const pageSize = 10;
+  const [saleSearch, setSaleSearch] = useState("");
+  const [salePage, setSalePage] = useState(1);
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: [
@@ -298,6 +328,12 @@ export default function CustomerOrdersPage() {
     placeholderData: (previousData) => previousData,
   });
 
+  const directSalesQuery = useQuery({
+    queryKey: ["customer-direct-sales-list"],
+    queryFn: fetchDirectSales,
+    enabled: activeView === "sales",
+  });
+
   const rows = data?.data ?? [];
   const meta = useMemo(
     () => data?.meta ?? {
@@ -315,6 +351,21 @@ export default function CustomerOrdersPage() {
     releasedOrders: 0,
     totalDownpayments: 0,
   };
+
+  const filteredSales = useMemo(() => {
+    const keyword = saleSearch.trim().toLowerCase();
+    if (!keyword) return directSalesQuery.data ?? [];
+    return (directSalesQuery.data ?? []).filter((sale) =>
+      [sale.reference, sale.manualReceiptNumber, sale.customer, sale.branch]
+        .some((value) => value.toLowerCase().includes(keyword)),
+    );
+  }, [directSalesQuery.data, saleSearch]);
+  const saleTotalPages = Math.max(1, Math.ceil(filteredSales.length / pageSize));
+  const safeSalePage = Math.min(salePage, saleTotalPages);
+  const paginatedSales = filteredSales.slice(
+    (safeSalePage - 1) * pageSize,
+    safeSalePage * pageSize,
+  );
 
   const showingFrom = useMemo(() => {
     if (meta.total === 0) return 0;
@@ -362,6 +413,29 @@ export default function CustomerOrdersPage() {
         </>
       }
     >
+      <div className="mb-6 flex flex-wrap gap-2 rounded-xl border bg-slate-50 p-2">
+        <Button
+          variant={activeView === "orders" ? "default" : "ghost"}
+          onClick={() => {
+            setActiveView("orders");
+            setPage(1);
+          }}
+        >
+          Customer Orders
+        </Button>
+        <Button
+          variant={activeView === "sales" ? "default" : "ghost"}
+          onClick={() => {
+            setActiveView("sales");
+            setSalePage(1);
+          }}
+        >
+          Direct Sales
+        </Button>
+      </div>
+
+      {activeView === "orders" ? (
+        <>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <Card>
           <CardContent className="flex items-start justify-between p-5">
@@ -796,6 +870,85 @@ export default function CustomerOrdersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+        </>
+      ) : (
+        <Card>
+          <CardContent className="p-0">
+            <div className="flex flex-col gap-4 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-base font-semibold text-foreground">Direct Sales List</h3>
+                <p className="text-sm text-slate-500">Completed walk-in sales posted from Customer Sales.</p>
+              </div>
+              <Input
+                className="sm:max-w-xs"
+                placeholder="Search receipt or customer"
+                value={saleSearch}
+                onChange={(event) => {
+                  setSaleSearch(event.target.value);
+                  setSalePage(1);
+                }}
+              />
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1050px]">
+                <thead className="bg-slate-50">
+                  <tr className="border-b">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Receipt</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Customer</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Branch</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Total</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Discount</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Payment</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Review</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Posted</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {directSalesQuery.isLoading ? (
+                    <tr><td colSpan={8} className="px-5 py-16 text-center text-slate-500">Loading direct sales...</td></tr>
+                  ) : directSalesQuery.isError ? (
+                    <tr><td colSpan={8} className="px-5 py-16 text-center text-rose-600">Unable to load direct sales.</td></tr>
+                  ) : paginatedSales.length === 0 ? (
+                    <tr><td colSpan={8} className="px-5 py-16 text-center text-slate-500">No direct sales found.</td></tr>
+                  ) : (
+                    paginatedSales.map((sale) => (
+                      <tr key={sale.id} className="border-b transition-colors hover:bg-slate-50">
+                        <td className="px-5 py-4 text-sm font-medium text-foreground">
+                          <p>{sale.manualReceiptNumber}</p>
+                          <p className="text-xs text-slate-500">{sale.reference}</p>
+                        </td>
+                        <td className="px-5 py-4 text-sm text-slate-600">{sale.customer}</td>
+                        <td className="px-5 py-4 text-sm text-slate-600">{sale.branch}</td>
+                        <td className="px-5 py-4 text-sm font-semibold text-emerald-700">{formatPeso(sale.totalAmount)}</td>
+                        <td className="px-5 py-4 text-sm text-slate-600">{formatPeso(sale.discountAmount)}</td>
+                        <td className="px-5 py-4 text-sm text-slate-600">{sale.paymentMethod}</td>
+                        <td className="px-5 py-4 text-sm">
+                          <Badge className={sale.reviewStatus === "VERIFIED" ? getPaymentStatusBadgeClass("Paid") : getPaymentStatusBadgeClass("Partial")}>{sale.reviewStatus}</Badge>
+                        </td>
+                        <td className="px-5 py-4 text-sm text-slate-600">{formatDate(sale.postedAt)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex flex-col gap-3 border-t px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-slate-500">Showing {filteredSales.length === 0 ? 0 : (safeSalePage - 1) * pageSize + 1} to {Math.min(safeSalePage * pageSize, filteredSales.length)} of {filteredSales.length} sales</p>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setSalePage((prev) => Math.max(prev - 1, 1))} disabled={safeSalePage <= 1 || directSalesQuery.isFetching}>
+                  <ChevronLeft className="mr-1 h-4 w-4" /> Previous
+                </Button>
+                <span className="text-sm text-slate-500">Page {safeSalePage} of {saleTotalPages}</span>
+                <Button variant="outline" size="sm" onClick={() => setSalePage((prev) => Math.min(prev + 1, saleTotalPages))} disabled={safeSalePage >= saleTotalPages || directSalesQuery.isFetching}>
+                  Next <ChevronRight className="ml-1 h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </PageShell>
   );
 }

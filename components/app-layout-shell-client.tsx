@@ -14,14 +14,6 @@ export function AppLayoutShellClient({ children }: { children: ReactNode }) {
     return children;
   }
 
-  if (pathname.startsWith("/pos")) {
-    return (
-      <main className="min-h-screen bg-slate-50 text-foreground">
-        {children}
-      </main>
-    );
-  }
-
   return (
     <div className="min-h-screen lg:flex">
       <AppSidebar menu={access.menu} />

@@ -22,19 +22,21 @@ export async function postStockReceiptAction(
 
   const lineCount = Math.max(1, Math.min(50, Number(formData.get("lineCount") ?? 1) || 1));
   const seen = new Set<string>();
-  const lines: { productId: string; quantity: number }[] = [];
+  const lines: { productId: string; quantity: number; unitCost: number }[] = [];
 
   for (let index = 0; index < lineCount; index += 1) {
     const productId = String(formData.get(`productId-${index}`) ?? "").trim();
     const quantity = Number(formData.get(`quantity-${index}`) ?? 0);
+    const unitCost = Number(formData.get(`unitCost-${index}`) ?? 0);
     if (!productId || seen.has(productId)) continue;
     if (!Number.isInteger(quantity) || quantity < 1) continue;
+    if (!Number.isFinite(unitCost) || unitCost <= 0) continue;
     seen.add(productId);
-    lines.push({ productId, quantity });
+    lines.push({ productId, quantity, unitCost });
   }
 
   if (lines.length === 0) {
-    return { ok: false, message: "Every line needs a product and a whole number quantity of at least 1." };
+    return { ok: false, message: "Every line needs a product, positive whole-number quantity, and unit cost greater than 0." };
   }
 
   try {

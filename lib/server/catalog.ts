@@ -45,6 +45,7 @@ export const productMutationSchema = z.object({
   brand: optionalText,
   description: z.string().trim().max(2_000).optional(),
   price: z.union([positivePrice, z.null()]),
+  reorderLevel: z.coerce.number().int().min(0).default(0),
   status: z.enum(["ACTIVE", "INACTIVE"]),
 });
 
@@ -58,14 +59,20 @@ export const inventoryListQuerySchema = z.object({
 
 export const inventoryCorrectionSchema = z.object({
   type: z.enum(["increase", "decrease"]),
-  quantity: z.coerce.number().int().positive(),
+  quantity: z.coerce.number().int().min(0),
   reference: z.string().trim().max(100).optional(),
   reason: z.string().trim().min(1).max(500),
   remarks: z.string().trim().max(1_000).optional(),
+}).refine((input) => input.quantity > 0, {
+  message: "Enter a stock quantity change",
+  path: ["quantity"],
 });
 
-export const reorderLevelSchema = z.object({
-  reorderLevel: z.coerce.number().int().min(0),
+export const inventoryUnitCostSchema = z.object({
+  unitCost: z.coerce.number().positive(),
+  reference: z.string().trim().max(100).optional(),
+  reason: z.string().trim().min(1).max(500),
+  remarks: z.string().trim().max(1_000).optional(),
 });
 
 export const inventoryMovementsQuerySchema = z.object({
@@ -227,9 +234,7 @@ export async function listProducts(
       prisma.product.count(),
       prisma.product.count({ where: { status: "ACTIVE" } }),
       prisma.product.count({ where: { status: "INACTIVE" } }),
-      prisma.product.count({
-        where: { inventoryBalances: { some: { reorderLevel: { gt: 0 } } } },
-      }),
+       prisma.product.count({ where: { reorderLevel: { gt: 0 } } }),
     ]);
   const { meta, skip } = pagination(query.page, query.pageSize, total);
   const products = await prisma.product.findMany({
@@ -238,7 +243,7 @@ export async function listProducts(
     skip,
     take: query.pageSize,
     include: {
-      inventoryBalances: { select: { onHand: true, reserved: true, reorderLevel: true } },
+       inventoryBalances: { select: { onHand: true, reserved: true } },
       transferLines: { select: { id: true }, take: 1 },
       receiptLines: { select: { id: true }, take: 1 },
       inventoryMovements: { select: { id: true }, take: 1 },
@@ -253,10 +258,7 @@ export async function listProducts(
       category: product.category ?? "Uncategorized",
       brand: product.brand ?? "Unbranded",
       price: product.price?.toNumber() ?? null,
-      reorderLevel: Math.max(
-        0,
-        ...product.inventoryBalances.map((balance) => balance.reorderLevel),
-      ),
+       reorderLevel: product.reorderLevel,
       status: product.status === "ACTIVE" ? "Active" : "Inactive",
       description: product.description ?? undefined,
       canEditItemCode: product.inventoryBalances.length === 0 && product.transferLines.length === 0 && product.receiptLines.length === 0 && product.inventoryMovements.length === 0,
@@ -297,6 +299,7 @@ function normalizeProductInput(input: z.infer<typeof productMutationSchema>) {
     brand: input.brand || null,
     description: input.description || null,
     price: input.price === null ? null : new Prisma.Decimal(input.price),
+    reorderLevel: input.reorderLevel,
     status: input.status,
   };
 }
@@ -408,7 +411,7 @@ export async function listInventory(
       where: productWhere,
       orderBy: { itemCode: "asc" },
       include: {
-        inventoryBalances: {
+         inventoryBalances: {
           where: balanceWhere,
           orderBy: { location: { name: "asc" } },
           include: { location: { select: { name: true } } },
@@ -417,7 +420,7 @@ export async function listInventory(
     }),
     prisma.inventoryBalance.findMany({
       where: { locationId: scopeLocationId },
-      select: { productId: true, onHand: true, reserved: true, reorderLevel: true },
+      select: { productId: true, onHand: true, reserved: true, product: { select: { reorderLevel: true } } },
     }),
     prisma.stockTransferLine.aggregate({
       where: {
@@ -438,7 +441,7 @@ export async function listInventory(
         .map((product) => ({
           ...product,
           inventoryBalances: product.inventoryBalances.filter(
-            (balance) => stockStatus(balance.onHand, balance.reserved, balance.reorderLevel) === query.status,
+             (balance) => stockStatus(balance.onHand, balance.reserved, product.reorderLevel) === query.status,
           ),
         }))
         .filter((product) => product.inventoryBalances.length > 0);
@@ -453,10 +456,10 @@ export async function listInventory(
       location: balance.location.name,
       onHand: balance.onHand,
       reserved: balance.reserved,
-      reorderLevel: balance.reorderLevel,
+       reorderLevel: product.reorderLevel,
       unitCost: balance.unitCost.toNumber(),
       lastUpdated: balance.updatedAt.toISOString(),
-      status: stockStatus(balance.onHand, balance.reserved, balance.reorderLevel),
+       status: stockStatus(balance.onHand, balance.reserved, product.reorderLevel),
     })),
   );
   const totalUnits = summaryBalances.reduce(
@@ -464,7 +467,7 @@ export async function listInventory(
     0,
   );
   const needsRestock = summaryBalances.filter(
-    (balance) => stockStatus(balance.onHand, balance.reserved, balance.reorderLevel) !== "In Stock",
+     (balance) => stockStatus(balance.onHand, balance.reserved, balance.product.reorderLevel) !== "In Stock",
   ).length;
 
   return {
@@ -504,7 +507,7 @@ export async function listInventoryMovements(
       skip,
       take: query.pageSize,
       include: {
-        product: { select: { itemCode: true, name: true } },
+        product: { select: { itemCode: true, name: true, reorderLevel: true } },
         location: { select: { name: true } },
         transfer: { select: { reference: true } },
         receipt: { select: { reference: true } },
@@ -582,7 +585,7 @@ export async function correctInventoryBalance(
     const balance = await tx.inventoryBalance.findUnique({
       where: { id: balanceId },
       include: {
-        product: { select: { itemCode: true, name: true } },
+        product: { select: { itemCode: true, name: true, reorderLevel: true } },
         location: { select: { id: true, name: true } },
       },
     });
@@ -591,20 +594,29 @@ export async function correctInventoryBalance(
       throw new InventoryMutationError("NOT_FOUND", "Inventory balance not found", 404);
     }
 
-    const previousStatus = stockStatus(balance.onHand, balance.reserved, balance.reorderLevel);
+    const previousStatus = stockStatus(balance.onHand, balance.reserved, balance.product.reorderLevel);
     const nextOnHand = balance.onHand + delta;
     if (nextOnHand < balance.reserved) {
       throw new InventoryMutationError("BELOW_RESERVED", "Adjustment cannot reduce on-hand stock below reserved quantity", 409);
     }
 
+    const updateData: Prisma.InventoryBalanceUpdateInput = {
+      onHand: nextOnHand,
+      version: { increment: 1 },
+    };
     const updated = await tx.inventoryBalance.update({
       where: { id: balance.id },
-      data: { onHand: nextOnHand, version: { increment: 1 } },
+      data: updateData,
       include: {
-        product: { select: { itemCode: true, name: true, category: true } },
+        product: { select: { itemCode: true, name: true, category: true, reorderLevel: true } },
         location: { select: { name: true } },
       },
     });
+
+    const movementRemarks = [
+      input.reason,
+      input.remarks,
+    ].filter(Boolean).join(" - ");
 
     await tx.inventoryMovement.create({
       data: {
@@ -614,11 +626,11 @@ export async function correctInventoryBalance(
         type: "MANUAL_ADJUSTMENT",
         actorId: actor.userId,
         reference: input.reference || null,
-        remarks: [input.reason, input.remarks].filter(Boolean).join(" - "),
+        remarks: movementRemarks,
       },
     });
 
-    const nextStatus = stockStatus(updated.onHand, updated.reserved, updated.reorderLevel);
+    const nextStatus = stockStatus(updated.onHand, updated.reserved, updated.product.reorderLevel);
     if (nextStatus !== previousStatus && nextStatus !== "In Stock") {
       const users = await tx.user.findMany({
         where: {
@@ -643,33 +655,54 @@ export async function correctInventoryBalance(
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
-export async function updateInventoryReorderLevel(
+export async function updateInventoryUnitCost(
   actor: AuthContext,
   balanceId: string,
-  input: z.infer<typeof reorderLevelSchema>,
+  input: z.infer<typeof inventoryUnitCostSchema>,
 ) {
   assertInventoryAdmin(actor);
 
-  try {
-    const updated = await prisma.inventoryBalance.update({
+  const updated = await prisma.$transaction(async (tx) => {
+    const balance = await tx.inventoryBalance.findUnique({
       where: { id: balanceId },
-      data: { reorderLevel: input.reorderLevel, version: { increment: 1 } },
+      select: { productId: true, locationId: true, unitCost: true },
+    });
+    if (!balance) {
+      throw new InventoryMutationError("NOT_FOUND", "Inventory balance not found", 404);
+    }
+
+    const result = await tx.inventoryBalance.update({
+      where: { id: balanceId },
+      data: { unitCost: new Prisma.Decimal(input.unitCost), version: { increment: 1 } },
       include: {
-        product: { select: { itemCode: true, name: true, category: true } },
+        product: { select: { itemCode: true, name: true, category: true, reorderLevel: true } },
         location: { select: { name: true } },
       },
     });
 
-    return serializeInventoryBalance(
-      updated,
-      stockStatus(updated.onHand, updated.reserved, updated.reorderLevel),
-    );
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
-      throw new InventoryMutationError("NOT_FOUND", "Inventory balance not found", 404);
-    }
-    throw error;
-  }
+    await tx.inventoryMovement.create({
+      data: {
+        productId: balance.productId,
+        locationId: balance.locationId,
+        quantity: 0,
+        type: "MANUAL_ADJUSTMENT",
+        actorId: actor.userId,
+        reference: input.reference || null,
+        remarks: [
+          input.reason,
+          `Unit cost changed from ${balance.unitCost.toString()} to ${input.unitCost}`,
+          input.remarks,
+        ].filter(Boolean).join(" - "),
+      },
+    });
+
+    return result;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+  return serializeInventoryBalance(
+    updated,
+    stockStatus(updated.onHand, updated.reserved, updated.product.reorderLevel),
+  );
 }
 
 function serializeInventoryBalance(
@@ -677,10 +710,9 @@ function serializeInventoryBalance(
     id: string;
     onHand: number;
     reserved: number;
-    reorderLevel: number;
     unitCost: Prisma.Decimal;
     updatedAt: Date;
-    product: { itemCode: string; name: string; category: string | null };
+    product: { itemCode: string; name: string; category: string | null; reorderLevel: number };
     location: { name: string };
   },
   status: InventoryStatus,
@@ -693,7 +725,7 @@ function serializeInventoryBalance(
     location: balance.location.name,
     onHand: balance.onHand,
     reserved: balance.reserved,
-    reorderLevel: balance.reorderLevel,
+    reorderLevel: balance.product.reorderLevel,
     unitCost: balance.unitCost.toNumber(),
     lastUpdated: balance.updatedAt.toISOString(),
     status,

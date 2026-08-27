@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Select from "react-select";
+import type { StylesConfig } from "react-select";
 import { Plus, Trash2 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
@@ -149,8 +150,8 @@ const MOCK_JOB_ORDERS: JobOrderRow[] = [
   },
 ];
 
-const reactSelectStyles = {
-  control: (base: any, state: any) => ({
+const reactSelectStyles: StylesConfig<SelectOption, false> = {
+  control: (base, state) => ({
     ...base,
     minHeight: "40px",
     borderRadius: "0.75rem",
@@ -158,20 +159,20 @@ const reactSelectStyles = {
     boxShadow: "none",
     "&:hover": { borderColor: "#10b981" },
   }),
-  valueContainer: (base: any) => ({
+  valueContainer: (base) => ({
     ...base,
     paddingLeft: "10px",
     paddingRight: "10px",
   }),
-  input: (base: any) => ({ ...base, color: "#0f172a" }),
-  placeholder: (base: any) => ({ ...base, color: "#94a3b8", fontSize: "14px" }),
-  menu: (base: any) => ({
+  input: (base) => ({ ...base, color: "#0f172a" }),
+  placeholder: (base) => ({ ...base, color: "#94a3b8", fontSize: "14px" }),
+  menu: (base) => ({
     ...base,
     borderRadius: "0.75rem",
     overflow: "hidden",
     zIndex: 50,
   }),
-  option: (base: any, state: any) => ({
+  option: (base, state) => ({
     ...base,
     backgroundColor: state.isSelected
       ? "#10b981"
@@ -210,6 +211,8 @@ export default function EditJobOrderPage() {
   useEffect(() => {
     if (!job) return;
 
+    // Hydrate the legacy editor after its async record lookup completes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCustomer({
       value: job.customer.toLowerCase().replace(/\s+/g, "-"),
       label: job.customer,

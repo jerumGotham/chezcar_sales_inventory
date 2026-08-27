@@ -69,6 +69,7 @@ type ProductForm = {
   brand: string;
   description: string;
   price: string;
+  reorderLevel: string;
   status: "ACTIVE" | "INACTIVE";
 };
 
@@ -79,6 +80,7 @@ const EMPTY_PRODUCT_FORM: ProductForm = {
   brand: "",
   description: "",
   price: "",
+  reorderLevel: "0",
   status: "ACTIVE",
 };
 
@@ -223,6 +225,7 @@ export default function ProductsPage() {
         brand: form.brand || undefined,
         description: form.description || undefined,
         price: form.price ? Number(form.price) : null,
+        reorderLevel: Number(form.reorderLevel || 0),
         status: form.status,
       };
       return selectedProduct
@@ -303,6 +306,7 @@ export default function ProductsPage() {
         brand: product.brand === "Unbranded" ? "" : product.brand,
         description: product.description ?? "",
         price: product.price?.toString() ?? "",
+        reorderLevel: String(product.reorderLevel),
         status: product.status === "Active" ? "ACTIVE" : "INACTIVE",
       }
       : EMPTY_PRODUCT_FORM);
@@ -322,16 +326,14 @@ export default function ProductsPage() {
         title="Products"
         subtitle="Manage product master data. Admin controls product edits while Stock Staff keeps read-only catalog visibility."
         actions={
-          <>
+          isAdmin ? (
             <Button
               className="bg-emerald-600 text-white hover:bg-emerald-700"
-              disabled={!isAdmin}
               onClick={() => openProductDialog()}
-              title={isAdmin ? "Create product" : "Admin access required"}
             >
               Add Product
             </Button>
-          </>
+          ) : null
         }
       >
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -502,7 +504,7 @@ export default function ProductsPage() {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1150px]">
+              <table className={`w-full ${isAdmin ? "min-w-[1150px]" : "min-w-[1020px]"}`}>
                 <thead className="bg-slate-50">
                   <tr className="border-b">
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -529,16 +531,14 @@ export default function ProductsPage() {
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Description
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Action
-                    </th>
+                    {isAdmin && <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Action</th>}
                   </tr>
                 </thead>
 
                 <tbody>
                   {isLoading ? (
                     <tr>
-                      <td colSpan={9} className="px-5 py-16 text-center">
+                      <td colSpan={isAdmin ? 9 : 8} className="px-5 py-16 text-center">
                         <div className="flex items-center justify-center gap-2 text-slate-500">
                           <Loader2 className="h-4 w-4 animate-spin" />
                           Loading products...
@@ -548,7 +548,7 @@ export default function ProductsPage() {
                   ) : error ? (
                     <tr>
                       <td
-                        colSpan={9}
+                        colSpan={isAdmin ? 9 : 8}
                         className="px-5 py-16 text-center text-red-600"
                       >
                         {error.message}
@@ -557,7 +557,7 @@ export default function ProductsPage() {
                   ) : rows.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={9}
+                        colSpan={isAdmin ? 9 : 8}
                         className="px-5 py-16 text-center text-slate-500"
                       >
                         No products found.
@@ -599,16 +599,14 @@ export default function ProductsPage() {
                             {product.description || "-"}
                           </span>
                         </td>
-                        <td className="px-5 py-4">
+                        {isAdmin && <td className="px-5 py-4">
                           <div className="flex flex-row gap-2">
                             <div className="flex flex-wrap gap-2">
                               <Button
                                 size="sm"
                                 variant="outline"
                                 className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
-                                disabled={!isAdmin}
                                 onClick={() => openProductDialog(product)}
-                                title={isAdmin ? "Edit product" : "Admin access required"}
                               >
                                 Edit
                               </Button>
@@ -619,15 +617,15 @@ export default function ProductsPage() {
                                 size="sm"
                                 variant="outline"
                                 className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
-                                disabled={!isAdmin || !product.canDelete || deleteMutation.isPending}
+                                disabled={!product.canDelete || deleteMutation.isPending}
                                 onClick={() => deleteMutation.mutate(product.id)}
-                                title={!isAdmin ? "Admin access required" : product.canDelete ? "Delete unused product" : "Products with balances or history cannot be deleted"}
+                                title={product.canDelete ? "Delete unused product" : "Products with balances or history cannot be deleted"}
                               >
                                 Delete
                               </Button>
                             </div>
                           </div>
-                        </td>
+                        </td>}
                       </tr>
                     ))
                   )}
@@ -750,12 +748,12 @@ export default function ProductsPage() {
                 <Input
                   id="reorderLevel"
                   type="number"
-                  defaultValue={selectedProduct?.reorderLevel ?? 0}
-                  disabled
+                  min="0"
+                  step="1"
+                  value={form.reorderLevel}
+                  onChange={(event) => setForm((current) => ({ ...current, reorderLevel: event.target.value }))}
                 />
-                <p className="text-xs text-slate-500">
-                  Used by inventory monitoring to identify low stock items.
-                </p>
+                <p className="text-xs text-slate-500">Applied to this product across Stock Room and branches.</p>
               </div>
 
               <div className="space-y-2">

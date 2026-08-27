@@ -83,7 +83,7 @@ All MVP replenishment enters `SR`. Transfers are `SR` to branch only. Branch-to-
 - Create and update Stock Staff, Branch Staff, and Accounting Staff accounts
 - Assign one of those fixed roles; Stock Staff is fixed to `SR`, Branch Staff requires exactly one branch, and Accounting Staff has no location assignment
 - Deactivate users instead of hard-deleting their identity
-- Manage products, prices, locations, and controlled corrections
+- Manage products, prices, locations, Stock Room receiving, and controlled corrections
 - Resolve final stock discrepancies after Stock Staff investigation
 - Resolve Accounting mismatch reports
 

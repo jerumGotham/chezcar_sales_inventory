@@ -1,4 +1,5 @@
 import type { AuthContext } from "@/lib/server/authorization";
+import type { PaymentMethod } from "@prisma/client";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
 import { withDisposableDatabase } from "../helpers/database";
@@ -24,6 +25,10 @@ function actor(user: { id: string; role: AuthContext["role"]; locationId: string
   return { userId: user.id, role: user.role, locationId: user.locationId, location };
 }
 
+function matchingComparison(sale: { receiptBooklet: string; manualReceiptNumber: string; paymentMethod: PaymentMethod; discountAmount?: number; amountPaid: number; totalAmount: number; lines: Array<{ itemCode: string; quantity: number; unitPrice: number }> }) {
+  return { receiptBooklet: sale.receiptBooklet, receiptNumber: sale.manualReceiptNumber, paymentMethod: sale.paymentMethod, discountAmount: sale.discountAmount ?? 0, amountPaid: sale.amountPaid, totalAmount: sale.totalAmount, lines: sale.lines };
+}
+
 describe("sales tracer — per-branch receipt, stock deduction, Accounting VERIFIED", () => {
   it("proves branch receipt reuse, duplicate guard, stock deduction, and VERIFIED terminality", async () => {
     await withDisposableDatabase(async ({ prisma }) => {
@@ -44,8 +49,8 @@ describe("sales tracer — per-branch receipt, stock deduction, Accounting VERIF
       expect(product.price?.toNumber()).toBe(50);
 
       // Seed balances for BL and QC
-      await createInventoryBalanceFixture(prisma, { locationId: fixture.locations.branches.BL.id, productId: product.id, onHand: 10, reserved: 0, reorderLevel: 2, unitCost: 10 });
-      await createInventoryBalanceFixture(prisma, { locationId: fixture.locations.branches.QC.id, productId: product.id, onHand: 10, reserved: 1, reorderLevel: 2, unitCost: 10 });
+       await createInventoryBalanceFixture(prisma, { locationId: fixture.locations.branches.BL.id, productId: product.id, onHand: 10, reserved: 0, unitCost: 10 });
+       await createInventoryBalanceFixture(prisma, { locationId: fixture.locations.branches.QC.id, productId: product.id, onHand: 10, reserved: 1, unitCost: 10 });
 
       const { createDirectSale, getSaleById, reviewSale, listSales } = await import("../../lib/server/services/customer-sales");
 
@@ -180,7 +185,7 @@ describe("sales tracer — per-branch receipt, stock deduction, Accounting VERIF
       expect(blList.find((s) => s.id === qcSale.id)).toBeUndefined();
 
       // Accounting marks UNVERIFIED → VERIFIED
-      const verified = await reviewSale(accountingActor, blSale.id, { status: "VERIFIED" });
+       const verified = await reviewSale(accountingActor, blSale.id, { status: "VERIFIED", comparison: matchingComparison(blSale) });
       expect(verified.status).toBe("VERIFIED");
       expect(verified.reviewedById).toBe(accounting.id);
       expect(verified.reviewedAt).toBeInstanceOf(Date);
@@ -190,19 +195,19 @@ describe("sales tracer — per-branch receipt, stock deduction, Accounting VERIF
       expect(afterVerify.reviewStatus).toBe("VERIFIED");
 
       // Second verify → 409 terminal guard
-      await expect(reviewSale(accountingActor, blSale.id, { status: "VERIFIED" })).rejects.toMatchObject({
+       await expect(reviewSale(accountingActor, blSale.id, { status: "VERIFIED", comparison: matchingComparison(blSale) })).rejects.toMatchObject({
         code: "INVALID_STATE",
         status: 409,
       });
 
       // BRANCH_STAFF cannot verify
-      await expect(reviewSale(blActor, qcSale.id, { status: "VERIFIED" })).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+       await expect(reviewSale(blActor, qcSale.id, { status: "VERIFIED", comparison: matchingComparison(qcSale) })).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
       // ADMIN cannot verify per ADR 0014 §2
-      await expect(reviewSale(adminActor, qcSale.id, { status: "VERIFIED" })).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+       await expect(reviewSale(adminActor, qcSale.id, { status: "VERIFIED", comparison: matchingComparison(qcSale) })).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
 
       // QC sale still UNVERIFIED, verify it succeeds then terminal
-      await expect(reviewSale(accountingActor, qcSale.id, { status: "VERIFIED" })).resolves.toMatchObject({ status: "VERIFIED" });
-      await expect(reviewSale(accountingActor, qcSale.id, { status: "VERIFIED" })).rejects.toMatchObject({ code: "INVALID_STATE" });
+       await expect(reviewSale(accountingActor, qcSale.id, { status: "VERIFIED", comparison: matchingComparison(qcSale) })).resolves.toMatchObject({ status: "VERIFIED" });
+       await expect(reviewSale(accountingActor, qcSale.id, { status: "VERIFIED", comparison: matchingComparison(qcSale) })).rejects.toMatchObject({ code: "INVALID_STATE" });
     });
   }, 60_000);
 });

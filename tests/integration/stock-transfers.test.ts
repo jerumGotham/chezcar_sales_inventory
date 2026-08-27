@@ -41,7 +41,6 @@ describe("stock transfer posting", () => {
           productId: product.id,
           onHand: 10,
           reserved: 2,
-          reorderLevel: 1,
           unitCost: 1,
         },
       });
@@ -126,7 +125,6 @@ describe("stock transfer posting", () => {
           locationId: fixture.locations.stockRoom.id,
           productId: product.id,
           onHand: 10,
-          reorderLevel: 1,
           unitCost: 1,
         },
       });

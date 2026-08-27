@@ -3,7 +3,7 @@ import {
   authorizationErrorResponse,
   requireCapability,
 } from "@/lib/server/authorization";
-import { createCustomer, customerMutationSchema, CustomerSalesError, listCustomers } from "../../../lib/server/services/customer-sales";
+import { createCustomer, customerListQuerySchema, customerMutationSchema, CustomerSalesError, listCustomers } from "../../../lib/server/services/customer-sales";
 
 function errorResponse(error: unknown) {
   if (error instanceof ZodError) return Response.json({ error: { code: "INVALID_INPUT", message: "Invalid customer input" } }, { status: 400 });
@@ -14,7 +14,7 @@ function errorResponse(error: unknown) {
 export async function GET(request: Request) {
   try {
     const actor = await requireCapability(request.headers, "customers:view");
-    return Response.json({ data: await listCustomers(actor) });
+    return Response.json({ data: await listCustomers(actor, customerListQuerySchema.parse(Object.fromEntries(new URL(request.url).searchParams))) });
   } catch (error) {
     return errorResponse(error);
   }

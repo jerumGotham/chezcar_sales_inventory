@@ -68,7 +68,6 @@ async function seedInventoryMarkers(prisma: PrismaClient, fixture: AuthFixture) 
           create: {
             locationId,
             onHand: 10,
-            reorderLevel: 1,
             unitCost: 1,
           },
         },

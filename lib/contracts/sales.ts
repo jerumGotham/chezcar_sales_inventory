@@ -60,7 +60,19 @@ export const directSaleRequestSchema = z.object({
 export type DirectSaleRequest = z.infer<typeof directSaleRequestSchema>;
 
 export const accountingReviewRequestSchema = z.object({
-  status: z.enum(["VERIFIED"]),
+  status: z.enum(["VERIFIED", "MISMATCH_REPORTED"]),
+  mismatchCategory: z.enum(["PRICE_MISMATCH", "QUANTITY_MISMATCH", "ITEM_MISMATCH", "TOTAL_MISMATCH", "RECEIPT_NOT_FOUND", "OTHER"]).optional(),
+  notes: z.string().trim().max(5_000).optional(),
+  comparison: z.object({
+    receiptBooklet: z.string(),
+    receiptNumber: z.string(),
+    paymentMethod: paymentMethodSchema,
+    discountAmount: z.number(),
+    amountPaid: z.number(),
+    totalAmount: z.number(),
+    lines: z.array(z.object({ itemCode: z.string(), quantity: z.number(), unitPrice: z.number() })),
+  }),
+  receiptPhotoKey: z.string().trim().max(200).optional(),
 });
 export type AccountingReviewRequest = z.infer<typeof accountingReviewRequestSchema>;
 
@@ -81,12 +93,20 @@ export type SaleDto = {
   branch: string;
   customer: string;
   totalAmount: number;
+  discountAmount: number;
   amountPaid: number;
   paymentMethod: z.infer<typeof paymentMethodSchema>;
   status: "POSTED" | "VOIDED";
   postedAt: string;
   postedBy: string;
   reviewStatus: ReviewStatusDto;
+  mismatchCategory: string | null;
+  reviewNotes: string | null;
+  receiptPhotoUrl: string | null;
+  reviewedAt: string | null;
+  resolutionAction: string | null;
+  resolutionNote: string | null;
+  resolvedAt: string | null;
   lines: SaleLineDto[];
 };
 

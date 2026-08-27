@@ -1,7 +1,7 @@
 <!-- generated-by: gsd-doc-writer -->
 # Getting Started
 
-This guide runs the Chezcar sales and inventory prototype locally. PostgreSQL is required for sign-in and the database-backed Products and Inventory lists; most other workflows remain mock-backed.
+This guide runs the Chezcar sales and inventory prototype locally. PostgreSQL is required for sign-in, Products, Inventory, Customers, Customer Orders, and POS sales.
 
 ## Prerequisites
 
@@ -135,16 +135,16 @@ With the development server running, begin with:
 | --- | --- |
 | `/` | Redirects to `/dashboard`. |
 | `/dashboard` | Dashboard filters, charts, pending orders, and low-stock views backed by mock records. |
-| `/customers` | Customer-list prototype interactions. |
+| `/customers` | Database-backed customer records and transaction history. |
 | `/products` | Product-list prototype interactions. |
 | `/inventory` | Branch inventory prototype views. |
-| `/customer-orders` | Customer-order list and workflow screens. |
+| `/customer-orders` | Database-backed customer-order list and reservation workflow. |
 | `/api/dashboard` | Mock dashboard JSON. |
-| `/api/customers` | Mock customer collection. |
+| `/api/customers` | Customer records and persisted customer history. |
 | `/api/products` | Mock product collection. |
-| `/api/customer-orders` | Mock order collection. |
+| `/api/customer-orders` | Persisted customer orders, reservations, and releases. |
 
-These routes demonstrate intended workflows; they do not authenticate users or persist changes.
+These routes require an authenticated user; customer, order, and sale changes are persisted through protected APIs.
 
 ## Common setup issues
 

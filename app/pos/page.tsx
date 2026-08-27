@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Select from "react-select";
+import Link from "next/link";
 import type { StylesConfig } from "react-select";
 import {
   Search,
@@ -18,6 +19,8 @@ import {
   Package2,
   Car,
   FileText,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -32,6 +35,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { PageShell } from "@/components/page-shell";
+import { useShellAccess } from "@/components/shell-access-context";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { products } from "@/lib/mock-data";
@@ -69,6 +74,8 @@ type SelectOption = {
   value: string;
   label: string;
 };
+
+type PosCustomer = { id: string; name: string };
 
 type OrderItemRow = {
   item: SelectOption | null;
@@ -146,6 +153,13 @@ function formatPeso(amount: number) {
     currency: "PHP",
     minimumFractionDigits: 2,
   }).format(amount);
+}
+
+async function fetchPosCustomers() {
+  const response = await fetch("/api/customers?page=1&pageSize=100&status=active", { credentials: "same-origin" });
+  const json = await response.json();
+  if (!response.ok) throw new Error(json.error?.message ?? "Unable to load customers");
+  return json.data as { data: PosCustomer[] };
 }
 
 const selectStyles: StylesConfig<SelectOption, false> = {
@@ -396,6 +410,20 @@ function AddCustomerDialog({
 }
 
 function PosTab() {
+  const access = useShellAccess();
+  const role = access.authenticated ? access.identity.role : null;
+  const [selectedLocation, setSelectedLocation] = useState<SelectOption | null>(null);
+  const activeLocationId = role === "ADMIN" ? selectedLocation?.value ?? null : access.authenticated ? access.scope.locationId : null;
+  const posOptionsQuery = useQuery({
+    queryKey: ["pos-options", activeLocationId],
+    queryFn: async () => {
+      const response = await fetch(`/api/customer-orders/options?locationId=${encodeURIComponent(activeLocationId ?? "")}`, { credentials: "same-origin" });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error?.message ?? "Unable to load sales options");
+      return json.data as { customers: PosCustomer[]; products: Array<{ id: string; itemCode: string; name: string; price: number; availableQuantity: number }>; branches: Array<{ id: string; code: string; name: string }> };
+    },
+    enabled: role === "ADMIN" || Boolean(activeLocationId),
+  });
   const { data: productsData, isLoading: isProductsLoading } = useQuery({
     queryKey: ["pos-products"],
     queryFn: () =>
@@ -410,8 +438,22 @@ function PosTab() {
         brand: "all",
       }),
   });
+  const customersQuery = useQuery({ queryKey: ["pos-customers"], queryFn: fetchPosCustomers });
 
   const productList = useMemo<Product[]>(() => {
+    const branchProducts = posOptionsQuery.data?.products.map((item) => ({
+      id: item.id,
+      sku: item.itemCode,
+      name: item.name,
+      price: item.price,
+      stock: item.availableQuantity,
+      barcode: item.itemCode,
+      category: "Uncategorized",
+    })) ?? [];
+
+    if (posOptionsQuery.data) return branchProducts;
+    if (role === "ADMIN" || activeLocationId) return [];
+
     const persisted = productsData?.data.map((item) => ({
       id: item.id,
       sku: item.itemCode,
@@ -433,7 +475,7 @@ function PosTab() {
       barcode: item.sku,
       category: item.category ?? "Uncategorized",
     }));
-  }, [productsData?.data]);
+  }, [activeLocationId, posOptionsQuery.data, productsData?.data, role]);
 
   const categoryOptions = useMemo<SelectOption[]>(() => {
     const uniqueCategories = Array.from(
@@ -450,23 +492,25 @@ function PosTab() {
   }, [productList]);
 
   const [search, setSearch] = useState("");
+  const [productPage, setProductPage] = useState(1);
+  const productPageSize = 10;
   const [selectedCategory, setSelectedCategory] = useState<SelectOption | null>(
     categoryOptions[0],
   );
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [customerOptions, setCustomerOptions] =
-    useState<SelectOption[]>(mockCustomers);
   const [selectedCustomer, setSelectedCustomer] = useState<SelectOption | null>(
     mockCustomers[0],
   );
   const [paymentType, setPaymentType] = useState<SelectOption | null>(null);
   const [manualReceiptNumber, setManualReceiptNumber] = useState("");
   const [checkoutError, setCheckoutError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [isCheckoutPending, setIsCheckoutPending] = useState(false);
 
-  const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
-  const [customerForm, setCustomerForm] =
-    useState<CustomerFormState>(EMPTY_CUSTOMER_FORM);
+  const customerOptions: SelectOption[] = [
+    { value: "guest", label: "Guest" },
+    ...(customersQuery.data?.data.map((customer) => ({ value: customer.id, label: customer.name })) ?? []),
+  ];
 
   const filteredProducts = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -487,64 +531,29 @@ function PosTab() {
     });
   }, [productList, search, selectedCategory]);
 
+  const productTotalPages = Math.max(1, Math.ceil(filteredProducts.length / productPageSize));
+  const safeProductPage = Math.min(productPage, productTotalPages);
+  const paginatedProducts = filteredProducts.slice(
+    (safeProductPage - 1) * productPageSize,
+    safeProductPage * productPageSize,
+  );
+
   const quickProducts = useMemo(() => productList.slice(0, 8), [productList]);
 
   const subtotal = useMemo(() => {
     return cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   }, [cart]);
 
-  const discount = 0;
-  const total = subtotal - discount;
-
-  const resetCustomerForm = () => {
-    setCustomerForm(EMPTY_CUSTOMER_FORM);
-  };
-
-  const handleCustomerFormChange = (
-    key: keyof CustomerFormState,
-    value: string,
-  ) => {
-    setCustomerForm((prev) => ({
-      ...prev,
-      [key]: value,
-    }));
-  };
-
-  const handleCreateCustomer = () => {
-    const fullName =
-      `${customerForm.firstName} ${customerForm.lastName}`.trim();
-
-    if (!fullName) return;
-
-    const newCustomerOption: SelectOption = {
-      value: `${fullName.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`,
-      label: fullName,
-    };
-
-    setCustomerOptions((prev) => {
-      const guest = prev.find((c) => c.value === "guest");
-      const others = prev.filter((c) => c.value !== "guest");
-      return guest
-        ? [guest, newCustomerOption, ...others]
-        : [newCustomerOption, ...others];
-    });
-
-    setSelectedCustomer(newCustomerOption);
-
-    console.log("CREATE CUSTOMER PAYLOAD - POS", {
-      ...customerForm,
-      fullName,
-    });
-
-    setIsAddCustomerOpen(false);
-    resetCustomerForm();
-  };
+  const [discountAmount, setDiscountAmount] = useState("0");
+  const discount = Math.max(0, Number(discountAmount) || 0);
+  const total = Math.max(subtotal - discount, 0);
 
   const addToCart = (product: Product) => {
     setCart((prev) => {
       const existing = prev.find((item) => item.sku === product.sku);
 
       if (existing) {
+        if (existing.qty >= (product.stock ?? 0)) return prev;
         return prev.map((item) =>
           item.sku === product.sku ? { ...item, qty: item.qty + 1 } : item,
         );
@@ -569,7 +578,10 @@ function PosTab() {
       prev
         .map((item) => {
           if (item.sku !== sku) return item;
-          const nextQty = type === "increase" ? item.qty + 1 : item.qty - 1;
+           const product = productList.find((candidate) => candidate.sku === sku);
+           const nextQty = type === "increase"
+             ? Math.min(item.qty + 1, product?.stock ?? item.qty + 1)
+             : item.qty - 1;
           return { ...item, qty: nextQty };
         })
         .filter((item) => item.qty > 0),
@@ -587,6 +599,7 @@ function PosTab() {
     );
     setPaymentType(null);
     setManualReceiptNumber("");
+    setDiscountAmount("0");
     setCheckoutError("");
     setSearch("");
     setSelectedCategory(categoryOptions[0]);
@@ -594,6 +607,7 @@ function PosTab() {
 
   const handleCheckout = async () => {
     setCheckoutError("");
+    setSuccessMessage("");
     setIsCheckoutPending(true);
     const paymentMap: Record<string, string> = {
       cash: "CASH",
@@ -610,13 +624,15 @@ function PosTab() {
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          customerId:
-            selectedCustomer?.value && !["guest", "cust-1", "cust-2", "cust-3", "cust-4"].includes(selectedCustomer.value)
+           customerId:
+            selectedCustomer?.value && selectedCustomer.value !== "guest"
               ? selectedCustomer.value
-              : undefined,
-          manualReceiptNumber,
+               : undefined,
+           locationId: activeLocationId,
+           manualReceiptNumber,
           paymentMethod: paymentMap[paymentType?.value ?? "cash"] ?? "CASH",
-          amountPaid: total,
+           amountPaid: total,
+           discountAmount: discount,
           lines: cart.map((item) => ({
             productId: item.productId,
             quantity: item.qty,
@@ -631,6 +647,7 @@ function PosTab() {
         throw new Error(payload?.error?.message ?? "Unable to complete sale");
       }
       clearSale();
+      setSuccessMessage("Customer sale posted successfully.");
     } catch (error) {
       setCheckoutError(error instanceof Error ? error.message : "Unable to complete sale");
     } finally {
@@ -640,6 +657,47 @@ function PosTab() {
 
   return (
     <>
+      {successMessage ? (
+        <div className="mb-6 flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800 sm:flex-row sm:items-center sm:justify-between">
+          <p role="status" className="text-sm font-medium">{successMessage}</p>
+          <div className="flex items-center gap-2">
+            <Link href="/customer-orders?view=sales">
+              <Button size="sm" variant="outline" className="border-emerald-300 bg-white text-emerald-800 hover:bg-emerald-100">
+                View Customer Orders
+              </Button>
+            </Link>
+            <Button size="sm" variant="ghost" onClick={() => setSuccessMessage("")}>Dismiss</Button>
+          </div>
+        </div>
+      ) : null}
+      <Card className="mb-6 border-emerald-100 shadow-sm">
+        <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-semibold text-slate-900">Selling branch</p>
+            <p className="text-sm text-slate-500">Products and stock are limited to this branch.</p>
+          </div>
+          {role === "ADMIN" ? (
+            <Select
+              instanceId="pos-location"
+              className="min-w-64"
+              options={posOptionsQuery.data?.branches.map((branch) => ({ value: branch.id, label: `${branch.name} (${branch.code})` })) ?? []}
+              value={selectedLocation}
+              onChange={(option) => {
+                setSelectedLocation(option);
+                setCart([]);
+                setProductPage(1);
+              }}
+              isSearchable={false}
+              placeholder="Select branch"
+              styles={selectStyles}
+            />
+          ) : (
+            <Badge className="w-fit bg-emerald-100 text-emerald-700">{access.authenticated ? access.scope.label : "No branch"}</Badge>
+          )}
+        </CardContent>
+      </Card>
+      {role === "ADMIN" && !activeLocationId ? <p className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">Select a branch to load available products.</p> : null}
+      {posOptionsQuery.isError ? <p className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{(posOptionsQuery.error as Error).message}</p> : null}
       <div className="grid gap-6 xl:grid-cols-[1.5fr_0.9fr]">
         <div className="space-y-6">
           <Card className="border-0 shadow-sm">
@@ -699,7 +757,10 @@ function PosTab() {
                   <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                   <Input
                     value={search}
-                    onChange={(e) => setSearch(e.target.value)}
+                    onChange={(e) => {
+                      setSearch(e.target.value);
+                      setProductPage(1);
+                    }}
                     placeholder="Search product"
                     className="pl-9"
                   />
@@ -709,7 +770,10 @@ function PosTab() {
                   instanceId="category-select"
                   options={categoryOptions}
                   value={selectedCategory}
-                  onChange={(option) => setSelectedCategory(option)}
+                   onChange={(option) => {
+                     setSelectedCategory(option);
+                     setProductPage(1);
+                   }}
                   isSearchable
                   placeholder="Filter category"
                   styles={selectStyles}
@@ -731,7 +795,7 @@ function PosTab() {
                       No products found.
                     </div>
                   ) : (
-                    filteredProducts.map((product) => (
+                    paginatedProducts.map((product) => (
                       <div
                         key={product.sku}
                         className="grid grid-cols-[1.8fr_1fr_110px_130px_120px] items-center gap-3 border-b px-4 py-3 last:border-b-0 hover:bg-slate-50"
@@ -775,10 +839,20 @@ function PosTab() {
                 </div>
               </div>
 
-              <p className="text-xs text-slate-500">
-                Showing {filteredProducts.length} product
-                {filteredProducts.length !== 1 ? "s" : ""}.
-              </p>
+               <div className="flex flex-col gap-3 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+                 <p>
+                   Showing {filteredProducts.length === 0 ? 0 : (safeProductPage - 1) * productPageSize + 1}-{Math.min(safeProductPage * productPageSize, filteredProducts.length)} of {filteredProducts.length} product{filteredProducts.length !== 1 ? "s" : ""}.
+                 </p>
+                 <div className="flex items-center gap-2">
+                   <Button variant="outline" size="sm" onClick={() => setProductPage((page) => Math.max(1, page - 1))} disabled={safeProductPage <= 1}>
+                     <ChevronLeft className="mr-1 h-4 w-4" /> Previous
+                   </Button>
+                   <span>Page {safeProductPage} of {productTotalPages}</span>
+                   <Button variant="outline" size="sm" onClick={() => setProductPage((page) => Math.min(productTotalPages, page + 1))} disabled={safeProductPage >= productTotalPages}>
+                     Next <ChevronRight className="ml-1 h-4 w-4" />
+                   </Button>
+                 </div>
+               </div>
             </CardContent>
           </Card>
         </div>
@@ -796,21 +870,7 @@ function PosTab() {
 
           <CardContent className="space-y-5">
             <div className="space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <Label>Customer</Label>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    resetCustomerForm();
-                    setIsAddCustomerOpen(true);
-                  }}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Customer
-                </Button>
-              </div>
+              <Label>Customer</Label>
 
               <Select
                 instanceId="customer-select"
@@ -914,6 +974,21 @@ function PosTab() {
 
             <Separator />
 
+            <div className="space-y-2">
+              <Label htmlFor="sale-discount">Discount</Label>
+              <Input
+                id="sale-discount"
+                type="number"
+                min="0"
+                max={subtotal}
+                step="0.01"
+                value={discountAmount}
+                onChange={(event) => setDiscountAmount(event.target.value)}
+                placeholder="0.00"
+              />
+              <p className="text-xs text-slate-500">Discount cannot exceed the sale subtotal of {formatPeso(subtotal)}.</p>
+            </div>
+
             <div className="rounded-2xl border p-4">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-500">Subtotal</span>
@@ -944,7 +1019,7 @@ function PosTab() {
                 className="w-full"
                 size="lg"
                 onClick={handleCheckout}
-                disabled={!cart.length || !paymentType || !manualReceiptNumber.trim() || isCheckoutPending}
+                 disabled={!activeLocationId || !cart.length || !paymentType || !manualReceiptNumber.trim() || discount > subtotal || isCheckoutPending}
               >
                 <CreditCard className="mr-2 size-4" />
                 {isCheckoutPending ? "Posting Sale..." : "Complete Sale"}
@@ -954,16 +1029,6 @@ function PosTab() {
         </Card>
       </div>
 
-      <AddCustomerDialog
-        open={isAddCustomerOpen}
-        onOpenChange={(open) => {
-          setIsAddCustomerOpen(open);
-          if (!open) resetCustomerForm();
-        }}
-        customerForm={customerForm}
-        onCustomerFormChange={handleCustomerFormChange}
-        onSubmit={handleCreateCustomer}
-      />
     </>
   );
 }
@@ -1875,50 +1940,16 @@ function JobOrderTab() {
 
 export default function SalesPage() {
   return (
-    <div className="min-h-screen bg-slate-100">
-      <div className="border-b bg-white">
-        <div className="mx-auto flex max-w-[1800px] flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-              Sales Center
-            </h1>
-            <p className="text-sm text-slate-500">
-              Unified page for POS, Customer Orders, and Job Orders.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="mx-auto max-w-[1800px] px-4 py-6 sm:px-6 lg:px-8">
-        <Tabs defaultValue="pos" className="space-y-6">
-          <TabsList className="grid w-full max-w-[560px] grid-cols-3">
-            <TabsTrigger value="pos" className="gap-2">
-              <PackageCheck className="size-4" />
-              POS
-            </TabsTrigger>
-            <TabsTrigger value="customer-order" className="gap-2">
-              <ClipboardList className="size-4" />
-              Customer Order
-            </TabsTrigger>
-            <TabsTrigger value="job-order" className="gap-2">
-              <Wrench className="size-4" />
-              Job Order
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="pos" className="mt-0">
-            <PosTab />
-          </TabsContent>
-
-          <TabsContent value="customer-order" className="mt-0">
-            <CustomerOrderTab />
-          </TabsContent>
-
-          <TabsContent value="job-order" className="mt-0">
-            <JobOrderTab />
-          </TabsContent>
-        </Tabs>
-      </div>
-    </div>
+    <PageShell
+      title="Customer Sales"
+      subtitle="Post walk-in sales for the selected branch and customer."
+      actions={
+        <Link href="/customer-orders">
+          <Button variant="outline">Customer Orders</Button>
+        </Link>
+      }
+    >
+      <PosTab />
+    </PageShell>
   );
 }

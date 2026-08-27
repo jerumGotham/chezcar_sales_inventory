@@ -39,7 +39,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { correctInventory, fetchInventory, fetchInventoryMovements, updateInventoryReorderLevel } from "@/lib/catalog";
+import { correctInventory, fetchInventory, fetchInventoryMovements, updateInventoryUnitCost } from "@/lib/catalog";
 import type { LocationScopeDto, ShellRole } from "@/lib/contracts/access";
 
 import {
@@ -89,6 +89,7 @@ export function InventoryClient({
   const queryClient = useQueryClient();
   const isAdmin = role === "ADMIN";
   const isStockStaff = role === "STOCK_STAFF";
+  const canReceiveSupplierStock = isAdmin || isStockStaff;
 
   // Applied location starts from the server-derived scope DTO and can never
   // exceed it: only Admin may request anything besides All locations.
@@ -141,14 +142,11 @@ export function InventoryClient({
 
   const [isAdjustOpen, setIsAdjustOpen] = useState(false);
   const [isQuickAdjustOpen, setIsQuickAdjustOpen] = useState(false);
-  const [isReorderOpen, setIsReorderOpen] = useState(false);
+  const [isCostOpen, setIsCostOpen] = useState(false);
   const [isStockCardOpen, setIsStockCardOpen] = useState(false);
   const [isAvailabilityOpen, setIsAvailabilityOpen] = useState(false);
 
   const [adjustProduct, setAdjustProduct] = useState<SelectOption | null>(null);
-  const [adjustLocation, setAdjustLocation] = useState<SelectOption | null>(
-    null,
-  );
   const [adjustType, setAdjustType] = useState<SelectOption | null>(
     ADJUSTMENT_TYPE_OPTIONS[0],
   );
@@ -164,7 +162,11 @@ export function InventoryClient({
   const [quickAdjustReference, setQuickAdjustReference] = useState("");
   const [quickAdjustReason, setQuickAdjustReason] = useState("");
   const [quickAdjustRemarks, setQuickAdjustRemarks] = useState("");
-  const [reorderLevel, setReorderLevel] = useState("");
+  const [costBalance, setCostBalance] = useState<InventoryRow | null>(null);
+  const [newUnitCost, setNewUnitCost] = useState("");
+  const [costReference, setCostReference] = useState("");
+  const [costReason, setCostReason] = useState("");
+  const [costRemarks, setCostRemarks] = useState("");
   const [mutationError, setMutationError] = useState("");
 
   const [stockCardProductFilter, setStockCardProductFilter] =
@@ -247,7 +249,7 @@ export function InventoryClient({
       balanceId: string;
       type: "increase" | "decrease";
       quantity: number;
-      reference?: string;
+       reference?: string;
       reason: string;
       remarks?: string;
     }) => correctInventory(payload.balanceId, payload),
@@ -260,23 +262,12 @@ export function InventoryClient({
     onError: (saveError) => setMutationError(saveError.message),
   });
 
-  const reorderMutation = useMutation({
-    mutationFn: (payload: { balanceId: string; reorderLevel: number }) =>
-      updateInventoryReorderLevel(payload.balanceId, payload.reorderLevel),
-    onSuccess: () => {
-      refreshInventory();
-      setIsReorderOpen(false);
-      setSelectedItem(null);
-      setReorderLevel("");
-    },
-    onError: (saveError) => setMutationError(saveError.message),
-  });
-
   const flatRows = useMemo(() => data?.data ?? [], [data?.data]);
   const balanceOptions: SelectOption[] = flatRows.map((item) => ({
     value: item.id,
     label: `${item.itemCode} - ${item.name} (${item.location})`,
   }));
+  const selectedAdjustBalance = flatRows.find((item) => item.id === adjustProduct?.value) ?? null;
   const meta = useMemo(
     () => data?.meta ?? {
       page: 1,
@@ -410,7 +401,6 @@ export function InventoryClient({
 
   const openAdjustModal = () => {
     setAdjustProduct(null);
-    setAdjustLocation(null);
     setAdjustType(ADJUSTMENT_TYPE_OPTIONS[0]);
     resetAdjustmentFields();
     setIsAdjustOpen(true);
@@ -421,13 +411,6 @@ export function InventoryClient({
     setQuickAdjustType(ADJUSTMENT_TYPE_OPTIONS[0]);
     resetAdjustmentFields();
     setIsQuickAdjustOpen(true);
-  };
-
-  const openReorderModal = (item: InventoryRow) => {
-    setSelectedItem(item);
-    setReorderLevel(String(item.reorderLevel));
-    setMutationError("");
-    setIsReorderOpen(true);
   };
 
   function resetAdjustmentFields() {
@@ -447,8 +430,8 @@ export function InventoryClient({
     correctionMutation.mutate({
       balanceId: selectedItem.id,
       type: quickAdjustType.value === "decrease" ? "decrease" : "increase",
-      quantity: Number(quickAdjustQuantity),
-      reference: quickAdjustReference,
+      quantity: Number(quickAdjustQuantity || 0),
+       reference: quickAdjustReference,
       reason: quickAdjustReason,
       remarks: quickAdjustRemarks,
     });
@@ -459,20 +442,40 @@ export function InventoryClient({
     correctionMutation.mutate({
       balanceId: adjustProduct.value,
       type: adjustType.value === "decrease" ? "decrease" : "increase",
-      quantity: Number(adjustQuantity),
-      reference: adjustReference,
+      quantity: Number(adjustQuantity || 0),
+       reference: adjustReference,
       reason: adjustReason,
       remarks: adjustRemarks,
     });
   };
 
-  const submitReorderLevel = () => {
-    if (!selectedItem) return;
-    reorderMutation.mutate({
-      balanceId: selectedItem.id,
-      reorderLevel: Number(reorderLevel),
-    });
+  const openCostModal = (item: InventoryRow) => {
+    setCostBalance(item);
+    setNewUnitCost(String(item.unitCost));
+    setCostReference("");
+    setCostReason("");
+    setCostRemarks("");
+    setMutationError("");
+    setIsCostOpen(true);
   };
+
+  const costMutation = useMutation({
+    mutationFn: () => {
+      if (!costBalance) throw new Error("Select an inventory balance first.");
+      return updateInventoryUnitCost(costBalance.id, {
+        unitCost: Number(newUnitCost),
+        reference: costReference,
+        reason: costReason,
+        remarks: costRemarks,
+      });
+    },
+    onSuccess: () => {
+      refreshInventory();
+      setIsCostOpen(false);
+      setCostBalance(null);
+    },
+    onError: (saveError) => setMutationError(saveError.message),
+  });
 
   return (
     <>
@@ -543,13 +546,13 @@ export function InventoryClient({
             <div>
               <p className="font-semibold text-violet-950">Stock Transfers</p>
               <p className="mt-1 text-sm text-violet-800">
-                {isStockStaff
+                {canReceiveSupplierStock
                   ? "Create and dispatch Stock Room transfers separately from receiving."
                   : "Review transfer work separately from inventory counts."}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              {isStockStaff && <Link href="/inventory/receive"><Button className="bg-emerald-600 text-white hover:bg-emerald-700">Receive from Supplier</Button></Link>}
+              {canReceiveSupplierStock && <Link href="/inventory/receive"><Button className="bg-emerald-600 text-white hover:bg-emerald-700">Receive from Supplier</Button></Link>}
               {isAdmin && <Button className="bg-amber-600 text-white hover:bg-amber-700" onClick={openAdjustModal}>Adjust Stock</Button>}
               <Link href="/stock-transfers"><Button variant="outline">{isStockStaff ? "Stock Transfers" : "Open Stock Transfers"}</Button></Link>
             </div>
@@ -709,6 +712,9 @@ export function InventoryClient({
                       const stockedLocations = group.locations.filter(
                         (item) => item.onHand > 0,
                       );
+                      const visibleLocations = isAdmin
+                        ? group.locations
+                        : stockedLocations;
                       const emptyLocationCount = group.locations.length - stockedLocations.length;
 
                       return (
@@ -763,23 +769,30 @@ export function InventoryClient({
                             </td>
 
                             <td className="px-5 py-4">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => toggleExpanded(group.itemCode)}
-                              >
-                                {isExpanded ? (
-                                  <>
-                                    <ChevronUp className="mr-1 h-4 w-4" />
-                                    Hide
-                                  </>
-                                ) : (
-                                  <>
-                                    <ChevronDown className="mr-1 h-4 w-4" />
-                                    View
-                                  </>
-                                )}
-                              </Button>
+                               <div className="flex flex-wrap gap-2">
+                                 <Button
+                                   variant="outline"
+                                   size="sm"
+                                   onClick={() => toggleExpanded(group.itemCode)}
+                                 >
+                                   {isExpanded ? (
+                                     <>
+                                       <ChevronUp className="mr-1 h-4 w-4" />
+                                       Hide
+                                     </>
+                                   ) : (
+                                     <>
+                                       <ChevronDown className="mr-1 h-4 w-4" />
+                                       View
+                                     </>
+                                   )}
+                                 </Button>
+                                 {isAdmin && group.locations[0] && (
+                                   <Button variant="outline" size="sm" onClick={() => openCostModal(group.locations[0])}>
+                                     Edit Cost
+                                   </Button>
+                                 )}
+                               </div>
                             </td>
                           </tr>
 
@@ -793,7 +806,9 @@ export function InventoryClient({
                                         Where this product is available
                                       </p>
                                       <p className="text-sm text-slate-500">
-                                        Only locations with stock are shown.
+                                        {isAdmin
+                                          ? "Admin can review and edit each location's reorder level."
+                                          : "Only locations with stock are shown."}
                                       </p>
                                     </div>
                                     {emptyLocationCount > 0 && (
@@ -804,13 +819,13 @@ export function InventoryClient({
                                     )}
                                   </div>
 
-                                  {stockedLocations.length === 0 ? (
-                                    <div className="mt-4 rounded-xl border border-dashed bg-white px-5 py-6 text-sm text-slate-500">
-                                      This product has no stock in any location yet.
-                                    </div>
-                                  ) : (
-                                    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                                      {stockedLocations.map((item) => {
+                                   {visibleLocations.length === 0 ? (
+                                     <div className="mt-4 rounded-xl border border-dashed bg-white px-5 py-6 text-sm text-slate-500">
+                                       This product has no stock in any location yet.
+                                     </div>
+                                   ) : (
+                                     <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                                       {visibleLocations.map((item) => {
                                         const isStockRoom =
                                           item.location === "Stock Room";
                                         const available = getAvailableStock(item);
@@ -855,13 +870,6 @@ export function InventoryClient({
                                                   onClick={() => openQuickAdjustModal(item)}
                                                 >
                                                   Quick Adjust
-                                                </Button>
-                                                <Button
-                                                  variant="outline"
-                                                  size="sm"
-                                                  onClick={() => openReorderModal(item)}
-                                                >
-                                                  Reorder Level
                                                 </Button>
                                               </div>
                                             )}
@@ -921,7 +929,6 @@ export function InventoryClient({
           setIsAdjustOpen(open);
           if (!open) {
             setAdjustProduct(null);
-            setAdjustLocation(null);
             setAdjustType(ADJUSTMENT_TYPE_OPTIONS[0]);
           }
         }}
@@ -953,17 +960,7 @@ export function InventoryClient({
 
               <div className="space-y-2">
                 <Label>Location</Label>
-                <Select
-                  instanceId="adjust-location"
-                  options={LOCATION_OPTIONS.filter(
-                    (item) => item.value !== "all",
-                  )}
-                  value={adjustLocation}
-                  onChange={(option) => setAdjustLocation(option)}
-                  isSearchable
-                  placeholder="Select location"
-                  styles={reactSelectStyles}
-                />
+                <Input value={selectedAdjustBalance?.location ?? "Select an inventory balance first"} disabled />
               </div>
 
               <div className="space-y-2">
@@ -979,8 +976,8 @@ export function InventoryClient({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="adjustment-qty">Quantity</Label>
-                <Input id="adjustment-qty" type="number" min="1" placeholder="0" value={adjustQuantity} onChange={(event) => setAdjustQuantity(event.target.value)} />
+                <Label htmlFor="adjustment-qty">Quantity Change</Label>
+                <Input id="adjustment-qty" type="number" min="0" placeholder="0" value={adjustQuantity} onChange={(event) => setAdjustQuantity(event.target.value)} />
               </div>
 
               <div className="space-y-2">
@@ -1024,7 +1021,7 @@ export function InventoryClient({
             <Button
               className="bg-amber-600 text-white hover:bg-amber-700"
               onClick={submitAdjustment}
-              disabled={correctionMutation.isPending || !adjustProduct || !adjustReason.trim() || Number(adjustQuantity) <= 0}
+               disabled={correctionMutation.isPending || !adjustProduct || !adjustReason.trim() || Number(adjustQuantity || 0) <= 0}
             >
               {correctionMutation.isPending ? "Saving..." : "Save Adjustment"}
             </Button>
@@ -1082,8 +1079,8 @@ export function InventoryClient({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="quick-adjust-qty">Quantity</Label>
-                <Input id="quick-adjust-qty" type="number" min="1" placeholder="0" value={quickAdjustQuantity} onChange={(event) => setQuickAdjustQuantity(event.target.value)} />
+                <Label htmlFor="quick-adjust-qty">Quantity Change</Label>
+                <Input id="quick-adjust-qty" type="number" min="0" placeholder="0" value={quickAdjustQuantity} onChange={(event) => setQuickAdjustQuantity(event.target.value)} />
               </div>
 
               <div className="space-y-2">
@@ -1130,7 +1127,7 @@ export function InventoryClient({
             <Button
               className="bg-amber-600 text-white hover:bg-amber-700"
               onClick={submitQuickAdjustment}
-              disabled={correctionMutation.isPending || !quickAdjustReason.trim() || Number(quickAdjustQuantity) <= 0}
+               disabled={correctionMutation.isPending || !quickAdjustReason.trim() || Number(quickAdjustQuantity || 0) <= 0}
             >
               {correctionMutation.isPending ? "Saving..." : "Save Quick Adjust"}
             </Button>
@@ -1139,63 +1136,69 @@ export function InventoryClient({
       </Dialog>
 
       <Dialog
-        open={isReorderOpen}
+        open={isCostOpen}
         onOpenChange={(open) => {
-          setIsReorderOpen(open);
+          setIsCostOpen(open);
           if (!open) {
-            setSelectedItem(null);
-            setReorderLevel("");
+            setCostBalance(null);
             setMutationError("");
           }
         }}
       >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Update Reorder Level</DialogTitle>
+            <DialogTitle>Edit Unit Cost</DialogTitle>
             <DialogDescription>
-              Set the low-stock threshold for this product at the selected location.
+              Update the costing basis for one product and location. This does not change stock quantity.
             </DialogDescription>
           </DialogHeader>
-
           <div className="grid gap-4 py-2">
             <div className="space-y-2">
-              <Label>Product</Label>
-              <Input
-                value={selectedItem ? `${selectedItem.itemCode} - ${selectedItem.name}` : ""}
-                disabled
+              <Label>Inventory Balance</Label>
+              <Select
+                instanceId="cost-balance"
+                options={balanceOptions}
+                value={costBalance ? { value: costBalance.id, label: `${costBalance.itemCode} - ${costBalance.name} (${costBalance.location})` } : null}
+                onChange={(option) => {
+                  const balance = flatRows.find((item) => item.id === option?.value) ?? null;
+                  setCostBalance(balance);
+                  if (balance) setNewUnitCost(String(balance.unitCost));
+                }}
+                isSearchable
+                placeholder="Select product and location"
+                styles={reactSelectStyles}
               />
             </div>
             <div className="space-y-2">
-              <Label>Location</Label>
-              <Input value={selectedItem?.location ?? ""} disabled />
+              <Label htmlFor="new-unit-cost">New Unit Cost</Label>
+              <Input id="new-unit-cost" type="number" min="0.01" step="0.01" value={newUnitCost} onChange={(event) => setNewUnitCost(event.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="reorder-level">Reorder Level</Label>
-              <Input
-                id="reorder-level"
-                type="number"
-                min="0"
-                value={reorderLevel}
-                onChange={(event) => setReorderLevel(event.target.value)}
-              />
+              <Label htmlFor="cost-reference">Reference No. (optional)</Label>
+              <Input id="cost-reference" value={costReference} onChange={(event) => setCostReference(event.target.value)} placeholder="COST-000123" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="cost-reason">Reason</Label>
+              <Input id="cost-reason" value={costReason} onChange={(event) => setCostReason(event.target.value)} placeholder="Supplier price update, encoding correction, etc." />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="cost-remarks">Remarks (optional)</Label>
+              <Input id="cost-remarks" value={costRemarks} onChange={(event) => setCostRemarks(event.target.value)} placeholder="Additional notes" />
             </div>
             {mutationError && <p className="text-sm font-medium text-red-600">{mutationError}</p>}
           </div>
-
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsReorderOpen(false)}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={() => setIsCostOpen(false)}>Cancel</Button>
             <Button
-              className="bg-emerald-600 text-white hover:bg-emerald-700"
-              onClick={submitReorderLevel}
-              disabled={reorderMutation.isPending || Number(reorderLevel) < 0}
+              onClick={() => costMutation.mutate()}
+              disabled={costMutation.isPending || !costBalance || Number(newUnitCost) <= 0 || !costReason.trim()}
             >
-              {reorderMutation.isPending ? "Saving..." : "Save Reorder Level"}
+              {costMutation.isPending ? "Saving..." : "Save Cost"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
 
       <Sheet open={isStockCardOpen} onOpenChange={setIsStockCardOpen}>
         <SheetContent

@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     const summary = await getDashboardSummary(actor);
     return NextResponse.json({
       summary,
-      notifications: persistedNotifications.slice(0, 10),
+      notifications: persistedNotifications.slice(0, 5),
     });
   } catch (error) {
     return authorizationErrorResponse(error);

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Select from "react-select";
+import type { StylesConfig } from "react-select";
 import Link from "next/link";
 import {
   ChevronLeft,
@@ -289,8 +290,8 @@ async function mockFetchJobOrders(params: {
   };
 }
 
-const reactSelectStyles = {
-  control: (base: any, state: any) => ({
+const reactSelectStyles: StylesConfig<SelectOption, false> = {
+  control: (base, state) => ({
     ...base,
     minHeight: "40px",
     borderRadius: "0.75rem",
@@ -300,27 +301,27 @@ const reactSelectStyles = {
       borderColor: "#10b981",
     },
   }),
-  valueContainer: (base: any) => ({
+  valueContainer: (base) => ({
     ...base,
     paddingLeft: "10px",
     paddingRight: "10px",
   }),
-  input: (base: any) => ({
+  input: (base) => ({
     ...base,
     color: "#0f172a",
   }),
-  placeholder: (base: any) => ({
+  placeholder: (base) => ({
     ...base,
     color: "#94a3b8",
     fontSize: "14px",
   }),
-  menu: (base: any) => ({
+  menu: (base) => ({
     ...base,
     borderRadius: "0.75rem",
     overflow: "hidden",
     zIndex: 50,
   }),
-  option: (base: any, state: any) => ({
+  option: (base, state) => ({
     ...base,
     backgroundColor: state.isSelected
       ? "#10b981"
