@@ -58,10 +58,6 @@ type TransferRecord = Prisma.StockTransferGetPayload<{
   include: typeof TRANSFER_INCLUDE;
 }>;
 
-function assertStockStaff(actor: AuthContext) {
-  if (actor.role !== "STOCK_STAFF")
-    throw new TransferError("FORBIDDEN", "Stock Staff access required", 403);
-}
 function assertBranch(actor: AuthContext) {
   if (actor.role !== "BRANCH_STAFF")
     throw new TransferError("FORBIDDEN", "Branch Staff access required", 403);
@@ -230,7 +226,7 @@ export async function createTransfer(
   actor: AuthContext,
   input: CreateTransferInput,
 ) {
-  assertStockStaff(actor);
+  assertAdminOrStockStaff(actor);
   const productIds = input.lines.map((line) => line.productId);
   if (new Set(productIds).size !== productIds.length)
     throw new TransferError(
@@ -325,7 +321,7 @@ export async function updateDraftTransfer(
   version: number,
   lines: { productId: string; quantity: number }[],
 ) {
-  assertStockStaff(actor);
+  assertAdminOrStockStaff(actor);
   if (new Set(lines.map((l) => l.productId)).size !== lines.length)
     throw new TransferError(
       "INVALID_LINES",
@@ -361,7 +357,7 @@ export async function updateDraftTransfer(
 }
 
 export async function deleteDraftTransfer(actor: AuthContext, id: string) {
-  assertStockStaff(actor);
+  assertAdminOrStockStaff(actor);
   await prisma.$transaction(
     async (tx) => {
       const transfer = await tx.stockTransfer.findUnique({ where: { id } });
@@ -384,7 +380,7 @@ export async function finalizeTransfer(
   id: string,
   version: number,
 ) {
-  assertStockStaff(actor);
+  assertAdminOrStockStaff(actor);
   return prisma.$transaction(
     async (tx) => {
       const transfer = await lockTransfer(tx, id);
@@ -427,7 +423,7 @@ export async function dispatchTransfer(
   id: string,
   version: number,
 ) {
-  assertStockStaff(actor);
+  assertAdminOrStockStaff(actor);
   return prisma.$transaction(
     async (tx) => {
       const transfer = await lockTransfer(tx, id);
@@ -439,7 +435,7 @@ export async function dispatchTransfer(
           "INVALID_STATE",
           "Only finalized transfers can be dispatched",
         );
-      const sr = actor.locationId as string;
+      const sr = await stockRoomId(tx);
       for (const line of transfer.lines) {
         await decreaseAvailableBalance(
           tx,
@@ -651,7 +647,7 @@ export async function submitInvestigation(
   id: string,
   input: InvestigationInput,
 ) {
-  assertStockStaff(actor);
+  assertAdminOrStockStaff(actor);
   return prisma.$transaction(
     async (tx) => {
       const transfer = await lockTransfer(tx, id);

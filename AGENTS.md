@@ -62,6 +62,7 @@ npm run lint           # deterministic ESLint check; currently fails on existing
 npm run prisma:generate
 npm run db:migrate     # development migration; requires DATABASE_URL
 npm run db:seed        # requires DATABASE_URL and SEED_ADMIN_* values
+npm run db:data:reset  # guarded isolated reset; preserves users/auth, products, locations
 docker compose up -d postgres
 docker compose stop postgres
 ```

@@ -5,7 +5,7 @@ vi.mock("server-only", () => ({}));
 vi.mock("../prisma", () => ({ prisma: {} }));
 vi.mock("./notifications", () => ({ createNotifications: vi.fn() }));
 
-import { accountingResolutionSchema, accountingReviewSchema, compareReceipt } from "./customer-sales";
+import { accountingResolutionSchema, accountingReviewSchema, branchMismatchResponseSchema, compareReceipt, receiptVerificationListQuerySchema } from "./customer-sales";
 
 const sale = {
   manualReceiptNumber: "0001",
@@ -40,5 +40,12 @@ describe("receipt comparison contracts", () => {
   it("requires mismatch notes and replacement details", () => {
     expect(() => accountingReviewSchema.parse({ status: "MISMATCH_REPORTED", comparison: matchingComparison })).toThrow();
     expect(() => accountingResolutionSchema.parse({ action: "VOIDED_REPLACED", note: "Correction needed" })).toThrow();
+    expect(() => branchMismatchResponseSchema.parse({ response: "RECEIPT_CORRECTION_NEEDED", note: "Correction confirmed" })).toThrow();
+    expect(branchMismatchResponseSchema.parse({ response: "ORIGINAL_ENCODING_CORRECT", note: "Checked against the receipt" })).toMatchObject({ response: "ORIGINAL_ENCODING_CORRECT" });
+  });
+
+  it("normalizes receipt list filters and rejects an inverted date range", () => {
+    expect(receiptVerificationListQuerySchema.parse({})).toMatchObject({ page: 1, pageSize: 10, reviewStatus: "all", saleStatus: "all" });
+    expect(() => receiptVerificationListQuerySchema.parse({ dateFrom: "2026-08-20", dateTo: "2026-08-19" })).toThrow();
   });
 });

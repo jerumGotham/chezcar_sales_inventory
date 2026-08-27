@@ -407,7 +407,7 @@ export default function ProductsPage() {
         </div>
 
         <Card className="mt-6">
-          <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-7">
+          <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-6">
             <Input
               placeholder="Item Code"
               value={itemCode}
@@ -470,9 +470,9 @@ export default function ProductsPage() {
               />
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 md:col-span-2 xl:col-span-6 xl:justify-end">
               <Button
-                className="flex-1 bg-emerald-600 text-white hover:bg-emerald-700"
+                className="bg-emerald-600 text-white hover:bg-emerald-700"
                 onClick={handleApplyFilters}
               >
                 Apply Filters
@@ -480,7 +480,6 @@ export default function ProductsPage() {
 
               <Button
                 variant="outline"
-                className="flex-1"
                 onClick={handleResetFilters}
               >
                 Reset

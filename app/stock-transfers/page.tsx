@@ -12,7 +12,7 @@ export default async function StockTransfersPage({
   const access = await loadShellAccess(await headers());
   if (!access.authenticated) redirect("/sign-in");
   if (!access.capabilities.includes("stock-transfers:view")) redirect("/access-denied");
-  const stockRoom = access.identity.role === "STOCK_STAFF"
+  const stockRoom = access.identity.role === "ADMIN" || access.identity.role === "STOCK_STAFF"
     ? await prisma.location.findFirst({ where: { code: "SR", type: "WAREHOUSE", isActive: true }, select: { id: true } })
     : null;
   const [branches, products] = await Promise.all([

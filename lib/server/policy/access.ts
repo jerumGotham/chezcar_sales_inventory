@@ -22,6 +22,7 @@ export type Capability =
   | "sales:verify:view"
   | "sales:verify"
   | "sales:resolve"
+  | "sales:mismatch:respond"
   | "products:view"
   | "inventory:view"
   | "inventory-receiving:create"
@@ -51,6 +52,7 @@ export const CAPABILITIES = {
   salesVerifyView: "sales:verify:view",
   salesVerify: "sales:verify",
   salesResolve: "sales:resolve",
+  salesMismatchRespond: "sales:mismatch:respond",
   productsView: "products:view",
   inventoryView: "inventory:view",
   inventoryReceivingCreate: "inventory-receiving:create",
@@ -68,6 +70,7 @@ const ROLE_CAPABILITIES = {
     CAPABILITIES.customerOrdersView,
     CAPABILITIES.salesPost,
     CAPABILITIES.salesVerifyView,
+    CAPABILITIES.salesVerify,
     CAPABILITIES.salesResolve,
     CAPABILITIES.productsView,
     CAPABILITIES.inventoryView,
@@ -90,6 +93,8 @@ const ROLE_CAPABILITIES = {
     CAPABILITIES.customersView,
     CAPABILITIES.customerOrdersView,
     CAPABILITIES.salesPost,
+    CAPABILITIES.salesVerifyView,
+    CAPABILITIES.salesMismatchRespond,
     CAPABILITIES.inventoryView,
     CAPABILITIES.stockTransfersView,
   ],

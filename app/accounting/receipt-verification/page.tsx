@@ -1,9 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
-import { AlertTriangle, CheckCircle2, Loader2, Search, Upload } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  Search,
+  Upload,
+} from "lucide-react";
 
 import { useShellAccess } from "@/components/shell-access-context";
 import { PageShell } from "@/components/page-shell";
@@ -14,7 +22,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
-type SaleLine = { itemCode: string; name: string; quantity: number; unitPrice: number };
+type SaleLine = {
+  itemCode: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+};
 type Sale = {
   id: string;
   reference: string;
@@ -29,14 +42,56 @@ type Sale = {
   postedAt: string;
   postedBy: string;
   reviewStatus: "UNVERIFIED" | "VERIFIED" | "MISMATCH_REPORTED";
+  status: "POSTED" | "VOIDED";
   mismatchCategory: string | null;
   reviewNotes: string | null;
+  reportedComparison: {
+    receiptBooklet: string;
+    receiptNumber: string;
+    paymentMethod: string;
+    discountAmount: number;
+    amountPaid: number;
+    totalAmount: number;
+    lines: Array<{ itemCode: string; quantity: number; unitPrice: number }>;
+  } | null;
+  branchResponse:
+    | "ORIGINAL_ENCODING_CORRECT"
+    | "RECEIPT_CORRECTION_NEEDED"
+    | null;
+  branchResponseNote: string | null;
+  branchReplacementReceiptNumber: string | null;
+  branchRespondedAt: string | null;
   receiptPhotoUrl: string | null;
   correctionOfId: string | null;
   resolutionAction: string | null;
   resolutionNote: string | null;
   resolvedAt: string | null;
   lines: SaleLine[];
+};
+
+type BranchOption = { id: string; code: string; name: string };
+type ReceiptFilters = {
+  page: number;
+  pageSize: number;
+  search: string;
+  reviewStatus: "all" | Sale["reviewStatus"];
+  saleStatus: "all" | Sale["status"];
+  locationId: string;
+  dateFrom: string;
+  dateTo: string;
+};
+type ReceiptListResponse = {
+  data: Sale[];
+  meta: {
+    page: number;
+    pageSize: number;
+    totalItems: number;
+    totalPages: number;
+    unverified: number;
+    verified: number;
+    mismatches: number;
+  };
+  branches: BranchOption[];
 };
 
 type ComparisonDraft = {
@@ -59,79 +114,231 @@ const MISMATCH_OPTIONS = [
 ] as const;
 
 function formatPeso(value: number) {
-  return new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
+  return new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency: "PHP",
+  }).format(value);
 }
 
-async function fetchReceipts() {
-  const response = await fetch("/api/accounting/receipts", { credentials: "same-origin" });
+async function fetchReceipts(filters: ReceiptFilters) {
+  const params = new URLSearchParams({
+    page: String(filters.page),
+    pageSize: String(filters.pageSize),
+  });
+  if (filters.search) params.set("search", filters.search);
+  if (filters.reviewStatus !== "all")
+    params.set("reviewStatus", filters.reviewStatus);
+  if (filters.saleStatus !== "all")
+    params.set("saleStatus", filters.saleStatus);
+  if (filters.locationId) params.set("locationId", filters.locationId);
+  if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
+  if (filters.dateTo) params.set("dateTo", filters.dateTo);
+  const response = await fetch(
+    `/api/accounting/receipts?${params.toString()}`,
+    { credentials: "same-origin" },
+  );
   const json = await response.json();
-  if (!response.ok) throw new Error(json.error?.message ?? "Unable to load receipts");
-  return json.data as Sale[];
+  if (!response.ok)
+    throw new Error(json.error?.message ?? "Unable to load receipts");
+  return json as ReceiptListResponse;
 }
 
 function toComparison(draft: ComparisonDraft) {
+  const lines = draft.lines.map((line) => ({
+    itemCode: line.itemCode,
+    quantity: Number(line.quantity),
+    unitPrice: Number(line.unitPrice),
+  }));
+  const discountAmount = Number(draft.discountAmount);
+  const totalAmount = Math.max(
+    0,
+    lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0) -
+      discountAmount,
+  );
   return {
     receiptBooklet: draft.receiptBooklet,
     receiptNumber: draft.receiptNumber,
     paymentMethod: draft.paymentMethod,
-    discountAmount: Number(draft.discountAmount),
-    amountPaid: Number(draft.amountPaid),
-    totalAmount: Number(draft.totalAmount),
-    lines: draft.lines.map((line) => ({ itemCode: line.itemCode, quantity: Number(line.quantity), unitPrice: Number(line.unitPrice) })),
+    discountAmount,
+    amountPaid: totalAmount,
+    totalAmount,
+    lines,
   };
 }
 
-async function uploadPhoto(saleId: string, file: File | null, existingKey: string | null) {
+async function uploadPhoto(
+  saleId: string,
+  file: File | null,
+  existingKey: string | null,
+) {
   if (!file || existingKey) return existingKey;
   const formData = new FormData();
   formData.set("photo", file);
-  const response = await fetch(`/api/accounting/receipts/${saleId}/photo`, { method: "POST", credentials: "same-origin", body: formData });
-  const json = await response.json();
-  if (!response.ok) throw new Error(json.error?.message ?? "Unable to upload receipt photo");
-  return json.data.key as string;
+  const response = await fetch(`/api/accounting/receipts/${saleId}/photo`, {
+    method: "POST",
+    credentials: "same-origin",
+    body: formData,
+  });
+  const json = (await response.json().catch(() => null)) as {
+    data?: { key?: string };
+    error?: { message?: string };
+  } | null;
+  if (!response.ok)
+    throw new Error(json?.error?.message ?? "Unable to upload receipt photo");
+  if (!json?.data?.key)
+    throw new Error("Receipt photo upload returned an invalid response");
+  return json.data.key;
 }
+
+type ComparisonDifference = {
+  label: string;
+  encodedValue: string;
+  reportedValue: string;
+};
 
 function comparisonDifferences(sale: Sale, draft: ComparisonDraft) {
   const comparison = toComparison(draft);
-  const differences: string[] = [];
-  if (sale.manualReceiptNumber !== comparison.receiptNumber || sale.receiptBooklet !== comparison.receiptBooklet) differences.push("Receipt identity");
-  if (sale.paymentMethod !== comparison.paymentMethod) differences.push("Payment method");
-  if (sale.discountAmount !== comparison.discountAmount) differences.push("Discount");
-  if (sale.amountPaid !== comparison.amountPaid) differences.push("Amount paid");
-  if (sale.totalAmount !== comparison.totalAmount) differences.push("Total");
+  const differences: ComparisonDifference[] = [];
+  if (sale.manualReceiptNumber !== comparison.receiptNumber)
+    differences.push({
+      label: "Receipt number",
+      encodedValue: sale.manualReceiptNumber,
+      reportedValue: comparison.receiptNumber,
+    });
+  if (sale.receiptBooklet !== comparison.receiptBooklet)
+    differences.push({
+      label: "Receipt booklet",
+      encodedValue: sale.receiptBooklet || "None",
+      reportedValue: comparison.receiptBooklet || "None",
+    });
+  if (sale.paymentMethod !== comparison.paymentMethod)
+    differences.push({
+      label: "Payment method",
+      encodedValue: sale.paymentMethod.replaceAll("_", " "),
+      reportedValue: comparison.paymentMethod.replaceAll("_", " "),
+    });
+  if (sale.discountAmount !== comparison.discountAmount)
+    differences.push({
+      label: "Discount",
+      encodedValue: formatPeso(sale.discountAmount),
+      reportedValue: formatPeso(comparison.discountAmount),
+    });
   const saleLines = new Map(sale.lines.map((line) => [line.itemCode, line]));
-  const paperLines = new Map(comparison.lines.map((line) => [line.itemCode, line]));
+  const paperLines = new Map(
+    comparison.lines.map((line) => [line.itemCode, line]),
+  );
   for (const [itemCode, line] of saleLines) {
     const paperLine = paperLines.get(itemCode);
-    if (!paperLine || line.quantity !== paperLine.quantity || line.unitPrice !== paperLine.unitPrice) differences.push(`Line ${itemCode}`);
+    const itemLabel = `${line.name} (${itemCode})`;
+    if (!paperLine) {
+      differences.push({
+        label: itemLabel,
+        encodedValue: "Included",
+        reportedValue: "Not listed",
+      });
+      continue;
+    }
+    if (line.quantity !== paperLine.quantity)
+      differences.push({
+        label: `${itemLabel} quantity`,
+        encodedValue: String(line.quantity),
+        reportedValue: String(paperLine.quantity),
+      });
+    if (line.unitPrice !== paperLine.unitPrice)
+      differences.push({
+        label: `${itemLabel} unit price`,
+        encodedValue: formatPeso(line.unitPrice),
+        reportedValue: formatPeso(paperLine.unitPrice),
+      });
   }
-  for (const itemCode of paperLines.keys()) if (!saleLines.has(itemCode)) differences.push(`Line ${itemCode}`);
-  return [...new Set(differences)];
+  for (const [itemCode, paperLine] of paperLines)
+    if (!saleLines.has(itemCode))
+      differences.push({
+        label: `Additional item (${itemCode})`,
+        encodedValue: "Not listed",
+        reportedValue: `Qty ${paperLine.quantity} at ${formatPeso(paperLine.unitPrice)}`,
+      });
+  if (sale.totalAmount !== comparison.totalAmount)
+    differences.push({
+      label: "Calculated total",
+      encodedValue: formatPeso(sale.totalAmount),
+      reportedValue: formatPeso(comparison.totalAmount),
+    });
+  return differences;
 }
 
 export default function ReceiptVerificationPage() {
   const access = useShellAccess();
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState("");
+  const [searchDraft, setSearchDraft] = useState("");
+  const [reviewStatusDraft, setReviewStatusDraft] =
+    useState<ReceiptFilters["reviewStatus"]>("all");
+  const [saleStatusDraft, setSaleStatusDraft] =
+    useState<ReceiptFilters["saleStatus"]>("POSTED");
+  const [locationDraft, setLocationDraft] = useState("");
+  const [dateFromDraft, setDateFromDraft] = useState("");
+  const [dateToDraft, setDateToDraft] = useState("");
+  const [filters, setFilters] = useState<ReceiptFilters>({
+    page: 1,
+    pageSize: 10,
+    search: "",
+    reviewStatus: "all",
+    saleStatus: "POSTED",
+    locationId: "",
+    dateFrom: "",
+    dateTo: "",
+  });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [category, setCategory] = useState("PRICE_MISMATCH");
   const [notes, setNotes] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
-  const { data: sales = [], isLoading, error } = useQuery({ queryKey: ["accounting-receipts"], queryFn: fetchReceipts });
+  const { data, isLoading, isFetching, error } = useQuery({
+    queryKey: ["accounting-receipts", filters],
+    queryFn: () => fetchReceipts(filters),
+    placeholderData: (previousData) => previousData,
+  });
+  const sales = data?.data ?? [];
+  const meta = data?.meta ?? {
+    page: 1,
+    pageSize: 10,
+    totalItems: 0,
+    totalPages: 1,
+    unverified: 0,
+    verified: 0,
+    mismatches: 0,
+  };
+  const branches = data?.branches ?? [];
 
   const reviewMutation = useMutation({
     mutationFn: async (status: "VERIFIED" | "MISMATCH_REPORTED") => {
       if (!selectedId) throw new Error("Select a receipt first.");
       const nextPhotoKey = await uploadPhoto(selectedId, photoFile, photoKey);
-      const response = await fetch(`/api/accounting/receipts/${selectedId}/review`, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status, mismatchCategory: status === "MISMATCH_REPORTED" ? category : undefined, notes: status === "MISMATCH_REPORTED" ? notes : undefined, comparison: toComparison(comparison), receiptPhotoKey: status === "MISMATCH_REPORTED" ? nextPhotoKey : undefined }),
-      });
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.error?.message ?? "Unable to update receipt review");
-      return json.data;
+      const response = await fetch(
+        `/api/accounting/receipts/${selectedId}/review`,
+        {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status,
+            mismatchCategory:
+              status === "MISMATCH_REPORTED" ? category : undefined,
+            notes: status === "MISMATCH_REPORTED" ? notes : undefined,
+            comparison: toComparison(comparison),
+            receiptPhotoKey:
+              status === "MISMATCH_REPORTED" ? nextPhotoKey : undefined,
+          }),
+        },
+      );
+      const json = (await response.json().catch(() => null)) as {
+        data?: unknown;
+        error?: { message?: string };
+      } | null;
+      if (!response.ok)
+        throw new Error(
+          json?.error?.message ?? "Unable to update receipt review",
+        );
+      return json?.data;
     },
     onSuccess: () => {
       setSelectedId(null);
@@ -148,33 +355,201 @@ export default function ReceiptVerificationPage() {
   const resolveMutation = useMutation({
     mutationFn: async (action: "CONFIRMED_CORRECT" | "VOIDED_REPLACED") => {
       if (!selectedId) throw new Error("Select a receipt first.");
-      if (!resolutionNote.trim()) throw new Error("Resolution note is required.");
+      if (!resolutionNote.trim())
+        throw new Error("Resolution note is required.");
+      if (
+        action === "VOIDED_REPLACED" &&
+        comparison.receiptNumber.trim() === selectedSale?.manualReceiptNumber
+      ) {
+        throw new Error(
+          "Enter the new replacement receipt number before voiding the original sale.",
+        );
+      }
       const nextPhotoKey = await uploadPhoto(selectedId, photoFile, photoKey);
-      const response = await fetch(`/api/accounting/receipts/${selectedId}/resolve`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, note: resolutionNote, replacement: action === "VOIDED_REPLACED" ? toComparison(comparison) : undefined, receiptPhotoKey: nextPhotoKey ?? undefined }) });
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.error?.message ?? "Unable to resolve mismatch");
-      return json.data;
+      const response = await fetch(
+        `/api/accounting/receipts/${selectedId}/resolve`,
+        {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action,
+            note: resolutionNote,
+            replacement:
+              action === "VOIDED_REPLACED"
+                ? toComparison(comparison)
+                : undefined,
+            receiptPhotoKey: nextPhotoKey ?? undefined,
+          }),
+        },
+      );
+      const json = (await response.json().catch(() => null)) as {
+        data?: unknown;
+        error?: { message?: string };
+      } | null;
+      if (!response.ok)
+        throw new Error(json?.error?.message ?? "Unable to resolve mismatch");
+      return json?.data;
     },
-    onSuccess: () => { setSelectedId(null); setResolutionNote(""); setFormError(null); queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] }); },
+    onSuccess: () => {
+      setSelectedId(null);
+      setResolutionNote("");
+      setFormError(null);
+      queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] });
+    },
     onError: (mutationError) => setFormError((mutationError as Error).message),
   });
 
-  const filteredSales = sales.filter((sale) => `${sale.manualReceiptNumber} ${sale.reference} ${sale.customer} ${sale.branch}`.toLowerCase().includes(search.toLowerCase()));
-  const selectedSale = sales.find((sale) => sale.id === selectedId) ?? null;
-  const canReview = access.identity?.role === "ACCOUNTING_STAFF";
-  const canResolve = access.identity?.role === "ACCOUNTING_STAFF" || access.identity?.role === "ADMIN";
+  const branchResponseMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedId) throw new Error("Select a receipt first.");
+      const response = await fetch(
+        `/api/accounting/receipts/${selectedId}/branch-response`,
+        {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            response: branchResponse,
+            note: branchResponseNote,
+            replacementReceiptNumber:
+              branchResponse === "RECEIPT_CORRECTION_NEEDED"
+                ? branchReplacementReceiptNumber
+                : undefined,
+          }),
+        },
+      );
+      const json = (await response.json().catch(() => null)) as {
+        data?: unknown;
+        error?: { message?: string };
+      } | null;
+      if (!response.ok)
+        throw new Error(
+          json?.error?.message ?? "Unable to submit branch response",
+        );
+      return json?.data;
+    },
+    onSuccess: () => {
+      setFormError(null);
+      queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] });
+    },
+    onError: (mutationError) => setFormError((mutationError as Error).message),
+  });
 
-  const [comparison, setComparison] = useState<ComparisonDraft>({ receiptBooklet: "", receiptNumber: "", paymentMethod: "CASH", discountAmount: "0", amountPaid: "0", totalAmount: "0", lines: [] });
+  const selectedSale = sales.find((sale) => sale.id === selectedId) ?? null;
+  const isAdmin = access.identity?.role === "ADMIN";
+  const canReview =
+    isAdmin || access.identity?.role === "ACCOUNTING_STAFF";
+  const canResolve =
+    access.identity?.role === "ACCOUNTING_STAFF" ||
+    isAdmin;
+  const canRespond = access.identity?.role === "BRANCH_STAFF";
+
+  const [comparison, setComparison] = useState<ComparisonDraft>({
+    receiptBooklet: "",
+    receiptNumber: "",
+    paymentMethod: "CASH",
+    discountAmount: "0",
+    amountPaid: "0",
+    totalAmount: "0",
+    lines: [],
+  });
   const [resolutionNote, setResolutionNote] = useState("");
+  const [branchResponse, setBranchResponse] = useState<
+    "ORIGINAL_ENCODING_CORRECT" | "RECEIPT_CORRECTION_NEEDED"
+  >("ORIGINAL_ENCODING_CORRECT");
+  const [branchResponseNote, setBranchResponseNote] = useState("");
+  const [branchReplacementReceiptNumber, setBranchReplacementReceiptNumber] =
+    useState("");
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoKey, setPhotoKey] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (meta.totalItems > 0 && filters.page > meta.totalPages) {
+      // Keep the current page valid after a review changes the result count.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setFilters((current) => ({ ...current, page: meta.totalPages }));
+    }
+  }, [filters.page, meta.totalItems, meta.totalPages]);
+
+  const hasActiveFilters = Boolean(
+    filters.search ||
+    filters.reviewStatus !== "all" ||
+    filters.saleStatus !== "POSTED" ||
+    filters.locationId ||
+    filters.dateFrom ||
+    filters.dateTo,
+  );
+  const showingFrom =
+    meta.totalItems === 0 ? 0 : (meta.page - 1) * meta.pageSize + 1;
+  const showingTo =
+    meta.totalItems === 0
+      ? 0
+      : Math.min(meta.page * meta.pageSize, meta.totalItems);
+
+  const applyFilters = (event?: FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
+    setFilters({
+      page: 1,
+      pageSize: 10,
+      search: searchDraft.trim(),
+      reviewStatus: reviewStatusDraft,
+      saleStatus: saleStatusDraft,
+      locationId: locationDraft,
+      dateFrom: dateFromDraft,
+      dateTo: dateToDraft,
+    });
+  };
+
+  const resetFilters = () => {
+    setSearchDraft("");
+    setReviewStatusDraft("all");
+    setSaleStatusDraft("POSTED");
+    setLocationDraft("");
+    setDateFromDraft("");
+    setDateToDraft("");
+    setFilters({
+      page: 1,
+      pageSize: 10,
+      search: "",
+      reviewStatus: "all",
+      saleStatus: "POSTED",
+      locationId: "",
+      dateFrom: "",
+      dateTo: "",
+    });
+  };
+
   const selectSale = (sale: Sale) => {
+    const reported = sale.reportedComparison;
     setSelectedId(sale.id);
     setFormError(null);
-    setComparison({ receiptBooklet: sale.receiptBooklet, receiptNumber: sale.manualReceiptNumber, paymentMethod: sale.paymentMethod, discountAmount: String(sale.discountAmount), amountPaid: String(sale.amountPaid), totalAmount: String(sale.totalAmount), lines: sale.lines.map((line) => ({ itemCode: line.itemCode, quantity: String(line.quantity), unitPrice: String(line.unitPrice) })) });
+    setComparison({
+      receiptBooklet: reported?.receiptBooklet ?? sale.receiptBooklet,
+      receiptNumber:
+        sale.branchResponse === "RECEIPT_CORRECTION_NEEDED" &&
+        sale.branchReplacementReceiptNumber
+          ? sale.branchReplacementReceiptNumber
+          : (reported?.receiptNumber ?? sale.manualReceiptNumber),
+      paymentMethod: reported?.paymentMethod ?? sale.paymentMethod,
+      discountAmount: String(reported?.discountAmount ?? sale.discountAmount),
+      amountPaid: String(reported?.amountPaid ?? sale.amountPaid),
+      totalAmount: String(reported?.totalAmount ?? sale.totalAmount),
+      lines: (reported?.lines ?? sale.lines).map((line) => ({
+        itemCode: line.itemCode,
+        quantity: String(line.quantity),
+        unitPrice: String(line.unitPrice),
+      })),
+    });
     setResolutionNote("");
+    setBranchResponse(
+      sale.branchResponse ?? "ORIGINAL_ENCODING_CORRECT",
+    );
+    setBranchResponseNote(sale.branchResponseNote ?? "");
+    setBranchReplacementReceiptNumber(
+      sale.branchReplacementReceiptNumber ?? "",
+    );
     setPhotoFile(null);
     setPhotoPreview(null);
     setPhotoKey(null);
@@ -201,64 +576,764 @@ export default function ReceiptVerificationPage() {
     setPhotoKey(null);
   };
 
-  const differences = selectedSale ? comparisonDifferences(selectedSale, comparison) : [];
-  const canEditComparison = Boolean(selectedSale && (canReview || (canResolve && selectedSale.reviewStatus === "MISMATCH_REPORTED")));
-  const updateComparison = (changes: Partial<ComparisonDraft>) => setComparison((current) => ({ ...current, ...changes }));
+  const differences = selectedSale
+    ? comparisonDifferences(selectedSale, comparison)
+    : [];
+  const reportedDifferences =
+    selectedSale?.reportedComparison
+      ? comparisonDifferences(selectedSale, {
+          receiptBooklet: selectedSale.reportedComparison.receiptBooklet,
+          receiptNumber: selectedSale.reportedComparison.receiptNumber,
+          paymentMethod: selectedSale.reportedComparison.paymentMethod,
+          discountAmount: String(
+            selectedSale.reportedComparison.discountAmount,
+          ),
+          amountPaid: String(selectedSale.reportedComparison.amountPaid),
+          totalAmount: String(selectedSale.reportedComparison.totalAmount),
+          lines: selectedSale.reportedComparison.lines.map((line) => ({
+            itemCode: line.itemCode,
+            quantity: String(line.quantity),
+            unitPrice: String(line.unitPrice),
+          })),
+        })
+      : [];
+  const canEditComparison = Boolean(
+    selectedSale &&
+    selectedSale.status === "POSTED" &&
+    ((canReview && selectedSale.reviewStatus === "UNVERIFIED") ||
+      (isAdmin &&
+        selectedSale.reviewStatus === "MISMATCH_REPORTED" &&
+        selectedSale.branchResponse === "RECEIPT_CORRECTION_NEEDED")),
+  );
+  const updateComparison = (changes: Partial<ComparisonDraft>) =>
+    setComparison((current) => ({ ...current, ...changes }));
 
   return (
-    <PageShell title="Receipt Verification" subtitle="Compare posted manual receipts with the branch encoding before closing the accounting queue.">
+    <PageShell
+      title="Receipt Verification"
+      subtitle="Compare posted manual receipts with the branch encoding before closing the accounting queue."
+    >
+      <div className="mb-6 grid gap-3 sm:grid-cols-3">
+        <SummaryCard label="Unverified" value={meta.unverified} tone="amber" />
+        <SummaryCard
+          label="Mismatch reported"
+          value={meta.mismatches}
+          tone="rose"
+        />
+        <SummaryCard label="Verified" value={meta.verified} tone="emerald" />
+      </div>
+      <Card className="mb-6">
+        <CardContent className="p-5">
+          <form
+            className="grid gap-4 md:grid-cols-2 xl:grid-cols-6"
+            onSubmit={applyFilters}
+          >
+            <div className="relative xl:col-span-2">
+              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <Input
+                aria-label="Search receipts"
+                value={searchDraft}
+                onChange={(event) => setSearchDraft(event.target.value)}
+                placeholder="Search receipt, customer, branch"
+                className="pl-9"
+              />
+            </div>
+            <select
+              aria-label="Filter by review status"
+              value={reviewStatusDraft}
+              onChange={(event) =>
+                setReviewStatusDraft(
+                  event.target.value as ReceiptFilters["reviewStatus"],
+                )
+              }
+              className="h-10 rounded-md border bg-background px-3 text-sm"
+            >
+              <option value="all">All review statuses</option>
+              <option value="UNVERIFIED">Unverified</option>
+              <option value="MISMATCH_REPORTED">Mismatch reported</option>
+              <option value="VERIFIED">Verified</option>
+            </select>
+            <select
+              aria-label="Filter by sale status"
+              value={saleStatusDraft}
+              onChange={(event) =>
+                setSaleStatusDraft(
+                  event.target.value as ReceiptFilters["saleStatus"],
+                )
+              }
+              className="h-10 rounded-md border bg-background px-3 text-sm"
+            >
+              <option value="POSTED">Posted sales</option>
+              <option value="all">All sale statuses</option>
+              <option value="VOIDED">Voided sales</option>
+            </select>
+            <select
+              aria-label="Filter by branch"
+              value={locationDraft}
+              onChange={(event) => setLocationDraft(event.target.value)}
+              className="h-10 rounded-md border bg-background px-3 text-sm"
+            >
+              <option value="">All branches</option>
+              {branches.map((branch) => (
+                <option key={branch.id} value={branch.id}>
+                  {branch.name} ({branch.code})
+                </option>
+              ))}
+            </select>
+            <div className="grid grid-cols-2 gap-2 md:col-span-2 xl:col-span-2">
+              <Input
+                aria-label="Filter from date"
+                type="date"
+                value={dateFromDraft}
+                onChange={(event) => setDateFromDraft(event.target.value)}
+              />
+              <Input
+                aria-label="Filter to date"
+                type="date"
+                value={dateToDraft}
+                onChange={(event) => setDateToDraft(event.target.value)}
+              />
+            </div>
+            <div className="flex gap-2 md:col-span-2 xl:col-span-4 xl:justify-end">
+              <Button type="submit" className="min-w-32">
+                Apply filters
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={resetFilters}
+                disabled={
+                  !hasActiveFilters &&
+                  !searchDraft &&
+                  !locationDraft &&
+                  !dateFromDraft &&
+                  !dateToDraft
+                }
+              >
+                Reset
+              </Button>
+            </div>
+          </form>
+          <p className="mt-3 text-xs text-slate-500">
+            Date filters use the sale posting date. Search also checks receipt
+            booklet and reference.
+          </p>
+        </CardContent>
+      </Card>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]">
         <Card>
           <CardContent className="p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-base font-semibold">Sales queue</h2>
-                <p className="text-sm text-slate-500">{sales.filter((sale) => sale.reviewStatus === "UNVERIFIED").length} unverified receipt(s)</p>
-              </div>
-              <div className="relative w-full sm:w-64">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search receipt or customer" className="pl-9" />
+                <p className="text-sm text-slate-500" aria-live="polite">
+                  {meta.totalItems === 0
+                    ? "No matching receipts"
+                    : `Showing ${showingFrom}-${showingTo} of ${meta.totalItems} receipt${meta.totalItems === 1 ? "" : "s"}`}
+                  {isFetching && !isLoading ? " · Updating..." : ""}
+                </p>
               </div>
             </div>
             <div className="mt-4 overflow-x-auto">
-              {isLoading ? <div className="flex items-center gap-2 py-12 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading receipts...</div> : error ? <p className="py-12 text-sm text-red-600">{(error as Error).message}</p> : filteredSales.length === 0 ? <p className="py-12 text-sm text-slate-500">No receipts match the current search.</p> : (
+              {isLoading ? (
+                <div className="flex items-center gap-2 py-12 text-sm text-slate-500">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading
+                  receipts...
+                </div>
+              ) : error ? (
+                <div className="flex flex-col items-start gap-3 py-12">
+                  <p role="alert" className="text-sm text-red-600">
+                    Unable to load receipts. {(error as Error).message}
+                  </p>
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      void queryClient.invalidateQueries({
+                        queryKey: ["accounting-receipts"],
+                      })
+                    }
+                  >
+                    Try again
+                  </Button>
+                </div>
+              ) : sales.length === 0 ? (
+                <div className="flex flex-col items-center gap-3 py-12 text-center">
+                  <p className="text-sm text-slate-500">
+                    {hasActiveFilters
+                      ? "No receipts match the current filters."
+                      : "There are no receipts to verify yet."}
+                  </p>
+                  {hasActiveFilters ? (
+                    <Button variant="outline" onClick={resetFilters}>
+                      Reset filters
+                    </Button>
+                  ) : null}
+                </div>
+              ) : (
                 <table className="w-full min-w-[680px] text-left text-sm">
-                  <thead><tr className="border-b text-xs uppercase tracking-wide text-slate-500"><th className="px-3 py-3">Receipt</th><th className="px-3 py-3">Branch</th><th className="px-3 py-3">Customer</th><th className="px-3 py-3">Total</th><th className="px-3 py-3">Status</th><th className="px-3 py-3" /></tr></thead>
-                  <tbody>{filteredSales.map((sale) => <tr key={sale.id} className="border-b last:border-0">
-                    <td className="px-3 py-4"><p className="font-medium">{sale.manualReceiptNumber}</p><p className="text-xs text-slate-500">{sale.reference}</p></td>
-                    <td className="px-3 py-4 text-slate-600">{sale.branch}</td>
-                    <td className="px-3 py-4 text-slate-600">{sale.customer}</td>
-                    <td className="px-3 py-4 font-medium">{formatPeso(sale.totalAmount)}</td>
-                    <td className="px-3 py-4"><ReviewBadge status={sale.reviewStatus} /></td>
-                    <td className="px-3 py-4 text-right"><Button size="sm" variant="outline" onClick={(event) => { event.stopPropagation(); selectSale(sale); }}>{selectedId === sale.id ? "Selected" : "Review"}</Button></td>
-                  </tr>)}</tbody>
+                  <thead>
+                    <tr className="border-b text-xs uppercase tracking-wide text-slate-500">
+                      <th className="px-3 py-3">Receipt</th>
+                      <th className="px-3 py-3">Branch</th>
+                      <th className="px-3 py-3">Customer</th>
+                      <th className="px-3 py-3">Total</th>
+                      <th className="px-3 py-3">Status</th>
+                      <th className="px-3 py-3" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sales.map((sale) => (
+                      <tr
+                        key={sale.id}
+                        onClick={() => selectSale(sale)}
+                        aria-selected={selectedId === sale.id}
+                        className={
+                          selectedId === sale.id
+                            ? "cursor-pointer border-b bg-emerald-50 ring-1 ring-inset ring-emerald-200 last:border-0"
+                            : "cursor-pointer border-b transition-colors hover:bg-slate-50 last:border-0"
+                        }
+                      >
+                        <td className="px-3 py-4">
+                          <p className="font-medium">
+                            {sale.manualReceiptNumber}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {sale.reference}
+                          </p>
+                        </td>
+                        <td className="px-3 py-4 text-slate-600">
+                          {sale.branch}
+                        </td>
+                        <td className="px-3 py-4 text-slate-600">
+                          {sale.customer}
+                        </td>
+                        <td className="px-3 py-4 font-medium">
+                          {formatPeso(sale.totalAmount)}
+                        </td>
+                        <td className="px-3 py-4">
+                          <ReviewBadge status={sale.reviewStatus} />
+                        </td>
+                        <td className="px-3 py-4 text-right">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              selectSale(sale);
+                            }}
+                          >
+                            {selectedId === sale.id ? "Selected" : "Review"}
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
                 </table>
               )}
             </div>
+            {meta.totalItems > 0 ? (
+              <div className="mt-4 flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-slate-500">
+                  Page {meta.page} of {meta.totalPages}
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setFilters((current) => ({
+                        ...current,
+                        page: Math.max(1, current.page - 1),
+                      }))
+                    }
+                    disabled={meta.page <= 1 || isFetching}
+                  >
+                    <ChevronLeft className="mr-1 size-4" />
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setFilters((current) => ({
+                        ...current,
+                        page: Math.min(meta.totalPages, current.page + 1),
+                      }))
+                    }
+                    disabled={meta.page >= meta.totalPages || isFetching}
+                  >
+                    Next
+                    <ChevronRight className="ml-1 size-4" />
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
 
         <Card>
           <CardContent className="p-5">
-            {!selectedSale ? <div className="flex min-h-80 items-center justify-center text-center text-sm text-slate-500">Select a receipt to compare its line items and manual receipt evidence.</div> : <div className="space-y-5">
-              <div className="flex items-start justify-between gap-3"><div><p className="text-xs uppercase tracking-wide text-slate-500">{selectedSale.reference}</p><h2 className="mt-1 text-lg font-semibold">Receipt {selectedSale.manualReceiptNumber}</h2><p className="text-sm text-slate-500">{selectedSale.branch} • posted by {selectedSale.postedBy}</p></div><ReviewBadge status={selectedSale.reviewStatus} /></div>
-              <div className="rounded-xl border"><div className="divide-y">{selectedSale.lines.map((line) => <div key={`${line.itemCode}-${line.name}`} className="flex items-center justify-between gap-3 p-3"><div><p className="text-sm font-medium">{line.name}</p><p className="text-xs text-slate-500">{line.itemCode} • Qty {line.quantity}</p></div><p className="text-sm font-medium">{formatPeso(line.unitPrice * line.quantity)}</p></div>)}</div><div className="flex items-center justify-between border-t bg-slate-50 p-3 text-sm font-semibold"><span>Encoded total</span><span>{formatPeso(selectedSale.totalAmount)}</span></div></div>
-              {selectedSale.reviewStatus === "MISMATCH_REPORTED" && <div className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800"><p className="font-medium">Reported mismatch: {selectedSale.mismatchCategory?.replaceAll("_", " ") ?? "Uncategorized"}</p><p className="mt-1">{selectedSale.reviewNotes || "No notes recorded."}</p></div>}
-              {selectedSale.receiptPhotoUrl && !photoPreview && <Image src={selectedSale.receiptPhotoUrl} alt="Attached manual receipt" width={800} height={600} unoptimized className="max-h-64 w-full rounded-xl border object-contain" />}
-              {canEditComparison && selectedSale.reviewStatus !== "VERIFIED" ? <div className="space-y-4 border-t pt-4">
-                <div className="grid gap-3 sm:grid-cols-2"><div className="grid gap-2"><Label htmlFor="paper-booklet">Paper booklet</Label><Input id="paper-booklet" value={comparison.receiptBooklet} onChange={(event) => updateComparison({ receiptBooklet: event.target.value })} /></div><div className="grid gap-2"><Label htmlFor="paper-number">Paper receipt number</Label><Input id="paper-number" value={comparison.receiptNumber} onChange={(event) => updateComparison({ receiptNumber: event.target.value })} /></div><div className="grid gap-2"><Label htmlFor="paper-total">Paper total</Label><Input id="paper-total" inputMode="decimal" value={comparison.totalAmount} onChange={(event) => updateComparison({ totalAmount: event.target.value })} /></div><div className="grid gap-2"><Label htmlFor="paper-paid">Paper amount paid</Label><Input id="paper-paid" inputMode="decimal" value={comparison.amountPaid} onChange={(event) => updateComparison({ amountPaid: event.target.value })} /></div><div className="grid gap-2"><Label htmlFor="paper-discount">Paper discount</Label><Input id="paper-discount" inputMode="decimal" value={comparison.discountAmount} onChange={(event) => updateComparison({ discountAmount: event.target.value })} /></div><div className="grid gap-2"><Label htmlFor="paper-payment">Paper payment method</Label><select id="paper-payment" value={comparison.paymentMethod} onChange={(event) => updateComparison({ paymentMethod: event.target.value })} className="h-10 rounded-md border bg-background px-3 text-sm">{["CASH", "GCASH", "MAYA", "BANK_TRANSFER", "CREDIT_CARD", "SPLIT"].map((method) => <option key={method} value={method}>{method.replaceAll("_", " ")}</option>)}</select></div></div>
-                <div><p className="mb-2 text-sm font-medium">Paper line items</p><div className="space-y-2">{comparison.lines.map((line, index) => <div key={`${line.itemCode}-${index}`} className="grid gap-2 sm:grid-cols-[1fr_100px_120px]"><Input aria-label={`Item code ${index + 1}`} value={line.itemCode} onChange={(event) => setComparison((current) => ({ ...current, lines: current.lines.map((item, itemIndex) => itemIndex === index ? { ...item, itemCode: event.target.value } : item) }))} /><Input aria-label={`Quantity ${index + 1}`} inputMode="numeric" value={line.quantity} onChange={(event) => setComparison((current) => ({ ...current, lines: current.lines.map((item, itemIndex) => itemIndex === index ? { ...item, quantity: event.target.value } : item) }))} /><Input aria-label={`Unit price ${index + 1}`} inputMode="decimal" value={line.unitPrice} onChange={(event) => setComparison((current) => ({ ...current, lines: current.lines.map((item, itemIndex) => itemIndex === index ? { ...item, unitPrice: event.target.value } : item) }))} /></div>)}</div></div>
-                {differences.length > 0 && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">Differences found: {differences.join(", ")}</p>}
-                {canReview && <div className="flex flex-wrap gap-2"><Button onClick={() => reviewMutation.mutate("VERIFIED")} disabled={reviewMutation.isPending || differences.length > 0} className="bg-emerald-600 hover:bg-emerald-700"><CheckCircle2 className="mr-2 h-4 w-4" />Confirm correct</Button><span className="self-center text-xs text-slate-500">Correct all comparison fields before confirming.</span></div>}
-                {canReview && <><div className="grid gap-2"><Label htmlFor="mismatch-category">Mismatch category</Label><select id="mismatch-category" value={category} onChange={(event) => setCategory(event.target.value)} className="h-10 rounded-md border bg-background px-3 text-sm">{MISMATCH_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div><div className="grid gap-2"><Label htmlFor="mismatch-notes">Notes</Label><Textarea id="mismatch-notes" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Describe the difference found on the handwritten receipt" /></div></>}
-                <div className="grid gap-2"><Label htmlFor="receipt-photo">Receipt photo (optional)</Label><Input id="receipt-photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => handlePhoto(event.target.files?.[0])} /><p className="text-xs text-slate-500">Optional even for Receipt Not Found. Upload only if you have supporting evidence.</p></div>
-                {photoPreview && <div className="space-y-2"><Image src={photoPreview} alt="Receipt preview" width={800} height={600} unoptimized className="max-h-40 w-full rounded-xl border object-contain" /><Button type="button" variant="outline" size="sm" onClick={clearSelectedPhoto}>Remove selected image</Button></div>}
-                {selectedSale.receiptPhotoUrl && !photoPreview && <p className="text-xs text-slate-500">A receipt image is already attached. Choose a new file above to replace it.</p>}
-                {canReview && <Button variant="outline" onClick={() => { if (!notes.trim()) { setFormError("Notes are required when reporting a mismatch."); return; } reviewMutation.mutate("MISMATCH_REPORTED"); }} disabled={reviewMutation.isPending} className="border-rose-200 text-rose-700 hover:bg-rose-50"><AlertTriangle className="mr-2 h-4 w-4" />Report mismatch</Button>}
-                {canResolve && selectedSale.reviewStatus === "MISMATCH_REPORTED" && <><div className="grid gap-2 border-t pt-4"><Label htmlFor="resolution-note">Resolution note</Label><Textarea id="resolution-note" value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} placeholder="Explain why this mismatch is being resolved" /></div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => resolveMutation.mutate("CONFIRMED_CORRECT")} disabled={resolveMutation.isPending || !resolutionNote.trim()} className="border-sky-200 text-sky-700">Confirm correct</Button><Button onClick={() => resolveMutation.mutate("VOIDED_REPLACED")} disabled={resolveMutation.isPending || !resolutionNote.trim()} className="bg-rose-600 hover:bg-rose-700"><Upload className="mr-2 h-4 w-4" />Void and replace</Button></div></>}
-                {formError && <p className="text-sm text-red-600">{formError}</p>}
-              </div> : null}
-            </div>}
+            {!selectedSale ? (
+              <div className="flex min-h-80 items-center justify-center text-center text-sm text-slate-500">
+                Select a receipt to compare its line items and manual receipt
+                evidence.
+              </div>
+            ) : (
+              <div className="space-y-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-slate-500">
+                      {selectedSale.reference}
+                    </p>
+                    <h2 className="mt-1 text-lg font-semibold">
+                      Receipt {selectedSale.manualReceiptNumber}
+                    </h2>
+                    <p className="text-sm text-slate-500">
+                      {selectedSale.branch} • posted by {selectedSale.postedBy}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <SaleStatusBadge status={selectedSale.status} />
+                    <ReviewBadge status={selectedSale.reviewStatus} />
+                  </div>
+                </div>
+                <div className="rounded-xl border">
+                  <div className="divide-y">
+                    {selectedSale.lines.map((line) => (
+                      <div
+                        key={`${line.itemCode}-${line.name}`}
+                        className="flex items-center justify-between gap-3 p-3"
+                      >
+                        <div>
+                          <p className="text-sm font-medium">{line.name}</p>
+                          <p className="text-xs text-slate-500">
+                            {line.itemCode} • Qty {line.quantity}
+                          </p>
+                        </div>
+                        <p className="text-sm font-medium">
+                          {formatPeso(line.unitPrice * line.quantity)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between border-t bg-slate-50 p-3 text-sm font-semibold">
+                    <span>Encoded total</span>
+                    <span>{formatPeso(selectedSale.totalAmount)}</span>
+                  </div>
+                </div>
+                {selectedSale.status === "VOIDED" && (
+                  <div className="rounded-xl bg-slate-100 p-3 text-sm text-slate-700">
+                    This sale is voided and read-only.
+                  </div>
+                )}
+                {selectedSale.reviewStatus === "MISMATCH_REPORTED" && (
+                  <div className="space-y-3">
+                    <div className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800">
+                      <p className="font-medium">
+                        Reported mismatch:{" "}
+                        {selectedSale.mismatchCategory?.replaceAll("_", " ") ??
+                          "Uncategorized"}
+                      </p>
+                      <p className="mt-1">
+                        {selectedSale.reviewNotes || "No notes recorded."}
+                      </p>
+                      <p className="mt-2 border-t border-rose-200 pt-2 font-medium">
+                        {selectedSale.branchResponse ===
+                        "ORIGINAL_ENCODING_CORRECT"
+                          ? "Branch confirmed the original encoding is correct."
+                          : selectedSale.branchResponse ===
+                              "RECEIPT_CORRECTION_NEEDED"
+                            ? `Branch confirmed a correction is needed. Replacement receipt: ${selectedSale.branchReplacementReceiptNumber}`
+                            : "Waiting for the branch to double-check this mismatch."}
+                      </p>
+                      {selectedSale.branchResponseNote && (
+                        <p className="mt-1">
+                          Branch note: {selectedSale.branchResponseNote}
+                        </p>
+                      )}
+                    </div>
+                    {reportedDifferences.length > 0 && (
+                      <MismatchDetails differences={reportedDifferences} />
+                    )}
+                  </div>
+                )}
+                {canRespond &&
+                  selectedSale.reviewStatus === "MISMATCH_REPORTED" && (
+                    <div className="space-y-4 rounded-xl border border-sky-200 bg-sky-50/60 p-4">
+                      <div>
+                        <p className="font-semibold text-sky-950">
+                          Branch double-check
+                        </p>
+                        <p className="mt-1 text-sm text-sky-800">
+                          Compare the original encoding with the physical receipt,
+                          then tell Admin and Accounting what should happen next.
+                        </p>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="branch-response">Branch finding</Label>
+                        <select
+                          id="branch-response"
+                          value={branchResponse}
+                          onChange={(event) =>
+                            setBranchResponse(
+                              event.target.value as
+                                | "ORIGINAL_ENCODING_CORRECT"
+                                | "RECEIPT_CORRECTION_NEEDED",
+                            )
+                          }
+                          className="h-10 rounded-md border bg-background px-3 text-sm"
+                        >
+                          <option value="ORIGINAL_ENCODING_CORRECT">
+                            Original encoding is correct
+                          </option>
+                          <option value="RECEIPT_CORRECTION_NEEDED">
+                            Receipt correction is needed
+                          </option>
+                        </select>
+                      </div>
+                      {branchResponse === "RECEIPT_CORRECTION_NEEDED" && (
+                        <div className="grid gap-2">
+                          <Label htmlFor="branch-replacement-receipt">
+                            Replacement receipt number
+                          </Label>
+                          <Input
+                            id="branch-replacement-receipt"
+                            value={branchReplacementReceiptNumber}
+                            onChange={(event) =>
+                              setBranchReplacementReceiptNumber(
+                                event.target.value,
+                              )
+                            }
+                            placeholder="Enter the new receipt number"
+                          />
+                        </div>
+                      )}
+                      <div className="grid gap-2">
+                        <Label htmlFor="branch-response-note">
+                          Branch explanation
+                        </Label>
+                        <Textarea
+                          id="branch-response-note"
+                          value={branchResponseNote}
+                          onChange={(event) =>
+                            setBranchResponseNote(event.target.value)
+                          }
+                          placeholder="Explain what you checked and why this response is correct"
+                        />
+                      </div>
+                      <Button
+                        onClick={() => branchResponseMutation.mutate()}
+                        disabled={
+                          branchResponseMutation.isPending ||
+                          !branchResponseNote.trim() ||
+                          (branchResponse === "RECEIPT_CORRECTION_NEEDED" &&
+                            !branchReplacementReceiptNumber.trim())
+                        }
+                      >
+                        {selectedSale.branchResponse
+                          ? "Update branch response"
+                          : "Submit branch response"}
+                      </Button>
+                    </div>
+                  )}
+                {selectedSale.receiptPhotoUrl && !photoPreview && (
+                  <Image
+                    src={selectedSale.receiptPhotoUrl}
+                    alt="Attached manual receipt"
+                    width={800}
+                    height={600}
+                    unoptimized
+                    className="max-h-64 w-full rounded-xl border object-contain"
+                  />
+                )}
+                {canEditComparison &&
+                selectedSale.reviewStatus !== "VERIFIED" ? (
+                  <div className="space-y-4 border-t pt-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="paper-number">
+                        {selectedSale.reviewStatus === "MISMATCH_REPORTED"
+                          ? "New replacement receipt number"
+                          : "Receipt number on handwritten receipt"}
+                      </Label>
+                      <Input
+                        id="paper-number"
+                        value={comparison.receiptNumber}
+                        onChange={(event) =>
+                          updateComparison({
+                            receiptNumber: event.target.value,
+                          })
+                        }
+                      />
+                      {selectedSale.reviewStatus === "MISMATCH_REPORTED" && (
+                        <p className="text-xs text-slate-500">
+                          This must differ from the voided original receipt.
+                        </p>
+                      )}
+                    </div>
+                    <div className="rounded-xl border p-4">
+                      <p className="text-sm font-semibold">
+                        {selectedSale.reviewStatus === "MISMATCH_REPORTED"
+                          ? "Correction details"
+                          : "Receipt item details"}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {selectedSale.reviewStatus === "MISMATCH_REPORTED"
+                          ? "The values reported by Accounting are loaded below. Change only what the replacement sale needs."
+                          : "Enter the quantity and unit price shown on the handwritten receipt."}
+                      </p>
+                      <div className="mt-4 hidden grid-cols-[minmax(0,1fr)_100px_120px] gap-2 px-1 text-xs font-medium uppercase tracking-wide text-slate-500 sm:grid">
+                        <span>Item</span>
+                        <span>Quantity</span>
+                        <span>Unit price</span>
+                      </div>
+                      <div className="mt-2 space-y-3">
+                        {comparison.lines.map((line, index) => {
+                          const itemName = selectedSale.lines.find(
+                            (item) => item.itemCode === line.itemCode,
+                          )?.name;
+                          return (
+                            <div
+                              key={`${line.itemCode}-${index}`}
+                              className="grid gap-2 rounded-lg bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_100px_120px] sm:bg-transparent sm:p-0"
+                            >
+                               <Input
+                                 aria-label={`Item ${index + 1}`}
+                                 value={`${line.itemCode} - ${itemName ?? "Unknown item"}`}
+                                 readOnly
+                                 className="bg-slate-100"
+                               />
+                              <Input
+                                aria-label={`Quantity ${index + 1}`}
+                                placeholder="Quantity"
+                                inputMode="numeric"
+                                value={line.quantity}
+                                onChange={(event) =>
+                                  setComparison((current) => ({
+                                    ...current,
+                                    lines: current.lines.map(
+                                      (item, itemIndex) =>
+                                        itemIndex === index
+                                          ? {
+                                              ...item,
+                                              quantity: event.target.value,
+                                            }
+                                          : item,
+                                    ),
+                                  }))
+                                }
+                              />
+                              <Input
+                                aria-label={`Unit price ${index + 1}`}
+                                placeholder="Unit price"
+                                inputMode="decimal"
+                                value={line.unitPrice}
+                                onChange={(event) =>
+                                  setComparison((current) => ({
+                                    ...current,
+                                    lines: current.lines.map(
+                                      (item, itemIndex) =>
+                                        itemIndex === index
+                                          ? {
+                                              ...item,
+                                              unitPrice: event.target.value,
+                                            }
+                                          : item,
+                                    ),
+                                  }))
+                                }
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    {differences.length > 0 &&
+                      selectedSale.reviewStatus === "UNVERIFIED" && (
+                        <MismatchDetails differences={differences} />
+                      )}
+                    {canReview &&
+                      selectedSale.reviewStatus === "UNVERIFIED" && (
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          onClick={() => reviewMutation.mutate("VERIFIED")}
+                          disabled={
+                            reviewMutation.isPending || differences.length > 0
+                          }
+                          className="bg-emerald-600 hover:bg-emerald-700"
+                        >
+                          <CheckCircle2 className="mr-2 h-4 w-4" />
+                          Confirm correct
+                        </Button>
+                        <span className="self-center text-xs text-slate-500">
+                          Correct all comparison fields before confirming.
+                        </span>
+                      </div>
+                    )}
+                    {canReview &&
+                      selectedSale.reviewStatus === "UNVERIFIED" && (
+                      <>
+                        <div className="grid gap-2">
+                          <Label htmlFor="mismatch-category">
+                            Mismatch category
+                          </Label>
+                          <select
+                            id="mismatch-category"
+                            value={category}
+                            onChange={(event) =>
+                              setCategory(event.target.value)
+                            }
+                            className="h-10 rounded-md border bg-background px-3 text-sm"
+                          >
+                            {MISMATCH_OPTIONS.map(([value, label]) => (
+                              <option key={value} value={value}>
+                                {label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="grid gap-2">
+                          <Label htmlFor="mismatch-notes">Notes</Label>
+                          <Textarea
+                            id="mismatch-notes"
+                            value={notes}
+                            onChange={(event) => setNotes(event.target.value)}
+                            placeholder="Describe the difference found on the handwritten receipt"
+                          />
+                        </div>
+                      </>
+                    )}
+                    <div className="grid gap-2">
+                      <Label htmlFor="receipt-photo">
+                        Receipt photo (optional)
+                      </Label>
+                      <Input
+                        id="receipt-photo"
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        onChange={(event) =>
+                          handlePhoto(event.target.files?.[0])
+                        }
+                      />
+                      <p className="text-xs text-slate-500">
+                        Optional even for Receipt Not Found. Upload only if you
+                        have supporting evidence.
+                      </p>
+                    </div>
+                    {photoPreview && (
+                      <div className="space-y-2">
+                        <Image
+                          src={photoPreview}
+                          alt="Receipt preview"
+                          width={800}
+                          height={600}
+                          unoptimized
+                          className="max-h-40 w-full rounded-xl border object-contain"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={clearSelectedPhoto}
+                        >
+                          Remove selected image
+                        </Button>
+                      </div>
+                    )}
+                    {selectedSale.receiptPhotoUrl && !photoPreview && (
+                      <p className="text-xs text-slate-500">
+                        A receipt image is already attached. Choose a new file
+                        above to replace it.
+                      </p>
+                    )}
+                    {canReview &&
+                      selectedSale.reviewStatus === "UNVERIFIED" && (
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          if (!notes.trim()) {
+                            setFormError(
+                              "Notes are required when reporting a mismatch.",
+                            );
+                            return;
+                          }
+                          reviewMutation.mutate("MISMATCH_REPORTED");
+                        }}
+                        disabled={reviewMutation.isPending}
+                        className="border-rose-200 text-rose-700 hover:bg-rose-50"
+                      >
+                        <AlertTriangle className="mr-2 h-4 w-4" />
+                        Report mismatch
+                      </Button>
+                    )}
+                  </div>
+                ) : null}
+                {canResolve &&
+                  selectedSale.reviewStatus === "MISMATCH_REPORTED" &&
+                  !selectedSale.branchResponse && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                      Final resolution is available after the branch submits its
+                      double-check response.
+                    </div>
+                  )}
+                {canResolve &&
+                  selectedSale.reviewStatus === "MISMATCH_REPORTED" &&
+                  selectedSale.branchResponse && (
+                    <div className="space-y-4 border-t pt-4">
+                      <div className="grid gap-2">
+                        <Label htmlFor="resolution-note">Resolution note</Label>
+                        <Textarea
+                          id="resolution-note"
+                          value={resolutionNote}
+                          onChange={(event) =>
+                            setResolutionNote(event.target.value)
+                          }
+                          placeholder="Explain why this mismatch is being resolved"
+                        />
+                      </div>
+                      {selectedSale.branchResponse ===
+                        "ORIGINAL_ENCODING_CORRECT" && (
+                        <Button
+                          variant="outline"
+                          onClick={() =>
+                            resolveMutation.mutate("CONFIRMED_CORRECT")
+                          }
+                          disabled={
+                            resolveMutation.isPending || !resolutionNote.trim()
+                          }
+                          className="border-sky-200 text-sky-700"
+                        >
+                          Confirm original encoding
+                        </Button>
+                      )}
+                      {selectedSale.branchResponse ===
+                        "RECEIPT_CORRECTION_NEEDED" && isAdmin && (
+                        <Button
+                          onClick={() =>
+                            resolveMutation.mutate("VOIDED_REPLACED")
+                          }
+                          disabled={
+                            resolveMutation.isPending || !resolutionNote.trim()
+                          }
+                          className="bg-red-600 text-white hover:bg-red-700"
+                        >
+                          <Upload className="mr-2 h-4 w-4" />
+                          Void and replace
+                        </Button>
+                      )}
+                      {selectedSale.branchResponse ===
+                        "RECEIPT_CORRECTION_NEEDED" && !isAdmin && (
+                        <p className="rounded-lg bg-slate-100 p-3 text-sm text-slate-600">
+                          The branch confirmed a correction. Only Admin can void
+                          the original sale and post its replacement.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                {formError && (
+                  <p className="text-sm text-red-600">{formError}</p>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -266,8 +1341,68 @@ export default function ReceiptVerificationPage() {
   );
 }
 
+function MismatchDetails({
+  differences,
+}: {
+  differences: ComparisonDifference[];
+}) {
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+      <p className="font-semibold">Mismatch details</p>
+      <div className="mt-2 space-y-2">
+        {differences.map((difference) => (
+          <div
+            key={`${difference.label}-${difference.encodedValue}-${difference.reportedValue}`}
+            className="rounded-md bg-white/70 px-3 py-2"
+          >
+            <p className="font-medium">{difference.label}</p>
+            <p className="text-xs text-amber-800">
+              Encoded: {difference.encodedValue} → Reported:{" "}
+              {difference.reportedValue}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ReviewBadge({ status }: { status: Sale["reviewStatus"] }) {
-  if (status === "VERIFIED") return <Badge className="bg-emerald-100 text-emerald-700">Verified</Badge>;
-  if (status === "MISMATCH_REPORTED") return <Badge className="bg-rose-100 text-rose-700">Mismatch</Badge>;
+  if (status === "VERIFIED")
+    return <Badge className="bg-emerald-100 text-emerald-700">Verified</Badge>;
+  if (status === "MISMATCH_REPORTED")
+    return <Badge className="bg-rose-100 text-rose-700">Mismatch</Badge>;
   return <Badge variant="outline">Unverified</Badge>;
+}
+
+function SaleStatusBadge({ status }: { status: Sale["status"] }) {
+  return status === "POSTED" ? (
+    <Badge variant="outline">Posted</Badge>
+  ) : (
+    <Badge className="bg-slate-200 text-slate-700">Voided</Badge>
+  );
+}
+
+function SummaryCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "amber" | "rose" | "emerald";
+}) {
+  const styles = {
+    amber: "border-amber-200 bg-amber-50/70 text-amber-900",
+    rose: "border-rose-200 bg-rose-50/70 text-rose-900",
+    emerald: "border-emerald-200 bg-emerald-50/70 text-emerald-900",
+  } as const;
+  return (
+    <Card className={styles[tone]}>
+      <CardContent className="p-4">
+        <p className="text-sm opacity-80">{label}</p>
+        <p className="mt-2 text-2xl font-bold">{value}</p>
+      </CardContent>
+    </Card>
+  );
 }

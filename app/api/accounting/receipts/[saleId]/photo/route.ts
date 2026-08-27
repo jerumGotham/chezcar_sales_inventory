@@ -7,7 +7,8 @@ type Context = { params: Promise<{ saleId: string }> };
 
 export async function POST(request: Request, context: Context) {
   try {
-    await requireCapability(request.headers, "sales:verify");
+    // Accounting reviewers and Admin resolvers both attach receipt evidence.
+    await requireCapability(request.headers, "sales:verify:view");
     const { saleId } = await context.params;
     const review = await prisma.saleAccountingReview.findUnique({ where: { saleId }, select: { id: true } });
     if (!review) throw new CustomerSalesError("NOT_FOUND", "Accounting review not found", 404);

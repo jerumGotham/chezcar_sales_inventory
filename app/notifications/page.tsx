@@ -246,6 +246,15 @@ export default function NotificationsPage() {
                     </Link>
                   )}
 
+                  {item.relatedType === "SALE" && item.relatedId && (
+                    <Link
+                      className="mt-2 inline-flex text-sm font-medium text-green-700 hover:text-green-800"
+                      href="/accounting/receipt-verification"
+                    >
+                      Review {item.relatedReference ?? "sale receipt"}
+                    </Link>
+                  )}
+
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <Badge
                       variant="secondary"

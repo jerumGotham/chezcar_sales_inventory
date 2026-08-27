@@ -16,6 +16,10 @@ Copy the sanitized `.env.example` to an untracked `.env` and replace every place
 | `SEED_ADMIN_PASSWORD` | Seed only | None | Admin password; the seed rejects examples and values shorter than 12 characters. |
 | `SEED_ADMIN_NAME` | Seed only | None | Display name for the seeded Admin. |
 | `ALLOW_CATALOG_RESET` | Catalog seed/reload and the phase gate only | None | Must equal `true`; still requires `NODE_ENV=test` with the exact disposable test URL or `NODE_ENV=development` with the exact isolated development URL, and is always refused in production or against the checked-in bind mount. |
+| `ALLOW_OPERATIONAL_DATA_RESET` | `db:data:reset` only | None | Must equal `true`; the reset accepts only the exact isolated development or disposable test URL and preserves users/auth, products, and locations. |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Browser push only | Empty | Public VAPID key exposed to authenticated browsers for PushManager subscription. |
+| `VAPID_PRIVATE_KEY` | Browser push only | Empty | Private VAPID key used server-side for best-effort browser push delivery attempts. |
+| `VAPID_SUBJECT` | Browser push only | `mailto:admin@example.invalid` | Contact subject passed to push providers. Use an owner/operator email or HTTPS URL. |
 
 Use the credentials configured for your environment and do not commit the populated file:
 
@@ -24,7 +28,14 @@ DATABASE_URL="postgresql://<user>:<password>@localhost:5435/<database>?schema=pu
 BETTER_AUTH_SECRET="<at-least-32-random-characters>"
 BETTER_AUTH_URL="http://localhost:3000"
 RECEIPT_STORAGE_PATH="./data/receipt-photos"
+NEXT_PUBLIC_VAPID_PUBLIC_KEY="<base64url-public-key>"
+VAPID_PRIVATE_KEY="<matching-private-key>"
+VAPID_SUBJECT="mailto:<operator-or-owner-email>"
 ```
+
+Notification realtime delivery reuses `DATABASE_URL` for one dedicated PostgreSQL `LISTEN/NOTIFY` connection per Node application instance. No Redis or extra broker is required for the current SSE implementation. Proxies should not buffer `/api/notifications/stream`; the route sends `X-Accel-Buffering: no` and heartbeat comments every 25 seconds.
+
+Browser push notifications are enabled only when both VAPID keys are present. Without them, durable in-app notifications and SSE still work, but the browser push opt-in button remains unavailable. Push provider acceptance never marks a notification read.
 
 `RECEIPT_STORAGE_PATH` controls the private receipt-evidence volume. For Coolify, mount a persistent volume or bind mount at `/app/storage` and set `RECEIPT_STORAGE_PATH=/app/storage/receipts`; Coolify documents `/app` as the container base directory for persistent storage. Do not expose this directory as a public static folder. Seed variables are needed only for `npm run db:seed`; keep production provisioning in a controlled operational workflow.
 
@@ -49,6 +60,7 @@ The npm scripts in `package.json` are:
 | `npm run db:migrate` | `prisma migrate dev` | Create/apply development migrations. Production uses `prisma migrate deploy`. |
 | `npm run db:seed` | `prisma db seed` | Transactionally load the approved canonical opening catalog and environment-supplied owner Admin on an explicitly allowed isolated target. |
 | `npm run db:catalog:reload` | `node prisma/seed.mjs --catalog-only` | Transactionally replace only canonical locations/products/opening balances while preserving auth; uses the same positive reset gates. |
+| `npm run db:data:reset` | `node --env-file=.env prisma/reset-operational-data.mjs` | Transactionally delete operational data while preserving users/auth, products, and required locations; requires explicit opt-in and an exact approved isolated database identity. |
 | `npm run verify:phase-01 -- [--validate-evidence]` | `node scripts/verify-phase-01.mjs` | Phase 1 evidence gate: asserts the disposable test target and seed/reset environment, then runs fresh migration deploy, seed, two equivalent catalog reloads, full unit/integration suites, typecheck, and build; captures lint's expected failure baseline separately and writes/validates `docs/verification/phase-01-evidence.md`. |
 
 `package-lock.json` is present, so npm is the repository's locked package manager.

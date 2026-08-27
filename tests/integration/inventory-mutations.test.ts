@@ -41,7 +41,7 @@ describe("inventory corrections and reorder levels", () => {
     await withDisposableDatabase(async ({ prisma }) => {
       const fixture = await createAuthFixture(prisma, { namespace: "inventory-correction" });
       const product = await prisma.product.create({
-        data: { itemCode: "CORRECTION-ITEM", name: "Correction Item", status: "ACTIVE" },
+        data: { itemCode: "CORRECTION-ITEM", name: "Correction Item", reorderLevel: 3, status: "ACTIVE" },
       });
       const balance = await prisma.inventoryBalance.create({
         data: {

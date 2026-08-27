@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Select from "react-select";
 import Link from "next/link";
 import type { StylesConfig } from "react-select";
@@ -40,7 +40,18 @@ import { useShellAccess } from "@/components/shell-access-context";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { products } from "@/lib/mock-data";
-import { fetchProducts } from "@/lib/catalog";
+import { cn } from "@/lib/utils";
+import {
+  listQueuedOfflineSales,
+  offlineSupported,
+  queueOfflineSale,
+  readOfflineSnapshot,
+  refreshOfflineSnapshot,
+  shouldAttemptOfflineSync,
+  syncQueuedOfflineSales,
+  type OfflineSnapshot,
+  type OfflineSalePayload,
+} from "@/lib/offline-sales-client";
 import {
   Dialog,
   DialogContent,
@@ -114,6 +125,9 @@ const paymentOptions: SelectOption[] = [
   { value: "credit_card", label: "Credit Card" },
   { value: "split", label: "Split Payment" },
 ];
+
+// Offline POS is intentionally paused until its operating workflow is finalized.
+const OFFLINE_POS_ENABLED = false;
 
 const ORDER_STATUS_OPTIONS: SelectOption[] = [
   { value: "Reserved", label: "Reserved" },
@@ -411,6 +425,7 @@ function AddCustomerDialog({
 
 function PosTab() {
   const access = useShellAccess();
+  const queryClient = useQueryClient();
   const role = access.authenticated ? access.identity.role : null;
   const [selectedLocation, setSelectedLocation] = useState<SelectOption | null>(null);
   const activeLocationId = role === "ADMIN" ? selectedLocation?.value ?? null : access.authenticated ? access.scope.locationId : null;
@@ -424,21 +439,13 @@ function PosTab() {
     },
     enabled: role === "ADMIN" || Boolean(activeLocationId),
   });
-  const { data: productsData, isLoading: isProductsLoading } = useQuery({
-    queryKey: ["pos-products"],
-    queryFn: () =>
-      fetchProducts({
-        page: 1,
-        pageSize: 100,
-        status: "Active",
-        stockStatus: "has-stock",
-        itemCode: "",
-        name: "",
-        category: "all",
-        brand: "all",
-      }),
-  });
   const customersQuery = useQuery({ queryKey: ["pos-customers"], queryFn: fetchPosCustomers });
+  const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
+  const [offlineSnapshot, setOfflineSnapshot] = useState<OfflineSnapshot | null>(null);
+  const [offlineSaleCount, setOfflineSaleCount] = useState(0);
+  const [isOfflineSyncing, setIsOfflineSyncing] = useState(false);
+  const [offlineSyncMessage, setOfflineSyncMessage] = useState("");
+  const offlineSyncInFlightRef = useRef(false);
 
   const productList = useMemo<Product[]>(() => {
     const branchProducts = posOptionsQuery.data?.products.map((item) => ({
@@ -452,30 +459,19 @@ function PosTab() {
     })) ?? [];
 
     if (posOptionsQuery.data) return branchProducts;
-    if (role === "ADMIN" || activeLocationId) return [];
-
-    const persisted = productsData?.data.map((item) => ({
-      id: item.id,
-      sku: item.itemCode,
-      name: item.name,
-      price: item.price ?? 0,
-      stock: item.hasStock ? 1 : 0,
-      barcode: item.itemCode,
-      category: item.category,
-    })) ?? [];
-
-    if (persisted.length > 0) return persisted;
-
-    return products.map((item) => ({
-      id: String(item.sku),
-      sku: item.sku,
-      name: item.name,
-      price: parsePrice(item.price),
-      stock: item.stock ?? 20,
-      barcode: item.sku,
-      category: item.category ?? "Uncategorized",
-    }));
-  }, [activeLocationId, posOptionsQuery.data, productsData?.data, role]);
+    if (role === "BRANCH_STAFF" && offlineSnapshot) {
+      return offlineSnapshot.products.map((item) => ({
+        id: item.id,
+        sku: item.itemCode,
+        name: item.name,
+        price: item.price,
+        stock: item.available,
+        barcode: item.itemCode,
+        category: "Offline snapshot",
+      }));
+    }
+    return [];
+  }, [offlineSnapshot, posOptionsQuery.data, role]);
 
   const categoryOptions = useMemo<SelectOption[]>(() => {
     const uniqueCategories = Array.from(
@@ -548,6 +544,107 @@ function PosTab() {
   const discount = Math.max(0, Number(discountAmount) || 0);
   const total = Math.max(subtotal - discount, 0);
 
+  const refreshOfflineQueueStatus = useCallback(async () => {
+    if (!OFFLINE_POS_ENABLED || !offlineSupported() || role !== "BRANCH_STAFF") return 0;
+    const queued = await listQueuedOfflineSales();
+    const pendingCount = queued.filter((sale) => sale.status === "PENDING_SYNC").length;
+    setOfflineSaleCount(pendingCount);
+    return pendingCount;
+  }, [role]);
+
+  const syncOfflineQueue = useCallback(async (source: "manual" | "auto" = "manual") => {
+    if (!OFFLINE_POS_ENABLED || !offlineSupported() || role !== "BRANCH_STAFF" || offlineSyncInFlightRef.current) return;
+    offlineSyncInFlightRef.current = true;
+    try {
+      const pendingBeforeSync = await refreshOfflineQueueStatus();
+      if (!shouldAttemptOfflineSync({ role, online: navigator.onLine, pendingCount: pendingBeforeSync, inFlight: false })) {
+        if (source === "manual" && pendingBeforeSync === 0) setOfflineSyncMessage("No pending offline sales to sync.");
+        return;
+      }
+
+      setIsOfflineSyncing(true);
+      const results = await syncQueuedOfflineSales();
+      const pendingCount = await refreshOfflineQueueStatus();
+      const syncedCount = results.filter((sale) => sale.status === "SYNCED").length;
+      const reviewCount = results.filter((sale) => sale.status === "NEEDS_REVIEW" || sale.status === "CONFLICT").length;
+      const rejectedCount = results.filter((sale) => sale.status === "REJECTED").length;
+
+      if (syncedCount > 0) void queryClient.invalidateQueries({ queryKey: ["pos-options"] });
+
+      if (results.length === 0) {
+        if (source === "manual") setOfflineSyncMessage("No pending offline sales to sync.");
+      } else if (pendingCount > 0 && syncedCount === 0 && reviewCount === 0 && rejectedCount === 0) {
+        setOfflineSyncMessage("Cloud sync is not reachable yet. The device will retry automatically while POS is open.");
+      } else {
+        const summary = [
+          syncedCount > 0 ? `${syncedCount} synced` : null,
+          reviewCount > 0 ? `${reviewCount} need review` : null,
+          rejectedCount > 0 ? `${rejectedCount} rejected` : null,
+          pendingCount > 0 ? `${pendingCount} still pending` : null,
+        ].filter(Boolean).join(", ");
+        setOfflineSyncMessage(`${source === "auto" ? "Auto-sync" : "Sync"} complete: ${summary}.`);
+      }
+    } finally {
+      offlineSyncInFlightRef.current = false;
+      setIsOfflineSyncing(false);
+    }
+  }, [queryClient, refreshOfflineQueueStatus, role]);
+
+  useEffect(() => {
+    if (!OFFLINE_POS_ENABLED) return;
+    const handleOnline = () => {
+      setIsOnline(true);
+      void syncOfflineQueue("auto");
+    };
+    const handleOffline = () => setIsOnline(false);
+    const handleReconnectCheck = () => {
+      if (!navigator.onLine || document.visibilityState === "hidden") return;
+      setIsOnline(true);
+      void syncOfflineQueue("auto");
+    };
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    window.addEventListener("focus", handleReconnectCheck);
+    document.addEventListener("visibilitychange", handleReconnectCheck);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("focus", handleReconnectCheck);
+      document.removeEventListener("visibilitychange", handleReconnectCheck);
+    };
+  }, [syncOfflineQueue]);
+
+  useEffect(() => {
+    if (!OFFLINE_POS_ENABLED || !offlineSupported() || role !== "BRANCH_STAFF") return;
+    if ("serviceWorker" in navigator) {
+      void navigator.serviceWorker.register("/sw.js").then(() =>
+        navigator.serviceWorker.ready.then((registration) => {
+          registration.active?.postMessage({ type: "WARM_OFFLINE_SHELL" });
+        }),
+      );
+    }
+    window.setTimeout(() => void refreshOfflineQueueStatus(), 0);
+    void readOfflineSnapshot().then(setOfflineSnapshot);
+  }, [refreshOfflineQueueStatus, role]);
+
+  useEffect(() => {
+    if (!OFFLINE_POS_ENABLED || !offlineSupported() || role !== "BRANCH_STAFF" || !isOnline) return;
+    void syncOfflineQueue("auto");
+  }, [isOnline, role, syncOfflineQueue]);
+
+  useEffect(() => {
+    if (!OFFLINE_POS_ENABLED || !offlineSupported() || role !== "BRANCH_STAFF" || !isOnline || offlineSaleCount === 0) return;
+    const retryId = window.setInterval(() => void syncOfflineQueue("auto"), 30_000);
+    return () => window.clearInterval(retryId);
+  }, [isOnline, offlineSaleCount, role, syncOfflineQueue]);
+
+  useEffect(() => {
+    if (!OFFLINE_POS_ENABLED || !offlineSupported() || role !== "BRANCH_STAFF" || !isOnline) return;
+    void refreshOfflineSnapshot().then((snapshot) => {
+      if (snapshot) setOfflineSnapshot(snapshot);
+    });
+  }, [isOnline, role, activeLocationId]);
+
   const addToCart = (product: Product) => {
     setCart((prev) => {
       const existing = prev.find((item) => item.sku === product.sku);
@@ -617,28 +714,29 @@ function PosTab() {
       credit_card: "CREDIT_CARD",
       split: "SPLIT",
     };
+    const salePayload: OfflineSalePayload = {
+      customerId:
+        selectedCustomer?.value && selectedCustomer.value !== "guest"
+          ? selectedCustomer.value
+          : undefined,
+      locationId: activeLocationId ?? undefined,
+      manualReceiptNumber,
+      paymentMethod: paymentMap[paymentType?.value ?? "cash"] ?? "CASH",
+      amountPaid: total,
+      discountAmount: discount,
+      lines: cart.map((item) => ({
+        productId: item.productId,
+        quantity: item.qty,
+        unitPrice: item.price,
+      })),
+    };
 
     try {
       const response = await fetch("/api/sales", {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-           customerId:
-            selectedCustomer?.value && selectedCustomer.value !== "guest"
-              ? selectedCustomer.value
-               : undefined,
-           locationId: activeLocationId,
-           manualReceiptNumber,
-          paymentMethod: paymentMap[paymentType?.value ?? "cash"] ?? "CASH",
-           amountPaid: total,
-           discountAmount: discount,
-          lines: cart.map((item) => ({
-            productId: item.productId,
-            quantity: item.qty,
-            unitPrice: item.price,
-          })),
-        }),
+        body: JSON.stringify(salePayload),
       });
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as {
@@ -649,6 +747,15 @@ function PosTab() {
       clearSale();
       setSuccessMessage("Customer sale posted successfully.");
     } catch (error) {
+      if (OFFLINE_POS_ENABLED && role === "BRANCH_STAFF" && offlineSupported() && (!navigator.onLine || error instanceof TypeError)) {
+        await queueOfflineSale(salePayload);
+        await refreshOfflineQueueStatus();
+        clearSale();
+        setSuccessMessage("Sale queued for sync. It will upload automatically when this device can reach the cloud server.");
+        setOfflineSyncMessage("Waiting for internet. Keep POS open or reopen it after reconnecting to auto-sync pending sales.");
+        if (navigator.onLine) window.setTimeout(() => void syncOfflineQueue("auto"), 3_000);
+        return;
+      }
       setCheckoutError(error instanceof Error ? error.message : "Unable to complete sale");
     } finally {
       setIsCheckoutPending(false);
@@ -657,6 +764,28 @@ function PosTab() {
 
   return (
     <>
+      {OFFLINE_POS_ENABLED && role === "BRANCH_STAFF" ? (
+        <div className={cn(
+          "mb-6 flex flex-col gap-3 rounded-xl border px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between",
+          isOnline ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800",
+        )}>
+          <div>
+            <p className="font-semibold">{isOnline ? "Online branch mode" : "Offline branch mode"}</p>
+            <p>{offlineSaleCount} sale{offlineSaleCount === 1 ? "" : "s"} pending sync. Offline sales are not complete until the server accepts them.</p>
+            {offlineSyncMessage ? <p className="mt-1 text-xs">{offlineSyncMessage}</p> : <p className="mt-1 text-xs">Pending sales auto-sync when internet returns.</p>}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void syncOfflineQueue()}
+            disabled={!isOnline || isOfflineSyncing || offlineSaleCount === 0}
+            className="w-fit bg-white"
+          >
+            {isOfflineSyncing ? "Syncing..." : "Sync pending sales"}
+          </Button>
+        </div>
+      ) : null}
       {successMessage ? (
         <div className="mb-6 flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800 sm:flex-row sm:items-center sm:justify-between">
           <p role="status" className="text-sm font-medium">{successMessage}</p>
@@ -909,7 +1038,7 @@ function PosTab() {
             <Separator />
 
             <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
-              {isProductsLoading ? (
+              {posOptionsQuery.isLoading && !offlineSnapshot ? (
                 <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-slate-500">
                   Loading products...
                 </div>

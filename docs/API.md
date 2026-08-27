@@ -3,7 +3,7 @@
 
 ## Current status
 
-The application exposes Better Auth handlers, authenticated read endpoints, an owner-Admin-only User Management surface, durable Stock Transfer and Stock Room supplier-receiving workflows, customer CRUD/history, customer-order creation, Accounting receipt verification, and a first-login credential-setup surface. `/api/products`, `/api/inventory`, `/api/customers`, `/api/customer-orders`, `/api/stock-transfers`, `/api/stock-receipts`, and `/api/accounting/receipts` use PostgreSQL through Prisma.
+The application exposes Better Auth handlers, authenticated read endpoints, an owner-Admin-only User Management surface, durable Stock Transfer and Stock Room supplier-receiving workflows, customer CRUD/history, customer-order creation, Accounting receipt verification, durable notifications with authenticated SSE wake-ups, and a first-login credential-setup surface. `/api/products`, `/api/inventory`, `/api/customers`, `/api/customer-orders`, `/api/stock-transfers`, `/api/stock-receipts`, `/api/notifications`, and `/api/accounting/receipts` use PostgreSQL through Prisma.
 
 All endpoints use same-origin cookie sessions. Public email/password sign-up is disabled.
 
@@ -53,8 +53,14 @@ A persisted assignment that contradicts the fixed matrix (for example Stock Staf
 | --- | --- | --- | --- |
 | `GET`, `POST` | `/api/auth/[...all]` | Better Auth + PostgreSQL | Endpoint-specific; public sign-up disabled; generic admin operations unroutable |
 | `GET` | `/api/dashboard` | Prisma sales/orders/inventory/accounting plus persisted notifications | `dashboard:view` |
-| `GET`, `PATCH` | `/api/notifications` | Prisma Notification inbox | `dashboard:view` |
+| `GET`, `PATCH` | `/api/notifications` | Prisma Notification inbox | `dashboard:view`; optional `?after=<cursor>` returns catch-up rows |
+| `GET` | `/api/notifications/stream` | Prisma Notification catch-up + PostgreSQL `LISTEN/NOTIFY` wake-ups | `dashboard:view`; authenticated server-sent events |
+| `GET` | `/api/notifications/push-public-key` | Environment VAPID public key | `dashboard:view` |
+| `POST`, `DELETE` | `/api/notifications/push-subscription` | Prisma PushSubscription | `dashboard:view`; current user only |
 | `POST` | `/api/notifications/:notificationId/read` | Prisma Notification read timestamp | `dashboard:view` |
+| `POST` | `/api/offline/activations` | Prisma OfflineDeviceActivation | `users:manage`; Admin activates one current branch device |
+| `GET` | `/api/offline/snapshot?deviceId=<id>` | Prisma InventoryBalance/Product | `sales:post`; Branch Staff assigned branch only |
+| `POST` | `/api/offline/sync` | Prisma OfflineSyncOperation/OfflineSaleSubmission/Sale | `sales:post`; Branch Staff assigned branch only |
 | `GET`, `POST` | `/api/customers` | Prisma Customer | `customers:view`; Accounting/Stock mutation denied by service policy |
 | `GET`, `PATCH`, `DELETE` | `/api/customers/:id` | Prisma Customer, sales, and customer orders | `customers:view`; delete deactivates the customer |
 | `GET` | `/api/customer-orders/options?locationId=<branchId>` | Active customers and products with available branch stock | `customer-orders:view`; Admin supplies a branch, Branch Staff scope is persisted |
@@ -62,10 +68,10 @@ A persisted assignment that contradicts the fixed matrix (for example Stock Staf
 | `GET` | `/api/customer-orders/:orderId` | Single persisted customer order with lines and release/payment summary | `customer-orders:view`; Branch Staff restricted to assigned branch |
 | `POST` | `/api/customer-orders/:orderId/:action` | Prisma CustomerOrder/Sale/InventoryMovement | `customer-orders:view`; actions `release`, `cancel` |
 | `GET`, `POST` | `/api/sales` | Prisma Sale/SaleLine/InventoryMovement | `customer-orders:view`; Branch/Admin direct sale policy |
-| `GET` | `/api/accounting/receipts` | Prisma Sale/SaleLine/SaleAccountingReview | `sales:verify:view` |
+| `GET` | `/api/accounting/receipts?page=1&pageSize=10&reviewStatus=all&saleStatus=POSTED` | Prisma Sale/SaleLine/SaleAccountingReview/Location | `sales:verify:view`; server-side filters and pagination |
 | `POST` | `/api/accounting/receipts/:saleId/review` | Prisma SaleAccountingReview/Notification | `sales:verify`; Accounting Staff only |
 | `POST` | `/api/accounting/receipts/:saleId/resolve` | Prisma Sale/SaleLine/SaleAccountingReview/InventoryMovement/Notification | `sales:resolve`; Admin or Accounting Staff |
-| `POST`, `GET` | `/api/accounting/receipts/:saleId/photo` | Coolify persistent receipt-evidence storage | `sales:verify` for upload; `sales:verify:view` for read |
+| `POST`, `GET` | `/api/accounting/receipts/:saleId/photo` | Coolify persistent receipt-evidence storage | `sales:verify:view`; Admin/Accounting reviewers and assigned Branch mismatch reviewers may read evidence |
 | `GET` | `/api/reports` | Prisma sales/orders/accounting/inventory summaries | `reports:view` |
 | `GET`, `POST` | `/api/products` | Prisma Product/InventoryBalance | `GET`: `products:view`; `POST`: Admin role |
 | `PATCH`, `DELETE` | `/api/products/:productId` | Prisma Product | Admin role |
@@ -75,6 +81,7 @@ A persisted assignment that contradicts the fixed matrix (for example Stock Staf
 | `GET` | `/api/inventory/movements` | Prisma InventoryMovement | `inventory:view` |
 | `GET`, `POST` | `/api/stock-transfers` | Prisma transfer ledger | `stock-transfers:view` plus role action policy |
 | `POST` | `/api/stock-transfers/:id/:action` | Prisma transfer/inventory transaction | `stock-transfers:view` plus role/location/state policy |
+| `POST` | `/api/accounting/receipts/:saleId/branch-response` | Prisma Accounting review | Assigned Branch Staff for an unresolved own-branch mismatch |
 | `GET`, `POST` | `/api/stock-receipts` | Prisma supplier-receipt/inventory transaction | `GET`: inventory monitor policy; `POST`: `inventory-receiving:create`; Admin/Stock Staff only, destination fixed to `SR` |
 | `GET`, `POST` | `/api/users` | Prisma User (+Location) | `users:manage` |
 | `PATCH` | `/api/users/:userId` | Prisma User | `users:manage` |
@@ -90,15 +97,27 @@ A persisted assignment that contradicts the fixed matrix (for example Stock Staf
 
 `POST /api/customer-orders/:orderId/cancel` releases reserved stock. Branch Staff may cancel own-branch no-DP orders. DP cancellation is Admin-only and requires a note.
 
-`POST /api/sales` posts direct branch sales with branch-scoped receipt identity, an optional `discountAmount` not exceeding the subtotal, deducts available branch stock immediately, creates `DIRECT_SALE` inventory movements, and creates an unverified Accounting review row. Branch Staff use their persisted branch; Admin must supply an active `locationId`. Branch Staff select a customer from the shared customer master before clicking `Complete Sale`. `GET /api/accounting/receipts` is visible to Admin and Accounting Staff; only Accounting Staff can confirm a receipt or report a mismatch through the review endpoint. Mismatch reports require a closed category and notes and may include an optional receipt photo data URL; durable notifications are created for active Admin users and the posting user.
+`POST /api/sales` posts direct branch sales with branch-scoped receipt identity, an optional `discountAmount` not exceeding the subtotal, deducts available branch stock immediately, creates `DIRECT_SALE` inventory movements, and creates an unverified Accounting review row. Branch Staff use their persisted branch; Admin must supply an active `locationId`. Branch Staff select a customer from the shared customer master before clicking `Complete Sale`. `GET /api/accounting/receipts` is visible to Admin and Accounting Staff for the full queue; Branch Staff receive only unresolved mismatches from their persisted branch. It accepts `page`, `pageSize` (5-50), `search` (receipt/booklet/reference/customer/branch), `reviewStatus`, `saleStatus`, `locationId`, `dateFrom`, and `dateTo` filters. A mismatch row includes the validated persisted `reportedComparison`, allowing reviewers to see exact reported quantities, prices, and calculated total without relying on notes. Admin and Accounting Staff can verify or report an unverified receipt mismatch. A mismatch notifies active Branch Staff assigned to the sale branch. Branch must respond with either `ORIGINAL_ENCODING_CORRECT` or `RECEIPT_CORRECTION_NEEDED`; correction responses require a replacement receipt number. Final resolution is blocked until that response exists. Admin or Accounting may Confirm Correct after the first response, while only Admin may Void and Replace after the second response using the branch-confirmed receipt number.
 
 `GET /api/dashboard` returns live role-scoped summary metrics for sales, open orders, low/out stock, Accounting queue counts, and notification preview. `GET /api/reports` returns live read-only Sales, Accounting/Reconciliation, Orders, and Admin-only Inventory summaries; `?format=pdf` returns a PDF-download response for the same authorized data.
 
-Stock-transfer actions are `finalize`, `dispatch`, `confirm-receipt`, `report-discrepancy`, `investigate`, and `resolve`. They require the current transfer `version`, lock the transfer row, enforce state transitions, and use serializable transactions. Stock Staff creates/finalizes/dispatches SR-to-active-branch documents, Branch Staff is destination-scoped for receipt/discrepancy, and Admin alone resolves investigated discrepancies. Accounting is denied. Admin transfer responses include `timeline` and `movements` audit arrays for the selected transfer; other roles receive the operational transfer fields without the Admin-only audit view.
+Stock-transfer actions are `finalize`, `dispatch`, `confirm-receipt`, `report-discrepancy`, `investigate`, and `resolve`. They require the current transfer `version`, lock the transfer row, enforce state transitions, and use serializable transactions. Stock Staff normally creates/finalizes/dispatches SR-to-active-branch documents and investigates discrepancies; Admin may perform those same source-side actions as operational cover. Branch Staff remains destination-scoped for receipt/discrepancy, and Admin performs final discrepancy resolution. Accounting is denied. Admin transfer responses include `timeline` and `movements` audit arrays for the selected transfer; other roles receive the operational transfer fields without the Admin-only audit view.
 
 Stock-transfer transitions create persisted per-user notifications in the same database transaction as the triggering workflow update. `FOR_DISPATCH` alerts Stock Staff assigned to `SR`, `IN_TRANSIT` alerts Branch Staff assigned to the destination, exact `RECEIVED` alerts Stock Staff, `DISCREPANCY_REPORTED` alerts Stock Staff, `UNDER_REVIEW` alerts Admin, `RESOLVED` alerts Admin plus destination Branch Staff, and replacement drafts created from resolved shortages alert Stock Staff.
 
-`GET /api/notifications` returns only the authenticated user's persisted notification rows. The current client polls this endpoint every 30 seconds and refetches on window focus; SSE and browser push are still deferred. `PATCH /api/notifications` marks all of that user's unread notifications read. `POST /api/notifications/:notificationId/read` marks one owned notification read. Users cannot read or modify another user's notification rows. Mark-unread, push delivery, cross-user notification audit, and automatic escalation remain deferred.
+`GET /api/notifications` returns only the authenticated user's persisted notification rows. `?after=<cursor>` returns rows for that user after the durable monotonic notification cursor, oldest-first, for reconnect and polling catch-up. `GET /api/notifications/stream` opens an authenticated same-origin SSE stream, emits missed rows after `Last-Event-ID` or `?cursor=`, then uses PostgreSQL `LISTEN/NOTIFY` as a wake-up signal while the Notification table remains authoritative. The header consumes the stream and keeps 30-second polling plus focus refetch as correctness fallback. `PATCH /api/notifications` marks all of that user's unread notifications read. `POST /api/notifications/:notificationId/read` marks one owned notification read. Users cannot read or modify another user's notification rows. `POST /api/notifications/push-subscription` stores the current browser push subscription for the authenticated user when VAPID keys are configured; notification creation schedules best-effort push delivery attempts and records each attempt without marking rows read. Mark-unread, cross-user notification audit, and automatic escalation remain deferred.
+
+Direct sales, stock reservations, and Admin actual-quantity adjustments create durable warning notifications when a branch balance crosses from In Stock to Low Stock, or from Low Stock to Out of Stock. Recipients are active Admin users and active users assigned to that exact branch. The normal notification cursor/SSE/polling pipeline delivers the alert in realtime and avoids repeating alerts while the balance remains in the same threshold state.
+
+## Offline branch sales
+
+The offline endpoints remain implemented, but the customer-facing POS queue/banner and Admin navigation are temporarily disabled. Current POS operation is online-only while the offline operating workflow is deferred.
+
+`POST /api/offline/activations` is Admin-only and activates one current offline device ID for one active canonical branch. Activating a new device for the branch revokes the previous active activation. The activation window is 24 hours and is refreshed by an online branch snapshot request.
+
+`GET /api/offline/snapshot?deviceId=<id>` is Branch Staff-only through `sales:post`, requires the caller's persisted assigned branch and a current active device activation, and returns only minimal branch product stock/price fields. It does not return customer profiles, credentials, Admin data, or cross-branch data.
+
+`POST /api/offline/sync` accepts one queued direct-sale command with `{ deviceId, idempotencyKey, occurredAt, operationType: "DIRECT_SALE", payload }`. The server reserves `(deviceId, idempotencyKey)`, rechecks active Branch Staff assignment and device activation, revalidates the normal direct-sale payload, and then posts through the same direct-sale service. Duplicate same-key/same-payload requests return the stored outcome; same-key/different-payload returns `CONFLICT`. Duplicate receipt, insufficient stock, and other 409 sale conflicts are retained as `NEEDS_REVIEW` submissions instead of creating negative stock. Offline transfer receipt/discrepancy evidence is still deferred.
 
 ## Supplier receipts
 

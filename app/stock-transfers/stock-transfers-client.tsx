@@ -122,6 +122,7 @@ export function StockTransfersClient({
   initialTransferId?: string;
 }) {
   const queryClient = useQueryClient();
+  const canManageStockRoom = role === "ADMIN" || role === "STOCK_STAFF";
   const [selectedTransferId, setSelectedTransferId] = useState(
     initialTransferId ?? "",
   );
@@ -456,7 +457,7 @@ export function StockTransfersClient({
         </div>
       )}
 
-      {role === "STOCK_STAFF" && (
+      {canManageStockRoom && (
         <Card className="mb-6">
           <CardContent className="grid gap-3 p-5">
             <h2 className="font-semibold">Create Stock Room Transfer</h2>
@@ -573,7 +574,7 @@ export function StockTransfersClient({
                 {getTransferStatusLabel(selected.status)}
               </Badge>
             </div>
-            {role === "STOCK_STAFF" && editLines.length > 0 && (
+            {canManageStockRoom && editLines.length > 0 && (
               <div className="space-y-3">
                 {editLines.map((line, index) => (
                   <div
@@ -700,7 +701,7 @@ export function StockTransfersClient({
                 </div>
               </div>
             )}
-            {role !== "STOCK_STAFF" && (
+            {!canManageStockRoom && (
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left">
@@ -720,7 +721,7 @@ export function StockTransfersClient({
                 </tbody>
               </table>
             )}
-            {role === "STOCK_STAFF" && (
+            {canManageStockRoom && (
               <div className="flex gap-2">
                 <Button
                   variant="outline"
@@ -759,6 +760,12 @@ export function StockTransfersClient({
               Source is Stock Room. In-transit stock cannot be sold until the
               branch confirms receipt or stock staff resolves a discrepancy.
             </p>
+            <div className="flex flex-col gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm sm:flex-row sm:items-center sm:gap-2">
+              <span className="font-medium text-emerald-900">Transfer route:</span>
+              <span className="text-emerald-800">
+                Stock Room (SR) to {selected.destination.name} ({selected.destination.code})
+              </span>
+            </div>
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left">
@@ -840,7 +847,7 @@ export function StockTransfersClient({
                 <p className="text-sm text-emerald-900">
                   <b>Resolution notes:</b> {selected.resolution.notes}
                 </p>
-                {role === "STOCK_STAFF" && shortageDraftLines.length > 0 && (
+                {canManageStockRoom && shortageDraftLines.length > 0 && (
                   <Button variant="outline" onClick={startReplacementDraft}>
                     Create replacement draft for shortage
                   </Button>
@@ -848,7 +855,7 @@ export function StockTransfersClient({
               </div>
             )}
 
-            {role === "STOCK_STAFF" && selected.status === "FOR_DISPATCH" && (
+            {canManageStockRoom && selected.status === "FOR_DISPATCH" && (
               <div className="flex items-center gap-3">
                 <Button
                   disabled={mutation.isPending}
@@ -995,7 +1002,7 @@ export function StockTransfersClient({
               </div>
             )}
 
-            {role === "STOCK_STAFF" &&
+            {canManageStockRoom &&
             selected.status === "DISCREPANCY_REPORTED" ? (
               <div className="space-y-2">
                 <Label htmlFor="transfer-notes">Investigation findings</Label>
@@ -1006,7 +1013,7 @@ export function StockTransfersClient({
                 />
               </div>
             ) : null}
-            {role === "STOCK_STAFF" &&
+            {canManageStockRoom &&
               selected.status === "DISCREPANCY_REPORTED" && (
                 <Button
                   disabled={!notes.trim() || mutation.isPending}
@@ -1246,7 +1253,7 @@ export function StockTransfersClient({
                               : "View details"}
                           </Button>
                           {transfer.status === "DRAFT" &&
-                            role === "STOCK_STAFF" && (
+                            canManageStockRoom && (
                               <Button
                                 size="sm"
                                 variant="outline"

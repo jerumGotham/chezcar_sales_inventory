@@ -5,8 +5,8 @@ import type { Route } from "next";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import { Bell, ChevronDown, LogOut, MapPin, Moon, Sun, X } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Bell, BellRing, ChevronDown, LogOut, MapPin, Moon, Sun, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useShellAccess } from "@/components/shell-access-context";
 import { cn } from "@/lib/utils";
@@ -16,9 +16,11 @@ const THEME_KEY = "chezcar-theme";
 
 type HeaderNotification = {
   id: string;
+  cursor: string;
   title: string;
   description: string;
   read: boolean;
+  createdAt: string;
 };
 
 async function fetchHeaderNotifications() {
@@ -26,6 +28,20 @@ async function fetchHeaderNotifications() {
   if (!response.ok) return [] as HeaderNotification[];
   const json = (await response.json()) as { data: HeaderNotification[] };
   return json.data;
+}
+
+async function fetchPushPublicKey() {
+  const response = await fetch("/api/notifications/push-public-key", { credentials: "same-origin" });
+  if (!response.ok) return null;
+  const json = (await response.json()) as { data: { enabled: boolean; publicKey: string | null } };
+  return json.data.enabled ? json.data.publicKey : null;
+}
+
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
 }
 
 function applyTheme(theme: "light" | "dark") {
@@ -42,20 +58,121 @@ export function AppHeader({
 }) {
   const router = useRouter();
   const access = useShellAccess();
+  const queryClient = useQueryClient();
+  const identityEmail = access.authenticated ? access.identity.email : null;
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [isReady, setIsReady] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [toast, setToast] = useState<HeaderNotification | null>(null);
+  const [pushState, setPushState] = useState<"unsupported" | "unavailable" | "default" | "denied" | "subscribed" | "pending">("unavailable");
   const menuRef = useRef<HTMLDivElement>(null);
   const seenNotificationIds = useRef(new Set<string>());
   const notificationsQuery = useQuery({
     queryKey: ["notifications"],
     queryFn: fetchHeaderNotifications,
     enabled: access.authenticated,
-    refetchInterval: 5_000,
+    refetchInterval: 30_000,
     refetchOnWindowFocus: true,
   });
   const unreadCount = notificationsQuery.data?.filter((notification) => !notification.read).length ?? 0;
+
+  const enablePushNotifications = async () => {
+    if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setPushState("unsupported");
+      return;
+    }
+    if (Notification.permission === "denied") {
+      setPushState("denied");
+      return;
+    }
+
+    setPushState("pending");
+    const publicKey = await fetchPushPublicKey();
+    if (!publicKey) {
+      setPushState("unavailable");
+      return;
+    }
+
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      setPushState(permission === "denied" ? "denied" : "default");
+      return;
+    }
+
+    const registration = await navigator.serviceWorker.register("/sw.js");
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey),
+    });
+    await fetch("/api/notifications/push-subscription", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(subscription.toJSON()),
+    });
+    setPushState("subscribed");
+  };
+
+  useEffect(() => {
+    if (!access.authenticated || !("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return;
+
+    let cancelled = false;
+    void fetchPushPublicKey().then(async (publicKey) => {
+      if (cancelled) return;
+      if (!publicKey) {
+        setPushState("unavailable");
+        return;
+      }
+      if (Notification.permission === "denied") {
+        setPushState("denied");
+        return;
+      }
+      const registration = await navigator.serviceWorker.getRegistration("/sw.js");
+      const subscription = await registration?.pushManager.getSubscription();
+      if (!cancelled) setPushState(subscription ? "subscribed" : "default");
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [access.authenticated]);
+
+  useEffect(() => {
+    if (!access.authenticated || !identityEmail || typeof EventSource === "undefined") return;
+
+    const cursorKey = `chezcar-notification-cursor:${identityEmail}`;
+    const cursor = window.localStorage.getItem(cursorKey) ?? "0";
+    const events = new EventSource(`/api/notifications/stream?cursor=${encodeURIComponent(cursor)}`, {
+      withCredentials: true,
+    });
+
+    const handleNotification = (event: MessageEvent<string>) => {
+      const notification = JSON.parse(event.data) as HeaderNotification;
+      window.localStorage.setItem(cursorKey, notification.cursor);
+      queryClient.setQueryData<HeaderNotification[]>(["notifications"], (current = []) => {
+        const merged = new Map(current.map((item) => [item.id, item]));
+        merged.set(notification.id, notification);
+        return Array.from(merged.values()).sort((a, b) => {
+          const aCursor = BigInt(a.cursor ?? "0");
+          const bCursor = BigInt(b.cursor ?? "0");
+          return aCursor === bCursor ? 0 : aCursor > bCursor ? -1 : 1;
+        });
+      });
+    };
+
+    const handleError = () => {
+      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    };
+
+    events.addEventListener("notification", handleNotification);
+    events.addEventListener("error", handleError);
+
+    return () => {
+      events.removeEventListener("notification", handleNotification);
+      events.removeEventListener("error", handleError);
+      events.close();
+    };
+  }, [access.authenticated, identityEmail, queryClient]);
 
   useEffect(() => {
     const notifications = notificationsQuery.data;
@@ -144,6 +261,29 @@ export function AppHeader({
               </span>
             </span>
           </div>
+        ) : null}
+
+        {access.authenticated ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="rounded-2xl border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100 hover:text-brand-800 disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+            onClick={enablePushNotifications}
+            disabled={pushState === "unsupported" || pushState === "unavailable" || pushState === "denied" || pushState === "subscribed" || pushState === "pending"}
+            title={
+              pushState === "subscribed"
+                ? "Browser notifications enabled"
+                : pushState === "unavailable"
+                  ? "Browser notifications need VAPID keys"
+                  : pushState === "denied"
+                    ? "Browser notifications are blocked"
+                    : "Enable browser notifications"
+            }
+            aria-label="Enable browser notifications"
+          >
+            <BellRing className="h-5 w-5" />
+          </Button>
         ) : null}
 
         {access.authenticated ? (

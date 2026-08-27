@@ -4,7 +4,7 @@
 **Last updated:** 2026-08-26
 **Source:** Owner discussion, real inventory workbook, and current UI prototype
 
-> **Current-state warning:** The checked-in application is still partly a UI prototype. Authentication, Product/Inventory reads, user management, Stock Room receiving, SR-to-branch transfers/discrepancy resolution, and durable notification rows have a PostgreSQL-backed foundation. Customer orders, direct sales, dashboard production metrics, Accounting verification, offline workflows, and many business mutations below are not complete until implemented and verified.
+> **Current-state warning:** The checked-in application is still partly a UI prototype. Authentication, Product/Inventory reads, user management, Stock Room receiving, SR-to-branch transfers/discrepancy resolution, Customer Orders, direct sales, dashboard production metrics, Accounting verification, durable notifications, browser push attempts, and limited offline direct-sale sync have a PostgreSQL-backed foundation. Offline transfer receipt/discrepancy capture, deployment operations, and remaining advanced/deferred screens are not complete until implemented and verified.
 
 ## Product Summary
 
@@ -83,7 +83,8 @@ All MVP replenishment enters `SR`. Transfers are `SR` to branch only. Branch-to-
 - Create and update Stock Staff, Branch Staff, and Accounting Staff accounts
 - Assign one of those fixed roles; Stock Staff is fixed to `SR`, Branch Staff requires exactly one branch, and Accounting Staff has no location assignment
 - Deactivate users instead of hard-deleting their identity
-- Manage products, prices, locations, Stock Room receiving, and controlled corrections
+- Manage products, prices, locations, Stock Room receiving, Stock Staff transfer actions when operational cover is needed, and controlled corrections
+- Review unverified receipts as operational cover for Accounting
 - Resolve final stock discrepancies after Stock Staff investigation
 - Resolve Accounting mismatch reports
 
@@ -101,6 +102,7 @@ All MVP replenishment enters `SR`. Transfers are `SR` to branch only. Branch-to-
 - Use an individual account assigned to exactly one branch
 - View stock and incoming transfers for the assigned branch
 - Encode a completed handwritten-receipt sale
+- Double-check own-branch receipt mismatches and confirm either the original encoding or the need for correction with a replacement receipt number
 - Confirm a transfer when every physical item and quantity matches
 - Submit a discrepancy form when any item or quantity does not match
 - Cannot directly set, adjust, or overwrite stock
@@ -144,10 +146,12 @@ Available branch stock is reserved immediately for reservation orders by increas
 
 ## Workflow 2: Accounting Verification
 
-1. Accounting opens the unverified sales list for any branch/date.
-2. Accounting compares the complete encoded sale with the handwritten receipt.
-3. If correct, Accounting marks the individual sale `VERIFIED`.
-4. If incorrect, Accounting selects a structured mismatch category and adds expected/actual details and notes.
+1. Admin or Accounting opens the unverified sales list for any branch/date.
+2. The reviewer compares the complete encoded sale with the handwritten receipt.
+3. If correct, the reviewer marks the individual sale `VERIFIED`.
+4. If incorrect, the reviewer selects a structured mismatch category and adds expected/actual details and notes.
+5. Assigned Branch Staff is notified and confirms either that the original encoding is correct or that receipt correction is needed; correction requires the replacement receipt number.
+6. Admin or Accounting may close a branch-confirmed correct encoding. Only Admin may void the original and post the branch-confirmed replacement.
 5. Admin reviews the issue and either confirms that the report was mistaken or applies a linked auditable sale correction.
 
 Daily verified/unverified summaries are informational. Formal daily cash/collection closing is deferred.

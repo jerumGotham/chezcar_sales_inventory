@@ -77,18 +77,76 @@ describe("customer orders, direct sales, accounting", () => {
   it("posts direct sales, deducts available stock, and lets Accounting flag mismatches", async () => {
     await withDisposableDatabase(async ({ prisma }) => {
       const fixture = await createAuthFixture(prisma, { namespace: "direct-sale" });
-      const product = await prisma.product.create({ data: { itemCode: "SALE-ITEM", name: "Sale Item", price: 75, status: "ACTIVE" } });
-       await prisma.inventoryBalance.create({ data: { locationId: fixture.locations.branches.QC.id, productId: product.id, onHand: 3, reserved: 1, unitCost: 10 } });
+      const product = await prisma.product.create({ data: { itemCode: "SALE-ITEM", name: "Sale Item", price: 75, reorderLevel: 1, status: "ACTIVE" } });
+       const balance = await prisma.inventoryBalance.create({ data: { locationId: fixture.locations.branches.QC.id, productId: product.id, onHand: 3, reserved: 1, unitCost: 10 } });
       const { createDirectSale, reviewSale } = await import("../../lib/server/services/customer-sales");
       const branchActor = actor(fixture.users.branchStaff, fixture.locations.branches.QC);
-      const accountingActor = actor(fixture.users.accountingStaff, null);
+      const adminActor = actor(fixture.users.admin, null);
 
       const sale = await createDirectSale(branchActor, { receiptBooklet: "", manualReceiptNumber: "SALE-0001", amountPaid: 75, paymentMethod: "GCASH", lines: [{ productId: product.id, quantity: 1 }] });
 
       expect(sale).toMatchObject({ manualReceiptNumber: "SALE-0001", totalAmount: 75, reviewStatus: "UNVERIFIED" });
       await expect(prisma.inventoryBalance.findFirstOrThrow({ where: { productId: product.id } })).resolves.toMatchObject({ onHand: 2, reserved: 1 });
+      await expect(prisma.notification.findMany({ where: { relatedId: balance.id } })).resolves.toEqual(expect.arrayContaining([
+        expect.objectContaining({ userId: fixture.users.admin.id, title: "Low Stock: SALE-ITEM" }),
+        expect.objectContaining({ userId: fixture.users.branchStaff.id, title: "Low Stock: SALE-ITEM" }),
+      ]));
       await expect(createDirectSale(branchActor, { receiptBooklet: "", manualReceiptNumber: "SALE-0001", amountPaid: 75, paymentMethod: "GCASH", lines: [{ productId: product.id, quantity: 1 }] })).rejects.toMatchObject({ code: "DUPLICATE_RECEIPT" });
-       await expect(reviewSale(accountingActor, sale.id, { status: "VERIFIED", comparison: { receiptBooklet: "", receiptNumber: "SALE-0001", paymentMethod: "GCASH", discountAmount: 0, amountPaid: 75, totalAmount: 75, lines: [{ itemCode: "SALE-ITEM", quantity: 1, unitPrice: 75 }] } })).resolves.toMatchObject({ status: "VERIFIED", reviewedById: fixture.users.accountingStaff.id });
+       await expect(reviewSale(adminActor, sale.id, { status: "VERIFIED", comparison: { receiptBooklet: "", receiptNumber: "SALE-0001", paymentMethod: "GCASH", discountAmount: 0, amountPaid: 75, totalAmount: 75, lines: [{ itemCode: "SALE-ITEM", quantity: 1, unitPrice: 75 }] } })).resolves.toMatchObject({ status: "VERIFIED", reviewedById: fixture.users.admin.id });
+    });
+  }, 30_000);
+
+  it("lets Admin void a mismatched sale and create a JSON-safe replacement", async () => {
+    await withDisposableDatabase(async ({ prisma }) => {
+      const fixture = await createAuthFixture(prisma, { namespace: "sale-replacement" });
+      const product = await prisma.product.create({ data: { itemCode: "REPLACE-ITEM", name: "Replacement Item", price: 50, status: "ACTIVE" } });
+      await prisma.inventoryBalance.create({ data: { locationId: fixture.locations.branches.QC.id, productId: product.id, onHand: 5, reserved: 0, unitCost: 10 } });
+      const { createDirectSale, listReceiptVerifications, resolveSale, respondToSaleMismatch, reviewSale } = await import("../../lib/server/services/customer-sales");
+      const { listNotifications } = await import("../../lib/server/services/notifications");
+      const branchActor = actor(fixture.users.branchStaff, fixture.locations.branches.QC);
+      const accountingActor = actor(fixture.users.accountingStaff, null);
+      const adminActor = actor(fixture.users.admin, null);
+
+      const original = await createDirectSale(branchActor, { receiptBooklet: "", manualReceiptNumber: "ORIGINAL-001", amountPaid: 50, paymentMethod: "CASH", lines: [{ productId: product.id, quantity: 1 }] });
+      await reviewSale(accountingActor, original.id, { status: "MISMATCH_REPORTED", mismatchCategory: "QUANTITY_MISMATCH", notes: "Paper receipt shows two pieces", comparison: { receiptBooklet: "", receiptNumber: "ORIGINAL-001", paymentMethod: "CASH", discountAmount: 0, amountPaid: 100, totalAmount: 100, lines: [{ itemCode: product.itemCode, quantity: 2, unitPrice: 50 }] } });
+      await expect(listNotifications(branchActor)).resolves.toEqual(expect.arrayContaining([
+        expect.objectContaining({ title: "Receipt mismatch reported", relatedId: original.id }),
+      ]));
+      await expect(listReceiptVerifications(adminActor, {})).resolves.toMatchObject({
+        data: [
+          expect.objectContaining({
+            id: original.id,
+            reportedComparison: expect.objectContaining({
+              totalAmount: 100,
+              lines: [expect.objectContaining({ itemCode: product.itemCode, quantity: 2 })],
+            }),
+          }),
+        ],
+      });
+      await respondToSaleMismatch(branchActor, original.id, {
+        response: "RECEIPT_CORRECTION_NEEDED",
+        note: "Physical receipt confirms two pieces.",
+        replacementReceiptNumber: "REPLACEMENT-001",
+      });
+      await expect(listReceiptVerifications(adminActor, {})).resolves.toMatchObject({
+        data: [expect.objectContaining({
+          id: original.id,
+          branchResponse: "RECEIPT_CORRECTION_NEEDED",
+          branchReplacementReceiptNumber: "REPLACEMENT-001",
+        })],
+      });
+      await expect(resolveSale(accountingActor, original.id, { action: "VOIDED_REPLACED", note: "Accounting attempted correction", replacement: { receiptBooklet: "", receiptNumber: "REPLACEMENT-001", paymentMethod: "CASH", discountAmount: 0, amountPaid: 100, totalAmount: 100, lines: [{ itemCode: product.itemCode, quantity: 2, unitPrice: 50 }] } })).rejects.toMatchObject({ code: "FORBIDDEN" });
+      const result = await resolveSale(adminActor, original.id, { action: "VOIDED_REPLACED", note: "Corrected from paper receipt", replacement: { receiptBooklet: "", receiptNumber: "REPLACEMENT-001", paymentMethod: "CASH", discountAmount: 0, amountPaid: 100, totalAmount: 100, lines: [{ itemCode: product.itemCode, quantity: 2, unitPrice: 50 }] } });
+
+      expect(() => JSON.stringify(result)).not.toThrow();
+      expect(result).toMatchObject({ action: "VOIDED_REPLACED", sale: { manualReceiptNumber: "REPLACEMENT-001", totalAmount: 100 } });
+      await expect(prisma.sale.findUniqueOrThrow({ where: { id: original.id } })).resolves.toMatchObject({ status: "VOIDED" });
+      await expect(prisma.inventoryBalance.findFirstOrThrow({ where: { productId: product.id } })).resolves.toMatchObject({ onHand: 3 });
+
+      const branchConfirmedSale = await createDirectSale(branchActor, { receiptBooklet: "", manualReceiptNumber: "BRANCH-CONFIRMED-001", amountPaid: 50, paymentMethod: "CASH", lines: [{ productId: product.id, quantity: 1 }] });
+      await reviewSale(accountingActor, branchConfirmedSale.id, { status: "MISMATCH_REPORTED", mismatchCategory: "OTHER", notes: "Needs branch confirmation", comparison: { receiptBooklet: "", receiptNumber: "BRANCH-CONFIRMED-001", paymentMethod: "CASH", discountAmount: 0, amountPaid: 50, totalAmount: 50, lines: [{ itemCode: product.itemCode, quantity: 1, unitPrice: 50 }] } });
+      await respondToSaleMismatch(branchActor, branchConfirmedSale.id, { response: "ORIGINAL_ENCODING_CORRECT", note: "Checked the physical receipt; original encoding is correct." });
+      await expect(resolveSale(accountingActor, branchConfirmedSale.id, { action: "CONFIRMED_CORRECT", note: "Closed after branch confirmation" })).resolves.toMatchObject({ action: "CONFIRMED_CORRECT", review: { status: "VERIFIED" } });
     });
   }, 30_000);
 

@@ -15,6 +15,9 @@ The implemented database boundary consists of:
 - `prisma/migrations/20260827040000_accounting_receipt_photo/migration.sql`: optional receipt-photo evidence migration.
 - `prisma/migrations/20260827050000_receipt_correction_audit/migration.sql`: receipt comparison snapshots, correction links, resolution audit, and correction movement types.
 - `prisma/migrations/20260827060000_remove_balance_reorder_level/migration.sql`: removes the obsolete per-location reorder column.
+- `prisma/migrations/20260827070000_notification_realtime_cursor/migration.sql`: durable notification cursor for SSE replay and polling catch-up.
+- `prisma/migrations/20260827080000_push_and_offline_foundation/migration.sql`: push subscriptions/delivery attempts and offline direct-sale activation/sync evidence.
+- `prisma/migrations/20260828010000_sale_correction_movement_constraint/migration.sql`: permits source-free sale correction reversal/deduction audit movements while preserving transfer/receipt source exclusivity.
 - `lib/server/prisma.ts`: server-only development-safe Prisma singleton.
 - `lib/server/auth.ts`: Better Auth Prisma adapter configuration (public instance, sign-up disabled).
 - `lib/server/internal-user-auth.ts`: server-only unmounted Better Auth Admin-plugin credential engine used only by staff-lifecycle services.
@@ -58,7 +61,11 @@ Admin manual corrections use `InventoryMovement.type = MANUAL_ADJUSTMENT` with o
 
 ### Notifications
 
-The additive `20260826020000_persistent_notifications` migration introduces durable per-user `Notification` rows. Stock-transfer workflow transitions create notifications in the same serializable transaction as the business state change. Each row stores recipient user, title, description, severity type, optional related stock-transfer identifiers, creation time, and per-user `readAt` timestamp. Users can list and mark only their own notifications read. Realtime streaming, browser push, mark-unread, cross-user notification audit, retention/archive policy, and automatic escalation remain deferred.
+The additive `20260826020000_persistent_notifications` migration introduces durable per-user `Notification` rows, and `20260827070000_notification_realtime_cursor` adds a unique monotonic `cursor` for replay. Stock-transfer, inventory, and sale/accounting workflow transitions create notifications in the same serializable transaction as the business state change, then call PostgreSQL `pg_notify` as a post-commit wake-up signal for authenticated SSE streams. Each row stores recipient user, cursor, title, description, severity type, optional related entity identifiers, creation time, and per-user `readAt` timestamp. Users can list, stream, catch up, and mark only their own notifications read. Browser push subscriptions and delivery attempts are stored separately; push is best-effort and never marks a notification read. Mark-unread, cross-user notification audit, retention/archive policy, and automatic escalation remain deferred.
+
+### Offline branch sales
+
+`OfflineDeviceActivation` stores the one current branch device authorization window. `OfflineSyncOperation` reserves `(deviceId, idempotencyKey)` and records the processing outcome. `OfflineSaleSubmission` retains every accepted offline direct-sale command payload and final status. Accepted commands link to the canonical Sale; duplicate/insufficient-stock conflicts remain `NEEDS_REVIEW` evidence and do not create negative stock. Offline transfer receipt/discrepancy evidence is not implemented yet.
 
 ### User and Better Auth
 
@@ -79,9 +86,9 @@ JobOrder and advanced CRM/service models remain absent. The former draft Custome
 
 ### Customers, orders, sales, and Accounting
 
-The additive `20260826050000_customer_orders_sales_accounting` migration introduces `Customer`, `CustomerOrder`, `CustomerOrderLine`, `ManualReceipt`, `Sale`, `SaleLine`, and `SaleAccountingReview`. Manual receipt identity is unique per branch, booklet, and receipt number. Accounting reviews store `UNVERIFIED`, `VERIFIED`, or `MISMATCH_REPORTED` state, structured mismatch details, and optional receipt-photo evidence.
+The additive `20260826050000_customer_orders_sales_accounting` migration introduces `Customer`, `CustomerOrder`, `CustomerOrderLine`, `ManualReceipt`, `Sale`, `SaleLine`, and `SaleAccountingReview`. Manual receipt identity is unique per branch, booklet, and receipt number. Accounting reviews store `UNVERIFIED`, `VERIFIED`, or `MISMATCH_REPORTED` state, structured mismatch details, and optional receipt-photo evidence. `20260828020000_branch_receipt_mismatch_response` adds the assigned Branch Staff response, explanation, optional replacement receipt number, actor, and timestamp required before final mismatch resolution.
 
-Reservation orders increment `InventoryBalance.reserved` while keeping physical `onHand` unchanged. Final order release creates a posted sale, clears reservation, decrements `onHand`, and writes `CUSTOMER_ORDER_RELEASE` movements. Direct sales decrement available branch stock immediately and write `DIRECT_SALE` movements; direct-sale discounts are stored as `Sale.discountAmount` and cannot exceed the sale subtotal. Each sale starts with one `UNVERIFIED` Accounting review row; Accounting Staff may verify or report a mismatch without editing sale, payment, order, or stock facts. Mismatch reports notify active Admin users and the posting user.
+Reservation orders increment `InventoryBalance.reserved` while keeping physical `onHand` unchanged. Final order release creates a posted sale, clears reservation, decrements `onHand`, and writes `CUSTOMER_ORDER_RELEASE` movements. Direct sales decrement available branch stock immediately and write `DIRECT_SALE` movements; direct-sale discounts are stored as `Sale.discountAmount` and cannot exceed the sale subtotal. Each sale starts with one `UNVERIFIED` Accounting review row; Admin or Accounting Staff may verify or report a mismatch without editing sale, payment, order, or stock facts. Mismatch reports notify active Admin and assigned Branch Staff users. Branch response is advisory and auditable; only Admin can execute the inventory-changing void-and-replace transaction.
 
 Add transactional models only when implementing their vertical workflow, including canonical lines, snapshots, actors, statuses, invariants, idempotency, and auditability. The full proposed shape remains in `docs/product/PROVISIONAL-DATA-MODEL.md`.
 
@@ -113,6 +120,8 @@ The seed validates the approved fixture hash and complete six-location/product/b
 
 Both commands refuse before opening a write transaction unless `ALLOW_CATALOG_RESET=true` and the URL exactly identifies either the isolated development target above or the fixed disposable integration target. Production, unknown URLs, and the checked-in port-5435 bind mount are always refused. The service additionally verifies the connected database name with `current_database()` inside the transaction before its first write, refuses while any user is assigned outside canonical locations, and validates the approved fixture hash plus complete six-location/product/balance shape.
 
+To clear transactional development data without replacing master identities or products, set `ALLOW_OPERATIONAL_DATA_RESET=true` and run `npm run db:data:reset`. This separate transaction deletes inventory balances/movements, receipts, transfers, customers, orders, sales/reviews, notifications/push records, offline records, and temporary verification tokens. It preserves `User`, `Account`, `Session`, `Product`, and `Location` rows, verifies `current_database()`, and accepts only the exact isolated development or disposable test identity. It is not a production reset path.
+
 The same gates back the phase verification gate: `npm run verify:phase-01 -- --validate-evidence` applies fresh committed migrations with `prisma migrate deploy`, seeds, reloads the catalog twice on this disposable target, proves both reloads produce identical canonical row counts and content hashes (6 locations, 1,432 products, 8,592 balances), and records the results in `docs/verification/phase-01-evidence.md`. The runner fails closed when the target is not the exact disposable test identity, when example seed credentials are supplied, and on any command failure other than the expected lint baseline.
 
 ## Local data warning
@@ -127,7 +136,7 @@ Do not delete or replace a developer's existing data directory without confirmin
 
 - No CI database service; disposable PostgreSQL migration and seed integration tests run locally through `tests/helpers/database.ts`.
 - No ProductPriceVersion, sales, payments, or separate manual inventory-adjustment header table; manual corrections are currently audited as `InventoryMovement` rows.
-- Real-time delivery, offline transfer capture/sync, discrepancy photo upload, and damaged/return locations are deferred; this slice accepts structured notes/reasons only.
+- Offline transfer capture/sync, discrepancy photo upload, and damaged/return locations are deferred; this slice accepts structured notes/reasons only.
 - No startup-time typed environment validation.
 - No case-insensitive normalized email/item-code database strategy beyond current unique fields.
 - No production backup, restore, monitoring, or deployment migration procedure.

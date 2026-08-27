@@ -12,11 +12,12 @@ export type ShellCapabilityId =
   | "sales:verify:view"
   | "sales:verify"
   | "sales:resolve"
+  | "sales:mismatch:respond"
   | "products:view"
   | "inventory:view"
   | "inventory-receiving:create"
-  | "reports:view"
-  | "users:manage"
+   | "reports:view"
+   | "users:manage"
   | "stock-transfers:view";
 
 export type ShellMenuIcon =
@@ -27,9 +28,10 @@ export type ShellMenuIcon =
   | "inventory"
   | "customer-orders"
   | "receipt-verification"
-  | "reports"
-  | "users"
-  | "stock-transfers";
+   | "reports"
+   | "users"
+  | "stock-transfers"
+  | "offline-devices";
 
 export type ShellMenuHref =
   | "/dashboard"
@@ -40,8 +42,9 @@ export type ShellMenuHref =
   | "/customer-orders"
   | "/accounting/receipt-verification"
   | "/reports"
-  | "/users"
-  | "/stock-transfers";
+   | "/users"
+  | "/stock-transfers"
+  | "/offline";
 
 export type ShellMenuEntryDto = {
   label: string;

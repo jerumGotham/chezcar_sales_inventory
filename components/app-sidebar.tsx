@@ -19,6 +19,7 @@ import {
   UserCog,
   Users,
   ShoppingCart,
+  ShieldCheck,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -43,6 +44,7 @@ const MENU_ICONS: Record<ShellMenuIcon, LucideIcon> = {
   reports: FileText,
   "receipt-verification": FileText,
   "stock-transfers": ArrowLeftRight,
+  "offline-devices": ShieldCheck,
 };
 
 export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {

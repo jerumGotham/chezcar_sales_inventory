@@ -27,7 +27,7 @@ function actor(
 }
 
 describe("stock transfer posting", () => {
-  it("moves SR stock to a newly-created branch balance only after exact receipt", async () => {
+  it("lets Admin cover SR dispatch and moves stock only after exact receipt", async () => {
     await withDisposableDatabase(async ({ prisma }) => {
       const fixture = await createAuthFixture(prisma, {
         namespace: "stock-transfer",
@@ -46,15 +46,15 @@ describe("stock transfer posting", () => {
       });
       const { createTransfer, dispatchTransfer, finalizeTransfer, confirmReceipt } =
         await import("../../lib/server/services/stock-transfers");
-      const stockActor = actor(fixture.users.stockStaff, fixture.locations.stockRoom);
       const branchActor = actor(fixture.users.branchStaff, fixture.locations.branches.QC);
+      const adminActor = actor(fixture.users.admin, null);
 
-      const draft = await createTransfer(stockActor, {
+      const draft = await createTransfer(adminActor, {
         destinationId: fixture.locations.branches.QC.id,
         lines: [{ productId: product.id, quantity: 5 }],
       });
-      const finalized = await finalizeTransfer(stockActor, draft.id, draft.version);
-      const dispatched = await dispatchTransfer(stockActor, finalized.id, finalized.version);
+      const finalized = await finalizeTransfer(adminActor, draft.id, draft.version);
+      const dispatched = await dispatchTransfer(adminActor, finalized.id, finalized.version);
 
       expect(dispatched.status).toBe("IN_TRANSIT");
       await expect(
@@ -159,7 +159,7 @@ describe("stock transfer posting", () => {
         ]),
       );
 
-      const investigated = await submitInvestigation(stockActor, reported.id, {
+      const investigated = await submitInvestigation(adminActor, reported.id, {
         version: reported.version,
         findings: "Packing count confirmed one missing.",
       });
@@ -180,7 +180,7 @@ describe("stock transfer posting", () => {
         lines: [{ lineId: investigated.lines[0].id, destinationQuantity: 4, restoreToSrQuantity: 0, lossQuantity: 1 }],
       });
 
-      const replacement = await createTransfer(stockActor, {
+      const replacement = await createTransfer(adminActor, {
         destinationId: fixture.locations.branches.QC.id,
         replacementForTransferId: draft.id,
         lines: [{ productId: product.id, quantity: 1 }],

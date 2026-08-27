@@ -2,6 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-08-26
+**Amended:** 2026-08-28
 
 ## Context
 
@@ -17,13 +18,14 @@ Branch Staff encodes a manual-receipt sale after the handwritten receipt is writ
 
 ### 2. Verification actor
 
-- Only `ACCOUNTING_STAFF` can verify or report a mismatch. `BRANCH_STAFF` cannot verify own sales. `ADMIN` can view the queue and resolve mismatches but cannot perform initial verification.
+- `ACCOUNTING_STAFF` or `ADMIN` can verify or report a mismatch. `BRANCH_STAFF` cannot perform initial verification, but must submit the assigned-branch double-check before a reported mismatch can be resolved.
 
 ### 3. Sale verification states
 
 - `UNVERIFIED` (default on creation) → `VERIFIED` (Accounting marks correct) → terminal.
 - `UNVERIFIED` → `MISMATCH_REPORTED` (Accounting files structured mismatch).
-- `MISMATCH_REPORTED` → `VOIDED` + linked `REPLACEMENT` (correction) OR `VERIFIED` via Admin/Accounting “confirm correct”.
+- `MISMATCH_REPORTED` → Branch confirms original encoding → `VERIFIED` via Admin/Accounting “confirm correct”.
+- `MISMATCH_REPORTED` → Branch confirms correction and supplies replacement receipt number → `VOIDED` + linked `REPLACEMENT` via Admin.
 
 ### 4. Mismatch categories
 
@@ -37,7 +39,8 @@ Stored per mismatch report with required `notes`, comparison snapshot, and optio
 
 ### 6. Notifications
 
-- On `MISMATCH_REPORTED`, create durable per-user notifications for: all `ADMIN` users + the `BRANCH_STAFF` who encoded the sale (attributable via `Sale.encodedById`).
+- On `MISMATCH_REPORTED`, create durable per-user notifications for all active `ADMIN` users and active `BRANCH_STAFF` assigned to the sale branch.
+- A Branch response notifies active Admin and Accounting users.
 - On correction/confirm, notify the same set.
 
 ### 7. Void-and-replace correction
@@ -45,7 +48,7 @@ Stored per mismatch report with required `notes`, comparison snapshot, and optio
 - Never mutate a posted sale in place. On “Fix with correction”, create a new `Sale` row linked via `correctionOfId` (or `voidedSaleId`), mark original `VOIDED`, post compensating inventory movements (reverse original deduction, apply corrected deduction) in one transaction.
 - “Confirm correct” keeps original, marks mismatch `RESOLVED_MISTAKEN`, and transitions sale to `VERIFIED`.
 - Corrected replacement is **auto-VERIFIED**; no re-verification loop.
-- Authorized actors for correction: `ADMIN` **or** `ACCOUNTING_STAFF` (owner/busy concern). `BRANCH_STAFF` and `STOCK_STAFF` cannot correct. Both actors share the same service with identical audit.
+- Only `ADMIN` can post the stock-changing void-and-replace correction. `ACCOUNTING_STAFF` may close only a mismatch where Branch confirmed that the original encoding is correct. Branch Staff submits evidence and the replacement receipt identity but cannot mutate sale or inventory facts.
 
 ### 8. Server rules preserved
 
@@ -59,7 +62,7 @@ Stored per mismatch report with required `notes`, comparison snapshot, and optio
 
 - Receipt uniqueness prevents double-encoding.
 - Audit history preserved; voided sales remain queryable.
-- Busy-owner bottleneck removed without opening correction to branch.
+- Branch confirmation makes the correction decision explicit without opening sale or stock mutation to Branch Staff.
 
 ### Negative
 

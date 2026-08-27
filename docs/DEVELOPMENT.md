@@ -168,6 +168,7 @@ When adding a shared shadcn-style primitive, keep `components.json` aliases and 
 | `npm run prisma:generate` | Regenerate Prisma Client. |
 | `npm run db:migrate` | Create/apply development migrations. |
 | `npm run db:seed` | Seed reference catalog data and the environment-supplied Admin. |
+| `npm run db:data:reset` | Clear isolated development operational data while preserving users/auth, products, and locations; requires `ALLOW_OPERATIONAL_DATA_RESET=true`. |
 
 There are no package scripts for tests or formatting.
 

@@ -3,7 +3,7 @@
 
 ## Current status
 
-Vitest `4.1.11` is configured with Node unit and serial integration projects. The unit project covers the workbook profiler, canonicalizer, fixture generator, catalog-reset gates, access policy, shell DTOs, proxy denial, and the disposable-database/request helpers. The serial integration project covers migration application, seed/reload determinism, persisted authorization factories, inventory scope, the Better Auth admin surface, user management, session revocation, and first-login credential setup over a fixed-identity disposable PostgreSQL 17 container. No DOM testing library, browser runner, coverage tool, or CI workflow is checked in. Authentication, products/inventory, customers, customer orders, and POS sales now use PostgreSQL; browser coverage for these workflows remains a gap.
+Vitest `4.1.11` is configured with Node unit and serial integration projects. The unit project covers the workbook profiler, canonicalizer, fixture generator, catalog/operational-reset gates, access policy, shell DTOs, proxy denial, notification cursor/wake-up helpers, and the disposable-database/request helpers. The serial integration project covers migration application, seed/reload/reset determinism, persisted authorization factories, inventory scope, the Better Auth admin surface, user management, session revocation, and first-login credential setup over a fixed-identity disposable PostgreSQL 17 container. No DOM testing library, browser runner, coverage tool, or CI workflow is checked in. Authentication, products/inventory, customers, customer orders, POS sales, SSE notifications, browser push subscription, and limited offline direct-sale sync now use PostgreSQL-backed services; browser coverage for these workflows remains a gap.
 
 | Capability | Current state |
 | --- | --- |
@@ -176,7 +176,7 @@ Client-side button visibility is only a usability check; it must never be the so
 After durable APIs, authentication, and persistence exist, configure Playwright for a small set of critical journeys:
 
 1. Sign in and enforce role/location access, including account deactivation and reassignment.
-2. Encode a handwritten-receipt sale, verify the stock deduction, and complete Accounting verification or mismatch resolution.
+2. Encode a handwritten-receipt sale, verify the stock deduction, let Admin or Accounting report a mismatch, submit the assigned Branch response, and complete Confirm Correct or Admin Void and Replace.
 3. Receive inventory into `SR`, dispatch an `SR`-to-branch transfer, and confirm an exact receipt.
 4. Submit a transfer discrepancy, record Stock Staff findings, and post the Admin resolution.
 5. Reconnect an offline branch device and verify accepted and `Needs Review` sync outcomes without negative stock.

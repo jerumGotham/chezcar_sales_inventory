@@ -11,6 +11,7 @@ export const metadata = {
   title: "Chezcar UI Starter",
   description:
     "Sales and inventory system UI starter built with Next.js, Tailwind, and Prisma structure.",
+  manifest: "/manifest.webmanifest",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

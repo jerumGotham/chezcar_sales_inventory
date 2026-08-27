@@ -10,12 +10,12 @@ Inventory answers, "What stock is available at this location?" Stock Transfers i
 
 | Role | Access |
 | --- | --- |
-| Admin | View every transfer and discrepancy; approve and post the final discrepancy resolution. |
+| Admin | View every transfer; cover Stock Staff source-side actions when needed; approve and post the final discrepancy resolution. |
 | Stock Staff | View `SR` transfer work; create and dispatch `SR`-to-branch transfers; investigate discrepancies and submit findings. |
 | Branch Staff | View only transfers sent to the assigned branch; confirm an exact receipt or submit a discrepancy report. |
 | Accounting Staff | No Stock Transfers access. |
 
-Branch Staff cannot edit dispatched quantities or directly adjust stock. Stock Staff cannot post the final discrepancy resolution. Admin approval is required before the linked stock outcome is posted.
+Branch Staff cannot edit dispatched quantities or directly adjust stock. Admin may create, edit, finalize, dispatch, and investigate transfers as operational cover for Stock Staff. Stock Staff cannot post the final discrepancy resolution. Admin approval is required before the linked stock outcome is posted.
 
 ## Planned Flow
 

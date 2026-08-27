@@ -12,7 +12,7 @@ Editing the original transfer after dispatch would hide whether the Stock Room r
 
 ## Decision
 
-1. Stock Staff initiates and dispatches transfers from `SR` to a branch. Branch requests, branch-to-branch transfers, and direct supplier-to-branch receipts are deferred.
+1. Stock Staff normally initiates and dispatches transfers from `SR` to a branch. Admin may perform the same source-side actions as operational cover when Stock Staff is unavailable. Branch requests, branch-to-branch transfers, and direct supplier-to-branch receipts are deferred.
 2. A dispatched transfer is an immutable record of what `SR` says it sent.
 3. Dispatch deducts `SR` stock, records equal in-transit quantities, and notifies the destination branch in real time.
 4. Assigned Branch Staff can perform one of two controlled actions:
@@ -22,7 +22,7 @@ Editing the original transfer after dispatch would hide whether the Stock Room r
 6. There is no separate `DELIVERED` or `CONFIRMED` status. `RECEIVED` means physically at the branch and confirmed matched.
 7. A discrepancy form records actual quantities, reason, notes, and conditionally required photos; it notifies Admin and Stock Staff and does not let Branch Staff set inventory.
 8. Disputed quantities remain unavailable for sale.
-9. Stock Staff investigates and records findings. Admin performs the final linked stock correction.
+9. Stock Staff normally investigates and records findings; Admin may perform the investigation as operational cover. Admin performs the final linked stock correction.
 10. Resolution clears the complete original in-transit quantity and accounts for every destination, restoration, non-sellable, loss/write-off, return, or supplemental movement.
 11. Original dispatch, branch report, findings, Admin resolution, actors, reasons, timestamps, and movements remain visible.
 

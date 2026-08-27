@@ -202,12 +202,9 @@ describe("sales tracer — per-branch receipt, stock deduction, Accounting VERIF
 
       // BRANCH_STAFF cannot verify
        await expect(reviewSale(blActor, qcSale.id, { status: "VERIFIED", comparison: matchingComparison(qcSale) })).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
-      // ADMIN cannot verify per ADR 0014 §2
-       await expect(reviewSale(adminActor, qcSale.id, { status: "VERIFIED", comparison: matchingComparison(qcSale) })).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
-
-      // QC sale still UNVERIFIED, verify it succeeds then terminal
-       await expect(reviewSale(accountingActor, qcSale.id, { status: "VERIFIED", comparison: matchingComparison(qcSale) })).resolves.toMatchObject({ status: "VERIFIED" });
-       await expect(reviewSale(accountingActor, qcSale.id, { status: "VERIFIED", comparison: matchingComparison(qcSale) })).rejects.toMatchObject({ code: "INVALID_STATE" });
+      // ADMIN can cover initial verification, then the result is terminal.
+       await expect(reviewSale(adminActor, qcSale.id, { status: "VERIFIED", comparison: matchingComparison(qcSale) })).resolves.toMatchObject({ status: "VERIFIED", reviewedById: adminActor.userId });
+      await expect(reviewSale(accountingActor, qcSale.id, { status: "VERIFIED", comparison: matchingComparison(qcSale) })).rejects.toMatchObject({ code: "INVALID_STATE" });
     });
   }, 60_000);
 });

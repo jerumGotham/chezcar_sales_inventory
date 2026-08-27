@@ -18,7 +18,7 @@ import {
   validatePersistedAssignment,
 } from "@/lib/server/policy/access";
 import { prisma } from "@/lib/server/prisma";
-import { createNotifications } from "./services/notifications";
+import { notifyInventoryThresholdChange } from "./services/notifications";
 
 const baseListQuery = {
   page: z.coerce.number().int().min(1).default(1),
@@ -594,7 +594,7 @@ export async function correctInventoryBalance(
       throw new InventoryMutationError("NOT_FOUND", "Inventory balance not found", 404);
     }
 
-    const previousStatus = stockStatus(balance.onHand, balance.reserved, balance.product.reorderLevel);
+    const previousAvailable = balance.onHand - balance.reserved;
     const nextOnHand = balance.onHand + delta;
     if (nextOnHand < balance.reserved) {
       throw new InventoryMutationError("BELOW_RESERVED", "Adjustment cannot reduce on-hand stock below reserved quantity", 409);
@@ -631,25 +631,16 @@ export async function correctInventoryBalance(
     });
 
     const nextStatus = stockStatus(updated.onHand, updated.reserved, updated.product.reorderLevel);
-    if (nextStatus !== previousStatus && nextStatus !== "In Stock") {
-      const users = await tx.user.findMany({
-        where: {
-          status: "ACTIVE",
-          OR: [{ role: "ADMIN" }, { locationId: balance.locationId }],
-        },
-        select: { id: true },
-      });
-
-      await createNotifications(tx, users.map((user) => ({
-        userId: user.id,
-        title: `${nextStatus}: ${balance.product.itemCode}`,
-        description: `${balance.product.name} at ${balance.location.name} now has ${updated.onHand - updated.reserved} available piece(s).`,
-        type: nextStatus === "Out of Stock" ? "WARNING" : "INFO",
-        relatedType: "INVENTORY_BALANCE",
-        relatedId: balance.id,
-        relatedReference: balance.product.itemCode,
-      })));
-    }
+    await notifyInventoryThresholdChange(tx, {
+      balanceId: balance.id,
+      locationId: balance.locationId,
+      locationName: balance.location.name,
+      productItemCode: balance.product.itemCode,
+      productName: balance.product.name,
+      reorderLevel: balance.product.reorderLevel,
+      previousAvailable,
+      nextAvailable: updated.onHand - updated.reserved,
+    });
 
     return serializeInventoryBalance(updated, nextStatus);
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
