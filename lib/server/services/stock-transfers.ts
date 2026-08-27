@@ -207,19 +207,41 @@ async function notifyUsersForTransfer(
   );
 }
 
-export async function listTransfers(actor: AuthContext) {
-  const where =
-    actor.role === "BRANCH_STAFF"
-      ? { destinationId: actor.locationId as string }
-      : {};
-  const transfers = await prisma.stockTransfer.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    include: TRANSFER_INCLUDE,
-  });
-  return transfers.map((transfer) =>
-    serializeTransfer(transfer, actor.role === "ADMIN"),
-  );
+export async function listTransfers(
+  actor: AuthContext,
+  query: { page: number; pageSize: number; transferId?: string } = {
+    page: 1,
+    pageSize: 10,
+  },
+) {
+  const where: Prisma.StockTransferWhereInput = {
+    id: query.transferId,
+    destinationId:
+      actor.role === "BRANCH_STAFF"
+        ? (actor.locationId as string)
+        : undefined,
+  };
+  const [total, transfers] = await prisma.$transaction([
+    prisma.stockTransfer.count({ where }),
+    prisma.stockTransfer.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (query.page - 1) * query.pageSize,
+      take: query.pageSize,
+      include: TRANSFER_INCLUDE,
+    }),
+  ]);
+  return {
+    data: transfers.map((transfer) =>
+      serializeTransfer(transfer, actor.role === "ADMIN"),
+    ),
+    meta: {
+      page: query.page,
+      pageSize: query.pageSize,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / query.pageSize)),
+    },
+  };
 }
 
 export async function createTransfer(
@@ -261,6 +283,17 @@ export async function createTransfer(
           "Destination must be an active branch",
           400,
         );
+
+      const existingDraft = await tx.stockTransfer.findFirst({
+        where: { destinationId: destination.id, status: "DRAFT" },
+        select: { id: true },
+      });
+      if (existingDraft) {
+        throw new TransferError(
+          "DUPLICATE_DRAFT",
+          "A draft for this destination already exists. Edit that draft instead.",
+        );
+      }
 
       let replacementReference = "";
       if (input.replacementForTransferId) {

@@ -12,6 +12,7 @@
 
 # testing
 /coverage
+/.playwright-mcp/
 
 # next.js
 /.next/
@@ -47,3 +48,6 @@ next-env.d.ts
 # local source workbook and Windows shell artifact
 /excel/
 /nul
+
+# local OpenCode workspace configuration
+/opencode.json

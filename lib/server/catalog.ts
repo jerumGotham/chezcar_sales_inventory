@@ -51,6 +51,7 @@ export const productMutationSchema = z.object({
 
 export const inventoryListQuerySchema = z.object({
   ...baseListQuery,
+  balanceId: z.string().trim().max(100).optional(),
   location: z.string().trim().max(150).default("all"),
   status: z
     .enum(["all", "In Stock", "Low Stock", "Out of Stock"])
@@ -394,6 +395,7 @@ export async function listInventory(
   const scopeLocationId =
     scope.kind === "location" ? scope.locationId : undefined;
   const balanceWhere: Prisma.InventoryBalanceWhereInput = {
+    id: query.balanceId,
     locationId: scopeLocationId,
   };
   const productWhere: Prisma.ProductWhereInput = {

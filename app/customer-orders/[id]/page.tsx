@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Loader2, PackageCheck } from "lucide-react";
@@ -9,6 +10,16 @@ import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 type OrderDetail = {
   id: string;
@@ -43,11 +54,12 @@ export default function CustomerOrderDetailsPage() {
   const params = useParams<{ id: string }>();
   const queryClient = useQueryClient();
   const orderId = params.id;
+  const [isCancelOpen, setIsCancelOpen] = useState(false);
+  const [cancellationNote, setCancellationNote] = useState("");
   const { data: order, isLoading, error } = useQuery({ queryKey: ["customer-order", orderId], queryFn: () => fetchOrder(orderId), enabled: Boolean(orderId) });
   const cancelMutation = useMutation({
     mutationFn: async () => {
-      const note = window.prompt("Cancellation note") ?? "";
-      const response = await fetch(`/api/customer-orders/${orderId}/cancel`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ note }) });
+      const response = await fetch(`/api/customer-orders/${orderId}/cancel`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ note: cancellationNote.trim() || undefined }) });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error?.message ?? "Unable to cancel order");
       return json.data;
@@ -55,6 +67,8 @@ export default function CustomerOrderDetailsPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["customer-order", orderId] });
       await queryClient.invalidateQueries({ queryKey: ["customer-orders"] });
+      setIsCancelOpen(false);
+      setCancellationNote("");
     },
   });
 
@@ -66,7 +80,7 @@ export default function CustomerOrderDetailsPage() {
         <div className="flex flex-wrap gap-2">
           <Link href="/customer-orders"><Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" />Back</Button></Link>
           {order && ["Reserved", "For Release"].includes(order.status) ? <Link href={`/customer-orders/${order.id}/release`}><Button className="bg-emerald-600 text-white hover:bg-emerald-700">Release Order</Button></Link> : null}
-          {order && !["Released", "Cancelled"].includes(order.status) ? <Button variant="outline" className="border-red-200 text-red-700 hover:bg-red-50" onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending}>{cancelMutation.isPending ? "Cancelling..." : "Cancel Order"}</Button> : null}
+          {order && !["Released", "Cancelled"].includes(order.status) ? <Button variant="outline" className="border-red-200 text-red-700 hover:bg-red-50" onClick={() => setIsCancelOpen(true)}>Cancel Order</Button> : null}
         </div>
       }
     >
@@ -107,6 +121,36 @@ export default function CustomerOrderDetailsPage() {
           </Card>
         </div>
       ) : null}
+      <Dialog open={isCancelOpen} onOpenChange={(open) => {
+        if (cancelMutation.isPending) return;
+        setIsCancelOpen(open);
+        if (!open) setCancellationNote("");
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel customer order?</DialogTitle>
+            <DialogDescription>
+              This changes the order status to Cancelled. Add a note for the order history; a note is required when cancelling an order with a downpayment.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="cancellation-note">Cancellation note</Label>
+            <Textarea
+              id="cancellation-note"
+              value={cancellationNote}
+              onChange={(event) => setCancellationNote(event.target.value)}
+              maxLength={1_000}
+              placeholder="Reason for cancelling this order"
+              rows={4}
+            />
+            {cancelMutation.error ? <p className="text-sm text-red-600">{(cancelMutation.error as Error).message}</p> : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCancelOpen(false)} disabled={cancelMutation.isPending}>Keep Order</Button>
+            <Button variant="destructive" onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending}>{cancelMutation.isPending ? "Cancelling..." : "Cancel Order"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageShell>
   );
 }

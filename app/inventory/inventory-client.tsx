@@ -72,6 +72,7 @@ export type InventoryClientProps = {
   role: ShellRole;
   scope: LocationScopeDto;
   locations: readonly InventoryLocationOption[];
+  initialBalanceId?: string;
 };
 
 const ALL_LOCATIONS_VALUE = "all";
@@ -85,6 +86,7 @@ export function InventoryClient({
   role,
   scope,
   locations,
+  initialBalanceId,
 }: InventoryClientProps) {
   const queryClient = useQueryClient();
   const isAdmin = role === "ADMIN";
@@ -198,6 +200,7 @@ export function InventoryClient({
       {
         page,
         pageSize,
+        balanceId: initialBalanceId,
         itemCode: appliedItemCode,
         name: appliedName,
         category: appliedCategory,
@@ -209,6 +212,7 @@ export function InventoryClient({
       fetchInventory({
         page,
         pageSize,
+        ...(initialBalanceId ? { balanceId: initialBalanceId } : {}),
         itemCode: appliedItemCode,
         name: appliedName,
         category: appliedCategory,
@@ -708,7 +712,11 @@ export function InventoryClient({
                     </tr>
                   ) : (
                     groupedRows.map((group) => {
-                      const isExpanded = !!expandedProducts[group.itemCode];
+                      const containsLinkedBalance = group.locations.some(
+                        (item) => item.id === initialBalanceId,
+                      );
+                      const isExpanded =
+                        containsLinkedBalance || !!expandedProducts[group.itemCode];
                       const stockedLocations = group.locations.filter(
                         (item) => item.onHand > 0,
                       );
@@ -719,7 +727,9 @@ export function InventoryClient({
 
                       return (
                         <React.Fragment key={group.itemCode}>
-                          <tr className="border-b bg-white transition-colors hover:bg-slate-50">
+                          <tr
+                            className={`border-b bg-white transition-colors hover:bg-slate-50 dark:bg-slate-950 dark:hover:bg-slate-900 ${containsLinkedBalance ? "ring-2 ring-inset ring-amber-400" : ""}`}
+                          >
                             <td className="px-5 py-4">
                               <div>
                                 <p className="text-sm font-semibold text-foreground">
@@ -830,11 +840,14 @@ export function InventoryClient({
                                           item.location === "Stock Room";
                                         const available = getAvailableStock(item);
 
-                                        return (
-                                          <div
-                                            key={item.id}
-                                            className="rounded-xl border bg-white p-4"
-                                          >
+                                          const isLinkedBalance =
+                                            item.id === initialBalanceId;
+
+                                          return (
+                                           <div
+                                             key={item.id}
+                                             className={`rounded-xl border bg-white p-4 dark:bg-slate-950 ${isLinkedBalance ? "border-amber-400 ring-2 ring-amber-200 dark:ring-amber-900" : ""}`}
+                                           >
                                             <div className="flex items-start justify-between gap-3">
                                               <div className="flex items-center gap-2 font-semibold text-slate-900">
                                                 {isStockRoom ? (
@@ -844,10 +857,15 @@ export function InventoryClient({
                                                 )}
                                                 {item.location}
                                               </div>
-                                              <Badge className={getStockBadgeClass(item.status)}>
-                                                {item.status}
-                                              </Badge>
-                                            </div>
+                                               <Badge className={getStockBadgeClass(item.status)}>
+                                                 {item.status}
+                                               </Badge>
+                                             </div>
+                                             {isLinkedBalance && (
+                                               <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                                                 Linked inventory alert
+                                               </p>
+                                             )}
                                             <div className="mt-4 grid grid-cols-2 gap-3 border-t pt-3">
                                               <div>
                                                 <p className="text-xs text-slate-500">On hand</p>

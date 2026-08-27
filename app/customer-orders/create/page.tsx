@@ -160,9 +160,9 @@ export default function CreateCustomerOrderPage() {
       });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error?.message ?? "Unable to save customer order");
-      return json.data as { reference: string };
+      return json.data as { orderNo: string };
     },
-    onSuccess: (order) => router.push(`/customer-orders?created=${order.reference}`),
+    onSuccess: () => router.push("/customer-orders"),
     onError: (error: Error) => setErrorMessage(error.message),
   });
 

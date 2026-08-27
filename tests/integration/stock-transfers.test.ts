@@ -44,7 +44,7 @@ describe("stock transfer posting", () => {
           unitCost: 1,
         },
       });
-      const { createTransfer, dispatchTransfer, finalizeTransfer, confirmReceipt } =
+      const { createTransfer, dispatchTransfer, finalizeTransfer, confirmReceipt, listTransfers } =
         await import("../../lib/server/services/stock-transfers");
       const branchActor = actor(fixture.users.branchStaff, fixture.locations.branches.QC);
       const adminActor = actor(fixture.users.admin, null);
@@ -53,6 +53,19 @@ describe("stock transfer posting", () => {
         destinationId: fixture.locations.branches.QC.id,
         lines: [{ productId: product.id, quantity: 5 }],
       });
+      await expect(
+        listTransfers(adminActor, { page: 1, pageSize: 1 }),
+      ).resolves.toMatchObject({
+        data: [{ id: draft.id }],
+        meta: { page: 1, pageSize: 1, total: 1, totalPages: 1 },
+      });
+      await expect(
+        listTransfers(branchActor, {
+          page: 1,
+          pageSize: 10,
+          transferId: draft.id,
+        }),
+      ).resolves.toMatchObject({ data: [{ id: draft.id }] });
       const finalized = await finalizeTransfer(adminActor, draft.id, draft.version);
       const dispatched = await dispatchTransfer(adminActor, finalized.id, finalized.version);
 

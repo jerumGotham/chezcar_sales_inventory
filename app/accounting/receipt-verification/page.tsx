@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
+import { useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -79,6 +80,7 @@ type ReceiptFilters = {
   locationId: string;
   dateFrom: string;
   dateTo: string;
+  saleId: string;
 };
 type ReceiptListResponse = {
   data: Sale[];
@@ -133,6 +135,7 @@ async function fetchReceipts(filters: ReceiptFilters) {
   if (filters.locationId) params.set("locationId", filters.locationId);
   if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
   if (filters.dateTo) params.set("dateTo", filters.dateTo);
+  if (filters.saleId) params.set("saleId", filters.saleId);
   const response = await fetch(
     `/api/accounting/receipts?${params.toString()}`,
     { credentials: "same-origin" },
@@ -268,7 +271,17 @@ function comparisonDifferences(sale: Sale, draft: ComparisonDraft) {
 }
 
 export default function ReceiptVerificationPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-slate-500">Loading receipt...</div>}>
+      <ReceiptVerificationContent />
+    </Suspense>
+  );
+}
+
+function ReceiptVerificationContent() {
   const access = useShellAccess();
+  const searchParams = useSearchParams();
+  const linkedSaleId = searchParams.get("saleId") ?? "";
   const queryClient = useQueryClient();
   const [searchDraft, setSearchDraft] = useState("");
   const [reviewStatusDraft, setReviewStatusDraft] =
@@ -287,6 +300,7 @@ export default function ReceiptVerificationPage() {
     locationId: "",
     dateFrom: "",
     dateTo: "",
+    saleId: linkedSaleId,
   });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [category, setCategory] = useState("PRICE_MISMATCH");
@@ -297,7 +311,7 @@ export default function ReceiptVerificationPage() {
     queryFn: () => fetchReceipts(filters),
     placeholderData: (previousData) => previousData,
   });
-  const sales = data?.data ?? [];
+  const sales = useMemo(() => data?.data ?? [], [data?.data]);
   const meta = data?.meta ?? {
     page: 1,
     pageSize: 10,
@@ -499,6 +513,7 @@ export default function ReceiptVerificationPage() {
       locationId: locationDraft,
       dateFrom: dateFromDraft,
       dateTo: dateToDraft,
+      saleId: "",
     });
   };
 
@@ -518,6 +533,7 @@ export default function ReceiptVerificationPage() {
       locationId: "",
       dateFrom: "",
       dateTo: "",
+      saleId: "",
     });
   };
 
@@ -554,6 +570,15 @@ export default function ReceiptVerificationPage() {
     setPhotoPreview(null);
     setPhotoKey(null);
   };
+
+  useEffect(() => {
+    if (!linkedSaleId || selectedId === linkedSaleId) return;
+    const linkedSale = sales.find((sale) => sale.id === linkedSaleId);
+    if (!linkedSale) return;
+    // Initialize the selected transaction after its linked notification query loads.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    selectSale(linkedSale);
+  }, [linkedSaleId, sales, selectedId]);
 
   const handlePhoto = (file: File | undefined) => {
     if (!file) return;

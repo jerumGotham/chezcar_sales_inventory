@@ -47,6 +47,7 @@ export const receiptVerificationListQuerySchema = z.object({
   locationId: z.preprocess((value) => typeof value === "string" && value.trim() === "" ? undefined : value, z.string().trim().max(100).optional()),
   dateFrom: z.preprocess((value) => value === "" ? undefined : value, z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => !Number.isNaN(Date.parse(`${value}T00:00:00Z`)), "Invalid date").optional()),
   dateTo: z.preprocess((value) => value === "" ? undefined : value, z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => !Number.isNaN(Date.parse(`${value}T00:00:00Z`)), "Invalid date").optional()),
+  saleId: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().max(100).optional()),
 }).superRefine((input, context) => {
   if (input.dateFrom && input.dateTo && input.dateFrom > input.dateTo) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["dateTo"], message: "End date must be on or after start date" });
@@ -73,6 +74,11 @@ export const releaseOrderSchema = z.object({
 });
 
 export const cancelOrderSchema = z.object({ note: z.string().trim().max(1_000).optional() });
+
+export const orderPaymentSchema = z.object({
+  amount: z.coerce.number().positive().max(9_999_999_999.99),
+  reference: z.string().trim().min(1).max(100),
+});
 
 export const directSaleSchema = z.object({
   locationId: z.string().optional(),
@@ -473,6 +479,85 @@ export async function cancelCustomerOrder(actor: AuthContext, id: string, input:
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
+export async function recordCustomerOrderPayment(
+  actor: AuthContext,
+  id: string,
+  input: z.infer<typeof orderPaymentSchema>,
+) {
+  assertBranchOrAdmin(actor);
+  try {
+    return await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "CustomerOrder" WHERE id = ${id} FOR UPDATE`;
+      const order = await tx.customerOrder.findUnique({
+        where: { id },
+        include: ORDER_INCLUDE,
+      });
+      if (!order) {
+        throw new CustomerSalesError("NOT_FOUND", "Order not found", 404);
+      }
+      if (
+        actor.role === "BRANCH_STAFF" &&
+        order.locationId !== actorLocationId(actor)
+      ) {
+        throw new CustomerSalesError(
+          "FORBIDDEN",
+          "Order is outside assigned branch",
+          403,
+        );
+      }
+      if (order.status === "COMPLETED" || order.status === "CANCELLED") {
+        throw new CustomerSalesError(
+          "INVALID_STATUS",
+          "Completed or cancelled orders cannot accept payments",
+          409,
+        );
+      }
+      const remainingBalance = order.remainingBalance.toNumber();
+      if (input.amount > remainingBalance) {
+        throw new CustomerSalesError(
+          "INVALID_PAYMENT",
+          "Payment cannot exceed the remaining balance",
+          400,
+        );
+      }
+
+      await registerReceipt(tx, input.reference, "CUSTOMER_ORDER_PAYMENT", {
+        orderId: order.id,
+        locationId: order.locationId,
+        receiptBooklet: "",
+      });
+      const currentDownpayment = order.downpaymentAmount.toNumber();
+      const updated = await tx.customerOrder.update({
+        where: { id: order.id },
+        data: {
+          downpaymentAmount: decimal(currentDownpayment + input.amount),
+          remainingBalance: decimal(remainingBalance - input.amount),
+          downpaymentReceiptNumber:
+            order.downpaymentReceiptNumber ?? input.reference,
+          type:
+            order.type === "RESERVATION_NO_DP"
+              ? "RESERVATION_WITH_DP"
+              : order.type,
+        },
+        include: ORDER_INCLUDE,
+      });
+      return serializeOrder(updated);
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      throw new CustomerSalesError(
+        "DUPLICATE_RECEIPT",
+        "Payment reference already exists",
+        409,
+      );
+    }
+    throw error;
+  }
+}
+
 export async function createDirectSale(actor: AuthContext, rawInput: z.input<typeof directSaleSchema>) {
   const input = directSaleSchema.parse(rawInput);
   assertBranchOrAdmin(actor);
@@ -537,6 +622,7 @@ function receiptVerificationWhere(
     ];
   }
   if (parsed.locationId) where.locationId = parsed.locationId;
+  if (parsed.saleId) where.id = parsed.saleId;
   if (parsed.saleStatus !== "all") where.status = parsed.saleStatus;
   if (includeReviewStatus && parsed.reviewStatus !== "all") where.accountingReview = { status: parsed.reviewStatus };
   if (parsed.dateFrom || parsed.dateTo) {
@@ -557,7 +643,7 @@ export async function listReceiptVerifications(actor: AuthContext, rawInput: unk
     const locationId = actorLocationId(actor);
     baseWhere.locationId = locationId;
     filteredWhere.locationId = locationId;
-    filteredWhere.accountingReview = { status: "MISMATCH_REPORTED", resolvedAt: null };
+    if (!input.saleId) filteredWhere.accountingReview = { status: "MISMATCH_REPORTED", resolvedAt: null };
   }
   const [totalItems, unverified, verified, mismatches] = await Promise.all([
     prisma.sale.count({ where: filteredWhere }),

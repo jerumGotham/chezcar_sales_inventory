@@ -1,14 +1,17 @@
 "use client";
 
-import Link from "next/link";
+import type { Route } from "next";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle, ArrowUpRight, CheckCircle2, Info } from "lucide-react";
+
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckCircle2, AlertTriangle, Info } from "lucide-react";
+import { notificationDestination } from "@/lib/notification-links";
 
 type Notification = {
   id: string;
@@ -23,13 +26,13 @@ type Notification = {
 };
 
 async function fetchNotifications() {
-  const response = await fetch("/api/notifications", { credentials: "same-origin" });
+  const response = await fetch("/api/notifications", {
+    credentials: "same-origin",
+  });
   const json = await response.json();
-
   if (!response.ok) {
     throw new Error(json.error?.message ?? "Unable to load notifications");
   }
-
   return json.data as Notification[];
 }
 
@@ -39,11 +42,9 @@ async function markNotificationRead(id: string) {
     credentials: "same-origin",
   });
   const json = await response.json();
-
   if (!response.ok) {
     throw new Error(json.error?.message ?? "Unable to mark notification read");
   }
-
   return json.data as Notification;
 }
 
@@ -53,250 +54,182 @@ async function markNotificationsRead() {
     credentials: "same-origin",
   });
   const json = await response.json();
-
   if (!response.ok) {
     throw new Error(json.error?.message ?? "Unable to mark notifications read");
   }
-
   return json.data as Notification[];
 }
 
+function TypeIcon({ type }: { type: Notification["type"] }) {
+  if (type === "warning")
+    return <AlertTriangle className="size-4 text-amber-600" />;
+  if (type === "success")
+    return <CheckCircle2 className="size-4 text-emerald-600" />;
+  return <Info className="size-4 text-sky-600" />;
+}
+
 export default function NotificationsPage() {
-  const [activeTab, setActiveTab] = useState("all");
+  const router = useRouter();
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState("all");
   const notificationsQuery = useQuery({
     queryKey: ["notifications"],
     queryFn: fetchNotifications,
     refetchInterval: 30_000,
     refetchOnWindowFocus: true,
   });
-  const markReadMutation = useMutation({
-    mutationFn: markNotificationRead,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+  const openMutation = useMutation({
+    mutationFn: async ({
+      notification,
+      destination,
+    }: {
+      notification: Notification;
+      destination: string | null;
+    }) => {
+      if (!notification.read) await markNotificationRead(notification.id);
+      return destination;
+    },
+    onSuccess: (destination) => {
+      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      if (destination) router.push(destination as Route);
+    },
   });
   const markAllReadMutation = useMutation({
     mutationFn: markNotificationsRead,
-    onSuccess: (notifications) => queryClient.setQueryData(["notifications"], notifications),
+    onSuccess: (notifications) =>
+      queryClient.setQueryData(["notifications"], notifications),
   });
 
-  const notifications = useMemo(() => (notificationsQuery.data ?? []).map((notification) => ({
-    ...notification,
-    type: notification.type ?? "info",
-  })), [notificationsQuery.data]);
-
-  const filteredNotifications = useMemo(() => {
-    if (activeTab === "unread") {
-      return notifications.filter((n) => !n.read);
-    }
-    return notifications;
-  }, [activeTab, notifications]);
-
-  const markAsRead = (index: number) => {
-    const notification = filteredNotifications[index];
-    if (!notification) return;
-    markReadMutation.mutate(notification.id);
-  };
-
-  const markAllAsRead = () => {
-    markAllReadMutation.mutate();
-  };
-
-  const getCardClass = (type?: string, read?: boolean) => {
-    if (read) {
-      return "border-slate-200 bg-white";
-    }
-
-    switch (type) {
-      case "warning":
-        return "border-amber-200 bg-amber-50/80";
-      case "success":
-        return "border-emerald-200 bg-emerald-50/80";
-      default:
-        return "border-green-200 bg-green-50/80";
-    }
-  };
-
-  const getIcon = (type?: string) => {
-    switch (type) {
-      case "warning":
-        return (
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
-            <AlertTriangle className="h-5 w-5 text-amber-600" />
-          </div>
-        );
-      case "success":
-        return (
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100">
-            <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-          </div>
-        );
-      case "info":
-      default:
-        return (
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100">
-            <Info className="h-5 w-5 text-green-600" />
-          </div>
-        );
-    }
-  };
-
-  const getTypeBadgeClass = (type?: string) => {
-    switch (type) {
-      case "warning":
-        return "border-amber-200 bg-amber-100 text-amber-700 hover:bg-amber-100";
-      case "success":
-        return "border-emerald-200 bg-emerald-100 text-emerald-700 hover:bg-emerald-100";
-      default:
-        return "border-green-200 bg-green-100 text-green-700 hover:bg-green-100";
-    }
-  };
+  const notifications = useMemo(
+    () =>
+      (notificationsQuery.data ?? []).map((notification) => ({
+        ...notification,
+        type: notification.type ?? "info",
+      })),
+    [notificationsQuery.data],
+  );
+  const filteredNotifications = useMemo(
+    () =>
+      activeTab === "unread"
+        ? notifications.filter((notification) => !notification.read)
+        : notifications,
+    [activeTab, notifications],
+  );
 
   return (
     <PageShell
       title="Notifications"
-      subtitle="Stay updated with stock alerts, approvals, and important system activities."
+      subtitle="Review operational alerts and open their related transactions."
       actions={
         <Button
           variant="outline"
-          onClick={markAllAsRead}
-          disabled={markAllReadMutation.isPending || notifications.every((notification) => notification.read)}
-          className="border-green-200 text-green-700 hover:bg-green-50 hover:text-green-800"
+          onClick={() => markAllReadMutation.mutate()}
+          disabled={
+            markAllReadMutation.isPending ||
+            notifications.every((notification) => notification.read)
+          }
         >
           Mark all as read
         </Button>
       }
     >
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-5 bg-green-50">
-          <TabsTrigger
-            value="all"
-            className="data-[state=active]:bg-white data-[state=active]:text-green-700"
-          >
-            All
-          </TabsTrigger>
-          <TabsTrigger
-            value="unread"
-            className="data-[state=active]:bg-white data-[state=active]:text-green-700"
-          >
-            Unread
-          </TabsTrigger>
+        <TabsList className="mb-5 bg-green-50 dark:bg-slate-900">
+          <TabsTrigger value="all">All</TabsTrigger>
+          <TabsTrigger value="unread">Unread</TabsTrigger>
         </TabsList>
       </Tabs>
 
-      <div className="grid gap-4">
-        {notificationsQuery.isLoading && (
-          <Card className="border-dashed border-green-200 bg-green-50/40">
-            <CardContent className="p-6 text-center text-sm text-slate-500">
-              Loading notifications...
-            </CardContent>
-          </Card>
-        )}
-
-        {notificationsQuery.isError && (
-          <Card className="border-red-200 bg-red-50/80">
-            <CardContent className="p-6 text-center text-sm text-red-700">
-              {(notificationsQuery.error as Error).message}
-            </CardContent>
-          </Card>
-        )}
-
-        {!notificationsQuery.isLoading && !notificationsQuery.isError && filteredNotifications.length === 0 && (
-          <Card className="border-dashed border-green-200 bg-green-50/40">
-            <CardContent className="p-6 text-center text-sm text-slate-500">
-              No notifications available.
-            </CardContent>
-          </Card>
-        )}
-
-        {filteredNotifications.map((item, index) => (
-          <Card
-            key={`${item.title}-${index}`}
-            className={`transition-all ${getCardClass(item.type, item.read)}`}
-          >
-            <CardContent className="flex flex-col gap-4 p-5 md:flex-row md:items-start md:justify-between">
-              <div className="flex gap-4">
-                <div className="shrink-0">{getIcon(item.type)}</div>
-
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="font-semibold text-slate-800">
-                      {item.title}
-                    </h3>
-
-                    {!item.read && (
-                      <Badge
-                        variant="outline"
-                        className={getTypeBadgeClass(item.type)}
+      <Card>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[820px] text-left text-sm">
+              <thead className="border-b bg-slate-50 text-xs uppercase tracking-wide text-slate-500 dark:bg-slate-900 dark:text-slate-400">
+                <tr>
+                  <th className="w-12 px-4 py-3">Type</th>
+                  <th className="px-4 py-3">Notification</th>
+                  <th className="px-4 py-3">Reference</th>
+                  <th className="px-4 py-3">Time</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="w-28 px-4 py-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {notificationsQuery.isLoading ? (
+                  <tr>
+                    <td className="px-4 py-10 text-center text-slate-500" colSpan={6}>
+                      Loading notifications...
+                    </td>
+                  </tr>
+                ) : notificationsQuery.isError ? (
+                  <tr>
+                    <td className="px-4 py-10 text-center text-red-600" colSpan={6}>
+                      {(notificationsQuery.error as Error).message}
+                    </td>
+                  </tr>
+                ) : filteredNotifications.length === 0 ? (
+                  <tr>
+                    <td className="px-4 py-10 text-center text-slate-500" colSpan={6}>
+                      No notifications available.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredNotifications.map((notification) => {
+                    const destination = notificationDestination(notification);
+                    return (
+                      <tr
+                        key={notification.id}
+                        className={`border-b last:border-0 ${notification.read ? "bg-white dark:bg-slate-950" : "bg-green-50/60 dark:bg-emerald-950/30"}`}
                       >
-                        New
-                      </Badge>
-                    )}
-                  </div>
-
-                  <p className="mt-1 text-sm leading-6 text-slate-600">
-                    {item.description}
-                  </p>
-
-                  {item.relatedType === "STOCK_TRANSFER" && item.relatedId && (
-                    <Link
-                      className="mt-2 inline-flex text-sm font-medium text-green-700 hover:text-green-800"
-                      href={`/stock-transfers?transferId=${item.relatedId}`}
-                    >
-                      View {item.relatedReference ?? "transfer"}
-                    </Link>
-                  )}
-
-                  {item.relatedType === "SALE" && item.relatedId && (
-                    <Link
-                      className="mt-2 inline-flex text-sm font-medium text-green-700 hover:text-green-800"
-                      href="/accounting/receipt-verification"
-                    >
-                      Review {item.relatedReference ?? "sale receipt"}
-                    </Link>
-                  )}
-
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <Badge
-                      variant="secondary"
-                      className="bg-white/80 text-slate-600"
-                    >
-                      {item.time}
-                    </Badge>
-
-                    {item.type && (
-                      <Badge
-                        variant="outline"
-                        className={
-                          item.type === "warning"
-                            ? "border-amber-200 text-amber-700"
-                            : item.type === "success"
-                              ? "border-emerald-200 text-emerald-700"
-                              : "border-green-200 text-green-700"
-                        }
-                      >
-                        {item.type.charAt(0).toUpperCase() + item.type.slice(1)}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {!item.read && (
-                <div className="flex shrink-0 md:justify-end">
-                  <Button
-                    size="sm"
-                    onClick={() => markAsRead(index)}
-                    disabled={markReadMutation.isPending}
-                    className="bg-green-600 text-white hover:bg-green-700"
-                  >
-                    Mark as read
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+                        <td className="px-4 py-3">
+                          <TypeIcon type={notification.type} />
+                        </td>
+                        <td className="max-w-xl px-4 py-3">
+                          <p className="font-medium text-slate-900 dark:text-slate-100">
+                            {notification.title}
+                          </p>
+                          <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                            {notification.description}
+                          </p>
+                        </td>
+                        <td className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">
+                          {notification.relatedReference ?? "-"}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-slate-500 dark:text-slate-400">
+                          {notification.time}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge variant={notification.read ? "secondary" : "outline"}>
+                            {notification.read ? "Read" : "New"}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <Button
+                            size="sm"
+                            variant={destination ? "outline" : "ghost"}
+                            disabled={openMutation.isPending || (!destination && notification.read)}
+                            onClick={() =>
+                              openMutation.mutate({ notification, destination })
+                            }
+                          >
+                            {destination ? (
+                              <>
+                                Open <ArrowUpRight className="ml-1 size-3.5" />
+                              </>
+                            ) : (
+                              "Mark read"
+                            )}
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
     </PageShell>
   );
 }

@@ -25,7 +25,7 @@ describe("customer orders, direct sales, accounting", () => {
       const fixture = await createAuthFixture(prisma, { namespace: "customer-order" });
       const product = await prisma.product.create({ data: { itemCode: "ORDER-ITEM", name: "Order Item", price: 100, status: "ACTIVE" } });
        await prisma.inventoryBalance.create({ data: { locationId: fixture.locations.branches.QC.id, productId: product.id, onHand: 5, reserved: 0, unitCost: 10 } });
-      const { createCustomerOrder, releaseCustomerOrder } = await import("../../lib/server/services/customer-sales");
+      const { createCustomerOrder, recordCustomerOrderPayment, releaseCustomerOrder } = await import("../../lib/server/services/customer-sales");
       const branchActor = actor(fixture.users.branchStaff, fixture.locations.branches.QC);
 
       const order = await createCustomerOrder(branchActor, {
@@ -37,6 +37,9 @@ describe("customer orders, direct sales, accounting", () => {
       });
 
       expect(order).toMatchObject({ status: "Reserved", downpayment: 50, balance: 150 });
+      await expect(recordCustomerOrderPayment(branchActor, order.id, { amount: 25, reference: "DP-0002" })).resolves.toMatchObject({ downpayment: 75, balance: 125 });
+      await expect(recordCustomerOrderPayment(branchActor, order.id, { amount: 126, reference: "DP-TOO-MUCH" })).rejects.toMatchObject({ code: "INVALID_PAYMENT" });
+      await expect(recordCustomerOrderPayment(branchActor, order.id, { amount: 5, reference: "DP-0002" })).rejects.toMatchObject({ code: "DUPLICATE_RECEIPT" });
       await expect(prisma.inventoryBalance.findFirstOrThrow({ where: { productId: product.id } })).resolves.toMatchObject({ onHand: 5, reserved: 2 });
       await expect(createCustomerOrder(branchActor, {
         customer: { name: "Duplicate Receipt" },
@@ -46,7 +49,7 @@ describe("customer orders, direct sales, accounting", () => {
         lines: [{ productId: product.id, quantity: 1 }],
       })).rejects.toMatchObject({ code: "DUPLICATE_RECEIPT" });
 
-      const released = await releaseCustomerOrder(branchActor, order.id, { finalReceiptNumber: "FINAL-0001", amountPaid: 150, paymentMethod: "CASH" });
+      const released = await releaseCustomerOrder(branchActor, order.id, { finalReceiptNumber: "FINAL-0001", amountPaid: 125, paymentMethod: "CASH" });
 
       expect(released).toMatchObject({ status: "Released", balance: 0 });
       await expect(prisma.inventoryBalance.findFirstOrThrow({ where: { productId: product.id } })).resolves.toMatchObject({ onHand: 3, reserved: 0 });

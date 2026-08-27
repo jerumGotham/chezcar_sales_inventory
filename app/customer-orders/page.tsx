@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import { useSearchParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Select from "react-select";
 import type { StylesConfig } from "react-select";
 import {
@@ -115,6 +115,7 @@ function formatPeso(value: number) {
 }
 
 function formatDate(value: string) {
+  if (!value) return "Not set";
   return new Date(value).toLocaleDateString("en-PH", {
     month: "short",
     day: "numeric",
@@ -277,6 +278,7 @@ const reactSelectStyles: StylesConfig<SelectOption, false> = {
 
 export default function CustomerOrdersPage() {
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
   const [activeView, setActiveView] = useState<"orders" | "sales">(
     searchParams.get("view") === "sales" ? "sales" : "orders",
   );
@@ -298,6 +300,8 @@ export default function CustomerOrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<CustomerOrderRow | null>(
     null,
   );
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentReference, setPaymentReference] = useState("");
 
   const [page, setPage] = useState(1);
   const pageSize = 10;
@@ -332,6 +336,35 @@ export default function CustomerOrdersPage() {
     queryKey: ["customer-direct-sales-list"],
     queryFn: fetchDirectSales,
     enabled: activeView === "sales",
+  });
+  const paymentMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedOrder) throw new Error("Select an order first.");
+      const response = await fetch(
+        `/api/customer-orders/${selectedOrder.id}/payment`,
+        {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amount: Number(paymentAmount),
+            reference: paymentReference,
+          }),
+        },
+      );
+      const json = await response.json();
+      if (!response.ok) {
+        throw new Error(json.error?.message ?? "Unable to save payment");
+      }
+      return json.data as CustomerOrderRow;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["customer-orders-list"] });
+      setIsDownpaymentOpen(false);
+      setSelectedOrder(null);
+      setPaymentAmount("");
+      setPaymentReference("");
+    },
   });
 
   const rows = data?.data ?? [];
@@ -723,10 +756,16 @@ export default function CustomerOrdersPage() {
                             className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
                             onClick={() => {
                               setSelectedOrder(order);
+                              setPaymentAmount("");
+                              setPaymentReference("");
                               setIsDownpaymentOpen(true);
                             }}
+                            disabled={
+                              ["Released", "Cancelled"].includes(order.status) ||
+                              order.balance <= 0
+                            }
                           >
-                            Downpayment
+                            {order.downpayment > 0 ? "Add Payment" : "Downpayment"}
                           </Button>
 
                           {order.status !== "Released" && (
@@ -785,14 +824,24 @@ export default function CustomerOrdersPage() {
         open={isDownpaymentOpen}
         onOpenChange={(open) => {
           setIsDownpaymentOpen(open);
-          if (!open) setSelectedOrder(null);
+          if (!open && !paymentMutation.isPending) {
+            setSelectedOrder(null);
+            setPaymentAmount("");
+            setPaymentReference("");
+          }
         }}
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Record Downpayment</DialogTitle>
+            <DialogTitle>
+              {selectedOrder?.downpayment
+                ? "Add Customer Payment"
+                : "Record Downpayment"}
+            </DialogTitle>
             <DialogDescription>
-              Add payment for this customer order.
+              {selectedOrder?.downpayment
+                ? "Add this payment to the order's existing downpayment."
+                : "Record the customer's first payment for this order."}
             </DialogDescription>
           </DialogHeader>
 
@@ -838,6 +887,13 @@ export default function CustomerOrdersPage() {
               </div>
 
               <div className="space-y-1">
+                <p className="text-xs text-slate-500">Current Downpayment</p>
+                <p className="text-sm font-semibold text-emerald-700">
+                  ₱{selectedOrder?.downpayment?.toLocaleString("en-PH")}
+                </p>
+              </div>
+
+              <div className="space-y-1">
                 <p className="text-xs text-slate-500">Remaining Balance</p>
                 <p className="text-sm font-semibold text-amber-600">
                   ₱{selectedOrder?.balance?.toLocaleString("en-PH")}
@@ -846,26 +902,58 @@ export default function CustomerOrdersPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Downpayment Amount</Label>
-              <Input type="number" placeholder="0" />
+              <Label htmlFor="order-payment-amount">Payment Amount</Label>
+              <Input
+                id="order-payment-amount"
+                type="number"
+                min="0.01"
+                max={selectedOrder?.balance}
+                step="0.01"
+                placeholder="0.00"
+                value={paymentAmount}
+                onChange={(event) => setPaymentAmount(event.target.value)}
+              />
             </div>
 
             <div className="space-y-2">
-              <Label>Reference / Notes</Label>
-              <Input placeholder="Receipt, bank transfer, etc." />
+              <Label htmlFor="order-payment-reference">
+                Payment Receipt / Reference
+              </Label>
+              <Input
+                id="order-payment-reference"
+                placeholder="OR-000123 or transfer reference"
+                value={paymentReference}
+                onChange={(event) => setPaymentReference(event.target.value)}
+                maxLength={100}
+              />
             </div>
+            {paymentMutation.error ? (
+              <p className="text-sm text-red-600">
+                {(paymentMutation.error as Error).message}
+              </p>
+            ) : null}
           </div>
 
           <DialogFooter>
             <Button
               variant="outline"
               onClick={() => setIsDownpaymentOpen(false)}
+              disabled={paymentMutation.isPending}
             >
               Cancel
             </Button>
 
-            <Button className="bg-emerald-600 text-white hover:bg-emerald-700">
-              Save Payment
+            <Button
+              className="bg-emerald-600 text-white hover:bg-emerald-700"
+              onClick={() => paymentMutation.mutate()}
+              disabled={
+                paymentMutation.isPending ||
+                !paymentReference.trim() ||
+                Number(paymentAmount) <= 0 ||
+                Number(paymentAmount) > (selectedOrder?.balance ?? 0)
+              }
+            >
+              {paymentMutation.isPending ? "Saving..." : "Save Payment"}
             </Button>
           </DialogFooter>
         </DialogContent>

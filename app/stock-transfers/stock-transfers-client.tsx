@@ -2,7 +2,14 @@
 
 import { useState, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Trash2, AlertTriangle, CheckCircle2, X } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Trash2,
+  X,
+} from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
@@ -65,6 +72,15 @@ type Product = {
 };
 type DraftLine = { productId: string; quantity: number };
 type ShortageResolution = "loss" | "restore";
+type TransferPage = {
+  data: Transfer[];
+  meta: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+};
 
 function getTransferStatusLabel(status: string) {
   return status === "FOR_DISPATCH"
@@ -110,6 +126,26 @@ async function request<T>(
   return json.data;
 }
 
+async function fetchTransferPage(
+  page: number,
+  pageSize: number,
+  transferId?: string,
+): Promise<TransferPage> {
+  const searchParams = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+  });
+  if (transferId) searchParams.set("transferId", transferId);
+  const response = await fetch(`/api/stock-transfers?${searchParams}`, {
+    credentials: "same-origin",
+  });
+  const json = await response.json();
+  if (!response.ok) {
+    throw new Error(json.error?.message ?? "Unable to load stock transfers");
+  }
+  return json as TransferPage;
+}
+
 export function StockTransfersClient({
   role,
   branches,
@@ -126,6 +162,8 @@ export function StockTransfersClient({
   const [selectedTransferId, setSelectedTransferId] = useState(
     initialTransferId ?? "",
   );
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
   const [destinationId, setDestinationId] = useState("");
   const [replacementForTransferId, setReplacementForTransferId] = useState("");
   const [draftLines, setDraftLines] = useState<DraftLine[]>([
@@ -153,22 +191,35 @@ export function StockTransfersClient({
   }
 
   const transfers = useQuery({
-    queryKey: ["stock-transfers"],
-    queryFn: () => request<Transfer[]>("/api/stock-transfers"),
+    queryKey: ["stock-transfers", { page, pageSize, initialTransferId }],
+    queryFn: () => fetchTransferPage(page, pageSize, initialTransferId),
+    placeholderData: (previousData) => previousData,
   });
   const selected = selectedTransferId
-    ? (transfers.data?.find((transfer) => transfer.id === selectedTransferId) ??
+    ? (transfers.data?.data.find((transfer) => transfer.id === selectedTransferId) ??
       null)
     : null;
   const rememberTransfer = (transfer: Transfer) => {
     setSelectedTransferId(transfer.id);
-    queryClient.setQueryData<Transfer[]>(["stock-transfers"], (current) => {
-      if (!current) return [transfer];
-      const exists = current.some((item) => item.id === transfer.id);
-      return exists
-        ? current.map((item) => (item.id === transfer.id ? transfer : item))
-        : [transfer, ...current];
-    });
+    queryClient.setQueryData<TransferPage>(
+      ["stock-transfers", { page, pageSize, initialTransferId }],
+      (current) => {
+        if (!current) return current;
+        const exists = current.data.some((item) => item.id === transfer.id);
+        return {
+          ...current,
+          data: exists
+            ? current.data.map((item) =>
+                item.id === transfer.id ? transfer : item,
+              )
+            : [transfer, ...current.data].slice(0, pageSize),
+          meta: {
+            ...current.meta,
+            total: exists ? current.meta.total : current.meta.total + 1,
+          },
+        };
+      },
+    );
   };
 
   const updateDraftMutation = useMutation({
@@ -367,7 +418,7 @@ export function StockTransfersClient({
   );
 
   const hasDuplicateDestination = destinationId
-    ? (transfers.data?.some(
+    ? (transfers.data?.data.some(
         (t) => t.status === "DRAFT" && t.destination.id === destinationId,
       ) ?? false)
     : false;
@@ -1225,8 +1276,8 @@ export function StockTransfersClient({
                       Loading transfers...
                     </td>
                   </tr>
-                ) : transfers.data?.length ? (
-                  transfers.data.map((transfer) => (
+                ) : transfers.data?.data.length ? (
+                  transfers.data.data.map((transfer) => (
                     <tr className="border-t" key={transfer.id}>
                       <td className="p-3 font-medium">{transfer.reference}</td>
                       <td className="p-3">
@@ -1281,6 +1332,41 @@ export function StockTransfersClient({
                 )}
               </tbody>
             </table>
+          </div>
+          <div className="flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-slate-500">
+              Page {transfers.data?.meta.page ?? page} of {transfers.data?.meta.totalPages ?? 1}
+              {transfers.isFetching && !transfers.isLoading ? " · Updating..." : ""}
+            </p>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={page <= 1 || transfers.isFetching}
+                onClick={() => {
+                  setSelectedTransferId("");
+                  setPage((current) => Math.max(1, current - 1));
+                }}
+              >
+                <ChevronLeft className="mr-1 h-4 w-4" />
+                Previous
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={
+                  page >= (transfers.data?.meta.totalPages ?? 1) ||
+                  transfers.isFetching
+                }
+                onClick={() => {
+                  setSelectedTransferId("");
+                  setPage((current) => current + 1);
+                }}
+              >
+                Next
+                <ChevronRight className="ml-1 h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

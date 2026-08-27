@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { useShellAccess } from "@/components/shell-access-context";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth-client";
+import { notificationDestination } from "@/lib/notification-links";
 
 const THEME_KEY = "chezcar-theme";
 
@@ -21,7 +22,16 @@ type HeaderNotification = {
   description: string;
   read: boolean;
   createdAt: string;
+  relatedType?: string | null;
+  relatedId?: string | null;
 };
+
+async function markHeaderNotificationRead(id: string) {
+  await fetch(`/api/notifications/${id}/read`, {
+    method: "POST",
+    credentials: "same-origin",
+  });
+}
 
 async function fetchHeaderNotifications() {
   const response = await fetch("/api/notifications", { credentials: "same-origin" });
@@ -235,6 +245,23 @@ export function AppHeader({
     };
   }, []);
 
+  const openToastNotification = async () => {
+    if (!toast) return;
+    if (!toast.read) await markHeaderNotificationRead(toast.id);
+    queryClient.setQueryData<HeaderNotification[]>(
+      ["notifications"],
+      (current = []) =>
+        current.map((notification) =>
+          notification.id === toast.id
+            ? { ...notification, read: true }
+            : notification,
+        ),
+    );
+    const destination = notificationDestination(toast) ?? "/notifications";
+    setToast(null);
+    router.push(destination as Route);
+  };
+
   return (
     <div className="mb-6 flex flex-col gap-4 rounded-[1.75rem] border border-brand-100 bg-white px-5 py-4 shadow-sm dark:border-slate-800 dark:bg-slate-950 lg:flex-row lg:items-center lg:justify-between">
       <div>
@@ -389,11 +416,15 @@ export function AppHeader({
       {toast ? (
         <div className="fixed right-4 top-4 z-50 w-[min(24rem,calc(100vw-2rem))] rounded-2xl border border-brand-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900" role="status" aria-live="polite">
           <div className="flex items-start gap-3">
-            <Link href="/notifications" className="min-w-0 flex-1" onClick={() => setToast(null)}>
+            <button
+              type="button"
+              className="min-w-0 flex-1 text-left"
+              onClick={() => void openToastNotification()}
+            >
               <p className="text-xs font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">New notification</p>
               <p className="mt-1 font-semibold text-foreground">{toast.title}</p>
               <p className="mt-1 line-clamp-2 text-sm text-slate-500 dark:text-slate-400">{toast.description}</p>
-            </Link>
+            </button>
             <button type="button" className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => setToast(null)} aria-label="Dismiss notification">
               <X className="h-4 w-4" />
             </button>

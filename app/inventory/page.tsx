@@ -13,8 +13,13 @@ import {
 // UI-SPEC: Stock Room (SR) first, then QC, BL, LU, VC, SP.
 const SCOPE_LOCATION_ORDER = ["SR", "QC", "BL", "LU", "VC", "SP"];
 
-export default async function InventoryPage() {
+export default async function InventoryPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ balanceId?: string }>;
+}) {
   const access = await loadShellAccess(await headers());
+  const { balanceId } = await searchParams;
 
   if (!access.authenticated) {
     redirect("/sign-in");
@@ -46,6 +51,7 @@ export default async function InventoryPage() {
       role={access.identity.role}
       scope={access.scope}
       locations={orderedLocations}
+      initialBalanceId={balanceId}
     />
   );
 }
