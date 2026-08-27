@@ -14,6 +14,7 @@ function errorResponse(error: unknown) {
 export async function POST(request: Request, context: Context) {
   try {
     const actor = await requireCapability(request.headers, "sales:verify");
+    if (actor.role !== "ACCOUNTING_STAFF") return Response.json({ error: { code: "FORBIDDEN", message: "Only Accounting Staff can submit receipt reviews" } }, { status: 403 });
     const { saleId } = await context.params;
     return Response.json({ data: await reviewSale(actor, saleId, accountingReviewSchema.parse(await request.json())) });
   } catch (error) {

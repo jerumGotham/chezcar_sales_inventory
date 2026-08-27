@@ -392,6 +392,13 @@ export async function listCustomerOrders(actor: AuthContext) {
   return orders.map(serializeOrder);
 }
 
+export async function getCustomerOrderById(actor: AuthContext, id: string) {
+  const order = await prisma.customerOrder.findUnique({ where: { id }, include: ORDER_INCLUDE });
+  if (!order) throw new CustomerSalesError("NOT_FOUND", "Order not found", 404);
+  if (actor.role === "BRANCH_STAFF" && order.locationId !== actorLocationId(actor)) throw new CustomerSalesError("FORBIDDEN", "Order is outside assigned branch", 403);
+  return serializeOrder(order);
+}
+
 export async function releaseCustomerOrder(actor: AuthContext, id: string, input: z.infer<typeof releaseOrderSchema>) {
   assertBranchOrAdmin(actor);
   try {
@@ -720,7 +727,7 @@ function serializeOrder(order: Prisma.CustomerOrderGetPayload<{ include: typeof 
     COMPLETED: "Released",
     CANCELLED: "Cancelled",
   };
-  return { id: order.id, orderNo: order.reference, customer: order.customer.name, branch: order.location.name, itemSummary: order.lines.map((line) => line.productName).join(", "), totalItems: order.lines.reduce((sum, line) => sum + line.quantity, 0), status: statusLabels[order.status], type: order.type, paymentStatus: order.remainingBalance.toNumber() === 0 ? "Paid" : order.downpaymentAmount.toNumber() > 0 ? "Partial" : "Unpaid", downpayment: serializeMoney(order.downpaymentAmount), totalAmount: serializeMoney(order.totalAmount), balance: serializeMoney(order.remainingBalance), orderDate: order.createdAt.toISOString(), releaseDate: order.expectedReleaseDate?.toISOString() ?? "", cancelledAt: order.cancelledAt?.toISOString() ?? null, releasedAt: order.releasedAt?.toISOString() ?? null };
+  return { id: order.id, orderNo: order.reference, customer: order.customer.name, branch: order.location.name, itemSummary: order.lines.map((line) => line.productName).join(", "), totalItems: order.lines.reduce((sum, line) => sum + line.quantity, 0), status: statusLabels[order.status], type: order.type, paymentStatus: order.remainingBalance.toNumber() === 0 ? "Paid" : order.downpaymentAmount.toNumber() > 0 ? "Partial" : "Unpaid", downpayment: serializeMoney(order.downpaymentAmount), totalAmount: serializeMoney(order.totalAmount), balance: serializeMoney(order.remainingBalance), orderDate: order.createdAt.toISOString(), releaseDate: order.expectedReleaseDate?.toISOString() ?? "", finalReceiptNumber: order.finalReceiptNumber, downpaymentReceiptNumber: order.downpaymentReceiptNumber, notes: order.notes, cancelledAt: order.cancelledAt?.toISOString() ?? null, releasedAt: order.releasedAt?.toISOString() ?? null, lines: order.lines.map((line) => ({ productId: line.productId, itemCode: line.productItemCode, name: line.productName, quantity: line.quantity, unitPrice: serializeMoney(line.finalUnitPrice), amount: line.quantity * line.finalUnitPrice.toNumber() })) };
 }
 
 function serializeSale(sale: Prisma.SaleGetPayload<{ include: typeof SALE_INCLUDE }>) {

@@ -59,6 +59,7 @@ A persisted assignment that contradicts the fixed matrix (for example Stock Staf
 | `GET`, `PATCH`, `DELETE` | `/api/customers/:id` | Prisma Customer, sales, and customer orders | `customers:view`; delete deactivates the customer |
 | `GET` | `/api/customer-orders/options?locationId=<branchId>` | Active customers and products with available branch stock | `customer-orders:view`; Admin supplies a branch, Branch Staff scope is persisted |
 | `GET`, `POST` | `/api/customer-orders` | Prisma CustomerOrder/Customer/InventoryBalance | `customer-orders:view` plus Branch/Admin mutation policy |
+| `GET` | `/api/customer-orders/:orderId` | Single persisted customer order with lines and release/payment summary | `customer-orders:view`; Branch Staff restricted to assigned branch |
 | `POST` | `/api/customer-orders/:orderId/:action` | Prisma CustomerOrder/Sale/InventoryMovement | `customer-orders:view`; actions `release`, `cancel` |
 | `GET`, `POST` | `/api/sales` | Prisma Sale/SaleLine/InventoryMovement | `customer-orders:view`; Branch/Admin direct sale policy |
 | `GET` | `/api/accounting/receipts` | Prisma Sale/SaleLine/SaleAccountingReview | `sales:verify:view` |
