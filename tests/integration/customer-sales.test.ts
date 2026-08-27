@@ -38,7 +38,8 @@ describe("customer orders, direct sales, accounting", () => {
 
       expect(order).toMatchObject({ status: "Reserved", downpayment: 50, balance: 150 });
       await expect(recordCustomerOrderPayment(branchActor, order.id, { amount: 25, reference: "DP-0002" })).resolves.toMatchObject({ downpayment: 75, balance: 125 });
-      await expect(recordCustomerOrderPayment(branchActor, order.id, { amount: 126, reference: "DP-TOO-MUCH" })).rejects.toMatchObject({ code: "INVALID_PAYMENT" });
+      await expect(recordCustomerOrderPayment(branchActor, order.id, { amount: 5 })).resolves.toMatchObject({ downpayment: 80, balance: 120 });
+      await expect(recordCustomerOrderPayment(branchActor, order.id, { amount: 121, reference: "DP-TOO-MUCH" })).rejects.toMatchObject({ code: "INVALID_PAYMENT" });
       await expect(recordCustomerOrderPayment(branchActor, order.id, { amount: 5, reference: "DP-0002" })).rejects.toMatchObject({ code: "DUPLICATE_RECEIPT" });
       await expect(prisma.inventoryBalance.findFirstOrThrow({ where: { productId: product.id } })).resolves.toMatchObject({ onHand: 5, reserved: 2 });
       await expect(createCustomerOrder(branchActor, {
@@ -49,7 +50,7 @@ describe("customer orders, direct sales, accounting", () => {
         lines: [{ productId: product.id, quantity: 1 }],
       })).rejects.toMatchObject({ code: "DUPLICATE_RECEIPT" });
 
-      const released = await releaseCustomerOrder(branchActor, order.id, { finalReceiptNumber: "FINAL-0001", amountPaid: 125, paymentMethod: "CASH" });
+      const released = await releaseCustomerOrder(branchActor, order.id, { finalReceiptNumber: "FINAL-0001", amountPaid: 120, paymentMethod: "CASH" });
 
       expect(released).toMatchObject({ status: "Released", balance: 0 });
       await expect(prisma.inventoryBalance.findFirstOrThrow({ where: { productId: product.id } })).resolves.toMatchObject({ onHand: 3, reserved: 0 });

@@ -917,7 +917,7 @@ export default function CustomerOrdersPage() {
 
             <div className="space-y-2">
               <Label htmlFor="order-payment-reference">
-                Payment Receipt / Reference
+                Payment Receipt / Reference (optional)
               </Label>
               <Input
                 id="order-payment-reference"
@@ -948,7 +948,6 @@ export default function CustomerOrdersPage() {
               onClick={() => paymentMutation.mutate()}
               disabled={
                 paymentMutation.isPending ||
-                !paymentReference.trim() ||
                 Number(paymentAmount) <= 0 ||
                 Number(paymentAmount) > (selectedOrder?.balance ?? 0)
               }

@@ -77,7 +77,7 @@ export const cancelOrderSchema = z.object({ note: z.string().trim().max(1_000).o
 
 export const orderPaymentSchema = z.object({
   amount: z.coerce.number().positive().max(9_999_999_999.99),
-  reference: z.string().trim().min(1).max(100),
+  reference: z.string().trim().max(100).optional(),
 });
 
 export const directSaleSchema = z.object({
@@ -521,11 +521,13 @@ export async function recordCustomerOrderPayment(
         );
       }
 
-      await registerReceipt(tx, input.reference, "CUSTOMER_ORDER_PAYMENT", {
-        orderId: order.id,
-        locationId: order.locationId,
-        receiptBooklet: "",
-      });
+      if (input.reference) {
+        await registerReceipt(tx, input.reference, "CUSTOMER_ORDER_PAYMENT", {
+          orderId: order.id,
+          locationId: order.locationId,
+          receiptBooklet: "",
+        });
+      }
       const currentDownpayment = order.downpaymentAmount.toNumber();
       const updated = await tx.customerOrder.update({
         where: { id: order.id },
@@ -533,7 +535,7 @@ export async function recordCustomerOrderPayment(
           downpaymentAmount: decimal(currentDownpayment + input.amount),
           remainingBalance: decimal(remainingBalance - input.amount),
           downpaymentReceiptNumber:
-            order.downpaymentReceiptNumber ?? input.reference,
+            order.downpaymentReceiptNumber ?? input.reference ?? null,
           type:
             order.type === "RESERVATION_NO_DP"
               ? "RESERVATION_WITH_DP"

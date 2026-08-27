@@ -113,7 +113,7 @@ export default function ReleaseCustomerOrderPage() {
                 <div className="space-y-2"><Label htmlFor="finalReceiptNumber">Final Receipt Number</Label><Input id="finalReceiptNumber" name="finalReceiptNumber" placeholder="Handwritten receipt number" /></div>
                 <div className="space-y-2"><Label htmlFor="paymentMethod">Payment Method</Label><select id="paymentMethod" name="paymentMethod" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="CASH">Cash</option><option value="GCASH">GCash</option><option value="MAYA">Maya</option><option value="BANK_TRANSFER">Bank Transfer</option><option value="CREDIT_CARD">Credit Card</option><option value="SPLIT">Split</option></select></div>
                 <div className="space-y-2"><Label htmlFor="notes">Release Notes</Label><Input id="notes" name="notes" placeholder="Released by, remarks, etc." /></div>
-                <Button className="w-full bg-emerald-600 text-white hover:bg-emerald-700" disabled={releaseMutation.isPending || !["Reserved", "For Release"].includes(order.status)}>{releaseMutation.isPending ? "Releasing..." : "Confirm Release"}</Button>
+                <Button type="submit" className="w-full bg-emerald-600 text-white hover:bg-emerald-700" disabled={releaseMutation.isPending || !["Reserved", "For Release"].includes(order.status)}>{releaseMutation.isPending ? "Releasing..." : "Confirm Release"}</Button>
               </form>
             </CardContent>
           </Card>
