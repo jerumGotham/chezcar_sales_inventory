@@ -3,14 +3,14 @@
 
 ## Current status
 
-Vitest `4.1.11` is configured with Node unit and serial integration projects. The unit project covers the workbook profiler, canonicalizer, fixture generator, catalog/operational-reset gates, access policy, shell DTOs, proxy denial, branch/role routes, notification cursor/wake-up helpers, and the disposable-database/request helpers. The serial integration project covers migration application, seed/reload/reset determinism, persisted authorization factories, inventory scope and availability, the Better Auth admin surface, user/role/branch maintenance, session revocation, and first-login credential setup over a fixed-identity disposable PostgreSQL 17 container. No DOM testing library, browser runner, coverage tool, or CI workflow is checked in. Browser coverage remains a gap.
+Vitest `4.1.11` is configured with Node unit and serial integration projects. The unit project covers the workbook profiler, canonicalizer, fixture generator, catalog/operational-reset gates, access policy, shell DTOs, proxy denial, branch/role routes, notification cursor/wake-up helpers, and the disposable-database/request helpers. The serial integration project covers migration application, seed/reload/reset determinism, persisted authorization factories, product-image storage/routes, inventory scope and availability, the Better Auth admin surface, user/role/branch maintenance, session revocation, and first-login credential setup over a fixed-identity disposable PostgreSQL 17 container. No DOM testing library, browser runner, coverage tool, or CI workflow is checked in. Browser coverage remains a gap.
 
 | Capability | Current state |
 | --- | --- |
 | Unit tests | Vitest Node project; 22 suite files currently checked in |
 | Component tests | Not configured |
 | Route-handler tests | Unit-project direct-handler authorization suites (`tests/routes/authorization.test.ts`, `proxy.test.ts`); no DOM/browser runner |
-| Database integration tests | Serial Vitest project with fixed-identity disposable PostgreSQL 17 harness; 17 integration suite files currently checked in |
+| Database integration tests | Serial Vitest project with fixed-identity disposable PostgreSQL 17 harness; 18 integration suite files currently checked in |
 | End-to-end tests | Not configured |
 | Coverage reporting or thresholds | Not configured |
 | CI test execution | Not configured; `.github/workflows/` is absent |
@@ -86,6 +86,7 @@ Integration project (`npm run test:integration`, serial over disposable PostgreS
 | `tests/integration/factories.test.ts` | 01-13 | Persisted actor/session fixtures including deliberately invalid assignments |
 | `tests/integration/inventory-scope.test.ts` | 01-14 | Admin/Branch/SR persisted scopes and Accounting denial under hostile requests |
 | `tests/integration/inventory-availability.test.ts` | Independent cleanup slice | Active-location availability rows, dynamic filters, derived quantities/status, fixed staff scopes, and Accounting denial |
+| `tests/integration/product-images.test.ts` | Product images | Private image validation, upload/read/replace/remove, list serialization, and non-Admin denial |
 | `tests/integration/auth-admin-surface.test.ts` | 01-17 | Internal credential engine; public sign-up and generic admin operations unroutable |
 | `tests/integration/user-management.test.ts` | 01-09 | Owner-only user list/create/update semantics and error envelopes |
 | `tests/integration/branch-maintenance.test.ts` | Branch Maintenance slice | Persisted active-branch add/edit, uppercase unique immutable codes, and shared active-location sources |

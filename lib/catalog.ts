@@ -2,6 +2,7 @@ export type ProductStatus = "Active" | "Inactive";
 
 export type ProductRow = {
   id: string;
+  imageUrl: string | null;
   itemCode: string;
   name: string;
   category: string;

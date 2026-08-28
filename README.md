@@ -16,7 +16,7 @@ The framework baseline was upgraded to Next.js `16.3.2`, React `19.2.8`, and Tai
 ## Key modules
 
 - **Dashboard** — sales summaries, trends, branch performance, pending orders, and low-stock views.
-- **Customers and products** — Products uses a validated, authorized PostgreSQL read; customer data and product edit dialogs remain prototypes.
+- **Customers and products** — Products uses validated, authorized PostgreSQL list/maintenance APIs with private product-image upload and authenticated thumbnails; customer records and sales history are also durable.
 - **Inventory** — the primary product/location list and Inventory Availability sheet use authorized PostgreSQL reads clamped to each role's persisted scope (Admin selectable, Stock Staff fixed to `SR`, Branch Staff fixed to its branch, Accounting denied). Stock Staff supplier receiving is durable and SR-only; stock cards and adjustments remain prototypes.
 - **Customer and job orders** — list, create, detail, edit, and release-oriented prototype flows.
 - **Stock transfers** — durable SR-to-active-branch transfer ledger with exact receipt/discrepancy, investigation, and final resolution; real-time/offline/evidence uploads remain deferred.

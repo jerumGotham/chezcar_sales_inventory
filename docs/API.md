@@ -77,6 +77,7 @@ A persisted assignment that contradicts RoleScope fails closed: `BRANCH` require
 | `GET` | `/api/reports` | Prisma sales/orders/accounting/inventory summaries | `reports:view` |
 | `GET`, `POST` | `/api/products` | Prisma Product/InventoryBalance | `GET`: `products:view`; `POST`: Admin role |
 | `PATCH`, `DELETE` | `/api/products/:productId` | Prisma Product | Admin role |
+| `GET`, `POST`, `DELETE` | `/api/products/:productId/image` | Prisma Product + private persistent image storage | `GET`: `products:view`; `POST`/`DELETE`: Admin role |
 | `GET` | `/api/inventory` | Prisma Product/InventoryBalance/Location | `inventory:view` |
 | `GET` | `/api/inventory/availability` | Prisma Product/InventoryBalance/Location | `inventory:view`; active locations only |
 | `PATCH` | `/api/inventory/:balanceId` | Prisma Product/InventoryBalance | Admin role; reorder-level updates write the shared Product setting, while unit-cost updates remain balance-scoped |
@@ -140,6 +141,8 @@ One serializable transaction persists the receipt, immutable item-code/name line
 
 `POST /api/products` and `PATCH /api/products/:productId` are Admin-only. Active products require a positive current price; inactive products may have null price. `reorderLevel` is stored once on Product and applies to every location. Item code is globally unique and cannot be changed after the product has inventory balances or receipt/transfer/movement history. `DELETE /api/products/:productId` is Admin-only and allowed only for products with no inventory balance rows and no usage/history.
 
+`POST /api/products/:productId/image` accepts multipart field `image` and replaces the current product image after validating JPEG, PNG, or WebP content and a 6 MB maximum. `DELETE` clears the image metadata and best-effort removes the stored file. `GET` serves the image only to authenticated `products:view` holders with private caching. Product list rows expose a cache-busted authenticated `imageUrl`, not the private storage key.
+
 `GET /api/products` accepts:
 
 | Parameter | Type/default | Behavior |
@@ -149,7 +152,9 @@ One serializable transaction persists the receipt, immutable item-code/name line
 | `itemCode` | string, empty | Case-insensitive substring |
 | `name` | string, empty | Case-insensitive substring |
 | `category` | string, `all` | Exact category or all |
+| `brand` | string, `all` | Exact brand or all |
 | `status` | `all`, `Active`, `Inactive` | Product status |
+| `stockStatus` | `all`, `has-stock`, `no-stock`, `inactive-with-stock` | Product balance/status filter |
 
 Response:
 
@@ -157,10 +162,12 @@ Response:
 type ProductsResponse = {
   data: Array<{
     id: string;
+    imageUrl: string | null;
     itemCode: string;
     name: string;
     category: string;
-    price: number;
+    brand: string;
+    price: number | null;
     reorderLevel: number;
     status: "Active" | "Inactive";
     description?: string;

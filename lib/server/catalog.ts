@@ -19,6 +19,7 @@ import {
 } from "@/lib/server/policy/access";
 import { prisma } from "@/lib/server/prisma";
 import { findActiveOperationalLocation } from "@/lib/server/locations";
+import { deleteStoredProductImage } from "./services/product-images";
 import { notifyInventoryThresholdChange } from "./services/notifications";
 
 const baseListQuery = {
@@ -247,6 +248,9 @@ export async function listProducts(
   return {
     data: products.map((product) => ({
       id: product.id,
+      imageUrl: product.imageKey
+        ? `/api/products/${product.id}/image?v=${product.updatedAt.getTime()}`
+        : null,
       itemCode: product.itemCode,
       name: product.name,
       category: product.category ?? "Uncategorized",
@@ -360,6 +364,13 @@ export async function updateProduct(actor: AuthContext, productId: string, input
 
 export async function deleteProduct(actor: AuthContext, productId: string) {
   assertAdmin(actor);
+  const existing = await prisma.product.findUnique({
+    where: { id: productId },
+    select: { imageKey: true },
+  });
+  if (!existing) {
+    throw new ProductMutationError("NOT_FOUND", "Product not found", 404);
+  }
   const usageCount = await productUsage(productId);
   if (usageCount > 0) {
     throw new ProductMutationError("PRODUCT_USED", "Products with balances or history cannot be deleted", 409);
@@ -372,6 +383,12 @@ export async function deleteProduct(actor: AuthContext, productId: string) {
       throw new ProductMutationError("NOT_FOUND", "Product not found", 404);
     }
     throw error;
+  }
+
+  if (existing.imageKey) {
+    await deleteStoredProductImage(existing.imageKey).catch((cleanupError) => {
+      console.error("Unable to remove a deleted product image", cleanupError);
+    });
   }
 
   return { id: productId };

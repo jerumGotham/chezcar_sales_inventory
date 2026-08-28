@@ -1,7 +1,7 @@
 <!-- generated-by: gsd-doc-writer -->
 # Configuration
 
-This project uses checked-in configuration for Next.js, Better Auth, TypeScript, Tailwind CSS, PostCSS, React Query, Prisma, ESLint, Vitest, read-only SheetJS workbook profiling, and local PostgreSQL. Authentication plus product/inventory reads use PostgreSQL; most other business behavior remains mock-backed.
+This project uses checked-in configuration for Next.js, Better Auth, TypeScript, Tailwind CSS, PostCSS, React Query, Prisma, ESLint, Vitest, read-only SheetJS workbook profiling, and local PostgreSQL. Authentication and implemented product, inventory, customer, order, sales, accounting, notification, user, role, and branch workflows use PostgreSQL; Job Orders and supporting panels remain mock-backed.
 
 ## Environment variables
 
@@ -10,13 +10,14 @@ Copy the sanitized `.env.example` to an untracked `.env` and replace every place
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
 | `DATABASE_URL` | Authenticated runtime and Prisma commands | None | PostgreSQL connection used by Prisma, Better Auth, and catalog/inventory reads. |
+| `PRODUCT_IMAGE_STORAGE_PATH` | Product image upload | `./data/product-images` | Private JPEG/PNG/WebP product-image directory. Mount persistent storage in deployed environments; files are served only through the authenticated product-image API. |
 | `BETTER_AUTH_SECRET` | Runtime | None | At least 32 random characters used to protect authentication state. Use a deployment secret. |
 | `BETTER_AUTH_URL` | Runtime | Application origin | Canonical application origin, such as `http://localhost:3000` locally. |
 | `SEED_ADMIN_EMAIL` | Seed only | None | Email for the first development Admin. |
 | `SEED_ADMIN_PASSWORD` | Seed only | None | Admin password; the seed rejects examples and values shorter than 12 characters. |
 | `SEED_ADMIN_NAME` | Seed only | None | Display name for the seeded Admin. |
 | `ALLOW_CATALOG_RESET` | Catalog seed/reload and the phase gate only | None | Must equal `true`; still requires `NODE_ENV=test` with the exact disposable test URL or `NODE_ENV=development` with the exact isolated development URL, and is always refused in production or against the checked-in bind mount. |
-| `ALLOW_OPERATIONAL_DATA_RESET` | `db:data:reset` only | None | Must equal `true`; the reset accepts only the exact isolated development or disposable test URL and preserves users/auth, products, and locations. |
+| `ALLOW_OPERATIONAL_DATA_RESET` | `db:data:reset` only | None | Must equal `true`; the reset accepts only the exact isolated development or disposable test URL and preserves users/auth, roles, products, and locations. |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Browser push only | Empty | Public VAPID key exposed to authenticated browsers for PushManager subscription. |
 | `VAPID_PRIVATE_KEY` | Browser push only | Empty | Private VAPID key used server-side for best-effort browser push delivery attempts. |
 | `VAPID_SUBJECT` | Browser push only | `mailto:admin@example.invalid` | Contact subject passed to push providers. Use an owner/operator email or HTTPS URL. |
@@ -28,6 +29,7 @@ DATABASE_URL="postgresql://<user>:<password>@localhost:5435/<database>?schema=pu
 BETTER_AUTH_SECRET="<at-least-32-random-characters>"
 BETTER_AUTH_URL="http://localhost:3000"
 RECEIPT_STORAGE_PATH="./data/receipt-photos"
+PRODUCT_IMAGE_STORAGE_PATH="./data/product-images"
 NEXT_PUBLIC_VAPID_PUBLIC_KEY="<base64url-public-key>"
 VAPID_PRIVATE_KEY="<matching-private-key>"
 VAPID_SUBJECT="mailto:<operator-or-owner-email>"
@@ -37,7 +39,7 @@ Notification realtime delivery reuses `DATABASE_URL` for one dedicated PostgreSQ
 
 Browser push notifications are enabled only when both VAPID keys are present. Without them, durable in-app notifications and SSE still work, but the browser push opt-in button remains unavailable. Push provider acceptance never marks a notification read.
 
-`RECEIPT_STORAGE_PATH` controls the private receipt-evidence volume. For Coolify, mount a persistent volume or bind mount at `/app/storage` and set `RECEIPT_STORAGE_PATH=/app/storage/receipts`; Coolify documents `/app` as the container base directory for persistent storage. Do not expose this directory as a public static folder. Seed variables are needed only for `npm run db:seed`; keep production provisioning in a controlled operational workflow.
+`RECEIPT_STORAGE_PATH` and `PRODUCT_IMAGE_STORAGE_PATH` control private image volumes. For Coolify, mount a persistent volume or bind mount at `/app/storage`, then use paths such as `/app/storage/receipts` and `/app/storage/products`; Coolify documents `/app` as the container base directory for persistent storage. Do not expose either directory as a public static folder. Seed variables are needed only for `npm run db:seed`; keep production provisioning in a controlled operational workflow.
 
 ## Config file format
 
@@ -50,7 +52,7 @@ The npm scripts in `package.json` are:
 | `npm run dev` | `next dev` | Start the Next.js development server. |
 | `npm run build` | `next build` | Create a production build. |
 | `npm run start` | `next start` | Serve an existing production build. |
-| `npm run lint` | `eslint .` | Run the checked-in ESLint flat configuration; existing prototype findings currently make it fail. |
+| `npm run lint` | `eslint .` | Run the checked-in ESLint flat configuration; it passes with existing warnings. |
 | `npm run typecheck` | `tsc --noEmit` | Run strict TypeScript checking without emitting files. |
 | `npm run test` | `vitest run --project unit` | Run Node unit tests once; pass a test path after `--` for a focused run. |
 | `npm run test:integration` | `vitest run --project integration --no-file-parallelism` | Run serial integration tests against the fixed, no-bind-mount disposable PostgreSQL 17 harness. |
@@ -60,7 +62,7 @@ The npm scripts in `package.json` are:
 | `npm run db:migrate` | `prisma migrate dev` | Create/apply development migrations. Production uses `prisma migrate deploy`. |
 | `npm run db:seed` | `prisma db seed` | Transactionally load the approved canonical opening catalog and environment-supplied owner Admin on an explicitly allowed isolated target. |
 | `npm run db:catalog:reload` | `node prisma/seed.mjs --catalog-only` | Transactionally replace canonical products/opening balances and upsert the six import locations while preserving auth and additional Branch Maintenance rows; uses the same positive reset gates. |
-| `npm run db:data:reset` | `node --env-file=.env prisma/reset-operational-data.mjs` | Transactionally delete operational data while preserving users/auth, products, and required locations; requires explicit opt-in and an exact approved isolated database identity. |
+| `npm run db:data:reset` | `node --env-file=.env prisma/reset-operational-data.mjs` | Transactionally delete operational data while preserving users/auth, roles, products, and required locations; requires explicit opt-in and an exact approved isolated database identity. |
 | `npm run verify:phase-01 -- [--validate-evidence]` | `node scripts/verify-phase-01.mjs` | Phase 1 evidence gate: asserts the disposable test target and seed/reset environment, then runs fresh migration deploy, seed, two equivalent catalog reloads, full unit/integration suites, typecheck, and build; captures lint's expected failure baseline separately and writes/validates `docs/verification/phase-01-evidence.md`. |
 
 `package-lock.json` is present, so npm is the repository's locked package manager.

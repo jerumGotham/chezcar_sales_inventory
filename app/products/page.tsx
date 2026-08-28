@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Select from "react-select";
 import type { StylesConfig } from "react-select";
@@ -12,6 +13,8 @@ import {
   Tags,
   AlertTriangle,
   Ban,
+  ImagePlus,
+  Trash2,
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
@@ -78,7 +81,13 @@ const EMPTY_PRODUCT_FORM: ProductForm = {
   status: "ACTIVE",
 };
 
-async function productRequest(path: string, method: string, body?: unknown) {
+type ProductMutationResponse = { data: { id: string } };
+
+async function productRequest<T = ProductMutationResponse>(
+  path: string,
+  method: string,
+  body?: unknown,
+): Promise<T> {
   const response = await fetch(path, {
     method,
     credentials: "same-origin",
@@ -91,7 +100,27 @@ async function productRequest(path: string, method: string, body?: unknown) {
     throw new Error(json?.error?.message ?? "Unable to save product");
   }
 
-  return json;
+  return json as T;
+}
+
+async function productImageRequest(
+  productId: string,
+  method: "POST" | "DELETE",
+  file?: File,
+) {
+  const formData = new FormData();
+  if (file) formData.set("image", file);
+  const response = await fetch(`/api/products/${productId}/image`, {
+    method,
+    credentials: "same-origin",
+    body: method === "POST" ? formData : undefined,
+  });
+  const json = (await response.json().catch(() => null)) as {
+    error?: { message?: string };
+  } | null;
+  if (!response.ok) {
+    throw new Error(json?.error?.message ?? "Unable to save product image");
+  }
 }
 
 function formatPeso(value: number | null) {
@@ -176,6 +205,29 @@ export default function ProductsPage() {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [form, setForm] = useState<ProductForm>(EMPTY_PRODUCT_FORM);
   const [formError, setFormError] = useState("");
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [removeImage, setRemoveImage] = useState(false);
+  const [persistedProductId, setPersistedProductId] = useState<string | null>(null);
+  const imagePreviewUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (imagePreviewUrlRef.current) {
+        URL.revokeObjectURL(imagePreviewUrlRef.current);
+      }
+    };
+  }, []);
+
+  const replaceImageFile = (file: File | null) => {
+    if (imagePreviewUrlRef.current) {
+      URL.revokeObjectURL(imagePreviewUrlRef.current);
+    }
+    const previewUrl = file ? URL.createObjectURL(file) : null;
+    imagePreviewUrlRef.current = previewUrl;
+    setImageFile(file);
+    setImagePreviewUrl(previewUrl);
+  };
 
   const { data, error, isLoading, isFetching } = useQuery({
     queryKey: [
@@ -217,7 +269,7 @@ export default function ProductsPage() {
     ];
   }, [data?.filterOptions.brands]);
   const saveMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const payload = {
         itemCode: form.itemCode,
         name: form.name,
@@ -228,18 +280,34 @@ export default function ProductsPage() {
         reorderLevel: Number(form.reorderLevel || 0),
         status: form.status,
       };
-      return selectedProduct
-        ? productRequest(`/api/products/${selectedProduct.id}`, "PATCH", payload)
-        : productRequest("/api/products", "POST", payload);
+      const currentId = selectedProduct?.id ?? persistedProductId;
+      const response = currentId
+        ? await productRequest(`/api/products/${currentId}`, "PATCH", payload)
+        : await productRequest("/api/products", "POST", payload);
+      const productId = currentId ?? response.data.id;
+      if (!currentId) setPersistedProductId(productId);
+
+      if (imageFile) {
+        await productImageRequest(productId, "POST", imageFile);
+      } else if (removeImage) {
+        await productImageRequest(productId, "DELETE");
+      }
+      return response;
     },
     onSuccess: () => {
       setIsEditOpen(false);
       setSelectedProduct(null);
       setForm(EMPTY_PRODUCT_FORM);
       setFormError("");
+      replaceImageFile(null);
+      setRemoveImage(false);
+      setPersistedProductId(null);
       queryClient.invalidateQueries({ queryKey: ["products-master-list"] });
     },
-    onError: (error: Error) => setFormError(error.message),
+    onError: (error: Error) => {
+      setFormError(error.message);
+      queryClient.invalidateQueries({ queryKey: ["products-master-list"] });
+    },
   });
   const deleteMutation = useMutation({
     mutationFn: (productId: string) => productRequest(`/api/products/${productId}`, "DELETE"),
@@ -311,6 +379,9 @@ export default function ProductsPage() {
       }
       : EMPTY_PRODUCT_FORM);
     setFormError("");
+    replaceImageFile(null);
+    setRemoveImage(false);
+    setPersistedProductId(null);
     setIsEditOpen(true);
   };
 
@@ -503,9 +574,12 @@ export default function ProductsPage() {
             </div>
 
             <div className="overflow-x-auto">
-              <table className={`w-full ${isAdmin ? "min-w-[1150px]" : "min-w-[1020px]"}`}>
+              <table className={`w-full ${isAdmin ? "min-w-[1240px]" : "min-w-[1110px]"}`}>
                 <thead className="bg-slate-50">
                   <tr className="border-b">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Image
+                    </th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Item Code
                     </th>
@@ -537,7 +611,7 @@ export default function ProductsPage() {
                 <tbody>
                   {isLoading ? (
                     <tr>
-                      <td colSpan={isAdmin ? 9 : 8} className="px-5 py-16 text-center">
+                      <td colSpan={isAdmin ? 10 : 9} className="px-5 py-16 text-center">
                         <div className="flex items-center justify-center gap-2 text-slate-500">
                           <Loader2 className="h-4 w-4 animate-spin" />
                           Loading products...
@@ -547,7 +621,7 @@ export default function ProductsPage() {
                   ) : error ? (
                     <tr>
                       <td
-                        colSpan={isAdmin ? 9 : 8}
+                        colSpan={isAdmin ? 10 : 9}
                         className="px-5 py-16 text-center text-red-600"
                       >
                         {error.message}
@@ -556,7 +630,7 @@ export default function ProductsPage() {
                   ) : rows.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={isAdmin ? 9 : 8}
+                        colSpan={isAdmin ? 10 : 9}
                         className="px-5 py-16 text-center text-slate-500"
                       >
                         No products found.
@@ -568,6 +642,22 @@ export default function ProductsPage() {
                         key={product.id}
                         className="border-b transition-colors hover:bg-slate-50"
                       >
+                        <td className="px-5 py-3">
+                          <div className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border bg-slate-50">
+                            {product.imageUrl ? (
+                              <Image
+                                src={product.imageUrl}
+                                alt={`${product.name} product image`}
+                                fill
+                                unoptimized
+                                sizes="56px"
+                                className="object-cover"
+                              />
+                            ) : (
+                              <Package2 className="h-6 w-6 text-slate-300" />
+                            )}
+                          </div>
+                        </td>
                         <td className="px-5 py-4 text-sm text-slate-600">
                           {product.itemCode}
                         </td>
@@ -669,7 +759,12 @@ export default function ProductsPage() {
         open={isEditOpen}
         onOpenChange={(open) => {
           setIsEditOpen(open);
-          if (!open) setSelectedProduct(null);
+          if (!open) {
+            setSelectedProduct(null);
+            replaceImageFile(null);
+            setRemoveImage(false);
+            setPersistedProductId(null);
+          }
         }}
       >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
@@ -685,6 +780,56 @@ export default function ProductsPage() {
           </DialogHeader>
 
           <div className="grid gap-6 py-2">
+            <div className="grid gap-4 rounded-xl border bg-slate-50/60 p-4 sm:grid-cols-[112px_1fr] sm:items-center">
+              <div className="relative flex h-28 w-28 items-center justify-center overflow-hidden rounded-xl border bg-white">
+                {imagePreviewUrl || (!removeImage && selectedProduct?.imageUrl) ? (
+                  <Image
+                    src={imagePreviewUrl ?? selectedProduct?.imageUrl ?? ""}
+                    alt="Product image preview"
+                    fill
+                    unoptimized
+                    sizes="112px"
+                    className="object-cover"
+                  />
+                ) : (
+                  <ImagePlus className="h-8 w-8 text-slate-300" />
+                )}
+              </div>
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="productImage">Product Image</Label>
+                  <Input
+                    key={`${selectedProduct?.id ?? "new"}-${removeImage ? "removed" : "active"}`}
+                    id="productImage"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={(event) => {
+                      replaceImageFile(event.target.files?.[0] ?? null);
+                      setRemoveImage(false);
+                    }}
+                  />
+                  <p className="text-xs text-slate-500">
+                    JPEG, PNG, or WebP up to 6 MB.
+                  </p>
+                </div>
+                {(imageFile || (!removeImage && selectedProduct?.imageUrl)) && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                    onClick={() => {
+                      replaceImageFile(null);
+                      setRemoveImage(true);
+                    }}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Remove Image
+                  </Button>
+                )}
+              </div>
+            </div>
+
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="itemCode">Item Code</Label>

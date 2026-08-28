@@ -170,6 +170,8 @@ model Product {
   description        String?
   category           String?
   brand              String?
+  imageKey           String?             @unique
+  imageType          String?
   price              Decimal?            @db.Decimal(12, 2)
   reorderLevel       Int                 @default(0)
   status             ProductStatus       @default(ACTIVE)

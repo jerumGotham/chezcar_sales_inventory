@@ -20,10 +20,12 @@ The implemented database boundary consists of:
 - `prisma/migrations/20260828010000_sale_correction_movement_constraint/migration.sql`: permits source-free sale correction reversal/deduction audit movements while preserving transfer/receipt source exclusivity.
 - `prisma/migrations/20260828030000_branch_display_names/migration.sql`: updates the six canonical Location display names without replacing their identities.
 - `prisma/migrations/20260828040000_persisted_roles_permissions/migration.sql`: additive RoleScope/RoleDefinition storage, deterministic built-in grants, existing-user backfill, case-insensitive role-name uniqueness, and required User access-role relation.
+- `prisma/migrations/20260828050000_product_images/migration.sql`: optional paired Product image key/MIME metadata and unique private-storage keys.
 - `lib/server/prisma.ts`: server-only development-safe Prisma singleton.
 - `lib/server/auth.ts`: Better Auth Prisma adapter configuration (public instance, sign-up disabled).
 - `lib/server/internal-user-auth.ts`: server-only unmounted Better Auth Admin-plugin credential engine used only by staff-lifecycle services.
 - `lib/server/catalog.ts`: validated product reads plus inventory reads, Admin corrections, reorder-level updates, and movement listing.
+- `lib/server/services/product-images.ts`: private product-image validation, storage, replacement, read, and best-effort cleanup.
 - `prisma/seed.mjs`: validated canonical opening catalog and environment-driven first Admin.
 - `prisma/fixtures/opening-catalog.json`: approved canonical fixture (1,432 products, 8,592 six-location opening balances) with embedded workbook/resolution/source-map hashes.
 - `scripts/data-onboarding/`: read-only workbook profiler, fail-closed canonicalizer, reviewed resolutions, and the byte-stable fixture generator (`generate-seed.mjs --check` refuses stale committed output). These are developer CLIs with no HTTP or UI surface.
@@ -45,7 +47,7 @@ The additive `20260828030000_branch_display_names` migration updates the existin
 
 ### Product
 
-Uses unique `itemCode`, name, optional description/category/brand, nullable current Decimal price, `ACTIVE`/`INACTIVE` status, and timestamps. A null price is an approved value only for inactive, non-sellable opening products; it is not converted to zero. Historical price versions are not implemented yet.
+Uses unique `itemCode`, name, optional description/category/brand, nullable current Decimal price, optional paired private image key/MIME metadata, `ACTIVE`/`INACTIVE` status, and timestamps. A null price is an approved value only for inactive, non-sellable opening products; it is not converted to zero. Historical price versions are not implemented yet. Product images are validated JPEG/PNG/WebP files stored outside the database and served through an authenticated route.
 
 The additive `20260826030000_product_management_audit` migration adds nullable actor fields for product create/update/deactivate/reactivate accountability. Existing seeded/imported products may have null actor fields; Admin product mutations populate the relevant actor fields going forward.
 
@@ -126,7 +128,7 @@ The seed validates the approved fixture hash and complete six-location/product/b
 
 Both commands refuse before opening a write transaction unless `ALLOW_CATALOG_RESET=true` and the URL exactly identifies either the isolated development target above or the fixed disposable integration target. Production, unknown URLs, and the checked-in port-5435 bind mount are always refused. The service additionally verifies the connected database name with `current_database()` inside the transaction before its first write and validates the approved fixture hash plus complete six-location/product/balance shape. Catalog reload replaces products and opening balances, upserts the six import locations with their confirmed display names, and preserves additional authoritative Location rows and user assignments created through Branch Maintenance.
 
-To clear transactional development data without replacing master identities or products, set `ALLOW_OPERATIONAL_DATA_RESET=true` and run `npm run db:data:reset`. This separate transaction deletes inventory balances/movements, receipts, transfers, customers, orders, sales/reviews, notifications/push records, offline records, and temporary verification tokens. It preserves `User`, `Account`, `Session`, `Product`, and `Location` rows, verifies `current_database()`, and accepts only the exact isolated development or disposable test identity. It is not a production reset path.
+To clear transactional development data without replacing master identities or products, set `ALLOW_OPERATIONAL_DATA_RESET=true` and run `npm run db:data:reset`. This separate transaction deletes inventory balances/movements, receipts, transfers, customers, orders, sales/reviews, notifications/push records, offline records, and temporary verification tokens. It preserves `User`, `Account`, `Session`, `RoleDefinition`, `Product` (including image metadata), and `Location` rows, verifies `current_database()`, and accepts only the exact isolated development or disposable test identity. It is not a production reset path.
 
 The same gates back the phase verification gate: `npm run verify:phase-01 -- --validate-evidence` applies fresh committed migrations with `prisma migrate deploy`, seeds, reloads the catalog twice on this disposable target, proves both reloads produce identical canonical row counts and content hashes (6 locations, 1,432 products, 8,592 balances), and records the results in `docs/verification/phase-01-evidence.md`. The runner fails closed when the target is not the exact disposable test identity, when example seed credentials are supplied, and on any command failure other than the expected lint baseline.
 

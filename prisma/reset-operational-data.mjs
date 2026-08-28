@@ -70,12 +70,13 @@ export async function resetOperationalData(prisma, environment) {
       deleted.inventoryBalances = (await tx.inventoryBalance.deleteMany()).count;
       deleted.verifications = (await tx.verification.deleteMany()).count;
 
-      const [users, products, locations] = await Promise.all([
+      const [users, products, locations, roles] = await Promise.all([
         tx.user.count(),
         tx.product.count(),
         tx.location.count(),
+        tx.roleDefinition.count(),
       ]);
-      return { deleted, preserved: { users, products, locations } };
+      return { deleted, preserved: { users, products, locations, roles } };
     },
     { timeout: 30_000 },
   );
