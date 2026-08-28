@@ -1,7 +1,8 @@
 import { z } from "zod";
+import type { RoleScopeDto } from "./roles";
 
 /**
- * Client-safe User Management contracts: fixed wire types, Zod request
+ * Client-safe User Management contracts: compatibility wire types, Zod request
  * schemas, stable error envelopes, and same-origin client functions.
  *
  * This module must never import server-only code; it is consumed by both
@@ -21,8 +22,7 @@ export type ManagedUserRole = (typeof MANAGED_USER_ROLES)[number];
 export const USER_STATUSES = ["ACTIVE", "INACTIVE"] as const;
 export type UserStatusDto = (typeof USER_STATUSES)[number];
 
-export const CANONICAL_LOCATION_CODES = ["SR", "QC", "BL", "LU", "VC", "SP"] as const;
-export type CanonicalLocationCode = (typeof CANONICAL_LOCATION_CODES)[number];
+export type LocationCode = string;
 
 export const USER_LIST_PAGE_SIZE = 10;
 
@@ -40,44 +40,29 @@ const temporaryPasswordSchema = z
   .regex(/\d/, "Password must contain a number");
 
 /**
- * Create accepts only the three staff roles. ADMIN is structurally
- * unreachable. Location is carried only for Branch Staff: Stock Staff is
- * resolved to the active SR warehouse server-side and Accounting Staff never
- * carries a location assignment, so hostile extra fields cannot persist.
+ * Create accepts a persisted assignable role ID. Its RoleScope determines the
+ * server-side location rules, while the compatibility UserRole is derived and
+ * cannot be submitted by the caller.
  */
-export const createUserRequestSchema = z.discriminatedUnion("role", [
-  z.object({
-    role: z.literal("STOCK_STAFF"),
-    name: userNameSchema,
-    email: userEmailSchema,
-    temporaryPassword: temporaryPasswordSchema,
-  }),
-  z.object({
-    role: z.literal("BRANCH_STAFF"),
-    name: userNameSchema,
-    email: userEmailSchema,
-    temporaryPassword: temporaryPasswordSchema,
-    locationId: z.string().min(1),
-  }),
-  z.object({
-    role: z.literal("ACCOUNTING_STAFF"),
-    name: userNameSchema,
-    email: userEmailSchema,
-    temporaryPassword: temporaryPasswordSchema,
-  }),
-]);
+export const createUserRequestSchema = z.object({
+  roleId: z.string().min(1),
+  name: userNameSchema,
+  email: userEmailSchema,
+  temporaryPassword: temporaryPasswordSchema,
+  locationId: z.string().min(1).optional(),
+});
 export type CreateUserRequest = z.infer<typeof createUserRequestSchema>;
 
 /**
  * Update validates the full resulting role/location assignment server-side.
- * `role` and `locationId` are optional; the service derives the effective
+ * `roleId` and `locationId` are optional; the service derives the effective
  * assignment from the persisted target state.
  */
 export const updateUserRequestSchema = z
   .object({
     name: userNameSchema.optional(),
     email: userEmailSchema.optional(),
-    role: z.enum(MANAGEABLE_USER_ROLES).optional(),
+    roleId: z.string().min(1).optional(),
     locationId: z.string().min(1).nullable().optional(),
   })
   .refine((value) => Object.values(value).some((field) => field !== undefined), {
@@ -103,10 +88,13 @@ export const userListQuerySchema = z.object({
     (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
     z.string().trim().max(200).optional(),
   ),
-  role: z.enum(MANAGEABLE_USER_ROLES).optional(),
+  roleId: z.string().min(1).optional(),
   status: z.enum(USER_STATUSES).optional(),
   location: z
-    .union([z.enum(CANONICAL_LOCATION_CODES), z.literal("none")])
+    .string()
+    .trim()
+    .min(1)
+    .max(12)
     .optional(),
 });
 export type UserListQuery = z.infer<typeof userListQuerySchema>;
@@ -114,9 +102,9 @@ export type UserListQuery = z.infer<typeof userListQuerySchema>;
 export type UserListFilters = {
   page?: number;
   search?: string;
-  role?: ManageableUserRole;
+  roleId?: string;
   status?: UserStatusDto;
-  location?: CanonicalLocationCode | "none";
+  location?: LocationCode | "none";
 };
 
 export type UserLocationDto = {
@@ -135,6 +123,9 @@ export type ManagedUserDto = {
   name: string;
   email: string;
   role: ManagedUserRole;
+  roleDefinitionId: string;
+  roleName: string;
+  roleScope: RoleScopeDto;
   status: UserStatusDto;
   isOwner: boolean;
   location: UserLocationDto | null;
@@ -207,7 +198,7 @@ function buildUsersQuery(filters: UserListFilters): string {
   if (filters.page !== undefined) params.set("page", String(filters.page));
   if (filters.search !== undefined && filters.search !== "")
     params.set("search", filters.search);
-  if (filters.role !== undefined) params.set("role", filters.role);
+  if (filters.roleId !== undefined) params.set("roleId", filters.roleId);
   if (filters.status !== undefined) params.set("status", filters.status);
   if (filters.location !== undefined) params.set("location", filters.location);
   return params.toString();

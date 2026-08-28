@@ -59,7 +59,7 @@ The npm scripts in `package.json` are:
 | `npm run prisma:generate` | `prisma generate` | Regenerate Prisma Client from the checked-in schema. |
 | `npm run db:migrate` | `prisma migrate dev` | Create/apply development migrations. Production uses `prisma migrate deploy`. |
 | `npm run db:seed` | `prisma db seed` | Transactionally load the approved canonical opening catalog and environment-supplied owner Admin on an explicitly allowed isolated target. |
-| `npm run db:catalog:reload` | `node prisma/seed.mjs --catalog-only` | Transactionally replace only canonical locations/products/opening balances while preserving auth; uses the same positive reset gates. |
+| `npm run db:catalog:reload` | `node prisma/seed.mjs --catalog-only` | Transactionally replace canonical products/opening balances and upsert the six import locations while preserving auth and additional Branch Maintenance rows; uses the same positive reset gates. |
 | `npm run db:data:reset` | `node --env-file=.env prisma/reset-operational-data.mjs` | Transactionally delete operational data while preserving users/auth, products, and required locations; requires explicit opt-in and an exact approved isolated database identity. |
 | `npm run verify:phase-01 -- [--validate-evidence]` | `node scripts/verify-phase-01.mjs` | Phase 1 evidence gate: asserts the disposable test target and seed/reset environment, then runs fresh migration deploy, seed, two equivalent catalog reloads, full unit/integration suites, typecheck, and build; captures lint's expected failure baseline separately and writes/validates `docs/verification/phase-01-evidence.md`. |
 

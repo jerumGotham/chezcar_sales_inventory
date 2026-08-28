@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   Boxes,
+  Building2,
   ClipboardList,
   FileText,
   ArrowLeftRight,
@@ -41,6 +42,8 @@ const MENU_ICONS: Record<ShellMenuIcon, LucideIcon> = {
   inventory: Boxes,
   "customer-orders": ClipboardList,
   users: UserCog,
+  roles: ShieldCheck,
+  branches: Building2,
   reports: FileText,
   "receipt-verification": FileText,
   "stock-transfers": ArrowLeftRight,
@@ -103,13 +106,16 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
     });
   };
 
+  const activeMenuHref = menu.reduce<string | null>((best, item) => {
+    const matches = pathname === item.href || pathname.startsWith(`${item.href}/`);
+    return matches && (!best || item.href.length > best.length) ? item.href : best;
+  }, null);
+
   const renderMenu = (showLabels: boolean) => (
     <nav className="space-y-2">
       {menu.map((menuItem) => {
         const Icon = MENU_ICONS[menuItem.icon];
-        const active =
-          pathname === menuItem.href ||
-          pathname.startsWith(`${menuItem.href}/`);
+        const active = menuItem.href === activeMenuHref;
 
         return (
           <Link

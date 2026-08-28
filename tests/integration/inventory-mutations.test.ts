@@ -2,7 +2,7 @@ import type { AuthContext } from "@/lib/server/authorization";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
 import { withDisposableDatabase } from "../helpers/database";
-import { createAuthFixture } from "../helpers/factories";
+import { authContextFor, createAuthFixture } from "../helpers/factories";
 
 const testEnvironment = vi.hoisted(() => {
   process.env.DATABASE_URL =
@@ -25,15 +25,10 @@ vi.mock("@/lib/server/authorization", async () =>
 );
 
 function actor(
-  user: { id: string; role: AuthContext["role"]; locationId: string | null },
-  location: AuthContext["location"],
+  user: Parameters<typeof authContextFor>[0],
+  location: Parameters<typeof authContextFor>[1],
 ): AuthContext {
-  return {
-    userId: user.id,
-    role: user.role,
-    locationId: user.locationId,
-    location,
-  };
+  return authContextFor(user, location);
 }
 
 describe("inventory corrections and reorder levels", () => {

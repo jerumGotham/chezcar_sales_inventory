@@ -7,6 +7,7 @@ import { z } from "zod";
 import { receiptComparisonSchema, type ReceiptComparison } from "../../contracts/sales";
 import type { AuthContext } from "../authorization";
 import { prisma } from "../prisma";
+import { findActiveBranch } from "../locations";
 import { createNotifications, notifyInventoryThresholdChange } from "./notifications";
 import { isReceiptEvidenceKey } from "./receipt-evidence";
 
@@ -389,7 +390,7 @@ export async function createCustomerOrder(actor: AuthContext, input: z.infer<typ
 
   try {
     return await prisma.$transaction(async (tx) => {
-    const location = await tx.location.findFirst({ where: { id: locationId, type: "BRANCH", isActive: true, code: { in: ["QC", "BL", "LU", "VC", "SP"] } }, select: { id: true } });
+    const location = await findActiveBranch(locationId, tx);
     if (!location) throw new CustomerSalesError("INVALID_LOCATION", "Select an active branch", 400);
     const products = await activeProducts(tx, productIds);
     const customerId = await resolveCustomer(tx, actor, input.customer);
@@ -587,7 +588,7 @@ export async function createDirectSale(actor: AuthContext, rawInput: z.input<typ
   if (new Set(productIds).size !== productIds.length) throw new CustomerSalesError("INVALID_LINES", "A product may appear only once", 400);
   try {
     return await prisma.$transaction(async (tx) => {
-    const location = await tx.location.findFirst({ where: { id: locationId, type: "BRANCH", isActive: true, code: { in: ["QC", "BL", "LU", "VC", "SP"] } }, select: { id: true } });
+    const location = await findActiveBranch(locationId, tx);
     if (!location) throw new CustomerSalesError("INVALID_LOCATION", "Select an active branch", 400);
     const products = await activeProducts(tx, productIds);
     const customerId = input.customerId ?? (input.customer ? await resolveCustomer(tx, actor, input.customer) : null);
@@ -615,8 +616,6 @@ export async function listSales(actor: AuthContext) {
   return sales.map(serializeSale);
 }
 
-const CANONICAL_BRANCH_CODES = ["QC", "BL", "LU", "VC", "SP"] as const;
-
 function receiptDate(value: string, endOfDay = false) {
   const [year, month, day] = value.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day + (endOfDay ? 1 : 0)));
@@ -628,7 +627,7 @@ function receiptVerificationWhere(
 ): Prisma.SaleWhereInput {
   const parsed = receiptVerificationListQuerySchema.parse(input);
   const where: Prisma.SaleWhereInput = {
-    location: { type: "BRANCH", code: { in: [...CANONICAL_BRANCH_CODES] } },
+    location: { type: "BRANCH" },
   };
 
   if (parsed.search) {

@@ -221,6 +221,9 @@ describe("user management list and create", () => {
             "location",
             "name",
             "role",
+            "roleDefinitionId",
+            "roleName",
+            "roleScope",
             "status",
             "updatedAt",
           ].sort(),
@@ -275,7 +278,7 @@ describe("user management list and create", () => {
       expect(searched.meta?.totalItems).toBe(1);
       expect(searched.data?.map((row) => row.role)).toEqual(["STOCK_STAFF"]);
 
-      const branchOnly = await listQuery("role=BRANCH_STAFF");
+      const branchOnly = await listQuery("roleId=role-branch-staff");
       expect(branchOnly.meta?.totalItems).toBe(6);
       expect(branchOnly.data?.every((row) => row.role === "BRANCH_STAFF")).toBe(
         true,
@@ -293,6 +296,30 @@ describe("user management list and create", () => {
       expect(unassigned.meta?.totalItems).toBe(1);
       expect(unassigned.data?.some((row) => row.isOwner)).toBe(true);
       expect(unassigned.data?.some((row) => row.role === "ACCOUNTING_STAFF")).toBe(true);
+
+      const dynamicBranch = await prisma.location.create({
+        data: { code: "DV", name: "Davao City", type: "BRANCH" },
+      });
+      await prisma.user.create({
+        data: {
+          name: "Dynamic Branch Staff",
+          email: "dynamic-branch@example.test",
+          role: "BRANCH_STAFF",
+          roleDefinitionId: "role-branch-staff",
+          locationId: dynamicBranch.id,
+        },
+      });
+      const atDynamicBranch = await listQuery("location=DV");
+      expect(atDynamicBranch.meta?.totalItems).toBe(1);
+      expect(atDynamicBranch.data?.[0]?.location?.code).toBe("DV");
+
+      const invalidLocationResponse = await usersRoute.GET(
+        usersRequest("/api/users?location=UNKNOWN", { headers: ownerHeaders }),
+      );
+      expect(invalidLocationResponse.status).toBe(400);
+      await expect(invalidLocationResponse.json()).resolves.toMatchObject({
+        error: { code: "INVALID_LOCATION_FILTER" },
+      });
     });
   }, 90_000);
 
@@ -313,7 +340,7 @@ describe("user management list and create", () => {
       }
 
       const stockResult = await postUser({
-        role: "STOCK_STAFF",
+        roleId: "role-stock-staff",
         name: "Stock Person",
         email: "Stock.Person@Example.test",
         temporaryPassword: "Temp-Pass-123",
@@ -340,7 +367,7 @@ describe("user management list and create", () => {
       expect(stockRow.accounts[0]?.password).not.toBe("Temp-Pass-123");
 
       const branchResult = await postUser({
-        role: "BRANCH_STAFF",
+        roleId: "role-branch-staff",
         name: "Branch Person",
         email: "branch.person@example.test",
         temporaryPassword: "Temp-Pass-123",
@@ -350,7 +377,7 @@ describe("user management list and create", () => {
       expect(branchResult.body.data?.location?.code).toBe("QC");
 
       const accountingResult = await postUser({
-        role: "ACCOUNTING_STAFF",
+        roleId: "role-accounting-staff",
         name: "Accounting Person",
         email: "accounting.person@example.test",
         temporaryPassword: "Temp-Pass-123",
@@ -365,7 +392,7 @@ describe("user management list and create", () => {
       expect(accountingRow.locationId).toBeNull();
 
       const missingBranch = await postUser({
-        role: "BRANCH_STAFF",
+        roleId: "role-branch-staff",
         name: "No Branch",
         email: "no.branch@example.test",
         temporaryPassword: "Temp-Pass-123",
@@ -381,7 +408,7 @@ describe("user management list and create", () => {
         data: { isActive: false },
       });
       const unavailableStockRoom = await postUser({
-        role: "STOCK_STAFF",
+        roleId: "role-stock-staff",
         name: "Late Stock",
         email: "late.stock@example.test",
         temporaryPassword: "Temp-Pass-123",
@@ -409,7 +436,7 @@ describe("user management list and create", () => {
             method: "POST",
             headers: ownerHeaders,
             body: {
-              role: "BRANCH_STAFF",
+              roleId: "role-branch-staff",
               name: "Dup Candidate",
               email,
               temporaryPassword: "Temp-Pass-123",
@@ -485,7 +512,7 @@ describe("user management list and create", () => {
           method: "POST",
           headers: staffHeaders,
           body: {
-            role: "BRANCH_STAFF",
+            roleId: "role-branch-staff",
             name: "Escalated",
             email: "escalated@example.test",
             temporaryPassword: "Temp-Pass-123",
@@ -503,7 +530,7 @@ describe("user management list and create", () => {
           method: "POST",
           headers: ownerHeaders,
           body: {
-            role: "ADMIN",
+            roleId: "role-admin",
             name: "Second Admin",
             email: "second.admin@example.test",
             temporaryPassword: "Temp-Pass-123",
@@ -522,7 +549,7 @@ describe("user management list and create", () => {
           method: "POST",
           headers: ownerHeaders,
           body: {
-            role: "SUPER_ADMIN",
+            roleId: "does-not-exist",
             name: "Unknown Role",
             email: "unknown.role@example.test",
             temporaryPassword: "Temp-Pass-123",
@@ -607,7 +634,7 @@ describe("user management lifecycle", () => {
       // Role change to Accounting clears the location and revokes sessions.
       const accountingResponse = await userIdRoute.PATCH(
         patchRequest(`/api/users/${targetId}`, ownerHeaders, {
-          role: "ACCOUNTING_STAFF",
+          roleId: "role-accounting-staff",
         }),
         await routeContext(targetId),
       );
@@ -620,7 +647,7 @@ describe("user management lifecycle", () => {
       // Stock Staff resolves to SR server-side.
       const stockResponse = await userIdRoute.PATCH(
         patchRequest(`/api/users/${targetId}`, ownerHeaders, {
-          role: "STOCK_STAFF",
+          roleId: "role-stock-staff",
         }),
         await routeContext(targetId),
       );
@@ -634,7 +661,7 @@ describe("user management lifecycle", () => {
       });
       const missingBranchResponse = await userIdRoute.PATCH(
         patchRequest(`/api/users/${targetId}`, ownerHeaders, {
-          role: "BRANCH_STAFF",
+          roleId: "role-branch-staff",
         }),
         await routeContext(targetId),
       );
@@ -648,7 +675,7 @@ describe("user management lifecycle", () => {
 
       const branchResponse = await userIdRoute.PATCH(
         patchRequest(`/api/users/${targetId}`, ownerHeaders, {
-          role: "BRANCH_STAFF",
+          roleId: "role-branch-staff",
           locationId: locations.branches.BL.id,
         }),
         await routeContext(targetId),

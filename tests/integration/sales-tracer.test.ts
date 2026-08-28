@@ -21,8 +21,8 @@ void testEnvironment;
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/server/prisma", async () => import("../../lib/server/prisma"));
 
-function actor(user: { id: string; role: AuthContext["role"]; locationId: string | null }, location: AuthContext["location"]): AuthContext {
-  return { userId: user.id, role: user.role, locationId: user.locationId, location };
+function actor(user: Parameters<typeof authContextFor>[0], location: Parameters<typeof authContextFor>[1]): AuthContext {
+  return authContextFor(user, location);
 }
 
 function matchingComparison(sale: { receiptBooklet: string; manualReceiptNumber: string; paymentMethod: PaymentMethod; discountAmount?: number; amountPaid: number; totalAmount: number; lines: Array<{ itemCode: string; quantity: number; unitPrice: number }> }) {

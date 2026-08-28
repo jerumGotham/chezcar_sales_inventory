@@ -16,6 +16,14 @@ const ADMIN_ENV = {
   SEED_ADMIN_PASSWORD: "integration-password-123!",
   SEED_ADMIN_NAME: "Owner Admin",
 };
+const LOCATION_DISPLAY_NAMES = {
+  BL: "Biñan Laguna",
+  LU: "La Union",
+  QC: "Quezon City",
+  SP: "San Fernando Pampanga",
+  SR: "Stock Room",
+  VC: "Vigan City",
+} as const;
 
 async function runSeed(databaseUrl: string, admin = ADMIN_ENV) {
   return execFileAsync(process.execPath, ["prisma/seed.mjs"], {
@@ -33,6 +41,7 @@ async function runSeed(databaseUrl: string, admin = ADMIN_ENV) {
 async function canonicalRows(prisma: PrismaClient) {
   const [locations, products, balances] = await Promise.all([
     prisma.location.findMany({
+      where: { code: { in: Object.keys(LOCATION_DISPLAY_NAMES) } },
       orderBy: { code: "asc" },
       select: { code: true, name: true, type: true },
     }),
@@ -74,7 +83,10 @@ describe("canonical opening seed", () => {
       const expectedRows = {
         locations: openingCatalog.locations.map(({ code, name, type }) => ({
           code,
-          name,
+          name:
+            LOCATION_DISPLAY_NAMES[
+              code as keyof typeof LOCATION_DISPLAY_NAMES
+            ] ?? name,
           type,
         })),
         products: openingCatalog.products.map(
@@ -99,12 +111,16 @@ describe("canonical opening seed", () => {
       ).toBe(707);
 
       const qc = await prisma.location.findUniqueOrThrow({ where: { code: "QC" } });
+      const dynamicBranch = await prisma.location.create({
+        data: { code: "DV", name: "Davao City", type: "BRANCH" },
+      });
       const staff = await prisma.user.create({
         data: {
           id: "preserved-staff",
           name: "Preserved Staff",
           email: "preserved@example.test",
           role: "BRANCH_STAFF",
+          roleDefinitionId: "role-branch-staff",
           locationId: qc.id,
         },
       });
@@ -114,6 +130,16 @@ describe("canonical opening seed", () => {
           token: "preserved-token",
           expiresAt: new Date(Date.now() + 60_000),
           userId: staff.id,
+        },
+      });
+      const dynamicStaff = await prisma.user.create({
+        data: {
+          id: "preserved-dynamic-staff",
+          name: "Preserved Dynamic Staff",
+          email: "preserved-dynamic@example.test",
+          role: "BRANCH_STAFF",
+          roleDefinitionId: "role-branch-staff",
+          locationId: dynamicBranch.id,
         },
       });
       await prisma.product.update({
@@ -126,6 +152,12 @@ describe("canonical opening seed", () => {
       expect(await canonicalRows(prisma)).toEqual(expectedRows);
       expect(await prisma.user.count({ where: { role: "ADMIN" } })).toBe(1);
       expect(await prisma.user.findUnique({ where: { id: staff.id } })).not.toBeNull();
+      expect(
+        await prisma.location.findUnique({ where: { id: dynamicBranch.id } }),
+      ).toMatchObject({ code: "DV", name: "Davao City" });
+      expect(
+        await prisma.user.findUnique({ where: { id: dynamicStaff.id } }),
+      ).toMatchObject({ locationId: dynamicBranch.id });
       expect(
         await prisma.session.findUnique({ where: { id: "preserved-session" } }),
       ).not.toBeNull();
@@ -184,6 +216,7 @@ describe("canonical opening seed", () => {
           name: "Different Owner",
           email: "different-owner@example.test",
           role: "ADMIN",
+          roleDefinitionId: "role-admin",
         },
       });
 

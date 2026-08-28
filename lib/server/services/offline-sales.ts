@@ -5,9 +5,9 @@ import { z } from "zod";
 
 import type { AuthContext } from "@/lib/server/authorization";
 import { prisma } from "@/lib/server/prisma";
+import { findActiveBranch } from "@/lib/server/locations";
 import { createDirectSale, CustomerSalesError, directSaleSchema } from "@/lib/server/services/customer-sales";
 
-const canonicalBranchCodes = ["QC", "BL", "LU", "VC", "SP"];
 const activationSchema = z.object({
   locationId: z.string().min(1),
   deviceId: z.string().trim().min(8).max(200),
@@ -40,11 +40,8 @@ function requestHash(input: unknown) {
 export async function activateOfflineDevice(actor: AuthContext, rawInput: unknown) {
   if (actor.role !== "ADMIN") throw new OfflineSalesError("FORBIDDEN", "Admin access required", 403);
   const input = activationSchema.parse(rawInput);
-  const location = await prisma.location.findFirst({
-    where: { id: input.locationId, type: "BRANCH", isActive: true, code: { in: canonicalBranchCodes } },
-    select: { id: true, code: true, name: true },
-  });
-  if (!location) throw new OfflineSalesError("INVALID_LOCATION", "Select an active canonical branch", 400);
+  const location = await findActiveBranch(input.locationId);
+  if (!location) throw new OfflineSalesError("INVALID_LOCATION", "Select an active branch", 400);
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 

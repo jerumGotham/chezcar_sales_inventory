@@ -140,7 +140,7 @@ Generated/dependency directories `.next/` and `node_modules/` are present locall
 - `lib/utils.ts`: Shared Tailwind class merge helper.
 
 **Feature Routes:**
-- `app/dashboard/page.tsx`: Main fixture-backed owner dashboard; alternates live at `app/dashboard2/page.tsx` and `app/dashboard3/page.tsx`.
+- `app/dashboard/page.tsx`: Main dashboard route.
 - `app/products/page.tsx`: Prisma-backed product list UI; edit/add behavior remains disabled/prototype.
 - `app/inventory/page.tsx`: Prisma-backed main inventory list combined with fixture-backed auxiliary dialogs.
 - `app/customers/page.tsx`: Page-local customer fixture list and history overlays.

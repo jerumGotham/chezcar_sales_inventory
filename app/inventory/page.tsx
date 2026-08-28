@@ -1,17 +1,13 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { prisma } from "@/lib/server/prisma";
+import { listActiveOperationalLocations } from "@/lib/server/locations";
 import { loadShellAccess } from "@/lib/server/shell";
 
 import {
   InventoryClient,
   type InventoryLocationOption,
 } from "./inventory-client";
-
-// Canonical presentation order for the Admin scope selector per the approved
-// UI-SPEC: Stock Room (SR) first, then QC, BL, LU, VC, SP.
-const SCOPE_LOCATION_ORDER = ["SR", "QC", "BL", "LU", "VC", "SP"];
 
 export default async function InventoryPage({
   searchParams,
@@ -31,20 +27,8 @@ export default async function InventoryPage({
     redirect("/access-denied");
   }
 
-  const locations = await prisma.location.findMany({
-    where: {
-      isActive: true,
-      OR: [
-        { code: "SR", type: "WAREHOUSE" },
-        { code: { in: ["QC", "BL", "LU", "VC", "SP"] }, type: "BRANCH" },
-      ],
-    },
-    select: { id: true, code: true, name: true },
-  });
-
-  const orderedLocations: InventoryLocationOption[] = SCOPE_LOCATION_ORDER.map(
-    (code) => locations.find((location) => location.code === code),
-  ).filter((location): location is InventoryLocationOption => !!location);
+  const orderedLocations: InventoryLocationOption[] =
+    await listActiveOperationalLocations();
 
   return (
     <InventoryClient

@@ -13,10 +13,12 @@ type UserInsert = {
 async function insertUser(prisma: PrismaClient, input: UserInsert) {
   return prisma.$executeRaw`
     INSERT INTO "User" (
-      "id", "name", "email", "emailVerified", "role", "status", "locationId", "updatedAt"
+      "id", "name", "email", "emailVerified", "role", "roleDefinitionId", "status", "locationId", "updatedAt"
     ) VALUES (
       ${input.id}, ${input.id}, ${input.email}, true,
-      ${input.role}::"UserRole", 'ACTIVE', ${input.locationId}, CURRENT_TIMESTAMP
+      ${input.role}::"UserRole",
+      ${`role-${input.role.toLowerCase().replaceAll("_", "-")}`},
+      'ACTIVE', ${input.locationId}, CURRENT_TIMESTAMP
     )
   `;
 }

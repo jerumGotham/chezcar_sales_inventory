@@ -11,6 +11,7 @@ import type {
   ResolutionInput,
 } from "@/lib/contracts/stock-transfers";
 import { prisma } from "@/lib/server/prisma";
+import { findActiveBranch } from "@/lib/server/locations";
 import { createNotifications } from "./notifications";
 
 export class TransferError extends Error {
@@ -269,14 +270,7 @@ export async function createTransfer(
           400,
         );
       }
-      const destination = await tx.location.findFirst({
-        where: {
-          id: input.destinationId,
-          type: "BRANCH",
-          isActive: true,
-          code: { in: ["QC", "BL", "LU", "VC", "SP"] },
-        },
-      });
+      const destination = await findActiveBranch(input.destinationId, tx);
       if (!destination)
         throw new TransferError(
           "INVALID_DESTINATION",

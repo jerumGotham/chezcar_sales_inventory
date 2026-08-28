@@ -120,12 +120,12 @@ The current `5435:5432` mapping publishes PostgreSQL on all host interfaces and 
 
 - `lib/server/prisma.ts` is the only shared runtime Prisma client.
 - Better Auth and all application reads require an active persisted User; public sign-up is disabled.
-- `/products` and the primary `/inventory` list call protected Prisma-backed endpoints.
-- Dashboard, customers, customer orders, stock-card/availability dialogs, and all mutations still use mock/local data.
-- One committed initial migration and one environment-driven development seed exist.
-- There is no startup-time typed environment validation or automated test suite.
+- Products, Inventory and Availability, customers/orders/sales/accounting, stock receiving/transfers, notifications, and owner-only user/role/branch maintenance call protected Prisma-backed endpoints.
+- Job Orders, stock cards, and explicitly labeled supporting panels still use mock/local data.
+- Checked-in additive migrations and one environment-driven development seed exist.
+- Vitest unit and serial PostgreSQL integration suites are checked in; startup-time typed environment validation, browser coverage, and CI are not.
 
-Treat only the documented identity, product, location, and balance reads as implemented persistence.
+Treat only the workflows documented in [API](API.md) and [Database](DATABASE.md) as implemented persistence.
 
 ## First routes to inspect
 
@@ -136,12 +136,12 @@ With the development server running, begin with:
 | `/` | Redirects to `/dashboard`. |
 | `/dashboard` | Dashboard filters, charts, pending orders, and low-stock views backed by mock records. |
 | `/customers` | Database-backed customer records and transaction history. |
-| `/products` | Product-list prototype interactions. |
-| `/inventory` | Branch inventory prototype views. |
+| `/products` | Database-backed product list and maintenance. |
+| `/inventory` | Scoped database-backed inventory list and live Availability. |
 | `/customer-orders` | Database-backed customer-order list and reservation workflow. |
 | `/api/dashboard` | Mock dashboard JSON. |
 | `/api/customers` | Customer records and persisted customer history. |
-| `/api/products` | Mock product collection. |
+| `/api/products` | Persisted product collection. |
 | `/api/customer-orders` | Persisted customer orders, reservations, and releases. |
 
 These routes require an authenticated user; customer, order, and sale changes are persisted through protected APIs.
@@ -194,4 +194,4 @@ docker compose ps
 - Read the project overview and implementation status in the [README](../README.md).
 - Review the system boundaries and mock-data flow in [Architecture](ARCHITECTURE.md).
 - See environment and tool configuration details in [Configuration](CONFIGURATION.md).
-- Read the [Development guide](DEVELOPMENT.md) and [Testing guide](TESTING.md). The testing guide documents that no test framework, test files, or test scripts currently exist.
+- Read the [Development guide](DEVELOPMENT.md) and [Testing guide](TESTING.md) for the current unit, integration, and manual verification paths.

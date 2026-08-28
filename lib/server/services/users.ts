@@ -1,11 +1,10 @@
 import "server-only";
 
-import { Prisma } from "@prisma/client";
+import { Prisma, type RoleScope } from "@prisma/client";
 import { z } from "zod";
 
 import type {
   CreateUserRequest,
-  ManageableUserRole,
   ManagedUserDto,
   UpdateUserRequest,
   UserListQuery,
@@ -15,26 +14,28 @@ import { USER_LIST_PAGE_SIZE } from "@/lib/contracts/users";
 import { auth } from "@/lib/server/auth";
 import { internalUserAuth } from "@/lib/server/internal-user-auth";
 import type { PersistedAccessContext } from "@/lib/server/policy/access";
-import { CAPABILITIES } from "@/lib/server/policy/access";
 import {
   AuthenticationError,
   AuthorizationError,
   authorizationErrorResponse,
+  requireActiveUser,
   requireCapability,
 } from "@/lib/server/authorization";
 import { prisma } from "@/lib/server/prisma";
+import {
+  findActiveBranch,
+  findActiveOperationalLocation,
+} from "@/lib/server/locations";
 
 /**
  * Owner-Admin user lifecycle application service.
  *
- * Only the single owner Admin may list or mutate non-Admin staff accounts.
+ * Only the single owner Admin may list or mutate non-owner staff accounts.
  * Credential creation and replacement go through the guarded, unmounted
  * `internalUserAuth` primitives; role/location/status writes and any required
  * session revocation commit in one Prisma transaction so access changes can
  * never partially apply (D-16/D-17).
  */
-
-const CANONICAL_BRANCH_CODES = new Set(["QC", "BL", "LU", "VC", "SP"]);
 
 export class UserLifecycleError extends Error {
   constructor(
@@ -60,11 +61,13 @@ const managedUserSelect = {
   name: true,
   email: true,
   role: true,
+  roleDefinitionId: true,
   status: true,
   credentialSetupRequired: true,
   createdAt: true,
   updatedAt: true,
   location: { select: { id: true, code: true, name: true, type: true } },
+  accessRole: { select: { name: true, scope: true } },
 } satisfies Prisma.UserSelect;
 
 type ManagedUserRecord = Prisma.UserGetPayload<{ select: typeof managedUserSelect }>;
@@ -78,8 +81,11 @@ export function toManagedUserDto(
     name: user.name,
     email: user.email,
     role: user.role,
+    roleDefinitionId: user.roleDefinitionId,
+    roleName: user.accessRole.name,
+    roleScope: user.accessRole.scope,
     status: user.status,
-    isOwner: user.role === "ADMIN",
+    isOwner: user.accessRole.scope === "OWNER",
     location: user.location
       ? {
           id: user.location.id,
@@ -132,25 +138,25 @@ export async function requireOwnerAdmin(
   headers: Headers,
 ): Promise<PersistedAccessContext> {
   const context = await requireCapability(headers, "users:manage");
-  if (context.role !== "ADMIN") {
+  if (!context.isOwner) {
     throw new AuthorizationError("Insufficient permissions");
   }
   return context;
 }
 
 function assertOwnerActor(actor: PersistedAccessContext): void {
-  if (actor.role !== "ADMIN") {
+  if (!actor.isOwner) {
     throw new AuthorizationError("Insufficient permissions");
   }
 }
 
-function assertManageableTarget(
-  target: Pick<ManagedUserRecord, "id" | "role"> | null,
-): asserts target is ManagedUserRecord {
+function assertManageableTarget<T extends { id: string; accessRole: { scope: RoleScope } }>(
+  target: T | null,
+): asserts target is T {
   if (!target) {
     throw lifecycleFailure(404, "USER_NOT_FOUND", "User not found");
   }
-  if (target.role === "ADMIN") {
+  if (target.accessRole.scope === "OWNER") {
     throw lifecycleFailure(
       403,
       "USER_NOT_MANAGEABLE",
@@ -216,16 +222,7 @@ async function validateActiveBranch(
   db: Prisma.TransactionClient,
   locationId: string,
 ): Promise<void> {
-  const location = await db.location.findUnique({
-    where: { id: locationId },
-    select: { code: true, type: true, isActive: true },
-  });
-  if (
-    !location ||
-    !location.isActive ||
-    location.type !== "BRANCH" ||
-    !CANONICAL_BRANCH_CODES.has(location.code)
-  ) {
+  if (!(await findActiveBranch(locationId, db))) {
     throw lifecycleFailure(
       400,
       "INVALID_ASSIGNMENT",
@@ -235,19 +232,38 @@ async function validateActiveBranch(
 }
 
 /**
- * Resolve the exact D-13 location for a staff role. Stock Staff always maps to
- * the active SR warehouse, Branch Staff requires one active canonical branch,
- * and Accounting Staff never carries a location.
+ * Resolve the exact location semantics for a persisted role scope.
  */
+const compatibilityRoleByScope = {
+  BRANCH: "BRANCH_STAFF",
+  STOCK_ROOM: "STOCK_STAFF",
+  BUSINESS_WIDE: "ACCOUNTING_STAFF",
+} as const;
+
+async function resolveAssignableRole(
+  db: Prisma.TransactionClient,
+  roleId: string,
+): Promise<{ id: string; scope: "BRANCH" | "STOCK_ROOM" | "BUSINESS_WIDE" }> {
+  await db.$queryRaw`SELECT "id" FROM "RoleDefinition" WHERE "id" = ${roleId} FOR SHARE`;
+  const role = await db.roleDefinition.findUnique({
+    where: { id: roleId },
+    select: { id: true, scope: true },
+  });
+  if (!role || role.scope === "OWNER") {
+    throw lifecycleFailure(400, "INVALID_ROLE", "Select an assignable role");
+  }
+  return { id: role.id, scope: role.scope };
+}
+
 async function resolveAssignmentLocationId(
   db: Prisma.TransactionClient,
-  role: ManageableUserRole,
+  scope: "BRANCH" | "STOCK_ROOM" | "BUSINESS_WIDE",
   requestedLocationId?: string | null,
 ): Promise<string | null> {
-  switch (role) {
-    case "STOCK_STAFF":
+  switch (scope) {
+    case "STOCK_ROOM":
       return (await resolveStockRoom(db)).id;
-    case "BRANCH_STAFF": {
+    case "BRANCH": {
       if (!requestedLocationId) {
         throw lifecycleFailure(
           400,
@@ -258,7 +274,7 @@ async function resolveAssignmentLocationId(
       await validateActiveBranch(db, requestedLocationId);
       return requestedLocationId;
     }
-    case "ACCOUNTING_STAFF":
+    case "BUSINESS_WIDE":
       return null;
   }
 }
@@ -284,14 +300,34 @@ export async function listUsers(query: UserListQuery): Promise<{
       { email: { contains: query.search, mode: "insensitive" } },
     ];
   }
-  if (query.role) where.role = query.role;
+  if (query.roleId) {
+    const role = await prisma.roleDefinition.findFirst({
+      where: { id: query.roleId, scope: { not: "OWNER" } },
+      select: { id: true },
+    });
+    if (!role) {
+      throw lifecycleFailure(400, "INVALID_ROLE_FILTER", "Select an assignable role");
+    }
+    where.roleDefinitionId = role.id;
+  }
   if (query.status) where.status = query.status;
-  if (query.location === "none") where.locationId = null;
-  else if (query.location) where.location = { code: query.location };
+  if (query.location === "none") {
+    where.locationId = null;
+  } else if (query.location) {
+    const location = await findActiveOperationalLocation(query.location);
+    if (!location) {
+      throw lifecycleFailure(
+        400,
+        "INVALID_LOCATION_FILTER",
+        "Select an active location",
+      );
+    }
+    where.locationId = location.id;
+  }
 
   // Metadata counts staff only; the immutable owner row still appears in data.
   const staffOnlyWhere: Prisma.UserWhereInput = {
-    AND: [where, { role: { not: "ADMIN" } }],
+    AND: [where, { accessRole: { scope: { not: "OWNER" } } }],
   };
 
   const [rows, totalItems, activeStaff, inactiveStaff] = await Promise.all([
@@ -303,8 +339,8 @@ export async function listUsers(query: UserListQuery): Promise<{
       take: USER_LIST_PAGE_SIZE,
     }),
     prisma.user.count({ where: staffOnlyWhere }),
-    prisma.user.count({ where: { role: { not: "ADMIN" }, status: "ACTIVE" } }),
-    prisma.user.count({ where: { role: { not: "ADMIN" }, status: "INACTIVE" } }),
+    prisma.user.count({ where: { accessRole: { scope: { not: "OWNER" } }, status: "ACTIVE" } }),
+    prisma.user.count({ where: { accessRole: { scope: { not: "OWNER" } }, status: "INACTIVE" } }),
   ]);
 
   // Last sign-in derives from the most recent session record per listed user.
@@ -338,41 +374,85 @@ export async function listUsers(query: UserListQuery): Promise<{
   };
 }
 
+export type StaffCreationOptions = {
+  /** Test-only fault injection after Better Auth persists the credential. */
+  injectFailureAfterCredentialWrite?: boolean;
+  /** Test-only proof that failed cleanup leaves an inactive staging row. */
+  injectCleanupFailure?: boolean;
+};
+
 export async function createStaffUser(
   actor: PersistedAccessContext,
   input: CreateUserRequest,
+  options: StaffCreationOptions = {},
 ): Promise<ManagedUserDto> {
   assertOwnerActor(actor);
-
-  const locationId = await resolveAssignmentLocationId(
-    prisma,
-    input.role,
-    "locationId" in input ? input.locationId : undefined,
-  );
-  await assertNoEmailConflict(prisma, input.email);
+  let createdUserId: string | undefined;
 
   try {
+    const initialAssignment = await prisma.$transaction(async (tx) => {
+      const accessRole = await resolveAssignableRole(tx, input.roleId);
+      const locationId = await resolveAssignmentLocationId(
+        tx,
+        accessRole.scope,
+        input.locationId,
+      );
+      await assertNoEmailConflict(tx, input.email);
+      return { accessRole, locationId };
+    });
+
     const created = await internalUserAuth.api.createUser({
       body: {
         email: input.email,
         password: input.temporaryPassword,
         name: input.name,
-        role: input.role,
-        ...(locationId === null ? {} : { locationId }),
+        role: compatibilityRoleByScope[initialAssignment.accessRole.scope],
+        roleDefinitionId: initialAssignment.accessRole.id,
+        ...(initialAssignment.locationId === null
+          ? {}
+          : { locationId: initialAssignment.locationId }),
       },
     });
+    createdUserId = created.user.id;
+    if (options.injectFailureAfterCredentialWrite) {
+      throw new Error("Injected credential-finalization failure");
+    }
 
-    await prisma.user.update({
-      where: { id: created.user.id },
-      data: { credentialSetupRequired: true },
-    });
+    return await prisma.$transaction(async (tx) => {
+      const accessRole = await resolveAssignableRole(tx, input.roleId);
+      const locationId = await resolveAssignmentLocationId(
+        tx,
+        accessRole.scope,
+        input.locationId,
+      );
+      await tx.user.update({
+        where: { id: created.user.id },
+        data: {
+          role: compatibilityRoleByScope[accessRole.scope],
+          roleDefinitionId: accessRole.id,
+          locationId,
+          status: "ACTIVE",
+          credentialSetupRequired: true,
+        },
+      });
 
-    const user = await prisma.user.findUniqueOrThrow({
-      where: { id: created.user.id },
-      select: managedUserSelect,
+      const user = await tx.user.findUniqueOrThrow({
+        where: { id: created.user.id },
+        select: managedUserSelect,
+      });
+      return toManagedUserDto(user);
     });
-    return toManagedUserDto(user);
   } catch (error) {
+    if (createdUserId) {
+      try {
+        if (options.injectCleanupFailure) {
+          throw new Error("Injected partial-provision cleanup failure");
+        }
+        await prisma.user.delete({ where: { id: createdUserId } });
+      } catch (cleanupError) {
+        console.error("Unable to remove a partially provisioned user", cleanupError);
+      }
+    }
     if (looksLikeExistingEmailConflict(error)) {
       throw lifecycleFailure(
         409,
@@ -411,19 +491,25 @@ export async function updateStaffUser(
       await assertNoEmailConflict(tx, input.email, userId);
     }
 
-    // The target is already guarded as non-Admin by assertManageableTarget.
-    const nextRole = (input.role ?? target.role) as ManageableUserRole;
+    // The target is already guarded as non-owner by assertManageableTarget.
+    const nextAccessRole = input.roleId
+      ? await resolveAssignableRole(tx, input.roleId)
+      : { id: target.roleDefinitionId, scope: target.accessRole.scope };
+    if (nextAccessRole.scope === "OWNER") {
+      throw lifecycleFailure(400, "INVALID_ROLE", "Select an assignable role");
+    }
+    const nextRole = compatibilityRoleByScope[nextAccessRole.scope];
     let requestedLocationId: string | null | undefined = input.locationId;
     if (requestedLocationId === undefined) {
       // Keep the current branch only when the target already holds one as a
       // Branch Staff member; switching into Branch Staff requires an explicit
       // active branch.
       requestedLocationId =
-        target.role === "BRANCH_STAFF" ? target.location?.id ?? null : undefined;
+        target.accessRole.scope === "BRANCH" ? target.location?.id ?? null : undefined;
     }
     const nextLocationId = await resolveAssignmentLocationId(
       tx,
-      nextRole,
+      nextAccessRole.scope,
       requestedLocationId,
     );
 
@@ -431,7 +517,7 @@ export async function updateStaffUser(
     const nextEmail = input.email ?? target.email;
     const currentLocationId = target.location?.id ?? null;
     const accessChanged =
-      nextRole !== target.role || nextLocationId !== currentLocationId;
+      nextAccessRole.id !== target.roleDefinitionId || nextLocationId !== currentLocationId;
 
     await tx.user.update({
       where: { id: userId },
@@ -439,6 +525,7 @@ export async function updateStaffUser(
         name: nextName,
         email: nextEmail,
         role: nextRole,
+        roleDefinitionId: nextAccessRole.id,
         locationId: nextLocationId,
       },
     });
@@ -520,7 +607,7 @@ export async function resetStaffPassword(
 
   const target = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, role: true },
+    select: { id: true, accessRole: { select: { scope: true } } },
   });
   assertManageableTarget(target);
 
@@ -592,9 +679,7 @@ export const credentialActionSchema = z.discriminatedUnion("action", [
 ]);
 
 async function requireActiveCurrentUser(headers: Headers) {
-  // `dashboard:view` is held by every fixed role, so this is exactly an
-  // authenticated-active-persisted-identity check without any resource grant.
-  const context = await requireCapability(headers, CAPABILITIES.dashboardView);
+  const context = await requireActiveUser(headers);
   const [user, session] = await Promise.all([
     prisma.user.findUnique({
       where: { id: context.userId },

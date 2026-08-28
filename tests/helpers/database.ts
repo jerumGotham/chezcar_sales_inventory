@@ -189,6 +189,8 @@ export async function withDisposableDatabase<T>(
       "--detach",
       "--publish",
       `${config.port}:5432`,
+      "--tmpfs",
+      "/var/lib/postgresql/data",
       "--env",
       `POSTGRES_USER=${config.user}`,
       "--env",

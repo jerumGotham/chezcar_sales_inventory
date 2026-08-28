@@ -1,7 +1,7 @@
 # Chezcar Sales and Inventory MVP
 
 **Status:** Confirmed MVP process
-**Last updated:** 2026-08-26
+**Last updated:** 2026-08-28
 **Source:** Owner discussion, real inventory workbook, and current UI prototype
 
 > **Current-state warning:** The checked-in application is still partly a UI prototype. Authentication, Product/Inventory reads, user management, Stock Room receiving, SR-to-branch transfers/discrepancy resolution, Customer Orders, direct sales, dashboard production metrics, Accounting verification, durable notifications, browser push attempts, and limited offline direct-sale sync have a PostgreSQL-backed foundation. Offline transfer receipt/discrepancy capture, deployment operations, and remaining advanced/deferred screens are not complete until implemented and verified.
@@ -12,7 +12,7 @@ Chezcar needs a simple cloud-based internal system for monitoring sales and inve
 
 Stock Staff records stock received into `SR`, dispatches stock from `SR` to a branch, and records the dispatch in the system. The destination branch is notified in real time. Branch Staff compares the physical delivery with the transfer and either confirms an exact match or submits a discrepancy form. Stock Staff investigates discrepancies; Admin makes the final stock correction.
 
-The system has four fixed roles, Admin-only user management, role-based access, dashboards, low-stock monitoring, durable real-time notifications, and limited branch offline continuity for temporary internet outages.
+The system has four built-in operational roles, owner-Admin-only user and role management, persisted capability-based access, dashboards, low-stock monitoring, durable real-time notifications, and limited branch offline continuity for temporary internet outages.
 
 ## Confirmed Locations
 
@@ -34,7 +34,7 @@ All MVP replenishment enters `SR`. Transfers are `SR` to branch only. Branch-to-
 5. Notify actionable users immediately and preserve notifications for reconnect/catch-up.
 6. Let Accounting verify every encoded sale against its handwritten receipt.
 7. Keep essential branch sale and transfer-receipt work usable during temporary outages.
-8. Enforce four fixed roles and individual user accounts on the server.
+8. Enforce persisted role capabilities, operational location scope, and individual user accounts on the server.
 9. Let Admin create, update, and deactivate users without hard-deleting audit identity.
 10. Seed canonical product, price, location, and initial inventory data from the supplied workbook after reviewed mapping and cleanup.
 
@@ -43,7 +43,7 @@ All MVP replenishment enters `SR`. Transfers are `SR` to branch only. Branch-to-
 ### Included
 
 - Product, price, location, and opening-inventory onboarding from the real workbook
-- Four fixed roles and server-enforced access rights
+- Four built-in roles, custom assignable roles, and server-enforced capability grants
 - Admin User Management: create, view, update, deactivate, credential reset/setup
 - Manual-receipt sales encoding
 - Immediate branch stock deduction and dashboard updates after successful posting
@@ -67,7 +67,6 @@ All MVP replenishment enters `SR`. Transfers are `SR` to branch only. Branch-to-
 - Customer return, exchange, and refund workflow
 - Standalone cycle-count and general physical-stock discrepancy workflow
 - Formal daily cash/collection closing
-- Custom roles and granular permission editing
 - Shared branch accounts
 - Multiple simultaneous offline-operation devices per branch
 - Fully offline Admin, Stock Room, master-data, or final discrepancy actions
@@ -81,7 +80,8 @@ All MVP replenishment enters `SR`. Transfers are `SR` to branch only. Branch-to-
 - The MVP has one owner Admin account; User Management does not create additional Admin accounts
 - View all branches, sales, stock, transfers, discrepancies, low-stock alerts, users, and audit history
 - Create and update Stock Staff, Branch Staff, and Accounting Staff accounts
-- Assign one of those fixed roles; Stock Staff is fixed to `SR`, Branch Staff requires exactly one branch, and Accounting Staff has no location assignment
+- Assign a persisted non-owner role; its operational scope fixes Stock Room users to `SR`, requires exactly one branch for branch-scoped users, or grants business-wide access without a location
+- Create and edit non-owner roles and their capability grants; changing grants revokes assigned users' sessions
 - Deactivate users instead of hard-deleting their identity
 - Manage products, prices, locations, Stock Room receiving, Stock Staff transfer actions when operational cover is needed, and controlled corrections
 - Review unverified receipts as operational cover for Accounting
@@ -261,9 +261,11 @@ Offline mode keeps the same simple branch workflows available during temporary c
 ## User Management and Access
 
 - Accounts are individual; shared branch credentials are not allowed.
-- Roles are fixed: `ADMIN`, `STOCK_STAFF`, `BRANCH_STAFF`, `ACCOUNTING_STAFF`.
-- A Branch Staff account cannot be active without one assigned branch.
-- A Stock Staff account is location-scoped to `SR`; Accounting Staff is business-wide and has no location assignment.
+- Four deterministic roles are seeded: Admin, Stock Staff, Branch Staff, and Accounting Staff. Admin may create additional non-owner roles.
+- Persisted role capability grants authorize non-owner actions; the compatibility `UserRole` value does not grant access.
+- A branch-scoped account requires one active branch.
+- A Stock Room-scoped account is fixed to `SR`; a business-wide account has no location assignment.
+- The single owner Admin role is immutable, nonassignable, and always has the full capability catalog.
 - Admin may create, view, update, deactivate, and initiate password setup/reset for non-Admin accounts.
 - Delete means deactivate, never hard-delete an identity referenced by history.
 - Admin sets a temporary password through a safe offline channel. First login prompts a password change but permits skip in the MVP.
@@ -306,7 +308,7 @@ Production opening balances require an owner-reviewed mapping and seed result. T
 
 ## Delivery Sequence
 
-1. Workbook-derived canonical data, fixed-role access, and Admin User Management
+1. Workbook-derived canonical data, persisted role access, and Admin User Management
 2. Manual-receipt sales, immediate stock deduction, initial Admin sales/inventory monitoring, low-stock monitoring, and Accounting verification
 3. Durable notifications and browser push
 4. Stock Room receiving and `SR`-to-branch dispatch

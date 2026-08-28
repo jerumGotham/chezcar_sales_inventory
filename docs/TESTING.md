@@ -3,20 +3,20 @@
 
 ## Current status
 
-Vitest `4.1.11` is configured with Node unit and serial integration projects. The unit project covers the workbook profiler, canonicalizer, fixture generator, catalog/operational-reset gates, access policy, shell DTOs, proxy denial, notification cursor/wake-up helpers, and the disposable-database/request helpers. The serial integration project covers migration application, seed/reload/reset determinism, persisted authorization factories, inventory scope, the Better Auth admin surface, user management, session revocation, and first-login credential setup over a fixed-identity disposable PostgreSQL 17 container. No DOM testing library, browser runner, coverage tool, or CI workflow is checked in. Authentication, products/inventory, customers, customer orders, POS sales, SSE notifications, browser push subscription, and limited offline direct-sale sync now use PostgreSQL-backed services; browser coverage for these workflows remains a gap.
+Vitest `4.1.11` is configured with Node unit and serial integration projects. The unit project covers the workbook profiler, canonicalizer, fixture generator, catalog/operational-reset gates, access policy, shell DTOs, proxy denial, branch/role routes, notification cursor/wake-up helpers, and the disposable-database/request helpers. The serial integration project covers migration application, seed/reload/reset determinism, persisted authorization factories, inventory scope and availability, the Better Auth admin surface, user/role/branch maintenance, session revocation, and first-login credential setup over a fixed-identity disposable PostgreSQL 17 container. No DOM testing library, browser runner, coverage tool, or CI workflow is checked in. Browser coverage remains a gap.
 
 | Capability | Current state |
 | --- | --- |
-| Unit tests | Vitest Node project; 10 suite files checked in (workbook, canonicalization, generation, reset gates, policy, shell, proxy, helpers) |
+| Unit tests | Vitest Node project; 22 suite files currently checked in |
 | Component tests | Not configured |
 | Route-handler tests | Unit-project direct-handler authorization suites (`tests/routes/authorization.test.ts`, `proxy.test.ts`); no DOM/browser runner |
-| Database integration tests | Serial Vitest project with fixed-identity disposable PostgreSQL 17 harness; 8 integration suite files checked in |
+| Database integration tests | Serial Vitest project with fixed-identity disposable PostgreSQL 17 harness; 17 integration suite files currently checked in |
 | End-to-end tests | Not configured |
 | Coverage reporting or thresholds | Not configured |
 | CI test execution | Not configured; `.github/workflows/` is absent |
 | Phase evidence gate | `npm run verify:phase-01 -- --validate-evidence` runs fresh migration/seed/double-reload plus all suites on the disposable target |
 
-`npm run test` runs the unit project once. `npm run test:integration` starts its own disposable PostgreSQL container (never a bind mount) and must not overlap another instance of the same container name/port.
+`npm run test` runs the unit project once. `npm run test:integration` starts its own disposable PostgreSQL container with a tmpfs data directory (never a bind mount) and must not overlap another instance of the same container name/port.
 
 ## Test framework and setup
 
@@ -55,7 +55,7 @@ The current scripts provide these verification paths:
 | `npm run verify:phase-01 -- --validate-evidence` | Phase 1 evidence gate: asserts the disposable test target plus seed/reset environment, then records fresh migration deploy, seed, two hash-equivalent catalog reloads, full unit/integration suites, typecheck, and build in `docs/verification/phase-01-evidence.md`; captures lint's expected failure baseline separately and preserves completed manual UAT rows across reruns. |
 | `npm run build` | Creates a production Next.js build. A clean Node.js `20.20.2` isolated run passes on 2026-08-24, with existing Recharts zero-size prerender warnings. It is not a behavioral test suite. |
 | `npm run typecheck` | Runs strict TypeScript with `tsc --noEmit`. A clean Node.js `20.20.2` isolated run passes on 2026-08-24. |
-| `npm run lint` | Runs the checked-in ESLint flat configuration. It is reproducible but currently fails with 96 errors and 49 warnings from existing prototype code (fresh baseline captured by the 2026-08-25 phase gate). |
+| `npm run lint` | Runs the checked-in ESLint flat configuration. It currently passes with existing warnings; report the exact result of the current run. |
 | `npm audit --omit=dev` | Reports zero known production dependency findings as of 2026-08-24. The full development tree still reports one high and one low transitive tooling finding. |
 
 ## Checked-in suites
@@ -68,8 +68,10 @@ Unit project (`npm run test`):
 | `scripts/data-onboarding/canonicalize.test.ts` | 01-03/01-04 | Row classification, temporary codes, blocking findings, owner-resolution coverage |
 | `scripts/data-onboarding/generate-seed.test.ts` | 01-05 | Byte-stable canonical fixture and source-map generation |
 | `lib/server/services/catalog-reset.test.ts` | 01-06 | Positive reset gates; production/unknown/bind-mount refusal |
-| `lib/server/authorization.test.ts` | 01-07 | Fixed persisted access policy and capability guards |
+| `lib/server/authorization.test.ts` | Authorization | Persisted role grants, scope assignment, owner full access, and capability guards |
 | `tests/routes/authorization.test.ts` | 01-07/01-14 | Direct-handler authorization order for dashboard/customers/orders/products/inventory |
+| `tests/routes/branches.test.ts` | Branch Maintenance | `branches:manage` authorization order, uppercase create input, and immutable PATCH code handling |
+| `tests/routes/roles.test.ts` | Role Maintenance | Owner authorization order and create/update contract parsing |
 | `lib/server/shell.test.ts` | 01-08 | Four-role shell DTOs and scope feedback |
 | `proxy.test.ts` | 01-15 | Page session routing, capability denial, safe callbacks |
 | `tests/helpers/database.test.ts` | 01-13 | Disposable target assertion and lifecycle |
@@ -83,8 +85,11 @@ Integration project (`npm run test:integration`, serial over disposable PostgreS
 | `tests/integration/seed.test.ts` | 01-06 | Fresh/repeat seed producing exact locations/products/balances |
 | `tests/integration/factories.test.ts` | 01-13 | Persisted actor/session fixtures including deliberately invalid assignments |
 | `tests/integration/inventory-scope.test.ts` | 01-14 | Admin/Branch/SR persisted scopes and Accounting denial under hostile requests |
+| `tests/integration/inventory-availability.test.ts` | Independent cleanup slice | Active-location availability rows, dynamic filters, derived quantities/status, fixed staff scopes, and Accounting denial |
 | `tests/integration/auth-admin-surface.test.ts` | 01-17 | Internal credential engine; public sign-up and generic admin operations unroutable |
 | `tests/integration/user-management.test.ts` | 01-09 | Owner-only user list/create/update semantics and error envelopes |
+| `tests/integration/branch-maintenance.test.ts` | Branch Maintenance slice | Persisted active-branch add/edit, uppercase unique immutable codes, and shared active-location sources |
+| `tests/integration/role-maintenance.test.ts` | Role Maintenance | Case-insensitive names, owner-only grant rejection, serialized scope assignment, optimistic conflict, immutable owner, and grant-change session revocation |
 | `tests/integration/session-revocation.test.ts` | 01-09 | Atomic access-change/session revocation, rollback, concurrency |
 | `tests/integration/credential-setup.test.ts` | 01-10 | Prompt arming/consumption, change/skip, other-session revocation |
 
@@ -167,7 +172,7 @@ Exercise real transaction boundaries for sale posting/correction, Stock Room rec
 
 ### 5. Authentication and authorization
 
-Better Auth sessions, active-account checks, fixed capability authorization, session revocation, the internal credential surface, and the first-login prompt now have unit and integration suites (see the checked-in suites above). Extend this matrix as each new protected page, route handler, and mutation is implemented: include unauthenticated, inactive/expired-session, wrong-role, wrong-branch, revoked-session, and allowed cases.
+Better Auth sessions, active-account checks, persisted capability authorization, session revocation, the internal credential surface, and the first-login prompt now have unit and integration suites (see the checked-in suites above). Extend this matrix as each new protected page, route handler, and mutation is implemented: include unauthenticated, inactive/expired-session, missing-grant, wrong-scope, revoked-session, and allowed cases.
 
 Client-side button visibility is only a usability check; it must never be the sole authorization assertion. Verify that direct HTTP requests cannot bypass the server policy and that denied operations leave the database unchanged — `tests/helpers/requests.ts` exists for exactly this hostile-input style.
 

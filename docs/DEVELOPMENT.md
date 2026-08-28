@@ -1,7 +1,7 @@
 <!-- generated-by: gsd-doc-writer -->
 # Development
 
-This guide covers development of the Chezcar Sales & Inventory UI prototype. The repository demonstrates Next.js screens and interactions over mock data; it is not yet connected to the scaffolded Prisma/PostgreSQL model. Preserve that distinction when changing or reviewing the code.
+This guide covers development of the Chezcar Sales & Inventory UI prototype. The repository is hybrid: documented workflows use authenticated Prisma/PostgreSQL APIs, while Job Orders and some supporting panels remain mock/local. Preserve that distinction when changing or reviewing the code.
 
 ## Local setup
 
@@ -30,7 +30,7 @@ This guide covers development of the Chezcar Sales & Inventory UI prototype. The
 
 Create an untracked `.env` from `.env.example`, start PostgreSQL, apply migrations, and seed the first Admin before using authenticated routes. `package.json` requires Node.js `>=20.9.0`; the latest clean verification used Node.js `20.20.2`.
 
-The framework baseline is Next.js `16.3.2`, React `19.2.8`, and Tailwind CSS `4.3.3`. This dependency upgrade does not make the prototype production-ready; authentication, authorization, persistence, migrations, tests, and operational controls remain absent.
+The framework baseline is Next.js `16.3.2`, React `19.2.8`, and Tailwind CSS `4.3.3`. Authentication, authorization, migrations, and automated tests cover the implemented foundation, but browser coverage, CI, deployment, recovery, monitoring, and several workflows remain incomplete.
 
 ## Repository layout
 
@@ -41,7 +41,7 @@ app/                         App Router layouts, pages, and route handlers
 components/                  Shared application shell and presentation code
   ui/                        Base UI/Radix-backed, shadcn-style primitives
 lib/                         Shared fixtures, navigation, dashboard helpers, and cn()
-prisma/schema.prisma         Implemented auth, product, location, and balance models
+prisma/schema.prisma         Implemented auth, catalog, sales, inventory, and workflow models
 public/                      Logo and avatar assets
 data/                        Ignored local PostgreSQL files created by Compose
 docker-compose.yml           Optional local PostgreSQL 17 service
@@ -110,7 +110,7 @@ The generated primitives use Base UI and Radix UI internally. Follow their publi
 
 ## Mock React Query list pattern
 
-`app/customers/page.tsx`, `app/products/page.tsx`, `app/branches/page.tsx`, `app/inventory/page.tsx`, `app/customer-orders/page.tsx`, `app/job-orders/page.tsx`, and `app/users/page.tsx` share a list-prototype pattern:
+Remaining mock list pages such as `app/job-orders/page.tsx` use this prototype pattern. Database-backed pages retain the useful applied-filter/query-key behavior but call typed same-origin APIs instead of local arrays:
 
 1. Keep editable filter controls separate from applied filter state.
 2. Reset the page to `1` when filters are applied or reset.
@@ -148,7 +148,7 @@ Existing `react-select` style objects use `any` and literal colors, and several 
 2. Add `app/<route>/page.tsx`. Use `[id]` folders for dynamic segments and make the route parameter select real data rather than a fixed fixture.
 3. Wrap standard business content in `PageShell`. Customer Sales at `/pos` uses the same authenticated shell and sidebar as the other business routes.
 4. Reuse `components/ui/` primitives and `cn()`. Add a shared component under `components/` only when it has a cross-route responsibility.
-5. Add a visible navigation entry to `lib/menu.ts` if users should reach the route from the sidebar. A route can exist without a menu entry, as `/dashboard2` and `/dashboard3` currently do.
+5. Add a visible navigation entry to `lib/menu.ts` if users should reach the route from the sidebar. A route may intentionally exist without a menu entry, but it must still have an authorization mapping.
 6. For a list prototype, follow the applied-filter/query-key pattern above. For real data, define one canonical contract, validate input on the server, and keep secrets and persistence out of client bundles.
 7. Check mobile and desktop layouts, light and dark themes, keyboard focus, labels, loading/empty/error states, and direct navigation to dynamic URLs.
 8. Run the available verification commands and document any command that cannot complete.
@@ -163,18 +163,20 @@ When adding a shared shadcn-style primitive, keep `components.json` aliases and 
 | `npm run dev` | Start the Next.js development server. |
 | `npm run build` | Create an optimized production build and run Next.js build-time checks. |
 | `npm run start` | Serve an existing production build; run `npm run build` first. |
-| `npm run lint` | Run deterministic ESLint. It currently reports existing prototype findings and does not pass. |
+| `npm run lint` | Run deterministic ESLint. It currently passes with existing warnings. |
 | `npm run typecheck` | Run standalone strict TypeScript checking without emitting files. |
+| `npm test` | Run the Vitest Node unit project once. |
+| `npm run test:integration` | Run serial integration tests against the fixed disposable PostgreSQL container. |
 | `npm run prisma:generate` | Regenerate Prisma Client. |
 | `npm run db:migrate` | Create/apply development migrations. |
 | `npm run db:seed` | Seed reference catalog data and the environment-supplied Admin. |
 | `npm run db:data:reset` | Clear isolated development operational data while preserving users/auth, products, and locations; requires `ALLOW_OPERATIONAL_DATA_RESET=true`. |
 
-There are no package scripts for tests or formatting.
+There is no formatting script, browser-test script, or coverage script.
 
 ## Code style tooling
 
-`eslint.config.mjs` uses Next.js Core Web Vitals and TypeScript flat configurations. No Prettier, Biome, or EditorConfig configuration is checked in. The linter is deterministic but currently reports 104 errors and 41 warnings in existing prototype code, so do not claim lint-clean status.
+`eslint.config.mjs` uses Next.js Core Web Vitals and TypeScript flat configurations. No Prettier, Biome, or EditorConfig configuration is checked in. The linter is deterministic and currently exits successfully with existing warnings, so distinguish passing from warning-free.
 
 Until tooling is established:
 
@@ -185,12 +187,12 @@ Until tooling is established:
 
 ## Current verification gaps
 
-- No test files, test framework, `test` script, coverage threshold, or CI workflow is present.
-- No formatting check is present, and the configured linter does not yet pass existing source.
-- A clean Node.js `20.20.2` isolated run passes production build and standalone type-check. The build emits existing Recharts zero-size prerender warnings. Re-run commands for future changes rather than treating this observation as CI evidence.
-- The existing API routes are not called by normal pages, so manual UI use does not validate those handlers.
+- Unit and serial PostgreSQL integration tests exist, but no DOM/browser suite, coverage threshold, or CI workflow is present.
+- No formatting check is present; lint passes with existing warnings.
+- Re-run unit, integration, type-check, lint, and build commands for each relevant change rather than treating an earlier local run as CI evidence.
+- Manual UI use validates only the routes exercised by that workflow; direct route and service tests remain necessary.
 - Mock submissions do not verify persistence, authorization, validation, transaction behavior, or reload durability.
-- Auth and read APIs have no automated request tests; mock APIs still lack domain-specific authorization and failure contracts.
+- Implemented auth and workflow APIs have unit/integration coverage; remaining mock surfaces still lack durable contracts.
 
 For each change, perform the narrowest relevant manual walkthrough in addition to command-based checks. For example, a list change should cover filter apply/reset, pagination, empty data, initial loading, background fetching, and responsive table overflow.
 
@@ -221,4 +223,4 @@ Because no repository-specific PR checklist or CI gate is checked in, contributo
 - Avoid opportunistic rewrites of oversized pages in an unrelated feature change. Extract behavior in small steps and preserve the current interaction while adding verification.
 - Do not copy hard-coded identities, client-only permissions, arbitrary timeouts, console-only submission handlers, or fixed dynamic-route records into new work.
 
-The strongest foundations to preserve are the App Router layout, shared responsive shell, `PageShell`, reusable UI primitives, semantic theme tokens, strict TypeScript configuration, root import alias, complete React Query keys, server-only Prisma boundary, and fixed server authorization policy. Duplicated fixtures, oversized pages, fake mutations, remaining hard-coded role affordances, and missing automated verification are prototype debt to retire rather than patterns to standardize.
+The strongest foundations to preserve are the App Router layout, shared responsive shell, `PageShell`, reusable UI primitives, semantic theme tokens, strict TypeScript configuration, root import alias, complete React Query keys, server-only Prisma boundary, and persisted capability authorization policy. Add executable capabilities only to the client-safe catalog, load RoleDefinition grants on each request, and keep `User.role` limited to synchronized operational-scope compatibility. Duplicated fixtures, oversized pages, fake mutations, and hard-coded role dropdowns are debt to retire rather than patterns to standardize.

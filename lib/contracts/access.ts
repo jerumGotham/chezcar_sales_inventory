@@ -4,21 +4,9 @@ export type ShellRole =
   | "BRANCH_STAFF"
   | "ACCOUNTING_STAFF";
 
-export type ShellCapabilityId =
-  | "dashboard:view"
-  | "customers:view"
-  | "customer-orders:view"
-  | "sales:post"
-  | "sales:verify:view"
-  | "sales:verify"
-  | "sales:resolve"
-  | "sales:mismatch:respond"
-  | "products:view"
-  | "inventory:view"
-  | "inventory-receiving:create"
-   | "reports:view"
-   | "users:manage"
-  | "stock-transfers:view";
+import type { CapabilityId, RoleScopeDto } from "./roles";
+
+export type ShellCapabilityId = CapabilityId;
 
 export type ShellMenuIcon =
   | "dashboard"
@@ -29,7 +17,9 @@ export type ShellMenuIcon =
   | "customer-orders"
   | "receipt-verification"
    | "reports"
-   | "users"
+  | "users"
+  | "roles"
+  | "branches"
   | "stock-transfers"
   | "offline-devices";
 
@@ -43,6 +33,8 @@ export type ShellMenuHref =
   | "/accounting/receipt-verification"
   | "/reports"
    | "/users"
+  | "/users/roles"
+  | "/branches"
   | "/stock-transfers"
   | "/offline";
 
@@ -56,6 +48,10 @@ export type ShellIdentityDto = {
   name: string;
   email: string;
   role: ShellRole;
+  roleDefinitionId: string;
+  roleName: string;
+  roleScope: RoleScopeDto;
+  isOwner: boolean;
 };
 
 export type LocationScopeDto = {

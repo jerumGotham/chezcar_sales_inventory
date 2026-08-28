@@ -7,12 +7,12 @@ Chezcar Sales & Inventory is a Next.js 16/React 19 **UI prototype**, not a produ
 
 Current gaps are intentional and material:
 
-- Better Auth email/password sessions, active-account checks, and fixed server-side role/location authorization are implemented. Public sign-up is disabled.
-- Products and the primary inventory list read PostgreSQL through Prisma; most other screens and all business mutations remain mock/local behavior.
-- One initial migration and an environment-driven development seed exist. The seed provisions reference catalog data and the first Admin without committed credentials.
-- No automated tests, coverage, or CI workflow exists.
-- A clean Node.js `20.20.2` isolated verification run passes `npm run build` and `npm run typecheck`. The build emits existing Recharts zero-size prerender warnings.
-- `npm run lint` is configured but currently fails with 96 errors and 49 warnings (2026-08-25 phase-gate baseline), primarily existing explicit `any` helpers and React effect-state findings. Do not report lint as passing.
+- Better Auth email/password sessions, active-account checks, persisted RoleDefinition capability grants, and RoleScope/location authorization are implemented. Public sign-up is disabled; `UserRole` remains only a synchronized operational-scope compatibility field.
+- Products, Inventory and Availability, customers/orders/sales/accounting, stock receiving/transfers, notifications, users, roles, and branches use PostgreSQL through Prisma. Job Orders and some supporting panels remain mock/local behavior.
+- Checked-in additive migrations and an environment-driven development seed exist. The seed provisions reference catalog data, deterministic built-in roles, and the first Admin without committed credentials.
+- Vitest unit and serial disposable-PostgreSQL integration suites exist. Coverage, browser tests, and CI do not.
+- A current Node.js 20 verification run passes `npm run build`, `npm run typecheck`, and both Vitest projects.
+- `npm run lint` passes with existing warnings; report the exact current warning count rather than calling the repository warning-free.
 - `npm audit --omit=dev` reports zero production dependency findings; the full development tree currently reports one high and one low transitive tooling finding.
 
 ## Sources of truth
@@ -42,8 +42,8 @@ For runtime navigation, `lib/menu.ts` controls visible sidebar entries but is **
 - `components/` contains the shared shell and presentation components; `components/ui/` contains reusable Base UI/Radix, shadcn-style primitives.
 - `PageShell` is the standard business-page frame. `/pos` is the intentional full-width exception selected by `AppLayoutShell`.
 - `lib/` contains shared mock records, menu metadata, dashboard helpers, and `cn()`.
-- TanStack React Query is globally provided, but existing pages call local mock query functions rather than HTTP endpoints.
-- `app/api/**/route.ts` exposes Better Auth plus authenticated reads. `/api/products` and `/api/inventory` are Prisma-backed; dashboard, customers, and customer orders still return protected mock fixtures.
+- TanStack React Query is globally provided. Implemented workflows call same-origin HTTP endpoints; remaining prototype pages still use local mock query functions.
+- `app/api/**/route.ts` exposes Better Auth and authenticated workflow APIs. Consult `docs/API.md` for the current Prisma-backed surface.
 
 Keep server-only dependencies, database credentials, and future Prisma access out of client bundles.
 
@@ -58,7 +58,9 @@ npm run dev            # start the Next.js development server
 npm run build          # request a production build
 npm run start          # serve an existing build; build first
 npm run typecheck      # strict TypeScript check
-npm run lint           # deterministic ESLint check; currently fails on existing debt
+npm run lint           # deterministic ESLint check; currently passes with warnings
+npm test               # Vitest Node unit project
+npm run test:integration # serial disposable-PostgreSQL integration project
 npm run prisma:generate
 npm run db:migrate     # development migration; requires DATABASE_URL
 npm run db:seed        # requires DATABASE_URL and SEED_ADMIN_* values
@@ -67,7 +69,7 @@ docker compose up -d postgres
 docker compose stop postgres
 ```
 
-There is no test command. Never report a command as passing unless the current run completes successfully; record failures, timeouts, warnings, and skipped checks explicitly. This workspace lives under macOS `Documents`, where Node module loading was extremely slow; the latest clean verification used an isolated copy under the approved local temp directory with Node.js `20.20.2`.
+Never report a command as passing unless the current run completes successfully; record failures, timeouts, warnings, and skipped checks explicitly. Integration tests own the fixed disposable container `chezcar_test_postgres_01_13` on port `55435` and must not overlap another run.
 
 For current changes, run the narrowest available command and manually walk the affected route. Check responsive behavior, light/dark themes, loading/empty/error states, filters and pagination where relevant, and reload behavior. Mock endpoints can be inspected while the dev server is running with `curl --fail http://localhost:3000/api/<resource>`.
 
@@ -89,7 +91,7 @@ For current changes, run the narrowest available command and manually walk the a
 - Hidden buttons and menu entries do not authorize anything. Protect every future mutation and sensitive read on the server.
 - Do not silently join the divergent page fixtures, `lib/mock-data.ts` shapes, and Prisma models. Establish canonical DTOs, validation, statuses, money representation, and identifiers first.
 - Do not import Prisma into a client component. Add one server-only client and a deliberate repository/service boundary when persistence begins.
-- Inventory receiving, transfers, checkout, downpayments, releases, and job completion require validated, authorized database transactions and auditable movement records.
+- Extend durable inventory and sales workflows only through validated, authorized database transactions and auditable movement records. Job completion remains a prototype.
 - `docker-compose.yml` credentials are for isolated local development only. Never commit `.env` files or files under `data/`, and do not use the live PostgreSQL data directory as a migration or backup artifact.
 
 ## Safe change rules
@@ -109,7 +111,7 @@ For production work, proceed incrementally:
 1. Reconcile UI needs with canonical domain contracts and validation schemas.
 2. Extend the committed foundation migration additively as each canonical workflow is implemented.
 3. Add deterministic unit, route, and database integration tests plus dependable type-check/lint scripts.
-4. Expand the existing authentication and fixed-role/location authorization to each new server workflow.
+4. Expand the existing authentication and persisted capability/RoleScope authorization to each new server workflow.
 6. Implement transactional mutations one workflow at a time, with auditability and concurrency/idempotency protections.
 7. Add end-to-end coverage and CI only after local commands and durable workflows are reliable.
 

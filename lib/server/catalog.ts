@@ -18,6 +18,7 @@ import {
   validatePersistedAssignment,
 } from "@/lib/server/policy/access";
 import { prisma } from "@/lib/server/prisma";
+import { findActiveOperationalLocation } from "@/lib/server/locations";
 import { notifyInventoryThresholdChange } from "./services/notifications";
 
 const baseListQuery = {
@@ -101,8 +102,6 @@ export class InventoryMutationError extends Error {
   constructor(public readonly code: string, message: string, public readonly status = 400) { super(message); }
 }
 
-const BRANCH_CODES = ["QC", "BL", "LU", "VC", "SP"] as const;
-
 export function parseInventoryListQuery(
   searchParams: URLSearchParams,
   context: PersistedAccessContext,
@@ -165,23 +164,7 @@ export async function resolveLocationScope(
     return { kind: "all" };
   }
 
-  const location = await prisma.location.findFirst({
-    where: {
-      isActive: true,
-      OR: [
-        { id: requestedLocation },
-        { code: requestedLocation },
-        { name: requestedLocation },
-      ],
-      AND: {
-        OR: [
-          { code: "SR", type: "WAREHOUSE" },
-          { code: { in: [...BRANCH_CODES] }, type: "BRANCH" },
-        ],
-      },
-    },
-    select: { id: true },
-  });
+  const location = await findActiveOperationalLocation(requestedLocation);
 
   if (!location) {
     throw new AuthorizationError("Invalid inventory location scope");

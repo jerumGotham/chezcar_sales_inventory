@@ -19,13 +19,21 @@ const PAGE_CAPABILITIES = {
   inventory: CAPABILITIES.inventoryView,
   reports: CAPABILITIES.reportsView,
   users: CAPABILITIES.usersManage,
+  branches: CAPABILITIES.branchesManage,
   offline: CAPABILITIES.usersManage,
   "stock-transfers": CAPABILITIES.stockTransfersView,
 } as const satisfies Record<string, Capability>;
 
 function pageCapability(pathname: string): Capability | null {
+  if (pathname === "/users/roles" || pathname.startsWith("/users/roles/")) {
+    return CAPABILITIES.rolesManage;
+  }
   const rootSegment = pathname.split("/")[1];
   return PAGE_CAPABILITIES[rootSegment as keyof typeof PAGE_CAPABILITIES] ?? null;
+}
+
+function isOwnerOnlyPage(pathname: string): boolean {
+  return pathname === "/users" || pathname.startsWith("/users/");
 }
 
 function safeLocalCallback(request: NextRequest): string {
@@ -46,6 +54,10 @@ export async function proxy(request: NextRequest) {
           role: true,
           status: true,
           locationId: true,
+          roleDefinitionId: true,
+          accessRole: {
+            select: { scope: true, permissions: true },
+          },
           location: {
             select: { id: true, code: true, type: true, isActive: true },
           },
@@ -70,11 +82,18 @@ export async function proxy(request: NextRequest) {
     const context: PersistedAccessContext = {
       userId: user.id,
       role: user.role,
+      roleDefinitionId: user.roleDefinitionId,
+      roleScope: user.accessRole.scope,
+      capabilities: user.accessRole.permissions,
+      isOwner: user.accessRole.scope === "OWNER",
       locationId: user.locationId,
       location: user.location,
     };
 
-    if (!evaluateAccess(context, capability)) {
+    if (
+      !evaluateAccess(context, capability) ||
+      (isOwnerOnlyPage(request.nextUrl.pathname) && !context.isOwner)
+    ) {
       return NextResponse.redirect(new URL("/access-denied", request.url));
     }
   }

@@ -89,6 +89,11 @@ const internalCredentialEngine = betterAuth({
         required: false,
         input: false,
       },
+      roleDefinitionId: {
+        type: "string",
+        required: true,
+        input: false,
+      },
     },
   },
   plugins: [
@@ -106,6 +111,7 @@ type CreateStaffCredentialInput = {
     password: string;
     name: string;
     role: StaffRole;
+    roleDefinitionId: string;
     /**
      * Persisted canonical Location id. Required by the database CHECK
      * constraint for Stock/Branch Staff and forbidden for Accounting Staff;
@@ -124,7 +130,14 @@ type SetStaffCredentialInput = {
 };
 
 async function createStaffCredential(input: CreateStaffCredentialInput) {
-  const { email, password, name, role, locationId } = input.body;
+  const {
+    email,
+    password,
+    name,
+    role,
+    roleDefinitionId,
+    locationId,
+  } = input.body;
   assertCreatableStaffRole(role);
 
   // Better Auth Admin-plugin createUser carries application additional fields
@@ -135,7 +148,11 @@ async function createStaffCredential(input: CreateStaffCredentialInput) {
       password,
       name,
       role,
-      ...(locationId === undefined ? {} : { data: { locationId } }),
+      data: {
+        roleDefinitionId,
+        status: "INACTIVE",
+        ...(locationId === undefined ? {} : { locationId }),
+      },
     },
   });
 }
@@ -151,9 +168,9 @@ async function setStaffCredential(input: SetStaffCredentialInput) {
   // manages its own credential through authenticated self-service flows.
   const target = await prisma.user.findUnique({
     where: { id: input.body.userId },
-    select: { id: true, role: true },
+    select: { id: true, accessRole: { select: { scope: true } } },
   });
-  if (!target || target.role === "ADMIN") {
+  if (!target || target.accessRole.scope === "OWNER") {
     throw new Error(
       "Only existing non-Admin staff accounts accept internal credential resets",
     );

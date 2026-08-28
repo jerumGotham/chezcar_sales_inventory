@@ -33,7 +33,7 @@ DATA_D691A0F4_END
 - source: docs/ARCHITECTURE.md
 
 DATA_8C31EAF5_START
-Chezcar Sales & Inventory is a Next.js 16 App Router modular monolith. It is still primarily a UI prototype, with one implemented production-oriented foundation slice: database-backed authentication, fixed role/location authorization, and read-only Product/Inventory access through Prisma and PostgreSQL. Most screens, all business mutations, stock-card history, availability inquiry, reports, notifications, and transaction workflows remain page-local or fixture-backed.
+Chezcar Sales & Inventory is a Next.js 16 App Router modular monolith. It is still primarily a UI prototype, with database-backed authentication, fixed role/location authorization, and read-only Product/Inventory access through Prisma and PostgreSQL. Inventory Availability is also a live scoped read; remaining prototype status should be verified against current source and project documentation.
 DATA_8C31EAF5_END
 
 ## Local setup and runtime

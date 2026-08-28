@@ -12,6 +12,78 @@ const DEVELOPMENT_DATABASE_URL =
 const APPROVED_FIXTURE_HASH =
   "a1570f220c260b7fe66e2e4a2eaf1eebe27538563b0b721fd0c9d80f6896d76b";
 const LOCATION_CODES = Object.freeze(["BL", "LU", "QC", "SP", "SR", "VC"]);
+const LOCATION_DISPLAY_NAMES = Object.freeze({
+  BL: "Biñan Laguna",
+  LU: "La Union",
+  QC: "Quezon City",
+  SP: "San Fernando Pampanga",
+  SR: "Stock Room",
+  VC: "Vigan City",
+});
+const BUILT_IN_ROLES = Object.freeze([
+  {
+    id: "role-admin",
+    key: "admin",
+    name: "Admin",
+    description: "Immutable owner role with full application access.",
+    scope: "OWNER",
+    permissions: [
+      "dashboard:view", "customers:view", "customer-orders:view", "sales:post",
+      "sales:verify:view", "sales:verify", "sales:resolve", "sales:mismatch:respond",
+      "products:view", "inventory:view", "inventory-receiving:create", "reports:view",
+      "users:manage", "branches:manage", "roles:manage", "stock-transfers:view",
+    ],
+  },
+  {
+    id: "role-stock-staff",
+    key: "stock-staff",
+    name: "Stock Staff",
+    description: "Built-in Stock Room operational role.",
+    scope: "STOCK_ROOM",
+    permissions: [
+      "dashboard:view", "customers:view", "customer-orders:view", "products:view",
+      "inventory:view", "inventory-receiving:create", "stock-transfers:view",
+    ],
+  },
+  {
+    id: "role-branch-staff",
+    key: "branch-staff",
+    name: "Branch Staff",
+    description: "Built-in branch operational role.",
+    scope: "BRANCH",
+    permissions: [
+      "dashboard:view", "customers:view", "customer-orders:view", "sales:post",
+      "sales:verify:view", "sales:mismatch:respond", "inventory:view", "stock-transfers:view",
+    ],
+  },
+  {
+    id: "role-accounting-staff",
+    key: "accounting-staff",
+    name: "Accounting Staff",
+    description: "Built-in business-wide accounting role.",
+    scope: "BUSINESS_WIDE",
+    permissions: [
+      "dashboard:view", "customers:view", "customer-orders:view", "sales:verify",
+      "sales:verify:view", "sales:resolve", "reports:view",
+    ],
+  },
+]);
+
+async function upsertBuiltInRoles(tx) {
+  for (const role of BUILT_IN_ROLES) {
+    await tx.roleDefinition.upsert({
+      where: { key: role.key },
+      create: { ...role, isSystem: true },
+      update: {
+        name: role.name,
+        description: role.description,
+        scope: role.scope,
+        permissions: role.permissions,
+        isSystem: true,
+      },
+    });
+  }
+}
 
 function assertCatalogResetEnvironment() {
   if (process.env.ALLOW_CATALOG_RESET !== "true") {
@@ -154,33 +226,22 @@ function adminInput() {
 }
 
 async function replaceOpeningCatalog(tx, fixture) {
-  const usersOutsideCanonicalLocations = await tx.user.count({
-    where: {
-      locationId: { not: null },
-      location: { code: { notIn: LOCATION_CODES } },
-    },
-  });
-  if (usersOutsideCanonicalLocations > 0) {
-    throw new Error(
-      "Refusing catalog replacement while a user is assigned outside canonical locations",
-    );
-  }
   for (const location of fixture.locations) {
+    const name = LOCATION_DISPLAY_NAMES[location.code];
     await tx.location.upsert({
       where: { code: location.code },
       create: {
         code: location.code,
-        name: location.name,
+        name,
         type: location.type,
         isActive: true,
       },
-      update: { name: location.name, type: location.type, isActive: true },
+      update: { name, type: location.type, isActive: true },
     });
   }
 
   await tx.inventoryBalance.deleteMany();
   await tx.product.deleteMany();
-  await tx.location.deleteMany({ where: { code: { notIn: LOCATION_CODES } } });
   await tx.product.createMany({
     data: fixture.products.map((product) => ({
       itemCode: product.itemCode,
@@ -218,6 +279,7 @@ async function provisionOwnerAdmin(tx, input, passwordHash) {
     update: {
       name: input.name,
       role: "ADMIN",
+      roleDefinitionId: "role-admin",
       status: "ACTIVE",
       locationId: null,
       banned: false,
@@ -229,6 +291,7 @@ async function provisionOwnerAdmin(tx, input, passwordHash) {
       emailVerified: true,
       name: input.name,
       role: "ADMIN",
+      roleDefinitionId: "role-admin",
       status: "ACTIVE",
       locationId: null,
       banned: false,
@@ -271,6 +334,7 @@ async function main() {
       }
 
       await replaceOpeningCatalog(tx, fixture);
+      await upsertBuiltInRoles(tx);
       if (admin && passwordHash) {
         await provisionOwnerAdmin(tx, admin, passwordHash);
       }

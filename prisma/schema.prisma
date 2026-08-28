@@ -19,6 +19,13 @@ enum UserRole {
   ACCOUNTING_STAFF
 }
 
+enum RoleScope {
+  OWNER
+  BRANCH
+  STOCK_ROOM
+  BUSINESS_WIDE
+}
+
 enum UserStatus {
   ACTIVE
   INACTIVE
@@ -213,6 +220,8 @@ model User {
   emailVerified           Boolean                      @default(false)
   image                   String?
   role                    UserRole                     @default(BRANCH_STAFF)
+  roleDefinitionId        String
+  accessRole              RoleDefinition               @relation(fields: [roleDefinitionId], references: [id], onDelete: Restrict)
   /// Application activation is governed only by status. Lifecycle services keep the plugin ban fields false/null.
   status                  UserStatus                   @default(ACTIVE)
   credentialSetupRequired Boolean                      @default(false)
@@ -250,6 +259,23 @@ model User {
   updatedAt               DateTime                     @updatedAt
 
   @@index([locationId])
+  @@index([roleDefinitionId])
+}
+
+model RoleDefinition {
+  id          String    @id @default(cuid())
+  key         String    @unique
+  name        String
+  description String    @db.Text
+  scope       RoleScope
+  permissions String[]  @default([])
+  isSystem    Boolean   @default(false)
+  version     Int       @default(1)
+  users       User[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([scope])
 }
 
 model StockTransfer {

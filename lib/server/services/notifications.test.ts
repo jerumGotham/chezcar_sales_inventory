@@ -54,6 +54,10 @@ describe("notifications service", () => {
     const rows = await listNotificationsAfter({
       userId: "user-1",
       role: "ADMIN",
+      roleDefinitionId: "role-admin",
+      roleScope: "OWNER",
+      capabilities: [],
+      isOwner: true,
       locationId: null,
       location: null,
     }, BigInt(1));

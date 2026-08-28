@@ -33,6 +33,34 @@ export type UserFixtureInput = {
   allowInvalidAssignment?: boolean;
 };
 
+const ROLE_DEFINITION_BY_ROLE = {
+  ADMIN: {
+    id: "role-admin",
+    scope: "OWNER",
+    permissions: [
+      "dashboard:view", "customers:view", "customer-orders:view", "sales:post",
+      "sales:verify:view", "sales:verify", "sales:resolve", "sales:mismatch:respond",
+      "products:view", "inventory:view", "inventory-receiving:create", "reports:view",
+      "users:manage", "branches:manage", "roles:manage", "stock-transfers:view",
+    ],
+  },
+  STOCK_STAFF: {
+    id: "role-stock-staff",
+    scope: "STOCK_ROOM",
+    permissions: ["dashboard:view", "customers:view", "customer-orders:view", "products:view", "inventory:view", "inventory-receiving:create", "stock-transfers:view"],
+  },
+  BRANCH_STAFF: {
+    id: "role-branch-staff",
+    scope: "BRANCH",
+    permissions: ["dashboard:view", "customers:view", "customer-orders:view", "sales:post", "sales:verify:view", "sales:mismatch:respond", "inventory:view", "stock-transfers:view"],
+  },
+  ACCOUNTING_STAFF: {
+    id: "role-accounting-staff",
+    scope: "BUSINESS_WIDE",
+    permissions: ["dashboard:view", "customers:view", "customer-orders:view", "sales:verify", "sales:verify:view", "sales:resolve", "reports:view"],
+  },
+} as const;
+
 export type SessionState = "valid" | "expired" | "revoked";
 
 export type SessionFixture = {
@@ -172,12 +200,14 @@ export async function createUserFixture(
       email,
       emailVerified: true,
       role: input.role,
+      roleDefinitionId: ROLE_DEFINITION_BY_ROLE[input.role].id,
       status,
       locationId: input.locationId,
     },
     update: {
       name,
       role: input.role,
+      roleDefinitionId: ROLE_DEFINITION_BY_ROLE[input.role].id,
       status,
       locationId: input.locationId,
     },
@@ -395,9 +425,14 @@ export function authContextFor(
   user: User,
   location: Location | null,
 ): import("@/lib/server/authorization").AuthContext {
+  const accessRole = ROLE_DEFINITION_BY_ROLE[user.role];
   return {
     userId: user.id,
     role: user.role,
+    roleDefinitionId: user.roleDefinitionId,
+    roleScope: accessRole.scope,
+    capabilities: accessRole.permissions,
+    isOwner: accessRole.scope === "OWNER",
     locationId: user.locationId,
     location: location ? { id: location.id, code: location.code, type: location.type, isActive: location.isActive } : null,
   };

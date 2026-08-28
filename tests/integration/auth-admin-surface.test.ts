@@ -83,7 +83,7 @@ describe("internal staff credential primitives", () => {
     await sharedPrisma.$disconnect();
   });
 
-  it("creates exactly one fixed-role credential record per supported staff role", async () => {
+  it("creates exactly one inactive staging credential per supported staff role", async () => {
     await withDisposableDatabase(async ({ prisma }) => {
       const locations = await createLocationFixtures(prisma);
       const expectedLocations = new Map<string, string | null>();
@@ -97,6 +97,7 @@ describe("internal staff credential primitives", () => {
             password: "Temporary-Pass-1",
             name: `Internal ${testCase.role}`,
             role: testCase.role,
+            roleDefinitionId: `role-${testCase.role.toLowerCase().replaceAll("_", "-")}`,
             ...(locationId === null ? {} : { locationId }),
           },
         });
@@ -116,7 +117,7 @@ describe("internal staff credential primitives", () => {
       expect(stored).toHaveLength(STAFF_CREATION_CASES.length);
       for (const user of stored) {
         expect(user.email).toBe(user.email.toLowerCase());
-        expect(user.status).toBe("ACTIVE");
+        expect(user.status).toBe("INACTIVE");
         expect(user.banned).toBe(false);
         expect(user.banReason).toBeNull();
         expect(user.banExpires).toBeNull();
@@ -151,6 +152,7 @@ describe("internal staff credential primitives", () => {
             password: "Temporary-Pass-1",
             name: "Second Admin",
             role: "ADMIN" as "STOCK_STAFF",
+            roleDefinitionId: "role-branch-staff",
           },
         }),
       ).rejects.toThrow(/only stock, branch, and accounting staff/i);
@@ -176,6 +178,7 @@ describe("internal staff credential primitives", () => {
           password: "First-Temp-Pass-1",
           name: "Reset Target",
           role: "BRANCH_STAFF",
+          roleDefinitionId: "role-branch-staff",
           locationId: locations.branches.QC.id,
         },
       });
@@ -201,6 +204,11 @@ describe("internal staff credential primitives", () => {
       expect(usersAfter[0]?.accounts[0]?.password).not.toBe("First-Temp-Pass-1");
       expect(await prisma.session.count({ where: { userId: first.user.id } }))
         .toBe(sessionsBefore);
+
+      await prisma.user.update({
+        where: { id: first.user.id },
+        data: { status: "ACTIVE" },
+      });
 
       await expect(
         auth.api.signInEmail({
@@ -235,6 +243,7 @@ describe("internal staff credential primitives", () => {
           password: "Temporary-Pass-1",
           name: "Inactive Staff",
           role: "STOCK_STAFF",
+          roleDefinitionId: "role-stock-staff",
           locationId: locations.stockRoom.id,
         },
       });

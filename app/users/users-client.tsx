@@ -47,14 +47,13 @@ import {
   setUserStatus,
   updateUser,
   USER_LIST_PAGE_SIZE,
-  type CanonicalLocationCode,
+  type LocationCode,
   type CreateUserRequest,
-  type ManageableUserRole,
   type ManagedUserDto,
-  type ManagedUserRole,
   type UpdateUserRequest,
   type UserStatusDto,
 } from "@/lib/contracts/users";
+import type { AssignableRoleDto, RoleScopeDto } from "@/lib/contracts/roles";
 
 /**
  * Admin User Management client (UI-SPEC surface 3/4/5).
@@ -76,13 +75,13 @@ export type UsersLocationOption = {
 
 const PAGE_TITLE = "User Management";
 const PAGE_SUBTITLE =
-  "Create and manage staff accounts, fixed roles, and location access.";
+  "Create and manage staff accounts, access roles, and location scope.";
 
 const LOAD_USERS_ERROR_COPY =
   "We couldn’t load users. Check your connection and try again.";
 const EMPTY_HEADING = "No staff users yet";
 const EMPTY_BODY =
-  "Create a Stock Staff, Branch Staff, or Accounting Staff account to get started.";
+  "Create a staff account and assign an access role to get started.";
 const FILTERED_EMPTY_HEADING = "No users match these filters";
 const FILTERED_EMPTY_BODY =
   "Change or reset the filters to see other staff accounts.";
@@ -127,22 +126,6 @@ function reactivateFailureCopy(name: string) {
 
 // --- Human labels ----------------------------------------------------------
 
-const ROLE_FILTER_OPTIONS = [
-  { value: "all", label: "All roles" },
-  { value: "STOCK_STAFF", label: "Stock Staff" },
-  { value: "BRANCH_STAFF", label: "Branch Staff" },
-  { value: "ACCOUNTING_STAFF", label: "Accounting Staff" },
-] as const satisfies ReadonlyArray<{ value: ManageableUserRole | "all"; label: string }>;
-
-const CREATE_ROLE_OPTIONS: ReadonlyArray<{
-  value: ManageableUserRole;
-  label: string;
-}> = [
-  { value: "STOCK_STAFF", label: "Stock Staff" },
-  { value: "BRANCH_STAFF", label: "Branch Staff" },
-  { value: "ACCOUNTING_STAFF", label: "Accounting Staff" },
-];
-
 const STATUS_FILTER_OPTIONS: ReadonlyArray<{
   value: UserStatusDto | "all";
   label: string;
@@ -152,25 +135,12 @@ const STATUS_FILTER_OPTIONS: ReadonlyArray<{
   { value: "INACTIVE", label: "Inactive" },
 ];
 
-function staffRoleLabel(
-  role: ManagedUserRole,
-  isOwner: boolean,
-): string {
-  if (isOwner) return "Owner Admin";
-  switch (role) {
-    case "ADMIN":
-      return "Admin";
-    case "STOCK_STAFF":
-      return "Stock Staff";
-    case "BRANCH_STAFF":
-      return "Branch Staff";
-    case "ACCOUNTING_STAFF":
-      return "Accounting Staff";
-  }
+function staffRoleLabel(user: ManagedUserDto): string {
+  return user.isOwner ? "Owner Admin" : user.roleName;
 }
 
 function locationScopeLabel(user: ManagedUserDto): string {
-  if (user.role === "ADMIN" || user.role === "ACCOUNTING_STAFF") {
+  if (user.roleScope === "OWNER" || user.roleScope === "BUSINESS_WIDE") {
     return "Business-wide";
   }
   if (!user.location) return "Not assigned";
@@ -406,12 +376,14 @@ function UserFormDialog({
   mode,
   user,
   locations,
+  roles,
   onCompleted,
   onCancel,
 }: {
   mode: "create" | "edit";
   user?: ManagedUserDto;
   locations: ReadonlyArray<UsersLocationOption>;
+  roles: ReadonlyArray<AssignableRoleDto>;
   onCompleted: (bannerMessage: string) => void;
   onCancel: () => void;
 }) {
@@ -419,9 +391,9 @@ function UserFormDialog({
 
   const [name, setName] = useState(user?.name ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
-  const [role, setRole] = useState<ManageableUserRole>(
-    user && user.role !== "ADMIN" ? user.role : "STOCK_STAFF",
-  );
+  const [roleId, setRoleId] = useState(user?.roleDefinitionId ?? roles[0]?.id ?? "");
+  const selectedRole = roles.find((role) => role.id === roleId) ?? roles[0];
+  const roleScope: RoleScopeDto = selectedRole?.scope ?? "BUSINESS_WIDE";
   const [branchLocationId, setBranchLocationId] = useState(
     user?.location && user.location.code !== "SR" ? user.location.id : "",
   );
@@ -449,16 +421,17 @@ function UserFormDialog({
   );
 
   const originalLocationId = user?.location?.id ?? null;
-  const nextLocationId = role === "BRANCH_STAFF" ? branchLocationId || null : null;
+  const nextLocationId = roleScope === "BRANCH" ? branchLocationId || null : null;
   const accessWillChange =
     !isCreate &&
     Boolean(user) &&
-    (role !== user!.role || nextLocationId !== originalLocationId);
+    (roleId !== user!.roleDefinitionId || nextLocationId !== originalLocationId);
 
-  function handleRoleChange(next: ManageableUserRole) {
-    setRole(next);
+  function handleRoleChange(next: string) {
+    setRoleId(next);
+    const nextScope = roles.find((role) => role.id === next)?.scope;
     // Changing role clears an incompatible prior location before submit.
-    if (next !== "BRANCH_STAFF") {
+    if (nextScope !== "BRANCH") {
       setBranchLocationId("");
     }
     setFieldErrors((previous) => {
@@ -475,7 +448,7 @@ function UserFormDialog({
       case "email":
         return validateEmail(email);
       case "branch":
-        return role === "BRANCH_STAFF"
+        return roleScope === "BRANCH"
           ? validateBranchSelection(branchLocationId)
           : undefined;
       case "password":
@@ -570,21 +543,13 @@ function UserFormDialog({
     if (isCreate) {
       // Written per-branch (not spread from a shared base) so the
       // discriminated-union create contract stays exactly satisfied.
-      const request: CreateUserRequest =
-        role === "BRANCH_STAFF"
-          ? {
-              role,
-              name: displayName,
-              email: trimmedEmail,
-              temporaryPassword,
-              locationId: branchLocationId,
-            }
-          : {
-              role,
-              name: displayName,
-              email: trimmedEmail,
-              temporaryPassword,
-            };
+       const request: CreateUserRequest = {
+         roleId,
+         name: displayName,
+         email: trimmedEmail,
+         temporaryPassword,
+         ...(roleScope === "BRANCH" ? { locationId: branchLocationId } : {}),
+       };
       mutation.mutate({ request, displayName });
       return;
     }
@@ -592,8 +557,8 @@ function UserFormDialog({
     const request: UpdateUserRequest = {
       name: displayName,
       email: trimmedEmail,
-      role,
-      locationId: role === "BRANCH_STAFF" ? branchLocationId : null,
+      roleId,
+      locationId: roleScope === "BRANCH" ? branchLocationId : null,
     };
     mutation.mutate({ request, displayName });
   }
@@ -620,8 +585,8 @@ function UserFormDialog({
           <DialogTitle>{isCreate ? "Create User" : "Edit User"}</DialogTitle>
           <DialogDescription>
             {isCreate
-              ? "Set a fixed role and location scope. The temporary password is changed at first sign-in."
-              : "Update account details, fixed role, and location scope."}
+              ? "Set an access role and location scope. The temporary password is changed at first sign-in."
+              : "Update account details, access role, and location scope."}
           </DialogDescription>
         </DialogHeader>
 
@@ -679,26 +644,25 @@ function UserFormDialog({
 
               <div className="space-y-2">
                 <Label htmlFor="user-form-role">Role</Label>
-                {/* Fixed staff roles only — Admin is never an option. */}
                 <UsersSelect
-                  value={role}
+                  value={roleId}
                   onValueChange={handleRoleChange}
-                  options={CREATE_ROLE_OPTIONS}
+                  options={roles.map((role) => ({ value: role.id, label: role.name }))}
                   ariaLabel="Role"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor={role === "BRANCH_STAFF" ? "user-form-branch" : undefined}>
+                <Label htmlFor={roleScope === "BRANCH" ? "user-form-branch" : undefined}>
                   Location Scope
                 </Label>
-                {role === "STOCK_STAFF" && (
+                {roleScope === "STOCK_ROOM" && (
                   <ReadOnlyScopeDisplay label="Stock Room (SR)" />
                 )}
-                {role === "ACCOUNTING_STAFF" && (
+                {roleScope === "BUSINESS_WIDE" && (
                   <ReadOnlyScopeDisplay label="Business-wide" />
                 )}
-                {role === "BRANCH_STAFF" && (
+                {roleScope === "BRANCH" && (
                   <>
                     <UsersSelect
                       value={branchLocationId}
@@ -1161,8 +1125,10 @@ function StatusDialog({
 
 export function UsersClient({
   locations,
+  roles,
 }: {
   locations: ReadonlyArray<UsersLocationOption>;
+  roles: ReadonlyArray<AssignableRoleDto>;
 }) {
   const queryClient = useQueryClient();
 
@@ -1171,30 +1137,30 @@ export function UsersClient({
 
   // Draft (uncommitted) filter controls.
   const [searchDraft, setSearchDraft] = useState("");
-  const [roleDraft, setRoleDraft] = useState<ManageableUserRole | "all">("all");
+  const [roleDraft, setRoleDraft] = useState<string>("all");
   const [locationDraft, setLocationDraft] = useState<
-    CanonicalLocationCode | "none" | "all"
+    LocationCode | "none" | "all"
   >("all");
   const [statusDraft, setStatusDraft] = useState<UserStatusDto | "all">("all");
 
   // Applied filter state — the complete query key source of truth.
   const [appliedSearch, setAppliedSearch] = useState("");
-  const [appliedRole, setAppliedRole] = useState<ManageableUserRole | "all">("all");
+  const [appliedRole, setAppliedRole] = useState<string>("all");
   const [appliedLocation, setAppliedLocation] = useState<
-    CanonicalLocationCode | "none" | "all"
+    LocationCode | "none" | "all"
   >("all");
   const [appliedStatus, setAppliedStatus] = useState<UserStatusDto | "all">("all");
   const [page, setPage] = useState(1);
 
   const locationFilterOptions = useMemo<UsersSelectOption<
-    CanonicalLocationCode | "none" | "all"
+    LocationCode | "none" | "all"
   >[]>(() => {
-    const options: UsersSelectOption<CanonicalLocationCode | "none" | "all">[] = [
+    const options: UsersSelectOption<LocationCode | "none" | "all">[] = [
       { value: "all", label: "All locations" },
     ];
     for (const location of locations) {
       options.push({
-        value: location.code as CanonicalLocationCode,
+        value: location.code,
         label:
           location.code === "SR"
             ? "Stock Room (SR)"
@@ -1221,7 +1187,7 @@ export function UsersClient({
       listUsers({
         page,
         ...(appliedSearch ? { search: appliedSearch.trim() } : {}),
-        ...(appliedRole !== "all" ? { role: appliedRole } : {}),
+        ...(appliedRole !== "all" ? { roleId: appliedRole } : {}),
         ...(appliedLocation !== "all" ? { location: appliedLocation } : {}),
         ...(appliedStatus !== "all" ? { status: appliedStatus } : {}),
       }),
@@ -1372,7 +1338,10 @@ export function UsersClient({
               <UsersSelect
                 value={roleDraft}
                 onValueChange={setRoleDraft}
-                options={ROLE_FILTER_OPTIONS}
+                options={[
+                  { value: "all", label: "All roles" },
+                  ...roles.map((role) => ({ value: role.id, label: role.name })),
+                ]}
                 ariaLabel="Filter by role"
               />
 
@@ -1496,11 +1465,11 @@ export function UsersClient({
                       <TableCell>
                         {user.isOwner ? (
                           <span className="text-foreground text-sm font-medium">
-                            {staffRoleLabel(user.role, true)}
+                            {staffRoleLabel(user)}
                           </span>
                         ) : (
                           <span className="text-foreground text-sm">
-                            {staffRoleLabel(user.role, false)}
+                            {staffRoleLabel(user)}
                           </span>
                         )}
                       </TableCell>
@@ -1620,6 +1589,7 @@ export function UsersClient({
         <UserFormDialog
           mode="create"
           locations={locations}
+          roles={roles}
           onCompleted={(message) => void handleMutationSuccess(message)}
           onCancel={closeDialog}
         />
@@ -1630,6 +1600,7 @@ export function UsersClient({
           mode="edit"
           user={dialog.user}
           locations={locations}
+          roles={roles}
           onCompleted={(message) => void handleMutationSuccess(message)}
           onCancel={closeDialog}
         />

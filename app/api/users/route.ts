@@ -1,16 +1,15 @@
 import { createUserRequestSchema, userListQuerySchema } from "@/lib/contracts/users";
-import { requireCapability } from "@/lib/server/authorization";
-import { CAPABILITIES } from "@/lib/server/policy/access";
 import {
   createStaffUser,
   listUsers,
+  requireOwnerAdmin,
   usersErrorResponse,
 } from "@/lib/server/services/users";
 
 export async function GET(request: Request) {
   try {
     // Authorize before parsing filters or executing protected service work.
-    await requireCapability(request.headers, CAPABILITIES.usersManage);
+    await requireOwnerAdmin(request.headers);
     const query = userListQuerySchema.parse(
       Object.fromEntries(new URL(request.url).searchParams),
     );
@@ -27,7 +26,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const actor = await requireCapability(request.headers, CAPABILITIES.usersManage);
+    const actor = await requireOwnerAdmin(request.headers);
     const input = createUserRequestSchema.parse(await request.json());
 
     return Response.json({ data: await createStaffUser(actor, input) }, { status: 201 });

@@ -16,9 +16,9 @@ import {
   validatePersistedAssignment,
 } from "./policy/access";
 import { prisma } from "./prisma";
+import { isActiveBranch, isActiveStockRoom } from "./locations";
 
 const ADMIN_LOCATION_SCOPE_COOKIE = "chezcar-admin-location-scope";
-const BRANCH_CODES = new Set(["QC", "BL", "LU", "VC", "SP"]);
 
 type ShellLocation = {
   id: string;
@@ -55,11 +55,7 @@ function locationLabel(location: ShellLocation): string {
 }
 
 function isCanonicalLocation(location: ShellLocation): boolean {
-  return (
-    location.isActive &&
-    ((location.code === "SR" && location.type === "WAREHOUSE") ||
-      (BRANCH_CODES.has(location.code) && location.type === "BRANCH"))
-  );
+  return isActiveStockRoom(location) || isActiveBranch(location);
 }
 
 async function adminScope(headers: Headers): Promise<LocationScopeDto> {
@@ -112,24 +108,24 @@ async function scopeFor(
   context: PersistedAccessContext,
   location: ShellLocation | null,
 ): Promise<LocationScopeDto> {
-  switch (context.role) {
-    case "ADMIN":
+  switch (context.roleScope) {
+    case "OWNER":
       return adminScope(headers);
-    case "STOCK_STAFF":
+    case "STOCK_ROOM":
       return {
         kind: "location",
         label: "Stock Room (SR)",
         locationId: context.locationId,
         code: "SR",
       };
-    case "BRANCH_STAFF":
+    case "BRANCH":
       return {
         kind: "location",
         label: locationLabel(location as ShellLocation),
         locationId: context.locationId,
         code: location?.code ?? null,
       };
-    case "ACCOUNTING_STAFF":
+    case "BUSINESS_WIDE":
       return {
         kind: "business-wide",
         label: "Business-wide",
@@ -155,6 +151,10 @@ export async function loadShellAccess(headers: Headers): Promise<ShellAccessDto>
       role: true,
       status: true,
       locationId: true,
+      roleDefinitionId: true,
+      accessRole: {
+        select: { name: true, scope: true, permissions: true },
+      },
       location: {
         select: {
           id: true,
@@ -174,6 +174,10 @@ export async function loadShellAccess(headers: Headers): Promise<ShellAccessDto>
   const context: PersistedAccessContext = {
     userId: user.id,
     role: user.role,
+    roleDefinitionId: user.roleDefinitionId,
+    roleScope: user.accessRole.scope,
+    capabilities: user.accessRole.permissions,
+    isOwner: user.accessRole.scope === "OWNER",
     locationId: user.locationId,
     location: user.location,
   };
@@ -185,7 +189,11 @@ export async function loadShellAccess(headers: Headers): Promise<ShellAccessDto>
   const capabilities = capabilitiesFor(context);
   const permittedCapabilities = new Set(capabilities);
   const menu: ShellMenuEntryDto[] = menus
-    .filter((item) => permittedCapabilities.has(item.capability))
+    .filter(
+      (item) =>
+        permittedCapabilities.has(item.capability) &&
+        (!("ownerOnly" in item) || !item.ownerOnly || context.isOwner),
+    )
     .map(({ label, href, iconId }) => ({ label, href, icon: iconId }));
 
   return {
@@ -194,6 +202,10 @@ export async function loadShellAccess(headers: Headers): Promise<ShellAccessDto>
       name: user.name,
       email: user.email,
       role: user.role,
+      roleDefinitionId: user.roleDefinitionId,
+      roleName: user.accessRole.name,
+      roleScope: user.accessRole.scope,
+      isOwner: user.accessRole.scope === "OWNER",
     },
     scope: await scopeFor(headers, context, user.location),
     capabilities,

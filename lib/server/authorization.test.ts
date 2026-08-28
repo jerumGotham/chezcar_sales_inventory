@@ -17,6 +17,7 @@ vi.mock("@/lib/server/prisma", () => ({
 import {
   AuthenticationError,
   AuthorizationError,
+  requireActiveUser,
   requireCapability,
 } from "./authorization";
 import {
@@ -24,6 +25,7 @@ import {
   type PersistedAccessContext,
   validatePersistedAssignment,
 } from "./policy/access";
+import { CAPABILITY_IDS } from "../contracts/roles";
 
 type LocationInput = {
   id: string;
@@ -45,13 +47,37 @@ const branch: LocationInput = {
   isActive: true,
 };
 
+const accessRoleByCompatibilityRole = {
+  ADMIN: { id: "role-admin", scope: "OWNER", permissions: [] },
+  STOCK_STAFF: {
+    id: "role-stock-staff",
+    scope: "STOCK_ROOM",
+    permissions: ["dashboard:view", "products:view", "inventory:view", "stock-transfers:view"],
+  },
+  BRANCH_STAFF: {
+    id: "role-branch-staff",
+    scope: "BRANCH",
+    permissions: ["dashboard:view", "inventory:view", "stock-transfers:view"],
+  },
+  ACCOUNTING_STAFF: {
+    id: "role-accounting-staff",
+    scope: "BUSINESS_WIDE",
+    permissions: ["dashboard:view"],
+  },
+} as const;
+
 function accessContext(
   role: UserRole,
   location: LocationInput | null,
 ): PersistedAccessContext {
+  const accessRole = accessRoleByCompatibilityRole[role];
   return {
     userId: `user-${role.toLowerCase()}`,
     role,
+    roleDefinitionId: accessRole.id,
+    roleScope: accessRole.scope,
+    capabilities: accessRole.permissions,
+    isOwner: accessRole.scope === "OWNER",
     locationId: location?.id ?? null,
     location,
   };
@@ -62,9 +88,15 @@ function persistedUser(
   location: LocationInput | null,
   status: UserStatus = "ACTIVE",
 ) {
+  const accessRole = accessRoleByCompatibilityRole[role];
   return {
     id: `user-${role.toLowerCase()}`,
     role,
+    roleDefinitionId: accessRole.id,
+    accessRole: {
+      scope: accessRole.scope,
+      permissions: accessRole.permissions,
+    },
     status,
     locationId: location?.id ?? null,
     location,
@@ -72,6 +104,21 @@ function persistedUser(
 }
 
 describe("fixed persisted access policy", () => {
+  it("uses persisted grants rather than the compatibility enum", () => {
+    const customBranch = {
+      ...accessContext("BRANCH_STAFF", branch),
+      roleDefinitionId: "role-custom-cashier",
+      capabilities: ["products:view"],
+    } satisfies PersistedAccessContext;
+
+    expect(evaluateAccess(customBranch, "products:view")).toBe(true);
+    expect(evaluateAccess(customBranch, "inventory:view")).toBe(false);
+  });
+
+  it("gives the owner the complete catalog regardless of stored grants", () => {
+    expect(evaluateAccess(accessContext("ADMIN", null), "roles:manage")).toBe(true);
+  });
+
   it("grants transfer visibility only to Admin, Stock Staff, and Branch Staff", () => {
     expect(evaluateAccess(accessContext("ADMIN", null), "stock-transfers:view")).toBe(true);
     expect(evaluateAccess(accessContext("STOCK_STAFF", stockRoom), "stock-transfers:view")).toBe(true);
@@ -110,11 +157,6 @@ describe("fixed persisted access policy", () => {
       { ...branch, isActive: false },
       "inactive branch",
     ],
-    [
-      "BRANCH_STAFF",
-      { ...branch, code: "UNKNOWN" },
-      "noncanonical branch",
-    ],
   ] satisfies ReadonlyArray<
     readonly [UserRole, LocationInput | null, string]
   >)("rejects %s with %s", (role, location, _description) => {
@@ -140,6 +182,14 @@ describe("fixed persisted access policy", () => {
       expect(decisions).toEqual([expected, expected, expected]);
     },
   );
+
+  it("accepts a persisted assignment to a newly added active branch", () => {
+    expect(
+      validatePersistedAssignment(
+        accessContext("BRANCH_STAFF", { ...branch, code: "DV" }),
+      ),
+    ).toBe(true);
+  });
 
   it("fails closed before capability evaluation for an invalid assignment", () => {
     expect(evaluateAccess(accessContext("STOCK_STAFF", branch), "dashboard:view"))
@@ -198,6 +248,32 @@ describe("requireCapability", () => {
     ).rejects.toThrow(AuthorizationError);
   });
 
+  it("loads an active custom-role user without requiring a resource capability", async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: "custom-branch-user" } });
+    mocks.findUnique.mockResolvedValue({
+      ...persistedUser("BRANCH_STAFF", branch),
+      id: "custom-branch-user",
+      roleDefinitionId: "role-custom-branch",
+      accessRole: { scope: "BRANCH", permissions: [] },
+    });
+
+    await expect(requireActiveUser(new Headers())).resolves.toMatchObject({
+      userId: "custom-branch-user",
+      roleDefinitionId: "role-custom-branch",
+      capabilities: [],
+    });
+  });
+
+  it("returns the full current capability catalog for the owner", async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: "user-admin" } });
+    mocks.findUnique.mockResolvedValue(persistedUser("ADMIN", null));
+
+    await expect(requireActiveUser(new Headers())).resolves.toMatchObject({
+      isOwner: true,
+      capabilities: CAPABILITY_IDS,
+    });
+  });
+
   it.each([
     ["ADMIN", branch],
     ["ACCOUNTING_STAFF", branch],
@@ -236,6 +312,10 @@ describe("requireCapability", () => {
         role: true,
         status: true,
         locationId: true,
+        roleDefinitionId: true,
+        accessRole: {
+          select: { scope: true, permissions: true },
+        },
         location: {
           select: { id: true, code: true, type: true, isActive: true },
         },

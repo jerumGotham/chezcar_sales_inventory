@@ -41,13 +41,12 @@ import {
 } from "@/components/ui/sheet";
 import { correctInventory, fetchInventory, fetchInventoryMovements, updateInventoryUnitCost } from "@/lib/catalog";
 import type { LocationScopeDto, ShellRole } from "@/lib/contracts/access";
+import { fetchInventoryAvailability } from "@/lib/inventory-availability";
 
 import {
   ADJUSTMENT_TYPE_OPTIONS,
   CATEGORY_OPTIONS,
   LOCATION_OPTIONS,
-  MAIN_WAREHOUSE,
-  MOCK_INVENTORY,
   MOVEMENT_TYPE_OPTIONS,
   PRODUCT_OPTIONS,
   STATUS_OPTIONS,
@@ -56,7 +55,6 @@ import {
   getStockBadgeClass,
   formatPeso,
   reactSelectStyles,
-  type BranchAvailabilityRow,
   type InventoryRow,
   type ProductGroupRow,
   type SelectOption,
@@ -190,7 +188,7 @@ export function InventoryClient({
   const [availabilityCategoryFilter, setAvailabilityCategoryFilter] =
     useState<SelectOption>(CATEGORY_OPTIONS[0]);
   const [availabilityLocationFilter, setAvailabilityLocationFilter] =
-    useState<SelectOption>(LOCATION_OPTIONS[0]);
+    useState<SelectOption>({ value: "all", label: "All locations" });
   const [availabilityStatusFilter, setAvailabilityStatusFilter] =
     useState<SelectOption>(STATUS_OPTIONS[0]);
 
@@ -242,6 +240,31 @@ export function InventoryClient({
         reference: stockCardReference,
       }),
     enabled: isStockCardOpen,
+  });
+
+  const {
+    data: availabilityData,
+    error: availabilityError,
+    isLoading: isAvailabilityLoading,
+  } = useQuery({
+    queryKey: [
+      "inventory-availability",
+      {
+        product: availabilityProductFilter.value,
+        category: availabilityCategoryFilter.value,
+        location: availabilityLocationFilter.value,
+        status: availabilityStatusFilter.value,
+      },
+    ],
+    queryFn: () =>
+      fetchInventoryAvailability({
+        product: availabilityProductFilter.value,
+        category: availabilityCategoryFilter.value,
+        location: availabilityLocationFilter.value,
+        status: availabilityStatusFilter.value,
+      }),
+    enabled: isAvailabilityOpen,
+    placeholderData: (previousData) => previousData,
   });
 
   const refreshInventory = () => {
@@ -330,38 +353,28 @@ export function InventoryClient({
 
   const stockCardRows = movementsData?.data ?? [];
 
-  const availabilityRows = useMemo<BranchAvailabilityRow[]>(() => {
-    return MOCK_INVENTORY.filter((item) => {
-      const byProduct =
-        availabilityProductFilter.value === "all" ||
-        item.itemCode === availabilityProductFilter.value;
-      const byCategory =
-        availabilityCategoryFilter.value === "all" ||
-        item.category === availabilityCategoryFilter.value;
-      const byLocation =
-        availabilityLocationFilter.value === "all" ||
-        item.location === availabilityLocationFilter.value;
-      const byStatus =
-        availabilityStatusFilter.value === "all" ||
-        item.status === availabilityStatusFilter.value;
-
-      return byProduct && byCategory && byLocation && byStatus;
-    }).map((item) => ({
-      itemCode: item.itemCode,
-      itemName: item.name,
-      category: item.category,
-      location: item.location,
-      onHand: item.onHand,
-      reserved: item.reserved,
-      available: getAvailableStock(item),
-      status: item.status,
-    }));
-  }, [
-    availabilityProductFilter,
-    availabilityCategoryFilter,
-    availabilityLocationFilter,
-    availabilityStatusFilter,
-  ]);
+  const availabilityRows = availabilityData?.data ?? [];
+  const availabilityProductOptions: SelectOption[] = [
+    { value: "all", label: "All Products" },
+    ...(availabilityData?.filterOptions.products ?? []).map((product) => ({
+      value: product.id,
+      label: `${product.itemCode} - ${product.name}`,
+    })),
+  ];
+  const availabilityCategoryOptions: SelectOption[] = [
+    { value: "all", label: "All Categories" },
+    ...(availabilityData?.filterOptions.categories ?? []).map((category) => ({
+      value: category,
+      label: category,
+    })),
+  ];
+  const availabilityLocationOptions: SelectOption[] = [
+    { value: "all", label: "All locations" },
+    ...(availabilityData?.filterOptions.locations ?? []).map((item) => ({
+      value: item.id,
+      label: `${item.name} (${item.code})`,
+    })),
+  ];
 
   const showingFrom = useMemo(() => {
     if (meta.total === 0) return 0;
@@ -559,7 +572,7 @@ export function InventoryClient({
               {canReceiveSupplierStock && <Link href="/inventory/receive"><Button className="bg-emerald-600 text-white hover:bg-emerald-700">Receive from Supplier</Button></Link>}
               {isAdmin && <Button className="bg-amber-600 text-white hover:bg-amber-700" onClick={openAdjustModal}>Adjust Stock</Button>}
               <Button variant="outline" onClick={() => setIsStockCardOpen(true)}>Stock Movement</Button>
-              <Button variant="outline" onClick={() => setIsAvailabilityOpen(true)}>Availability (Prototype)</Button>
+              <Button variant="outline" onClick={() => setIsAvailabilityOpen(true)}>Inventory Availability</Button>
               <Link href="/stock-transfers"><Button variant="outline">{isStockStaff ? "Stock Transfers" : "Open Stock Transfers"}</Button></Link>
             </div>
           </CardContent>
@@ -1411,9 +1424,9 @@ export function InventoryClient({
     "
         >
           <SheetHeader>
-            <SheetTitle>Availability (Prototype)</SheetTitle>
+            <SheetTitle>Inventory Availability</SheetTitle>
             <SheetDescription>
-              Demonstration availability data by product and location. Use the inventory list for live balances.
+              View current on-hand, reserved, and available stock by product and location.
             </SheetDescription>
           </SheetHeader>
 
@@ -1422,10 +1435,7 @@ export function InventoryClient({
               <Label>Product</Label>
               <Select
                 instanceId="availability-product-filter"
-                options={[
-                  { value: "all", label: "All Products" },
-                  ...PRODUCT_OPTIONS,
-                ]}
+                options={availabilityProductOptions}
                 value={availabilityProductFilter}
                 onChange={(option) =>
                   setAvailabilityProductFilter(
@@ -1441,10 +1451,12 @@ export function InventoryClient({
               <Label>Category</Label>
               <Select
                 instanceId="availability-category-filter"
-                options={CATEGORY_OPTIONS}
+                options={availabilityCategoryOptions}
                 value={availabilityCategoryFilter}
                 onChange={(option) =>
-                  setAvailabilityCategoryFilter(option ?? CATEGORY_OPTIONS[0])
+                  setAvailabilityCategoryFilter(
+                    option ?? { value: "all", label: "All Categories" },
+                  )
                 }
                 isSearchable
                 styles={reactSelectStyles}
@@ -1455,10 +1467,12 @@ export function InventoryClient({
               <Label>Location</Label>
               <Select
                 instanceId="availability-location-filter"
-                options={LOCATION_OPTIONS}
+                options={availabilityLocationOptions}
                 value={availabilityLocationFilter}
                 onChange={(option) =>
-                  setAvailabilityLocationFilter(option ?? LOCATION_OPTIONS[0])
+                  setAvailabilityLocationFilter(
+                    option ?? { value: "all", label: "All locations" },
+                  )
                 }
                 isSearchable
                 styles={reactSelectStyles}
@@ -1509,7 +1523,22 @@ export function InventoryClient({
               </thead>
 
               <tbody>
-                {availabilityRows.length === 0 ? (
+                {isAvailabilityLoading ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-12 text-center text-sm text-slate-500">
+                      <span className="inline-flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Loading inventory availability...
+                      </span>
+                    </td>
+                  </tr>
+                ) : availabilityError ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-12 text-center text-sm text-red-600">
+                      {availabilityError.message}
+                    </td>
+                  </tr>
+                ) : availabilityRows.length === 0 ? (
                   <tr>
                     <td
                       colSpan={7}
@@ -1521,28 +1550,28 @@ export function InventoryClient({
                 ) : (
                   availabilityRows.map((row) => (
                     <tr
-                      key={`${row.itemCode}-${row.location}`}
+                      key={`${row.product.id}-${row.location.id}`}
                       className="border-b hover:bg-slate-50"
                     >
                       <td className="px-4 py-3 text-sm text-slate-700">
                         <div>
-                          <p className="font-medium">{row.itemName}</p>
+                          <p className="font-medium">{row.product.name}</p>
                           <p className="text-xs text-slate-500">
-                            {row.itemCode}
+                            {row.product.itemCode}
                           </p>
                         </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-600">
-                        {row.category}
+                        {row.product.category}
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-700">
                         <div className="flex items-center gap-2">
-                          {row.location === MAIN_WAREHOUSE ? (
+                          {row.location.type === "WAREHOUSE" ? (
                             <Warehouse className="h-4 w-4 text-sky-600" />
                           ) : (
                             <MapPin className="h-4 w-4 text-violet-600" />
                           )}
-                          {row.location}
+                          {row.location.name}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-600">

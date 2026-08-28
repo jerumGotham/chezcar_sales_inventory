@@ -1,6 +1,8 @@
 import "server-only";
 
-import type { LocationType, UserRole } from "@prisma/client";
+import type { LocationType, RoleScope, UserRole } from "@prisma/client";
+
+import { CAPABILITY_IDS, type CapabilityId } from "../../contracts/roles";
 
 export type AccessResource =
   | "dashboard"
@@ -14,21 +16,7 @@ export type AccessResource =
 
 export type AccessAction = "view" | "manage";
 
-export type Capability =
-  | "dashboard:view"
-  | "customers:view"
-  | "customer-orders:view"
-  | "sales:post"
-  | "sales:verify:view"
-  | "sales:verify"
-  | "sales:resolve"
-  | "sales:mismatch:respond"
-  | "products:view"
-  | "inventory:view"
-  | "inventory-receiving:create"
-  | "reports:view"
-  | "users:manage"
-  | "stock-transfers:view";
+export type Capability = CapabilityId;
 
 export type PersistedAccessLocation = {
   id: string;
@@ -40,6 +28,10 @@ export type PersistedAccessLocation = {
 export type PersistedAccessContext = {
   userId: string;
   role: UserRole;
+  roleDefinitionId: string;
+  roleScope: RoleScope;
+  capabilities: readonly string[];
+  isOwner: boolean;
   locationId: string | null;
   location: PersistedAccessLocation | null;
 };
@@ -58,80 +50,46 @@ export const CAPABILITIES = {
   inventoryReceivingCreate: "inventory-receiving:create",
   reportsView: "reports:view",
   usersManage: "users:manage",
+  branchesManage: "branches:manage",
+  rolesManage: "roles:manage",
   stockTransfersView: "stock-transfers:view",
 } as const satisfies Record<string, Capability>;
 
-const FIXED_BRANCH_CODES = new Set(["QC", "BL", "LU", "VC", "SP"]);
-
-const ROLE_CAPABILITIES = {
-  ADMIN: [
-    CAPABILITIES.dashboardView,
-    CAPABILITIES.customersView,
-    CAPABILITIES.customerOrdersView,
-    CAPABILITIES.salesPost,
-    CAPABILITIES.salesVerifyView,
-    CAPABILITIES.salesVerify,
-    CAPABILITIES.salesResolve,
-    CAPABILITIES.productsView,
-    CAPABILITIES.inventoryView,
-    CAPABILITIES.inventoryReceivingCreate,
-    CAPABILITIES.reportsView,
-    CAPABILITIES.usersManage,
-    CAPABILITIES.stockTransfersView,
-  ],
-  STOCK_STAFF: [
-    CAPABILITIES.dashboardView,
-    CAPABILITIES.customersView,
-    CAPABILITIES.customerOrdersView,
-    CAPABILITIES.productsView,
-    CAPABILITIES.inventoryView,
-    CAPABILITIES.inventoryReceivingCreate,
-    CAPABILITIES.stockTransfersView,
-  ],
-  BRANCH_STAFF: [
-    CAPABILITIES.dashboardView,
-    CAPABILITIES.customersView,
-    CAPABILITIES.customerOrdersView,
-    CAPABILITIES.salesPost,
-    CAPABILITIES.salesVerifyView,
-    CAPABILITIES.salesMismatchRespond,
-    CAPABILITIES.inventoryView,
-    CAPABILITIES.stockTransfersView,
-  ],
-  ACCOUNTING_STAFF: [
-    CAPABILITIES.dashboardView,
-    CAPABILITIES.customersView,
-    CAPABILITIES.customerOrdersView,
-    CAPABILITIES.salesVerify,
-    CAPABILITIES.salesVerifyView,
-    CAPABILITIES.salesResolve,
-    CAPABILITIES.reportsView,
-  ],
-} as const satisfies Record<UserRole, readonly Capability[]>;
+const COMPATIBILITY_ROLE_BY_SCOPE = {
+  OWNER: "ADMIN",
+  BRANCH: "BRANCH_STAFF",
+  STOCK_ROOM: "STOCK_STAFF",
+  BUSINESS_WIDE: "ACCOUNTING_STAFF",
+} as const satisfies Record<RoleScope, UserRole>;
 
 export function validatePersistedAssignment(
   context: PersistedAccessContext,
 ): boolean {
-  const { role, locationId, location } = context;
+  const { role, roleScope, locationId, location } = context;
+  if (
+    role !== COMPATIBILITY_ROLE_BY_SCOPE[roleScope] ||
+    context.isOwner !== (roleScope === "OWNER")
+  ) {
+    return false;
+  }
   const hasConsistentLocation =
     locationId !== null && location !== null && location.id === locationId;
 
-  switch (role) {
-    case "ADMIN":
-    case "ACCOUNTING_STAFF":
+  switch (roleScope) {
+    case "OWNER":
+    case "BUSINESS_WIDE":
       return locationId === null && location === null;
-    case "STOCK_STAFF":
+    case "STOCK_ROOM":
       return (
         hasConsistentLocation &&
         location.isActive &&
         location.code === "SR" &&
         location.type === "WAREHOUSE"
       );
-    case "BRANCH_STAFF":
+    case "BRANCH":
       return (
         hasConsistentLocation &&
         location.isActive &&
-        FIXED_BRANCH_CODES.has(location.code) &&
         location.type === "BRANCH"
       );
   }
@@ -145,9 +103,7 @@ export function evaluateAccess(
     return false;
   }
 
-  return (ROLE_CAPABILITIES[context.role] as readonly Capability[]).includes(
-    capability,
-  );
+  return context.isOwner || context.capabilities.includes(capability);
 }
 
 export function capabilitiesFor(
@@ -157,5 +113,7 @@ export function capabilitiesFor(
     return [];
   }
 
-  return ROLE_CAPABILITIES[context.role];
+  if (context.isOwner) return CAPABILITY_IDS;
+  const granted = new Set(context.capabilities);
+  return CAPABILITY_IDS.filter((capability) => granted.has(capability));
 }

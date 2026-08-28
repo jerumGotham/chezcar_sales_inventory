@@ -28,7 +28,7 @@ vi.mock("@/lib/server/catalog", async () => import("../../lib/server/catalog"));
 import { auth } from "../../lib/server/auth";
 import { prisma as sharedPrisma } from "../../lib/server/prisma";
 import { withDisposableDatabase } from "../helpers/database";
-import { createAuthFixture, createLocationFixtures } from "../helpers/factories";
+import { authContextFor, createAuthFixture, createLocationFixtures } from "../helpers/factories";
 
 const OWNER_EMAIL = "owner-admin@auth-fixture.example.test";
 const OWNER_PASSWORD = "Owner-Temp-Pass-1";
@@ -167,7 +167,7 @@ describe("access change and session revocation atomicity", () => {
         service.updateStaffUser(
           actor,
           target.id,
-          { role: "ACCOUNTING_STAFF" },
+          { roleId: "role-accounting-staff" },
           { injectFailureAfterAccessWrite: true },
         ),
       ).rejects.toThrow(/Injected access-change failure/);
@@ -205,7 +205,7 @@ describe("access change and session revocation atomicity", () => {
       const outcomes = await Promise.allSettled([
         service.setStaffStatus(actor, target.id, "INACTIVE"),
         service.updateStaffUser(actor, target.id, {
-          role: "ACCOUNTING_STAFF",
+          roleId: "role-accounting-staff",
         }),
       ]);
       const rejected = outcomes.filter((outcome) => outcome.status === "rejected");
@@ -220,19 +220,7 @@ describe("access change and session revocation atomicity", () => {
       );
       if (finalState.status === "ACTIVE") {
         expect(
-          validatePersistedAssignment({
-            userId: finalState.id,
-            role: finalState.role,
-            locationId: finalState.locationId,
-            location: finalState.location
-              ? {
-                  id: finalState.location.id,
-                  code: finalState.location.code,
-                  type: finalState.location.type,
-                  isActive: finalState.location.isActive,
-                }
-              : null,
-          }),
+          validatePersistedAssignment(authContextFor(finalState, finalState.location)),
         ).toBe(true);
       }
 
@@ -241,11 +229,11 @@ describe("access change and session revocation atomicity", () => {
       // independent of whichever role the serialized first pair produced.
       const moveOutcomes = await Promise.allSettled([
         service.updateStaffUser(actor, target.id, {
-          role: "BRANCH_STAFF",
+          roleId: "role-branch-staff",
           locationId: locations.branches.BL.id,
         }),
         service.updateStaffUser(actor, target.id, {
-          role: "BRANCH_STAFF",
+          roleId: "role-branch-staff",
           locationId: locations.branches.VC.id,
         }),
       ]);
@@ -282,7 +270,7 @@ describe("access change and session revocation atomicity", () => {
       const service = await import("../../lib/server/services/users");
       const actor = await service.requireOwnerAdmin(ownerHeaders);
       const changed = await service.updateStaffUser(actor, target.id, {
-        role: "ACCOUNTING_STAFF",
+        roleId: "role-accounting-staff",
       });
       expect(changed.role).toBe("ACCOUNTING_STAFF");
 

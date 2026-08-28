@@ -56,6 +56,8 @@ const pageAccess = {
     "/products",
     "/inventory/receive",
     "/users",
+    "/users/roles",
+    "/branches",
   ],
   STOCK_STAFF: [
     "/dashboard",
@@ -77,14 +79,24 @@ const pageAccess = {
   ],
 } as const satisfies Record<UserRole, readonly string[]>;
 
+const roleAccess = {
+  ADMIN: { id: "role-admin", scope: "OWNER", permissions: [] },
+  STOCK_STAFF: { id: "role-stock-staff", scope: "STOCK_ROOM", permissions: ["dashboard:view", "customers:view", "customer-orders:view", "products:view", "inventory:view"] },
+  BRANCH_STAFF: { id: "role-branch-staff", scope: "BRANCH", permissions: ["dashboard:view", "customers:view", "customer-orders:view", "inventory:view"] },
+  ACCOUNTING_STAFF: { id: "role-accounting-staff", scope: "BUSINESS_WIDE", permissions: ["dashboard:view", "customers:view", "customer-orders:view"] },
+} as const;
+
 function persistedUser(
   role: UserRole,
   location: PersistedLocation | null,
   status: UserStatus = "ACTIVE",
 ) {
+  const accessRole = roleAccess[role];
   return {
     id: `user-${role.toLowerCase()}`,
     role,
+    roleDefinitionId: accessRole.id,
+    accessRole: { scope: accessRole.scope, permissions: accessRole.permissions },
     status,
     locationId: location?.id ?? null,
     location,

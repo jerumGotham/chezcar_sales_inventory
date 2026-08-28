@@ -35,6 +35,11 @@ export const auth = betterAuth({
         required: false,
         input: false,
       },
+      roleDefinitionId: {
+        type: "string",
+        required: true,
+        input: false,
+      },
     },
   },
 });

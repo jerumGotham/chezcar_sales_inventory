@@ -2,7 +2,7 @@ import type { AuthContext } from "@/lib/server/authorization";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
 import { withDisposableDatabase } from "../helpers/database";
-import { createAuthFixture } from "../helpers/factories";
+import { authContextFor, createAuthFixture } from "../helpers/factories";
 
 const testEnvironment = vi.hoisted(() => {
   process.env.DATABASE_URL = "postgresql://postgres:postgres@localhost:55435/chezcar_test_01_13?schema=public";
@@ -12,8 +12,8 @@ void testEnvironment;
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/server/prisma", async () => import("../../lib/server/prisma"));
 
-function actor(user: { id: string; role: AuthContext["role"]; locationId: string | null }, location: AuthContext["location"]): AuthContext {
-  return { userId: user.id, role: user.role, locationId: user.locationId, location };
+function actor(user: Parameters<typeof authContextFor>[0], location: Parameters<typeof authContextFor>[1]): AuthContext {
+  return authContextFor(user, location);
 }
 
 describe("supplier receipt posting", () => {

@@ -15,7 +15,7 @@ export type LocationScopeControlProps = {
   role: ShellRole;
   scope: LocationScopeDto;
   locations: readonly ScopeLocationOption[];
-  /** Current selected scope value: "all" or one canonical location code. */
+  /** Current selected scope value: "all" or one active operational location code. */
   value: string;
   onValueChange?: (value: string) => void;
   id?: string;
@@ -34,7 +34,7 @@ function scopeOptions(locations: readonly ScopeLocationOption[]) {
 /**
  * Authoritative Inventory location-scope feedback rendered only for roles that
  * hold the inventory:view capability:
- * - Admin gets an enabled selector over All plus canonical SR/QC/BL/LU/VC/SP.
+ * - Admin gets an enabled selector over All plus active Stock Room and branches.
  * - Stock Staff is fixed read-only to Stock Room (SR).
  * - Branch Staff is fixed read-only to its persisted active branch.
  * - Accounting Staff has no inventory capability, so nothing renders here;

@@ -14,6 +14,14 @@ const DEVELOPMENT_DATABASE_URL =
 const APPROVED_FIXTURE_HASH =
   "a1570f220c260b7fe66e2e4a2eaf1eebe27538563b0b721fd0c9d80f6896d76b";
 const LOCATION_CODES = ["BL", "LU", "QC", "SP", "SR", "VC"] as const;
+const LOCATION_DISPLAY_NAMES: Record<(typeof LOCATION_CODES)[number], string> = {
+  BL: "Biñan Laguna",
+  LU: "La Union",
+  QC: "Quezon City",
+  SP: "San Fernando Pampanga",
+  SR: "Stock Room",
+  VC: "Vigan City",
+};
 
 const locationSchema = z.object({
   code: z.enum(LOCATION_CODES),
@@ -180,29 +188,19 @@ export async function replaceOpeningCatalog(
   options: { failAfterDelete?: boolean } = {},
 ) {
   const locationCodes = fixture.locations.map((location) => location.code);
-  const usersOutsideCanonicalLocations = await tx.user.count({
-    where: {
-      locationId: { not: null },
-      location: { code: { notIn: locationCodes } },
-    },
-  });
-  if (usersOutsideCanonicalLocations > 0) {
-    throw new Error(
-      "Refusing catalog replacement while a user is assigned outside canonical locations",
-    );
-  }
 
   for (const location of fixture.locations) {
+    const name = LOCATION_DISPLAY_NAMES[location.code];
     await tx.location.upsert({
       where: { code: location.code },
       create: {
         code: location.code,
-        name: location.name,
+        name,
         type: location.type,
         isActive: true,
       },
       update: {
-        name: location.name,
+        name,
         type: location.type,
         isActive: true,
       },
@@ -211,7 +209,6 @@ export async function replaceOpeningCatalog(
 
   await tx.inventoryBalance.deleteMany();
   await tx.product.deleteMany();
-  await tx.location.deleteMany({ where: { code: { notIn: locationCodes } } });
   if (options.failAfterDelete) {
     throw new Error("Injected catalog reload failure after delete");
   }

@@ -4,6 +4,7 @@ import type { UserRole } from "@prisma/client";
 
 import { auth } from "@/lib/server/auth";
 import {
+  capabilitiesFor,
   evaluateAccess,
   type Capability,
   type PersistedAccessContext,
@@ -32,6 +33,10 @@ async function loadPersistedAccessContext(
       role: true,
       status: true,
       locationId: true,
+      roleDefinitionId: true,
+      accessRole: {
+        select: { scope: true, permissions: true },
+      },
       location: {
         select: { id: true, code: true, type: true, isActive: true },
       },
@@ -45,6 +50,10 @@ async function loadPersistedAccessContext(
   const context: PersistedAccessContext = {
     userId: user.id,
     role: user.role,
+    roleDefinitionId: user.roleDefinitionId,
+    roleScope: user.accessRole.scope,
+    capabilities: user.accessRole.permissions,
+    isOwner: user.accessRole.scope === "OWNER",
     locationId: user.locationId,
     location: user.location,
   };
@@ -53,7 +62,11 @@ async function loadPersistedAccessContext(
     throw new AuthorizationError("Invalid persisted access assignment");
   }
 
-  return context;
+  return { ...context, capabilities: capabilitiesFor(context) };
+}
+
+export async function requireActiveUser(headers: Headers): Promise<AuthContext> {
+  return loadPersistedAccessContext(headers);
 }
 
 export async function requireCapability(

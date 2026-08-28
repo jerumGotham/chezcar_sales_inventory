@@ -11,6 +11,7 @@ import {
   Package,
   FileText,
   UserCog,
+  Building2,
   Users,
   ShoppingCart,
   type LucideIcon,
@@ -22,6 +23,7 @@ export type MenuDefinition = {
   icon: LucideIcon;
   iconId: ShellMenuIcon;
   capability: ShellCapabilityId;
+  ownerOnly?: boolean;
 };
 
 // Navigation is deliberately closed over server-authorized capabilities. Prototype
@@ -91,10 +93,26 @@ export const menus = [
     capability: "reports:view",
   },
   {
+    label: "Branch Maintenance",
+    href: "/branches",
+    icon: Building2,
+    iconId: "branches",
+    capability: "branches:manage",
+  },
+  {
     label: "User Management",
     href: "/users",
     icon: UserCog,
     iconId: "users",
     capability: "users:manage",
+    ownerOnly: true,
+  },
+  {
+    label: "Role Maintenance",
+    href: "/users/roles",
+    icon: UserCog,
+    iconId: "roles",
+    capability: "roles:manage",
+    ownerOnly: true,
   },
 ] as const satisfies readonly MenuDefinition[];

@@ -1,11 +1,11 @@
 # Provisional MVP Data Model
 
 **Status:** Foundation subset implemented; remaining contract pending review of the supplied Excel workbook
-**Last updated:** 2026-08-25
+**Last updated:** 2026-08-28
 
 ## Purpose
 
-This document defines the minimum canonical data needed for the confirmed MVP. Location, Product, InventoryBalance, fixed-role User identity, and Better Auth records are implemented; transactional models remain provisional.
+This document defines the minimum canonical data needed for the confirmed MVP. Location, Product, InventoryBalance, persisted access roles, User identity, and Better Auth records are implemented; transactional models remain provisional.
 
 Current UI columns may inform this model, but page-local fixtures are not authoritative because they use conflicting names and shapes. `excel/REALTIME INVENTORY- NEW 3.xlsx` is the developer input for refining product metadata, locations, prices, and opening balances through validation and additive migrations; it is not an in-app upload contract.
 
@@ -29,12 +29,26 @@ Current UI columns may inform this model, but page-local fixtures are not author
 - `fullName`
 - `email`
 - authentication-provider/credential reference
-- `role`: `ADMIN`, `STOCK_STAFF`, `BRANCH_STAFF`, `ACCOUNTING_STAFF`
-- assigned `locationId` for location-scoped users: `SR` for Stock Staff or exactly one branch for Branch Staff; Admin and Accounting Staff have no location assignment
+- `roleDefinitionId`: the authoritative persisted access-role assignment
+- `role`: synchronized `ADMIN`, `STOCK_STAFF`, `BRANCH_STAFF`, or `ACCOUNTING_STAFF` compatibility value derived from the role scope
+- assigned `locationId` for location-scoped roles: `SR` for `STOCK_ROOM` or exactly one branch for `BRANCH`; `OWNER` and `BUSINESS_WIDE` have no location assignment
 - `status`: active/inactive
 - timestamps
 
-The initial MVP uses four fixed roles and one owner Admin account. Admin User Management creates only Stock Staff, Branch Staff, and Accounting Staff accounts. A normalized permission system can be added only if actual role customization is required.
+The system seeds four deterministic built-in roles and permits the owner Admin to create additional assignable roles. `RoleDefinition.permissions` is authoritative for non-owner authorization; `RoleDefinition.scope` controls location semantics and compatibility-role synchronization. The single `OWNER` role is immutable, always receives the full capability catalog, and cannot be assigned through User Management.
+
+### RoleDefinition
+
+- `id` and stable unique `key`
+- case-insensitively unique `name`
+- description
+- `scope`: `OWNER`, `BRANCH`, `STOCK_ROOM`, or `BUSINESS_WIDE`
+- executable capability grants
+- built-in marker
+- optimistic `version`
+- timestamps
+
+Changing permissions revokes assigned users' sessions. Scope cannot change while users remain assigned.
 
 ### Location
 

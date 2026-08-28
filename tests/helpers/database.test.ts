@@ -105,6 +105,8 @@ describe("withDisposableDatabase", () => {
         "--detach",
         "--publish",
         `${DISPOSABLE_DATABASE_CONFIG.port}:5432`,
+        "--tmpfs",
+        "/var/lib/postgresql/data",
         "--env",
         `POSTGRES_USER=${DISPOSABLE_DATABASE_CONFIG.user}`,
         "--env",

@@ -54,7 +54,7 @@
 - PostgreSQL 17 - Local database image declared by `docker-compose.yml`; Prisma selects the PostgreSQL provider and `DATABASE_URL` in `prisma/schema.prisma`.
 - `@base-ui/react` ^1.3.0 and `@radix-ui/react-tabs` ^1.1.13 - Accessible primitive foundations used by modules under `components/ui/`.
 - `react-select` ^5.10.2 - Rich select controls used across business pages such as `app/products/page.tsx`, `app/inventory/page.tsx`, and `app/customer-orders/page.tsx`.
-- `recharts` ^3.8.1 - Dashboard charting in `app/dashboard/page.tsx`, `app/dashboard2/page.tsx`, and `app/dashboard3/page.tsx`.
+- `recharts` ^3.8.1 - Dashboard charting in `app/dashboard/page.tsx`.
 - `lucide-react` ^0.511.0 - Icon system used by navigation, shell, controls, and business pages, including `lib/menu.ts` and `components/app-sidebar.tsx`.
 - `class-variance-authority` ^0.7.1, `clsx` ^2.1.1, and `tailwind-merge` ^3.5.0 - Variant and class composition behind shared UI and `cn()` in `lib/utils.ts`.
 - `tw-animate-css` ^1.4.0 - Tailwind animation utilities imported by `app/globals.css`.

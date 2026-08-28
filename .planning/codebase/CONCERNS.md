@@ -56,7 +56,7 @@
 
 **Production build emits chart sizing warnings:**
 - Symptoms: Recharts reports zero-size container warnings during prerender even though the build completes.
-- Files: `app/dashboard/page.tsx`, `app/dashboard2/page.tsx`, `app/dashboard3/page.tsx`, `docs/TESTING.md`
+- Files: `app/dashboard/page.tsx`, `docs/TESTING.md`
 - Trigger: Run `npm run build` in a clean Node.js environment.
 - Workaround: Treat warnings as known noise while manually checking rendered charts; do not suppress them globally.
 
@@ -140,7 +140,7 @@
 
 **Hybrid inventory screen:**
 - Files: `app/inventory/page.tsx`, `app/inventory/_data.ts`, `lib/catalog.ts`, `lib/server/catalog.ts`
-- Why fragile: The main grid is Prisma-backed while stock card, availability, role checks, product/location options, and adjustment dialogs use static local fixtures. One screen can display mutually inconsistent stock facts.
+- Why fragile: The main grid and availability sheet are Prisma-backed while stock-card options and adjustment dialogs retain static local fixtures. One screen can still display mutually inconsistent stock facts.
 - Safe modification: Mark data provenance at each boundary, introduce canonical inventory DTOs, and replace one auxiliary panel at a time through the same authorized service layer.
 - Test coverage: No tests verify grouping, available stock, branch scope, query contracts, stock-card provenance, or mixed loading/error states.
 

@@ -54,7 +54,9 @@ const expectedMenu = {
     "Inventory",
     "Stock Transfers",
     "Reports",
+    "Branch Maintenance",
     "User Management",
+    "Role Maintenance",
   ],
   STOCK_STAFF: [
     "Dashboard",
@@ -85,12 +87,15 @@ const expectedCapabilities = {
     "sales:verify:view",
     "sales:verify",
     "sales:resolve",
+    "sales:mismatch:respond",
     "products:view",
     "inventory:view",
     "inventory-receiving:create",
+    "stock-transfers:view",
     "reports:view",
     "users:manage",
-    "stock-transfers:view",
+    "branches:manage",
+    "roles:manage",
   ],
   STOCK_STAFF: [
     "dashboard:view",
@@ -115,23 +120,37 @@ const expectedCapabilities = {
     "dashboard:view",
     "customers:view",
     "customer-orders:view",
-    "sales:verify",
     "sales:verify:view",
+    "sales:verify",
     "sales:resolve",
     "reports:view",
   ],
 } as const satisfies Record<UserRole, readonly string[]>;
+
+const roleDetails = {
+  ADMIN: { id: "role-admin", name: "Admin", scope: "OWNER" },
+  STOCK_STAFF: { id: "role-stock-staff", name: "Stock Staff", scope: "STOCK_ROOM" },
+  BRANCH_STAFF: { id: "role-branch-staff", name: "Branch Staff", scope: "BRANCH" },
+  ACCOUNTING_STAFF: { id: "role-accounting-staff", name: "Accounting Staff", scope: "BUSINESS_WIDE" },
+} as const;
 
 function persistedUser(
   role: UserRole,
   location: LocationInput | null,
   status: UserStatus = "ACTIVE",
 ) {
+  const accessRole = roleDetails[role];
   return {
     id: `user-${role.toLowerCase()}`,
     name: `${role} User`,
     email: `${role.toLowerCase()}@example.com`,
     role,
+    roleDefinitionId: accessRole.id,
+    accessRole: {
+      name: accessRole.name,
+      scope: accessRole.scope,
+      permissions: [...expectedCapabilities[role]],
+    },
     status,
     locationId: location?.id ?? null,
     location,
@@ -174,6 +193,10 @@ describe("loadShellAccess", () => {
         name: `${role} User`,
         email: `${role.toLowerCase()}@example.com`,
         role,
+        roleDefinitionId: roleDetails[role].id,
+        roleName: roleDetails[role].name,
+        roleScope: roleDetails[role].scope,
+        isOwner: role === "ADMIN",
       });
       expect(result.scope).toMatchObject({ kind, label, locationId });
       expect(result.menu.map((item) => item.label)).toEqual(expectedMenu[role]);
@@ -229,6 +252,27 @@ describe("loadShellAccess", () => {
     });
     expect(result.capabilities).not.toContain("inventory:view");
     expect(result.menu.map((item) => item.href)).not.toContain("/inventory");
+  });
+
+  it("builds navigation from a custom role's persisted grants", async () => {
+    signInAs("BRANCH_STAFF", qcBranch);
+    mocks.findUser.mockResolvedValue({
+      ...persistedUser("BRANCH_STAFF", qcBranch),
+      roleDefinitionId: "role-custom-auditor",
+      accessRole: {
+        name: "Branch Auditor",
+        scope: "BRANCH",
+        permissions: ["dashboard:view", "reports:view"],
+      },
+    });
+
+    const result = await loadShellAccess(new Headers());
+    expect(result.authenticated).toBe(true);
+    if (!result.authenticated) throw new Error("Expected authenticated shell access");
+    expect(result.identity.roleName).toBe("Branch Auditor");
+    expect(result.identity.role).toBe("BRANCH_STAFF");
+    expect(result.capabilities).toEqual(["dashboard:view", "reports:view"]);
+    expect(result.menu.map((item) => item.href)).toEqual(["/dashboard", "/reports"]);
   });
 
   it.each([

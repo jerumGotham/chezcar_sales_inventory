@@ -105,6 +105,13 @@ const branch: PersistedLocation = {
   isActive: true,
 };
 
+const roleAccess = {
+  ADMIN: { id: "role-admin", scope: "OWNER", permissions: [] },
+  STOCK_STAFF: { id: "role-stock-staff", scope: "STOCK_ROOM", permissions: ["dashboard:view", "customers:view", "customer-orders:view", "products:view", "inventory:view"] },
+  BRANCH_STAFF: { id: "role-branch-staff", scope: "BRANCH", permissions: ["dashboard:view", "customers:view", "customer-orders:view", "inventory:view"] },
+  ACCOUNTING_STAFF: { id: "role-accounting-staff", scope: "BUSINESS_WIDE", permissions: ["dashboard:view", "customers:view", "customer-orders:view"] },
+} as const;
+
 const routes: readonly RouteSpec[] = [
   {
     name: "dashboard",
@@ -162,9 +169,12 @@ function persistedUser(
   role: UserRole,
   location: PersistedLocation | null,
 ) {
+  const accessRole = roleAccess[role];
   return {
     id: `user-${role.toLowerCase()}`,
     role,
+    roleDefinitionId: accessRole.id,
+    accessRole: { scope: accessRole.scope, permissions: accessRole.permissions },
     status: "ACTIVE",
     locationId: location?.id ?? null,
     location,
