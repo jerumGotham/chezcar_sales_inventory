@@ -53,7 +53,7 @@ export default function ReportsPage() {
             <SummaryCard label="Open Orders" value={String(reports.orders.open)} hint="Reservations and waiting-stock orders" />
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-2">
+          <div className="grid min-w-0 gap-6 xl:grid-cols-2">
             <ReportTable title="Receipt-Level Sales" rows={reports.sales.rows.slice(0, 10).map((sale) => [sale.manualReceiptNumber, sale.branch, sale.customer, formatPeso(sale.totalAmount), sale.reviewStatus])} headers={["Receipt", "Branch", "Customer", "Total", "Review"]} />
             <ReportTable title="Flagged Accounting Detail" rows={reports.accounting.flaggedRows.slice(0, 10).map((sale) => [sale.manualReceiptNumber, sale.branch, sale.customer])} headers={["Receipt", "Branch", "Customer"]} />
             <ReportTable title="Customer Orders" rows={reports.orders.rows.slice(0, 10).map((order) => [order.orderNo, order.customer, order.status, formatPeso(order.balance)])} headers={["Order", "Customer", "Status", "Balance"]} />
@@ -71,8 +71,8 @@ function SummaryCard({ label, value, hint }: { label: string; value: string; hin
 
 function ReportTable({ title, headers, rows }: { title: string; headers: string[]; rows: string[][] }) {
   return (
-    <Card>
-      <CardContent className="p-5">
+    <Card className="min-w-0">
+      <CardContent className="min-w-0 p-5">
         <div className="mb-4 flex items-center justify-between gap-3"><h2 className="font-semibold">{title}</h2><Badge variant="outline">Live DB</Badge></div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[560px] text-sm">

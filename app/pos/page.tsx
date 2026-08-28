@@ -828,8 +828,8 @@ function PosTab() {
       </Card>
       {role === "ADMIN" && !activeLocationId ? <p className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">Select a branch to load available products.</p> : null}
       {posOptionsQuery.isError ? <p className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{(posOptionsQuery.error as Error).message}</p> : null}
-      <div className="grid gap-6 xl:grid-cols-[1.5fr_0.9fr]">
-        <div className="space-y-6">
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,0.9fr)]">
+        <div className="min-w-0 space-y-6">
           <Card className="border-0 shadow-sm">
             <CardHeader className="pb-4">
               <CardTitle>Quick Add</CardTitle>
@@ -910,7 +910,7 @@ function PosTab() {
                 />
               </div>
 
-              <div className="rounded-2xl border bg-white">
+              <div className="overflow-x-auto rounded-2xl border bg-white">
                 <div className="grid grid-cols-[1.8fr_1fr_110px_130px_120px] gap-3 border-b bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
                   <div>Product</div>
                   <div>Category</div>
@@ -987,7 +987,7 @@ function PosTab() {
           </Card>
         </div>
 
-        <Card className="h-fit border-0 shadow-sm xl:sticky xl:top-6">
+        <Card className="h-fit min-w-0 border-0 shadow-sm xl:sticky xl:top-6">
           <CardHeader className="pb-4">
             <CardTitle className="flex items-center gap-2">
               <ShoppingCart className="size-5" />

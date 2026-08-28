@@ -509,11 +509,11 @@ export function StockTransfersClient({
       )}
 
       {canManageStockRoom && (
-        <Card className="mb-6">
-          <CardContent className="grid gap-3 p-5">
+        <Card className="mb-6 min-w-0">
+          <CardContent className="grid min-w-0 gap-3 p-5">
             <h2 className="font-semibold">Create Stock Room Transfer</h2>
             <select
-              className="h-10 rounded-md border px-3"
+              className="h-10 min-w-0 rounded-md border px-3"
               value={destinationId}
               onChange={(event) => {
                 setValidationErrors([]);
@@ -528,9 +528,9 @@ export function StockTransfersClient({
               ))}
             </select>
             {draftLines.map((line, index) => (
-              <div className="flex gap-2" key={`${line.productId}-${index}`}>
+              <div className="flex min-w-0 gap-2" key={`${line.productId}-${index}`}>
                 <select
-                  className="h-10 flex-1 rounded-md border px-3"
+                  className="h-10 min-w-0 flex-1 rounded-md border px-3"
                   value={line.productId}
                   onChange={(event) =>
                     updateDraftProduct(index, event.target.value)

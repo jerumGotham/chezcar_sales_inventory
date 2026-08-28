@@ -744,9 +744,9 @@ function ReceiptVerificationContent() {
           </p>
         </CardContent>
       </Card>
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]">
-        <Card>
-          <CardContent className="p-5">
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]">
+        <Card className="min-w-0">
+          <CardContent className="min-w-0 p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-base font-semibold">Sales queue</h2>
@@ -895,8 +895,8 @@ function ReceiptVerificationContent() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-5">
+        <Card className="min-w-0">
+          <CardContent className="min-w-0 p-5">
             {!selectedSale ? (
               <div className="flex min-h-80 items-center justify-center text-center text-sm text-slate-500">
                 Select a receipt to compare its line items and manual receipt

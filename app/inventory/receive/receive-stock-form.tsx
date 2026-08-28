@@ -35,16 +35,16 @@ export function ReceiveStockForm({ products }: { products: readonly ProductOptio
       {state && <div className={`mb-6 rounded-lg border px-4 py-3 text-sm ${state.ok ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-800"}`}>{state.message}</div>}
       <form ref={formRef} action={formAction}>
         <input type="hidden" name="lineCount" value={lines.length} />
-        <div className="grid gap-6 xl:grid-cols-[1fr_300px]">
-          <div className="space-y-6">
+        <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
+          <div className="min-w-0 space-y-6">
             <Card><CardContent className="grid gap-4 p-5 md:grid-cols-2">
               <div className="space-y-2"><Label>Receive To</Label><Input value="Stock Room (SR)" disabled /></div>
               <div className="space-y-2"><Label htmlFor="receipt-reference">Receipt / Reference</Label><Input id="receipt-reference" name="reference" placeholder="DR-000123" required /></div>
               <div className="space-y-2"><Label htmlFor="receipt-supplier">Supplier / Source</Label><Input id="receipt-supplier" name="supplier" placeholder="Supplier name" required /></div>
               <div className="space-y-2 md:col-span-2"><Label htmlFor="receipt-notes">Notes</Label><textarea id="receipt-notes" name="notes" className="flex min-h-20 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs" maxLength={4000} placeholder="Optional delivery notes" /></div>
             </CardContent></Card>
-            <Card><CardContent className="p-0">
-              <div className="flex items-center justify-between border-b px-5 py-4"><div><h2 className="font-semibold">Receipt Lines</h2><p className="text-sm text-slate-500">Each active product can be received once with a positive quantity and supplier unit cost.</p></div><Button type="button" variant="outline" onClick={() => setLines((current) => [...current, { id: Date.now() }])}><Plus className="mr-2 h-4 w-4" />Add line</Button></div>
+            <Card className="min-w-0"><CardContent className="min-w-0 p-0">
+              <div className="flex flex-col items-start gap-3 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-semibold">Receipt Lines</h2><p className="text-sm text-slate-500">Each active product can be received once with a positive quantity and supplier unit cost.</p></div><Button type="button" variant="outline" onClick={() => setLines((current) => [...current, { id: Date.now() }])}><Plus className="mr-2 h-4 w-4" />Add line</Button></div>
               <div className="overflow-x-auto"><table className="w-full min-w-[760px]"><thead className="bg-slate-50"><tr><th className="px-5 py-3 text-left text-xs font-semibold uppercase text-slate-500">Product</th><th className="px-5 py-3 text-left text-xs font-semibold uppercase text-slate-500">Quantity</th><th className="px-5 py-3 text-left text-xs font-semibold uppercase text-slate-500">Unit Cost</th><th className="px-5 py-3" /></tr></thead><tbody>{lines.map((line, index) => <tr key={line.id} className="border-t"><td className="px-5 py-3"><select name={`productId-${index}`} defaultValue="" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="">Select active product</option>{products.map((product) => <option key={product.id} value={product.id}>{product.itemCode} - {product.name}</option>)}</select></td><td className="px-5 py-3"><Input type="number" name={`quantity-${index}`} min="1" step="1" defaultValue="1" /></td><td className="px-5 py-3"><Input type="number" name={`unitCost-${index}`} min="0.01" step="0.01" placeholder="0.00" required /></td><td className="px-5 py-3"><Button type="button" variant="outline" size="sm" disabled={lines.length === 1} onClick={() => setLines((current) => current.filter((item) => item.id !== line.id))}><Trash2 className="h-4 w-4" /></Button></td></tr>)}</tbody></table></div>
             </CardContent></Card>
           </div>
