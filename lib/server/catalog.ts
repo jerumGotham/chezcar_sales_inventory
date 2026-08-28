@@ -229,13 +229,23 @@ export async function listProducts(
     where.inventoryBalances = { some: { OR: [{ onHand: { gt: 0 } }, { reserved: { gt: 0 } }] } };
   }
 
-  const [total, totalProducts, activeProducts, inactiveProducts, withReorderLevel] =
+  const [total, totalProducts, activeProducts, inactiveProducts, withReorderLevel, categoryRows, brandRows] =
     await Promise.all([
       prisma.product.count({ where }),
       prisma.product.count(),
       prisma.product.count({ where: { status: "ACTIVE" } }),
       prisma.product.count({ where: { status: "INACTIVE" } }),
-       prisma.product.count({ where: { reorderLevel: { gt: 0 } } }),
+      prisma.product.count({ where: { reorderLevel: { gt: 0 } } }),
+      prisma.product.findMany({
+        where: { category: { not: null } },
+        distinct: ["category"],
+        select: { category: true },
+      }),
+      prisma.product.findMany({
+        where: { brand: { not: null } },
+        distinct: ["brand"],
+        select: { brand: true },
+      }),
     ]);
   const { meta, skip } = pagination(query.page, query.pageSize, total);
   const products = await prisma.product.findMany({
@@ -267,6 +277,10 @@ export async function listProducts(
       hasStock: product.inventoryBalances.some((balance) => balance.onHand > 0 || balance.reserved > 0),
     })),
     meta,
+    filterOptions: {
+      categories: categoryRows.map((product) => product.category).filter((value): value is string => Boolean(value)).sort(),
+      brands: brandRows.map((product) => product.brand).filter((value): value is string => Boolean(value)).sort(),
+    },
     summary: {
       totalProducts,
       activeProducts,

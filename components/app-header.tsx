@@ -12,6 +12,7 @@ import { useShellAccess } from "@/components/shell-access-context";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth-client";
 import { notificationDestination } from "@/lib/notification-links";
+import { markHeaderNotificationRead } from "@/lib/header-notifications";
 
 const THEME_KEY = "chezcar-theme";
 
@@ -25,13 +26,6 @@ type HeaderNotification = {
   relatedType?: string | null;
   relatedId?: string | null;
 };
-
-async function markHeaderNotificationRead(id: string) {
-  await fetch(`/api/notifications/${id}/read`, {
-    method: "POST",
-    credentials: "same-origin",
-  });
-}
 
 async function fetchHeaderNotifications() {
   const response = await fetch("/api/notifications", { credentials: "same-origin" });
@@ -74,6 +68,7 @@ export function AppHeader({
   const [isReady, setIsReady] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [toast, setToast] = useState<HeaderNotification | null>(null);
+  const [toastError, setToastError] = useState("");
   const [pushState, setPushState] = useState<"unsupported" | "unavailable" | "default" | "denied" | "subscribed" | "pending">("unavailable");
   const menuRef = useRef<HTMLDivElement>(null);
   const seenNotificationIds = useRef(new Set<string>());
@@ -197,14 +192,17 @@ export function AppHeader({
       (notification) => !notification.read && !seenNotificationIds.current.has(notification.id),
     );
     notifications.forEach((notification) => seenNotificationIds.current.add(notification.id));
-    if (newNotification) setToast(newNotification);
+    if (newNotification) {
+      setToastError("");
+      setToast(newNotification);
+    }
   }, [notificationsQuery.data]);
 
   useEffect(() => {
-    if (!toast) return;
+    if (!toast || toastError) return;
     const timer = window.setTimeout(() => setToast(null), 7_000);
     return () => window.clearTimeout(timer);
-  }, [toast]);
+  }, [toast, toastError]);
 
   useEffect(() => {
     const storedTheme = window.localStorage.getItem(THEME_KEY);
@@ -247,19 +245,24 @@ export function AppHeader({
 
   const openToastNotification = async () => {
     if (!toast) return;
-    if (!toast.read) await markHeaderNotificationRead(toast.id);
-    queryClient.setQueryData<HeaderNotification[]>(
-      ["notifications"],
-      (current = []) =>
-        current.map((notification) =>
-          notification.id === toast.id
-            ? { ...notification, read: true }
-            : notification,
-        ),
-    );
-    const destination = notificationDestination(toast) ?? "/notifications";
-    setToast(null);
-    router.push(destination as Route);
+    try {
+      if (!toast.read) await markHeaderNotificationRead(toast.id);
+      queryClient.setQueryData<HeaderNotification[]>(
+        ["notifications"],
+        (current = []) =>
+          current.map((notification) =>
+            notification.id === toast.id
+              ? { ...notification, read: true }
+              : notification,
+          ),
+      );
+      const destination = notificationDestination(toast) ?? "/notifications";
+      setToastError("");
+      setToast(null);
+      router.push(destination as Route);
+    } catch (error) {
+      setToastError(error instanceof Error ? error.message : "Unable to open notification.");
+    }
   };
 
   return (
@@ -424,8 +427,9 @@ export function AppHeader({
               <p className="text-xs font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">New notification</p>
               <p className="mt-1 font-semibold text-foreground">{toast.title}</p>
               <p className="mt-1 line-clamp-2 text-sm text-slate-500 dark:text-slate-400">{toast.description}</p>
+              {toastError ? <p className="mt-2 text-sm font-medium text-red-600 dark:text-red-400">{toastError}</p> : null}
             </button>
-            <button type="button" className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => setToast(null)} aria-label="Dismiss notification">
+            <button type="button" className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => { setToastError(""); setToast(null); }} aria-label="Dismiss notification">
               <X className="h-4 w-4" />
             </button>
           </div>

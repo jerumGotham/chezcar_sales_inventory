@@ -31,6 +31,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { useShellAccess } from "@/components/shell-access-context";
+import { canManageCustomerOrders, getCustomerOrderActions, type CustomerOrderStatusCode } from "@/lib/customer-order-actions";
 
 type SelectOption = {
   value: string;
@@ -53,6 +56,7 @@ type CustomerOrderRow = {
   itemSummary: string;
   totalItems: number;
   status: OrderStatus;
+  statusCode: CustomerOrderStatusCode;
   paymentStatus: PaymentStatus;
   downpayment: number;
   totalAmount: number;
@@ -165,9 +169,10 @@ async function fetchCustomerOrders(params: {
     params;
 
   const response = await fetch("/api/customer-orders", { credentials: "same-origin" });
-  if (!response.ok) throw new Error("Unable to load customer orders");
-  const payload = (await response.json()) as { data: CustomerOrderRow[] };
-  let filtered = [...payload.data];
+  const payload = (await response.json()) as { data?: CustomerOrderRow[]; error?: { message?: string } };
+  if (!response.ok) throw new Error(payload.error?.message ?? "Unable to load customer orders");
+  const orders = payload.data ?? [];
+  let filtered = [...orders];
 
   if (orderNo.trim()) {
     const keyword = orderNo.trim().toLowerCase();
@@ -209,16 +214,16 @@ async function fetchCustomerOrders(params: {
       totalPages,
     },
     summary: {
-      totalOrders: payload.data.length,
-      pendingOrders: payload.data.filter(
+      totalOrders: orders.length,
+      pendingOrders: orders.filter(
         (item) => item.status === "Pending" || item.status === "Reserved",
       ).length,
-      forReleaseOrders: payload.data.filter(
+      forReleaseOrders: orders.filter(
         (item) => item.status === "For Release",
       ).length,
-      releasedOrders: payload.data.filter((item) => item.status === "Released")
+      releasedOrders: orders.filter((item) => item.status === "Released")
         .length,
-      totalDownpayments: payload.data.reduce(
+      totalDownpayments: orders.reduce(
         (sum, item) => sum + item.downpayment,
         0,
       ),
@@ -279,6 +284,8 @@ const reactSelectStyles: StylesConfig<SelectOption, false> = {
 export default function CustomerOrdersPage() {
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
+  const access = useShellAccess();
+  const role = access.authenticated ? access.identity.role : null;
   const [activeView, setActiveView] = useState<"orders" | "sales">(
     searchParams.get("view") === "sales" ? "sales" : "orders",
   );
@@ -302,13 +309,15 @@ export default function CustomerOrdersPage() {
   );
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentReference, setPaymentReference] = useState("");
+  const [isCancelOpen, setIsCancelOpen] = useState(false);
+  const [cancellationNote, setCancellationNote] = useState("");
 
   const [page, setPage] = useState(1);
   const pageSize = 10;
   const [saleSearch, setSaleSearch] = useState("");
   const [salePage, setSalePage] = useState(1);
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, error: ordersError } = useQuery({
     queryKey: [
       "customer-orders-list",
       {
@@ -359,11 +368,66 @@ export default function CustomerOrdersPage() {
       return json.data as CustomerOrderRow;
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["customer-orders-list"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["customer-orders-list"] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-order", selectedOrder?.id] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["customers"] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-history"] }),
+      ]);
       setIsDownpaymentOpen(false);
       setSelectedOrder(null);
       setPaymentAmount("");
       setPaymentReference("");
+    },
+  });
+  const reserveMutation = useMutation({
+    mutationFn: async (order: CustomerOrderRow) => {
+      const response = await fetch(`/api/customer-orders/${order.id}/reserve`, { method: "POST", credentials: "same-origin" });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error?.message ?? "Unable to reserve order");
+      return json.data as CustomerOrderRow;
+    },
+    onSuccess: async (order) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["customer-orders-list"] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-order", order.id] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-order-options"] }),
+        queryClient.invalidateQueries({ queryKey: ["pos-options"] }),
+        queryClient.invalidateQueries({ queryKey: ["inventory-locations"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["customers"] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-history"] }),
+      ]);
+    },
+  });
+  const cancelMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedOrder) throw new Error("Select an order first.");
+      const response = await fetch(`/api/customer-orders/${selectedOrder.id}/cancel`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note: cancellationNote.trim() || undefined }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error?.message ?? "Unable to cancel order");
+      return json.data as CustomerOrderRow;
+    },
+    onSuccess: async (order) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["customer-orders-list"] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-order", order.id] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-order-options"] }),
+        queryClient.invalidateQueries({ queryKey: ["pos-options"] }),
+        queryClient.invalidateQueries({ queryKey: ["inventory-locations"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["customers"] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-history"] }),
+      ]);
+      setIsCancelOpen(false);
+      setSelectedOrder(null);
+      setCancellationNote("");
     },
   });
 
@@ -437,11 +501,11 @@ export default function CustomerOrdersPage() {
       subtitle="Handle reservations, special orders, downpayments, and release status."
       actions={
         <>
-          <Link href="/customer-orders/create">
+          {canManageCustomerOrders(role) ? <Link href="/customer-orders/create">
             <Button className="bg-emerald-600 text-white hover:bg-emerald-700">
               Create Order
             </Button>
-          </Link>
+          </Link> : null}
           {/* <Button variant="outline">Export</Button> */}
         </>
       }
@@ -617,6 +681,8 @@ export default function CustomerOrdersPage() {
         </CardContent>
       </Card>
 
+      {reserveMutation.error ? <p className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{(reserveMutation.error as Error).message}</p> : null}
+
       <Card className="mt-6">
         <CardContent className="p-0">
           <div className="flex items-center justify-between border-b px-5 py-4">
@@ -678,6 +744,12 @@ export default function CustomerOrdersPage() {
                       </div>
                     </td>
                   </tr>
+                ) : ordersError ? (
+                  <tr>
+                    <td colSpan={10} className="px-5 py-16 text-center text-red-600">
+                      {(ordersError as Error).message}
+                    </td>
+                  </tr>
                 ) : rows.length === 0 ? (
                   <tr>
                     <td
@@ -688,7 +760,9 @@ export default function CustomerOrdersPage() {
                     </td>
                   </tr>
                 ) : (
-                  rows.map((order) => (
+                  rows.map((order) => {
+                    const actions = getCustomerOrderActions({ role, statusCode: order.statusCode, downpayment: order.downpayment, balance: order.balance });
+                    return (
                     <tr
                       key={order.id}
                       className="border-b transition-colors hover:bg-slate-50"
@@ -742,15 +816,20 @@ export default function CustomerOrdersPage() {
                         </div>
 
                         <div className="flex flex-wrap gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
-                          >
-                            Delete
-                          </Button>
+                           {actions.canCancel ? <Button
+                             size="sm"
+                             variant="outline"
+                             className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
+                             onClick={() => {
+                               setSelectedOrder(order);
+                               setCancellationNote("");
+                               setIsCancelOpen(true);
+                             }}
+                           >
+                             Cancel
+                           </Button> : null}
 
-                          <Button
+                           {actions.canRecordPayment ? <Button
                             size="sm"
                             variant="outline"
                             className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
@@ -760,15 +839,20 @@ export default function CustomerOrdersPage() {
                               setPaymentReference("");
                               setIsDownpaymentOpen(true);
                             }}
-                            disabled={
-                              ["Released", "Cancelled"].includes(order.status) ||
-                              order.balance <= 0
-                            }
-                          >
-                            {order.downpayment > 0 ? "Add Payment" : "Downpayment"}
-                          </Button>
+                           >
+                             {order.downpayment > 0 ? "Add Payment" : "Downpayment"}
+                           </Button> : null}
 
-                          {order.status !== "Released" && (
+                           {actions.canReserve ? <Button
+                             size="sm"
+                             variant="secondary"
+                             onClick={() => reserveMutation.mutate(order)}
+                             disabled={reserveMutation.isPending}
+                           >
+                             {reserveMutation.isPending && reserveMutation.variables?.id === order.id ? "Reserving..." : "Reserve Stock"}
+                           </Button> : null}
+
+                           {actions.canRelease && (
                             <Link
                               href={
                                 `/customer-orders/${order.id}/release` as Route
@@ -782,7 +866,8 @@ export default function CustomerOrdersPage() {
                         </div>
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -953,6 +1038,48 @@ export default function CustomerOrdersPage() {
               }
             >
               {paymentMutation.isPending ? "Saving..." : "Save Payment"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={isCancelOpen}
+        onOpenChange={(open) => {
+          if (cancelMutation.isPending) return;
+          setIsCancelOpen(open);
+          if (!open) {
+            setSelectedOrder(null);
+            setCancellationNote("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cancel customer order?</DialogTitle>
+            <DialogDescription>
+              This changes {selectedOrder?.orderNo ?? "the order"} to Cancelled and releases any reserved stock.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="list-cancellation-note">Cancellation note{selectedOrder && selectedOrder.downpayment > 0 ? " (required)" : ""}</Label>
+            <Textarea
+              id="list-cancellation-note"
+              value={cancellationNote}
+              onChange={(event) => setCancellationNote(event.target.value)}
+              maxLength={1_000}
+              placeholder="Reason for cancelling this order"
+              rows={4}
+            />
+            {cancelMutation.error ? <p className="text-sm text-red-600">{(cancelMutation.error as Error).message}</p> : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCancelOpen(false)} disabled={cancelMutation.isPending}>Keep Order</Button>
+            <Button
+              variant="destructive"
+              onClick={() => cancelMutation.mutate()}
+              disabled={cancelMutation.isPending || Boolean(selectedOrder && selectedOrder.downpayment > 0 && !cancellationNote.trim())}
+            >
+              {cancelMutation.isPending ? "Cancelling..." : "Cancel Order"}
             </Button>
           </DialogFooter>
         </DialogContent>

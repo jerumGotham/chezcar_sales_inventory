@@ -435,7 +435,7 @@ function PosTab() {
       const response = await fetch(`/api/customer-orders/options?locationId=${encodeURIComponent(activeLocationId ?? "")}`, { credentials: "same-origin" });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error?.message ?? "Unable to load sales options");
-      return json.data as { customers: PosCustomer[]; products: Array<{ id: string; itemCode: string; name: string; price: number; availableQuantity: number }>; branches: Array<{ id: string; code: string; name: string }> };
+      return json.data as { customers: PosCustomer[]; products: Array<{ id: string; itemCode: string; name: string; category: string; price: number; availableQuantity: number }>; branches: Array<{ id: string; code: string; name: string }> };
     },
     enabled: role === "ADMIN" || Boolean(activeLocationId),
   });
@@ -455,7 +455,7 @@ function PosTab() {
       price: item.price,
       stock: item.availableQuantity,
       barcode: item.itemCode,
-      category: "Uncategorized",
+      category: item.category,
     })) ?? [];
 
     if (posOptionsQuery.data) return branchProducts;
@@ -493,6 +493,7 @@ function PosTab() {
   const [selectedCategory, setSelectedCategory] = useState<SelectOption | null>(
     categoryOptions[0],
   );
+  const activeCategory = categoryOptions.find((option) => option.value === selectedCategory?.value) ?? categoryOptions[0];
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<SelectOption | null>(
     mockCustomers[0],
@@ -510,7 +511,7 @@ function PosTab() {
 
   const filteredProducts = useMemo(() => {
     const keyword = search.trim().toLowerCase();
-    const category = selectedCategory?.value ?? "all";
+    const category = activeCategory.value;
 
     return productList.filter((product) => {
       const matchesCategory =
@@ -525,7 +526,7 @@ function PosTab() {
 
       return matchesCategory && matchesKeyword;
     });
-  }, [productList, search, selectedCategory]);
+  }, [activeCategory.value, productList, search]);
 
   const productTotalPages = Math.max(1, Math.ceil(filteredProducts.length / productPageSize));
   const safeProductPage = Math.min(productPage, productTotalPages);
@@ -898,7 +899,7 @@ function PosTab() {
                 <Select
                   instanceId="category-select"
                   options={categoryOptions}
-                  value={selectedCategory}
+                  value={activeCategory}
                    onChange={(option) => {
                      setSelectedCategory(option);
                      setProductPage(1);

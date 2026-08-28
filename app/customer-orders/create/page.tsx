@@ -6,7 +6,7 @@ import { Route } from "next";
 import { useRouter } from "next/navigation";
 import Select from "react-select";
 import type { StylesConfig } from "react-select";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Trash2, UserRound, Package2 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useShellAccess } from "@/components/shell-access-context";
+import { canManageCustomerOrders } from "@/lib/customer-order-actions";
 
 type SelectOption = {
   value: string;
@@ -86,8 +87,8 @@ type OrderOptions = {
   branches: Array<{ id: string; code: string; name: string }>;
 };
 
-async function fetchOrderOptions(locationId: string) {
-  const response = await fetch(`/api/customer-orders/options?locationId=${encodeURIComponent(locationId)}`, { credentials: "same-origin" });
+async function fetchOrderOptions(locationId: string, includeUnavailable: boolean) {
+  const response = await fetch(`/api/customer-orders/options?locationId=${encodeURIComponent(locationId)}&includeUnavailable=${includeUnavailable}`, { credentials: "same-origin" });
   const json = await response.json();
   if (!response.ok) throw new Error(json.error?.message ?? "Unable to load order options");
   return json.data as OrderOptions;
@@ -95,18 +96,20 @@ async function fetchOrderOptions(locationId: string) {
 
 export default function CreateCustomerOrderPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const access = useShellAccess();
   const role = access.authenticated ? access.identity.role : null;
   const [location, setLocation] = useState<SelectOption | null>(null);
+  const [status, setStatus] = useState<SelectOption>(STATUS_OPTIONS[1]);
   const branchStaffLocationId = access.authenticated ? access.scope.locationId : null;
   const activeLocationId = role === "ADMIN" ? location?.value ?? null : branchStaffLocationId;
+  const includeUnavailable = status.value === "WAITING_STOCK";
   const optionsQuery = useQuery({
-    queryKey: ["customer-order-options", activeLocationId],
-    queryFn: () => fetchOrderOptions(activeLocationId ?? ""),
+    queryKey: ["customer-order-options", activeLocationId, { includeUnavailable }],
+    queryFn: () => fetchOrderOptions(activeLocationId ?? "", includeUnavailable),
     enabled: role === "ADMIN" || Boolean(activeLocationId),
   });
   const [customer, setCustomer] = useState<SelectOption | null>(null);
-  const [status, setStatus] = useState<SelectOption>(STATUS_OPTIONS[1]);
   const [downpayment, setDownpayment] = useState("0");
   const [downpaymentReceiptNumber, setDownpaymentReceiptNumber] = useState("");
   const [releaseDate, setReleaseDate] = useState("");
@@ -135,7 +138,7 @@ export default function CreateCustomerOrderPage() {
       if (!customer) throw new Error("Select a customer.");
       if (role === "ADMIN" && !location) throw new Error("Select a branch.");
       if (items.some((item) => !item.item || item.quantity < 1)) throw new Error("Select a product and valid quantity for every line.");
-      if (items.some((item) => item.item && item.quantity > (productById.get(item.item.value)?.availableQuantity ?? 0))) throw new Error("Order quantity cannot exceed available branch stock.");
+      if (status.value === "RESERVED" && items.some((item) => item.item && item.quantity > (productById.get(item.item.value)?.availableQuantity ?? 0))) throw new Error("Order quantity cannot exceed available branch stock.");
       const orderType = status.value === "WAITING_STOCK"
         ? "WAITING_STOCK"
         : Number(downpayment) > 0
@@ -162,7 +165,15 @@ export default function CreateCustomerOrderPage() {
       if (!response.ok) throw new Error(json.error?.message ?? "Unable to save customer order");
       return json.data as { orderNo: string };
     },
-    onSuccess: () => router.push("/customer-orders"),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["customer-orders-list"] }),
+        queryClient.invalidateQueries({ queryKey: ["customers"] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-history"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
+      ]);
+      router.push("/customer-orders");
+    },
     onError: (error: Error) => setErrorMessage(error.message),
   });
 
@@ -227,9 +238,9 @@ export default function CreateCustomerOrderPage() {
               Back
             </Button>
           </Link>
-           <Button className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => { setErrorMessage(""); saveMutation.mutate(); }} disabled={saveMutation.isPending || optionsQuery.isLoading}>
+           {canManageCustomerOrders(role) ? <Button className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => { setErrorMessage(""); saveMutation.mutate(); }} disabled={saveMutation.isPending || optionsQuery.isLoading}>
              {saveMutation.isPending ? "Saving..." : "Save Order"}
-          </Button>
+           </Button> : null}
         </div>
       }
     >
@@ -347,7 +358,7 @@ export default function CreateCustomerOrderPage() {
               </div>
 
               <div className="space-y-4">
-                {optionsQuery.data && itemOptions.length === 0 ? <div className="rounded-xl border border-dashed border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">No available stock at this branch. Receive or transfer inventory before creating an order.</div> : null}
+                {optionsQuery.data && itemOptions.length === 0 ? <div className="rounded-xl border border-dashed border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">{includeUnavailable ? "No active products are available for ordering." : "No available stock at this branch. Select Waiting for stock to order unavailable products."}</div> : null}
                 {items.map((row, index) => {
                   const amount = row.quantity * row.unitPrice;
 
@@ -389,11 +400,11 @@ export default function CreateCustomerOrderPage() {
                         </div>
 
                         <div className="space-y-2">
-                           <Label>Quantity {row.item ? `(max ${productById.get(row.item.value)?.availableQuantity ?? 0})` : ""}</Label>
+                           <Label>Quantity {row.item && !includeUnavailable ? `(max ${productById.get(row.item.value)?.availableQuantity ?? 0})` : ""}</Label>
                            <Input
                              type="number"
                              min={1}
-                             max={row.item ? productById.get(row.item.value)?.availableQuantity : undefined}
+                             max={row.item && !includeUnavailable ? productById.get(row.item.value)?.availableQuantity : undefined}
                             value={row.quantity}
                             onChange={(e) =>
                               handleChangeQuantity(
@@ -462,9 +473,9 @@ export default function CreateCustomerOrderPage() {
                   <span>{formatPeso(balance)}</span>
                 </div>
 
-                 <Button className="w-full bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => { setErrorMessage(""); saveMutation.mutate(); }} disabled={saveMutation.isPending || optionsQuery.isLoading}>
+                 {canManageCustomerOrders(role) ? <Button className="w-full bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => { setErrorMessage(""); saveMutation.mutate(); }} disabled={saveMutation.isPending || optionsQuery.isLoading}>
                    {saveMutation.isPending ? "Saving..." : "Save Order"}
-                </Button>
+                 </Button> : null}
               </div>
             </CardContent>
           </Card>

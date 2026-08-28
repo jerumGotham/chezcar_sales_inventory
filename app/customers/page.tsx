@@ -446,6 +446,7 @@ const reactSelectStyles: StylesConfig<SelectOption, false> = {
 export default function CustomersPage() {
   const access = useShellAccess();
   const canManageCustomers = access.identity?.role !== "STOCK_STAFF" && access.identity?.role !== "ACCOUNTING_STAFF";
+  const canViewCustomerHistory = access.identity?.role !== "STOCK_STAFF";
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [status, setStatus] = useState<SelectOption>(STATUS_OPTIONS[0]);
@@ -772,7 +773,7 @@ export default function CustomersPage() {
                         </td>
                         <td className="px-5 py-4">
                           <div className="flex flex-wrap gap-2">
-                            <Button
+                            {canViewCustomerHistory && <Button
                               size="sm"
                               variant="outline"
                               className="border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 hover:text-sky-800"
@@ -782,7 +783,7 @@ export default function CustomersPage() {
                               }}
                             >
                               View
-                            </Button>
+                            </Button>}
 
                             {canManageCustomers && <Button
                               size="sm"

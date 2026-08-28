@@ -40,14 +40,8 @@ type SelectOption = {
   label: string;
 };
 
-const CATEGORY_OPTIONS: SelectOption[] = [
-  { value: "all", label: "All Categories" },
-  { value: "Tint", label: "Tint" },
-  { value: "Seat Cover", label: "Seat Cover" },
-  { value: "Audio", label: "Audio" },
-  { value: "Exterior", label: "Exterior" },
-  { value: "Lighting", label: "Lighting" },
-];
+const ALL_CATEGORIES_OPTION: SelectOption = { value: "all", label: "All Categories" };
+const ALL_BRANDS_OPTION: SelectOption = { value: "all", label: "All Brands" };
 
 const STATUS_OPTIONS: SelectOption[] = [
   { value: "all", label: "All Statuses" },
@@ -161,8 +155,8 @@ export default function ProductsPage() {
   const queryClient = useQueryClient();
   const [itemCode, setItemCode] = useState("");
   const [name, setName] = useState("");
-  const [category, setCategory] = useState<SelectOption>(CATEGORY_OPTIONS[0]);
-  const [brand, setBrand] = useState<SelectOption>({ value: "all", label: "All Brands" });
+  const [category, setCategory] = useState<SelectOption>(ALL_CATEGORIES_OPTION);
+  const [brand, setBrand] = useState<SelectOption>(ALL_BRANDS_OPTION);
   const [status, setStatus] = useState<SelectOption>(STATUS_OPTIONS[0]);
   const [stockStatus, setStockStatus] = useState<SelectOption>(STOCK_STATUS_OPTIONS[0]);
 
@@ -212,10 +206,16 @@ export default function ProductsPage() {
   });
 
   const rows = useMemo(() => data?.data ?? [], [data?.data]);
+  const categoryOptions = useMemo(() => [
+    ALL_CATEGORIES_OPTION,
+    ...(data?.filterOptions.categories ?? []).map((value) => ({ value, label: value })),
+  ], [data?.filterOptions.categories]);
   const brandOptions = useMemo(() => {
-    const values = [...new Set(rows.map((product) => product.brand).filter(Boolean))].sort();
-    return [{ value: "all", label: "All Brands" }, ...values.map((value) => ({ value, label: value }))];
-  }, [rows]);
+    return [
+      ALL_BRANDS_OPTION,
+      ...(data?.filterOptions.brands ?? []).map((value) => ({ value, label: value })),
+    ];
+  }, [data?.filterOptions.brands]);
   const saveMutation = useMutation({
     mutationFn: () => {
       const payload = {
@@ -282,8 +282,8 @@ export default function ProductsPage() {
   const handleResetFilters = () => {
     setItemCode("");
     setName("");
-    setCategory(CATEGORY_OPTIONS[0]);
-    setBrand({ value: "all", label: "All Brands" });
+    setCategory(ALL_CATEGORIES_OPTION);
+    setBrand(ALL_BRANDS_OPTION);
     setStatus(STATUS_OPTIONS[0]);
     setStockStatus(STOCK_STATUS_OPTIONS[0]);
 
@@ -423,10 +423,10 @@ export default function ProductsPage() {
             <div className="w-full">
               <Select
                 instanceId="products-category-filter"
-                options={CATEGORY_OPTIONS}
+                options={categoryOptions}
                 value={category}
                 onChange={(option) =>
-                  setCategory(option ?? CATEGORY_OPTIONS[0])
+                  setCategory(option ?? ALL_CATEGORIES_OPTION)
                 }
                 isSearchable
                 placeholder="Select category"

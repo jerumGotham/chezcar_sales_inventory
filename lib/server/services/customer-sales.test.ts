@@ -34,7 +34,24 @@ describe("receipt comparison contracts", () => {
   });
 
   it("reports structured differences", () => {
-    expect(compareReceipt(sale, { ...matchingComparison, totalAmount: 100, lines: [{ itemCode: "ITEM-1", quantity: 1, unitPrice: 50 }] })).toEqual(expect.arrayContaining(["Total amount does not match", "Quantity does not match: ITEM-1"]));
+    expect(compareReceipt(sale, { ...matchingComparison, amountPaid: 90.001 })).toEqual([]);
+    expect(compareReceipt(sale, { ...matchingComparison, amountPaid: 90.001, totalAmount: 100, lines: [{ itemCode: "ITEM-1", quantity: 1, unitPrice: 50 }] })).toEqual(expect.arrayContaining(["Total amount does not match", "Quantity does not match: ITEM-1"]));
+    expect(compareReceipt(sale, { ...matchingComparison, amountPaid: 90.01 })).toContain("Amount paid does not match");
+  });
+
+  it("rejects invalid and duplicate comparison lines", () => {
+    expect(() => accountingReviewSchema.parse({
+      status: "VERIFIED",
+      comparison: { ...matchingComparison, lines: [...matchingComparison.lines, matchingComparison.lines[0]] },
+    })).toThrow(/item may appear only once/i);
+    expect(() => accountingReviewSchema.parse({
+      status: "VERIFIED",
+      comparison: { ...matchingComparison, lines: [{ itemCode: "", quantity: 0, unitPrice: -1 }] },
+    })).toThrow();
+    expect(() => accountingReviewSchema.parse({
+      status: "VERIFIED",
+      comparison: { ...matchingComparison, amountPaid: 90.001 },
+    })).toThrow(/two decimal places/i);
   });
 
   it("requires mismatch notes and replacement details", () => {

@@ -63,10 +63,10 @@ A persisted assignment that contradicts the fixed matrix (for example Stock Staf
 | `POST` | `/api/offline/sync` | Prisma OfflineSyncOperation/OfflineSaleSubmission/Sale | `sales:post`; Branch Staff assigned branch only |
 | `GET`, `POST` | `/api/customers` | Prisma Customer | `customers:view`; Accounting/Stock mutation denied by service policy |
 | `GET`, `PATCH`, `DELETE` | `/api/customers/:id` | Prisma Customer, sales, and customer orders | `customers:view`; delete deactivates the customer |
-| `GET` | `/api/customer-orders/options?locationId=<branchId>` | Active customers and products with available branch stock | `customer-orders:view`; Admin supplies a branch, Branch Staff scope is persisted |
+| `GET` | `/api/customer-orders/options?locationId=<branchId>&includeUnavailable=<boolean>` | Active customers and branch products | `customer-orders:view` plus Branch/Admin role policy; Admin supplies a branch, Branch Staff scope is persisted; unavailable products are opt-in |
 | `GET`, `POST` | `/api/customer-orders` | Prisma CustomerOrder/Customer/InventoryBalance | `customer-orders:view` plus Branch/Admin mutation policy |
 | `GET` | `/api/customer-orders/:orderId` | Single persisted customer order with lines and release/payment summary | `customer-orders:view`; Branch Staff restricted to assigned branch |
-| `POST` | `/api/customer-orders/:orderId/:action` | Prisma CustomerOrder/Sale/InventoryMovement | `customer-orders:view`; actions `release`, `cancel` |
+| `POST` | `/api/customer-orders/:orderId/:action` | Prisma CustomerOrder/Sale/InventoryMovement | `customer-orders:view`; Branch/Admin action policy; actions `reserve`, `payment`, `release`, `cancel` |
 | `GET`, `POST` | `/api/sales` | Prisma Sale/SaleLine/InventoryMovement | `customer-orders:view`; Branch/Admin direct sale policy |
 | `GET` | `/api/accounting/receipts?page=1&pageSize=10&reviewStatus=all&saleStatus=POSTED` | Prisma Sale/SaleLine/SaleAccountingReview/Location | `sales:verify:view`; server-side filters and pagination |
 | `POST` | `/api/accounting/receipts/:saleId/review` | Prisma SaleAccountingReview/Notification | `sales:verify`; Accounting Staff only |
@@ -91,7 +91,9 @@ A persisted assignment that contradicts the fixed matrix (for example Stock Staf
 
 ## Customer orders, sales, and Accounting
 
-`POST /api/customer-orders` creates or reuses a customer, snapshots product item code/name/current price, validates active products, and creates one order in a serializable transaction. Branch Staff may create only for their persisted branch; Admin must select an active branch. The create-screen options endpoint returns only products with positive available stock (`onHand - reserved`) at that branch. Reservation orders validate available branch stock and increment `reserved` without decrementing `onHand`. Waiting-stock orders do not reserve stock. DP reservations require `downpaymentAmount > 0` and globally unique `downpaymentReceiptNumber`.
+`POST /api/customer-orders` creates or reuses a customer, snapshots product item code/name/current price, validates active products, and creates one order in a serializable transaction. Branch Staff may create only for their persisted branch; Admin must select an active branch. The options endpoint returns only products with positive available stock (`onHand - reserved`) by default. `includeUnavailable=true` also returns active products without available branch stock so the waiting-stock create flow can select them; POS does not request this mode. Reservation orders validate available branch stock and increment `reserved` without decrementing `onHand`. Waiting-stock orders do not reserve stock. DP reservations require `downpaymentAmount > 0` and globally unique `downpaymentReceiptNumber`.
+
+`POST /api/customer-orders/:orderId/reserve` transitions only a `WAITING_STOCK` order to `RESERVED`. Admin may reserve any branch order and Branch Staff only their assigned branch. The serializable transaction locks the relevant inventory balances, verifies all order lines are now available, increments every reserved quantity, and rolls back the whole operation if any line is unavailable.
 
 `POST /api/customer-orders/:orderId/release` requires a final manual receipt number and exact remaining balance payment. Release decrements `onHand`, decrements `reserved`, creates a posted `Sale`, creates `CUSTOMER_ORDER_RELEASE` inventory movements, registers the receipt globally, creates an unverified Accounting review row, and marks the order completed in one transaction.
 
@@ -123,7 +125,7 @@ The offline endpoints remain implemented, but the customer-facing POS queue/bann
 
 ## Supplier receipts
 
-`POST /api/stock-receipts` accepts `{ reference, supplier, notes?, lines: [{ productId, quantity, unitCost }] }`. `reference` is unique, suppliers and references are non-empty bounded strings, every quantity is a positive integer, every unit cost must be greater than zero, and every product must be active. Admin or Stock Staff assigned to the active canonical Stock Room can post. The server fixes the destination to `SR`; client input cannot select a branch.
+`POST /api/stock-receipts` accepts `{ reference, supplier, notes?, lines: [{ productId, quantity, unitCost }] }`. `reference` is unique, suppliers and references are non-empty bounded strings, every quantity is a positive integer, every unit cost must be greater than zero, product IDs cannot repeat, and every product must be active. Any malformed line rejects the complete request instead of silently dropping invalid input. Admin or Stock Staff assigned to the active canonical Stock Room can post. The server fixes the destination to `SR`; client input cannot select a branch.
 
 One serializable transaction persists the receipt, immutable item-code/name line snapshots, increments or creates each `SR` balance with the latest received unit cost, and writes a positive `SUPPLIER_RECEIPT` movement with the current actor. Duplicate references return `409 DUPLICATE_REFERENCE` without changing inventory. `GET /api/stock-receipts` is available only to Stock Staff and Admin for monitoring.
 
@@ -157,6 +159,7 @@ type ProductsResponse = {
     description?: string;
   }>;
   meta: { page: number; pageSize: number; total: number; totalPages: number };
+  filterOptions: { categories: string[]; brands: string[] };
   summary: {
     totalProducts: number;
     activeProducts: number;

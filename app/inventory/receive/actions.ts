@@ -5,6 +5,8 @@ import { headers } from "next/headers";
 import { requireCapability } from "@/lib/server/authorization";
 import { createStockReceipt } from "@/lib/server/services/stock-receipts";
 
+import { parseReceiptFormData } from "./form-data";
+
 export type ReceiptFormState = { ok: boolean; message: string } | null;
 
 export async function postStockReceiptAction(
@@ -13,40 +15,14 @@ export async function postStockReceiptAction(
 ): Promise<ReceiptFormState> {
   const actor = await requireCapability(await headers(), "inventory-receiving:create");
 
-  const reference = String(formData.get("reference") ?? "").trim();
-  const supplier = String(formData.get("supplier") ?? "").trim();
-  const notes = String(formData.get("notes") ?? "").trim();
-
-  if (!reference) return { ok: false, message: "Enter a receipt reference." };
-  if (!supplier) return { ok: false, message: "Enter a supplier name." };
-
-  const lineCount = Math.max(1, Math.min(50, Number(formData.get("lineCount") ?? 1) || 1));
-  const seen = new Set<string>();
-  const lines: { productId: string; quantity: number; unitCost: number }[] = [];
-
-  for (let index = 0; index < lineCount; index += 1) {
-    const productId = String(formData.get(`productId-${index}`) ?? "").trim();
-    const quantity = Number(formData.get(`quantity-${index}`) ?? 0);
-    const unitCost = Number(formData.get(`unitCost-${index}`) ?? 0);
-    if (!productId || seen.has(productId)) continue;
-    if (!Number.isInteger(quantity) || quantity < 1) continue;
-    if (!Number.isFinite(unitCost) || unitCost <= 0) continue;
-    seen.add(productId);
-    lines.push({ productId, quantity, unitCost });
-  }
-
-  if (lines.length === 0) {
-    return { ok: false, message: "Every line needs a product, positive whole-number quantity, and unit cost greater than 0." };
-  }
+  const parsed = parseReceiptFormData(formData);
+  if (!parsed.ok) return parsed;
 
   try {
     await createStockReceipt(actor, {
-      reference,
-      supplier,
-      notes: notes || undefined,
-      lines,
+      ...parsed.input,
     });
-    return { ok: true, message: `Receipt ${reference} posted to Stock Room.` };
+    return { ok: true, message: `Receipt ${parsed.input.reference} posted to Stock Room.` };
   } catch (error) {
     return {
       ok: false,

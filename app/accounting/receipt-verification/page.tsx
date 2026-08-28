@@ -10,7 +10,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Plus,
   Search,
+  Trash2,
   Upload,
 } from "lucide-react";
 
@@ -22,6 +24,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { receiptComparisonSchema, type ReceiptComparison } from "@/lib/contracts/sales";
 
 type SaleLine = {
   itemCode: string;
@@ -46,15 +49,7 @@ type Sale = {
   status: "POSTED" | "VOIDED";
   mismatchCategory: string | null;
   reviewNotes: string | null;
-  reportedComparison: {
-    receiptBooklet: string;
-    receiptNumber: string;
-    paymentMethod: string;
-    discountAmount: number;
-    amountPaid: number;
-    totalAmount: number;
-    lines: Array<{ itemCode: string; quantity: number; unitPrice: number }>;
-  } | null;
+  reportedComparison: ReceiptComparison | null;
   branchResponse:
     | "ORIGINAL_ENCODING_CORRECT"
     | "RECEIPT_CORRECTION_NEEDED"
@@ -146,27 +141,32 @@ async function fetchReceipts(filters: ReceiptFilters) {
   return json as ReceiptListResponse;
 }
 
-function toComparison(draft: ComparisonDraft) {
-  const lines = draft.lines.map((line) => ({
-    itemCode: line.itemCode,
-    quantity: Number(line.quantity),
-    unitPrice: Number(line.unitPrice),
-  }));
-  const discountAmount = Number(draft.discountAmount);
-  const totalAmount = Math.max(
-    0,
-    lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0) -
-      discountAmount,
-  );
-  return {
+function draftNumber(value: string) {
+  return value.trim() === "" ? Number.NaN : Number(value);
+}
+
+function parseComparison(draft: ComparisonDraft) {
+  return receiptComparisonSchema.safeParse({
     receiptBooklet: draft.receiptBooklet,
     receiptNumber: draft.receiptNumber,
     paymentMethod: draft.paymentMethod,
-    discountAmount,
-    amountPaid: totalAmount,
-    totalAmount,
-    lines,
-  };
+    discountAmount: draftNumber(draft.discountAmount),
+    amountPaid: draftNumber(draft.amountPaid),
+    totalAmount: draftNumber(draft.totalAmount),
+    lines: draft.lines.map((line) => ({
+      itemCode: line.itemCode,
+      quantity: draftNumber(line.quantity),
+      unitPrice: draftNumber(line.unitPrice),
+    })),
+  });
+}
+
+function toComparison(draft: ComparisonDraft) {
+  const parsed = parseComparison(draft);
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? "Invalid receipt comparison");
+  }
+  return parsed.data;
 }
 
 async function uploadPhoto(
@@ -199,8 +199,11 @@ type ComparisonDifference = {
   reportedValue: string;
 };
 
-function comparisonDifferences(sale: Sale, draft: ComparisonDraft) {
-  const comparison = toComparison(draft);
+function cents(value: number) {
+  return Math.round(value * 100);
+}
+
+function comparisonDifferences(sale: Sale, comparison: ReceiptComparison) {
   const differences: ComparisonDifference[] = [];
   if (sale.manualReceiptNumber !== comparison.receiptNumber)
     differences.push({
@@ -220,11 +223,17 @@ function comparisonDifferences(sale: Sale, draft: ComparisonDraft) {
       encodedValue: sale.paymentMethod.replaceAll("_", " "),
       reportedValue: comparison.paymentMethod.replaceAll("_", " "),
     });
-  if (sale.discountAmount !== comparison.discountAmount)
+  if (cents(sale.discountAmount) !== cents(comparison.discountAmount))
     differences.push({
       label: "Discount",
       encodedValue: formatPeso(sale.discountAmount),
       reportedValue: formatPeso(comparison.discountAmount),
+    });
+  if (cents(sale.amountPaid) !== cents(comparison.amountPaid))
+    differences.push({
+      label: "Amount paid",
+      encodedValue: formatPeso(sale.amountPaid),
+      reportedValue: formatPeso(comparison.amountPaid),
     });
   const saleLines = new Map(sale.lines.map((line) => [line.itemCode, line]));
   const paperLines = new Map(
@@ -247,7 +256,7 @@ function comparisonDifferences(sale: Sale, draft: ComparisonDraft) {
         encodedValue: String(line.quantity),
         reportedValue: String(paperLine.quantity),
       });
-    if (line.unitPrice !== paperLine.unitPrice)
+    if (cents(line.unitPrice) !== cents(paperLine.unitPrice))
       differences.push({
         label: `${itemLabel} unit price`,
         encodedValue: formatPeso(line.unitPrice),
@@ -261,9 +270,9 @@ function comparisonDifferences(sale: Sale, draft: ComparisonDraft) {
         encodedValue: "Not listed",
         reportedValue: `Qty ${paperLine.quantity} at ${formatPeso(paperLine.unitPrice)}`,
       });
-  if (sale.totalAmount !== comparison.totalAmount)
+  if (cents(sale.totalAmount) !== cents(comparison.totalAmount))
     differences.push({
-      label: "Calculated total",
+      label: "Total",
       encodedValue: formatPeso(sale.totalAmount),
       reportedValue: formatPeso(comparison.totalAmount),
     });
@@ -601,26 +610,16 @@ function ReceiptVerificationContent() {
     setPhotoKey(null);
   };
 
-  const differences = selectedSale
-    ? comparisonDifferences(selectedSale, comparison)
+  const parsedComparison = parseComparison(comparison);
+  const comparisonError = parsedComparison.success
+    ? null
+    : parsedComparison.error.issues[0]?.message ?? "Invalid receipt comparison";
+  const differences = selectedSale && parsedComparison.success
+    ? comparisonDifferences(selectedSale, parsedComparison.data)
     : [];
   const reportedDifferences =
     selectedSale?.reportedComparison
-      ? comparisonDifferences(selectedSale, {
-          receiptBooklet: selectedSale.reportedComparison.receiptBooklet,
-          receiptNumber: selectedSale.reportedComparison.receiptNumber,
-          paymentMethod: selectedSale.reportedComparison.paymentMethod,
-          discountAmount: String(
-            selectedSale.reportedComparison.discountAmount,
-          ),
-          amountPaid: String(selectedSale.reportedComparison.amountPaid),
-          totalAmount: String(selectedSale.reportedComparison.totalAmount),
-          lines: selectedSale.reportedComparison.lines.map((line) => ({
-            itemCode: line.itemCode,
-            quantity: String(line.quantity),
-            unitPrice: String(line.unitPrice),
-          })),
-        })
+      ? comparisonDifferences(selectedSale, selectedSale.reportedComparison)
       : [];
   const canEditComparison = Boolean(
     selectedSale &&
@@ -922,30 +921,22 @@ function ReceiptVerificationContent() {
                     <ReviewBadge status={selectedSale.reviewStatus} />
                   </div>
                 </div>
-                <div className="rounded-xl border">
-                  <div className="divide-y">
-                    {selectedSale.lines.map((line) => (
-                      <div
-                        key={`${line.itemCode}-${line.name}`}
-                        className="flex items-center justify-between gap-3 p-3"
-                      >
-                        <div>
-                          <p className="text-sm font-medium">{line.name}</p>
-                          <p className="text-xs text-slate-500">
-                            {line.itemCode} • Qty {line.quantity}
-                          </p>
-                        </div>
-                        <p className="text-sm font-medium">
-                          {formatPeso(line.unitPrice * line.quantity)}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-between border-t bg-slate-50 p-3 text-sm font-semibold">
-                    <span>Encoded total</span>
-                    <span>{formatPeso(selectedSale.totalAmount)}</span>
-                  </div>
-                </div>
+                <ReceiptSummary
+                  title="Encoded receipt"
+                  receiptBooklet={selectedSale.receiptBooklet}
+                  receiptNumber={selectedSale.manualReceiptNumber}
+                  paymentMethod={selectedSale.paymentMethod}
+                  discountAmount={selectedSale.discountAmount}
+                  amountPaid={selectedSale.amountPaid}
+                  totalAmount={selectedSale.totalAmount}
+                  lines={selectedSale.lines}
+                />
+                {selectedSale.reportedComparison && (
+                  <ReceiptSummary
+                    title="Persisted reported receipt"
+                    {...selectedSale.reportedComparison}
+                  />
+                )}
                 {selectedSale.status === "VOIDED" && (
                   <div className="rounded-xl bg-slate-100 p-3 text-sm text-slate-700">
                     This sale is voided and read-only.
@@ -1074,26 +1065,63 @@ function ReceiptVerificationContent() {
                 {canEditComparison &&
                 selectedSale.reviewStatus !== "VERIFIED" ? (
                   <div className="space-y-4 border-t pt-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="paper-number">
-                        {selectedSale.reviewStatus === "MISMATCH_REPORTED"
-                          ? "New replacement receipt number"
-                          : "Receipt number on handwritten receipt"}
-                      </Label>
-                      <Input
-                        id="paper-number"
-                        value={comparison.receiptNumber}
-                        onChange={(event) =>
-                          updateComparison({
-                            receiptNumber: event.target.value,
-                          })
-                        }
-                      />
-                      {selectedSale.reviewStatus === "MISMATCH_REPORTED" && (
-                        <p className="text-xs text-slate-500">
-                          This must differ from the voided original receipt.
-                        </p>
-                      )}
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="grid gap-2">
+                        <Label htmlFor="paper-booklet">Receipt booklet</Label>
+                        <Input
+                          id="paper-booklet"
+                          value={comparison.receiptBooklet}
+                          onChange={(event) => updateComparison({ receiptBooklet: event.target.value })}
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="paper-number">
+                          {selectedSale.reviewStatus === "MISMATCH_REPORTED"
+                            ? "New replacement receipt number"
+                            : "Receipt number"}
+                        </Label>
+                        <Input
+                          id="paper-number"
+                          value={comparison.receiptNumber}
+                          onChange={(event) => updateComparison({ receiptNumber: event.target.value })}
+                        />
+                        {selectedSale.reviewStatus === "MISMATCH_REPORTED" && (
+                          <p className="text-xs text-slate-500">
+                            This must differ from the voided original receipt.
+                          </p>
+                        )}
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="paper-payment-method">Payment method</Label>
+                        <select
+                          id="paper-payment-method"
+                          value={comparison.paymentMethod}
+                          onChange={(event) => updateComparison({ paymentMethod: event.target.value })}
+                          className="h-10 rounded-md border bg-background px-3 text-sm"
+                        >
+                          <option value="CASH">Cash</option>
+                          <option value="GCASH">GCash</option>
+                          <option value="MAYA">Maya</option>
+                          <option value="BANK_TRANSFER">Bank transfer</option>
+                          <option value="CREDIT_CARD">Credit card</option>
+                          <option value="SPLIT">Split</option>
+                        </select>
+                      </div>
+                      {([
+                        ["paper-discount", "Discount", "discountAmount"],
+                        ["paper-amount-paid", "Amount paid", "amountPaid"],
+                        ["paper-total", "Total", "totalAmount"],
+                      ] as const).map(([id, label, field]) => (
+                        <div key={field} className="grid gap-2">
+                          <Label htmlFor={id}>{label}</Label>
+                          <Input
+                            id={id}
+                            inputMode="decimal"
+                            value={comparison[field]}
+                            onChange={(event) => updateComparison({ [field]: event.target.value })}
+                          />
+                        </div>
+                      ))}
                     </div>
                     <div className="rounded-xl border p-4">
                       <p className="text-sm font-semibold">
@@ -1106,27 +1134,32 @@ function ReceiptVerificationContent() {
                           ? "The values reported by Accounting are loaded below. Change only what the replacement sale needs."
                           : "Enter the quantity and unit price shown on the handwritten receipt."}
                       </p>
-                      <div className="mt-4 hidden grid-cols-[minmax(0,1fr)_100px_120px] gap-2 px-1 text-xs font-medium uppercase tracking-wide text-slate-500 sm:grid">
-                        <span>Item</span>
+                      <div className="mt-4 hidden grid-cols-[minmax(0,1fr)_100px_120px_40px] gap-2 px-1 text-xs font-medium uppercase tracking-wide text-slate-500 sm:grid">
+                        <span>Item code</span>
                         <span>Quantity</span>
                         <span>Unit price</span>
+                        <span />
                       </div>
                       <div className="mt-2 space-y-3">
                         {comparison.lines.map((line, index) => {
-                          const itemName = selectedSale.lines.find(
-                            (item) => item.itemCode === line.itemCode,
-                          )?.name;
                           return (
                             <div
-                              key={`${line.itemCode}-${index}`}
-                              className="grid gap-2 rounded-lg bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_100px_120px] sm:bg-transparent sm:p-0"
+                              key={index}
+                              className="grid gap-2 rounded-lg bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_100px_120px_40px] sm:bg-transparent sm:p-0"
                             >
-                               <Input
-                                 aria-label={`Item ${index + 1}`}
-                                 value={`${line.itemCode} - ${itemName ?? "Unknown item"}`}
-                                 readOnly
-                                 className="bg-slate-100"
-                               />
+                              <Input
+                                aria-label={`Item code ${index + 1}`}
+                                placeholder="Item code"
+                                value={line.itemCode}
+                                onChange={(event) =>
+                                  setComparison((current) => ({
+                                    ...current,
+                                    lines: current.lines.map((item, itemIndex) =>
+                                      itemIndex === index ? { ...item, itemCode: event.target.value } : item,
+                                    ),
+                                  }))
+                                }
+                              />
                               <Input
                                 aria-label={`Quantity ${index + 1}`}
                                 placeholder="Quantity"
@@ -1167,11 +1200,42 @@ function ReceiptVerificationContent() {
                                   }))
                                 }
                               />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                aria-label={`Remove line ${index + 1}`}
+                                onClick={() =>
+                                  setComparison((current) => ({
+                                    ...current,
+                                    lines: current.lines.filter((_, itemIndex) => itemIndex !== index),
+                                  }))
+                                }
+                              >
+                                <Trash2 className="size-4" />
+                              </Button>
                             </div>
                           );
                         })}
                       </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-3"
+                        onClick={() =>
+                          setComparison((current) => ({
+                            ...current,
+                            lines: [...current.lines, { itemCode: "", quantity: "1", unitPrice: "0" }],
+                          }))
+                        }
+                      >
+                        <Plus className="mr-2 size-4" /> Add line
+                      </Button>
                     </div>
+                    {comparisonError && (
+                      <p role="alert" className="text-sm text-red-600">{comparisonError}</p>
+                    )}
                     {differences.length > 0 &&
                       selectedSale.reviewStatus === "UNVERIFIED" && (
                         <MismatchDetails differences={differences} />
@@ -1182,7 +1246,7 @@ function ReceiptVerificationContent() {
                         <Button
                           onClick={() => reviewMutation.mutate("VERIFIED")}
                           disabled={
-                            reviewMutation.isPending || differences.length > 0
+                            reviewMutation.isPending || Boolean(comparisonError) || differences.length > 0
                           }
                           className="bg-emerald-600 hover:bg-emerald-700"
                         >
@@ -1283,7 +1347,7 @@ function ReceiptVerificationContent() {
                           }
                           reviewMutation.mutate("MISMATCH_REPORTED");
                         }}
-                        disabled={reviewMutation.isPending}
+                        disabled={reviewMutation.isPending || Boolean(comparisonError)}
                         className="border-rose-200 text-rose-700 hover:bg-rose-50"
                       >
                         <AlertTriangle className="mr-2 h-4 w-4" />
@@ -1323,7 +1387,9 @@ function ReceiptVerificationContent() {
                             resolveMutation.mutate("CONFIRMED_CORRECT")
                           }
                           disabled={
-                            resolveMutation.isPending || !resolutionNote.trim()
+                            resolveMutation.isPending ||
+                            !resolutionNote.trim() ||
+                            Boolean(comparisonError)
                           }
                           className="border-sky-200 text-sky-700"
                         >
@@ -1337,7 +1403,9 @@ function ReceiptVerificationContent() {
                             resolveMutation.mutate("VOIDED_REPLACED")
                           }
                           disabled={
-                            resolveMutation.isPending || !resolutionNote.trim()
+                            resolveMutation.isPending ||
+                            !resolutionNote.trim() ||
+                            Boolean(comparisonError)
                           }
                           className="bg-red-600 text-white hover:bg-red-700"
                         >
@@ -1363,6 +1431,55 @@ function ReceiptVerificationContent() {
         </Card>
       </div>
     </PageShell>
+  );
+}
+
+function ReceiptSummary({
+  title,
+  receiptBooklet,
+  receiptNumber,
+  paymentMethod,
+  discountAmount,
+  amountPaid,
+  totalAmount,
+  lines,
+}: {
+  title: string;
+  receiptBooklet: string;
+  receiptNumber: string;
+  paymentMethod: string;
+  discountAmount: number;
+  amountPaid: number;
+  totalAmount: number;
+  lines: Array<{ itemCode: string; name?: string; quantity: number; unitPrice: number }>;
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border">
+      <div className="border-b bg-slate-50 px-3 py-2">
+        <p className="text-sm font-semibold">{title}</p>
+      </div>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 p-3 text-sm">
+        <div><dt className="text-xs text-slate-500">Booklet</dt><dd>{receiptBooklet || "None"}</dd></div>
+        <div><dt className="text-xs text-slate-500">Receipt number</dt><dd>{receiptNumber}</dd></div>
+        <div><dt className="text-xs text-slate-500">Payment method</dt><dd>{paymentMethod.replaceAll("_", " ")}</dd></div>
+        <div><dt className="text-xs text-slate-500">Discount</dt><dd>{formatPeso(discountAmount)}</dd></div>
+        <div><dt className="text-xs text-slate-500">Amount paid</dt><dd>{formatPeso(amountPaid)}</dd></div>
+        <div><dt className="text-xs text-slate-500">Total</dt><dd className="font-semibold">{formatPeso(totalAmount)}</dd></div>
+      </dl>
+      <div className="divide-y border-t">
+        {lines.map((line, index) => (
+          <div key={`${line.itemCode}-${index}`} className="flex items-center justify-between gap-3 p-3 text-sm">
+            <div>
+              <p className="font-medium">{line.name ?? line.itemCode}</p>
+              <p className="text-xs text-slate-500">
+                {line.name ? `${line.itemCode} • ` : ""}Qty {line.quantity} at {formatPeso(line.unitPrice)}
+              </p>
+            </div>
+            <p className="font-medium">{formatPeso(line.quantity * line.unitPrice)}</p>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

@@ -20,6 +20,8 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useShellAccess } from "@/components/shell-access-context";
+import { getCustomerOrderActions, type CustomerOrderStatusCode } from "@/lib/customer-order-actions";
 
 type OrderDetail = {
   id: string;
@@ -27,6 +29,7 @@ type OrderDetail = {
   customer: string;
   branch: string;
   status: string;
+  statusCode: CustomerOrderStatusCode;
   paymentStatus: string;
   downpayment: number;
   totalAmount: number;
@@ -53,6 +56,8 @@ async function fetchOrder(id: string) {
 export default function CustomerOrderDetailsPage() {
   const params = useParams<{ id: string }>();
   const queryClient = useQueryClient();
+  const access = useShellAccess();
+  const role = access.authenticated ? access.identity.role : null;
   const orderId = params.id;
   const [isCancelOpen, setIsCancelOpen] = useState(false);
   const [cancellationNote, setCancellationNote] = useState("");
@@ -65,12 +70,41 @@ export default function CustomerOrderDetailsPage() {
       return json.data;
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["customer-order", orderId] });
-      await queryClient.invalidateQueries({ queryKey: ["customer-orders"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["customer-order", orderId] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-orders-list"] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-order-options"] }),
+        queryClient.invalidateQueries({ queryKey: ["pos-options"] }),
+        queryClient.invalidateQueries({ queryKey: ["inventory-locations"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["customers"] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-history"] }),
+      ]);
       setIsCancelOpen(false);
       setCancellationNote("");
     },
   });
+  const reserveMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`/api/customer-orders/${orderId}/reserve`, { method: "POST", credentials: "same-origin" });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error?.message ?? "Unable to reserve order");
+      return json.data as OrderDetail;
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["customer-order", orderId] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-orders-list"] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-order-options"] }),
+        queryClient.invalidateQueries({ queryKey: ["pos-options"] }),
+        queryClient.invalidateQueries({ queryKey: ["inventory-locations"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["customers"] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-history"] }),
+      ]);
+    },
+  });
+  const actions = order ? getCustomerOrderActions({ role, statusCode: order.statusCode, downpayment: order.downpayment, balance: order.balance }) : null;
 
   return (
     <PageShell
@@ -79,14 +113,16 @@ export default function CustomerOrderDetailsPage() {
       actions={
         <div className="flex flex-wrap gap-2">
           <Link href="/customer-orders"><Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" />Back</Button></Link>
-          {order && ["Reserved", "For Release"].includes(order.status) ? <Link href={`/customer-orders/${order.id}/release`}><Button className="bg-emerald-600 text-white hover:bg-emerald-700">Release Order</Button></Link> : null}
-          {order && !["Released", "Cancelled"].includes(order.status) ? <Button variant="outline" className="border-red-200 text-red-700 hover:bg-red-50" onClick={() => setIsCancelOpen(true)}>Cancel Order</Button> : null}
+          {order && actions?.canReserve ? <Button onClick={() => reserveMutation.mutate()} disabled={reserveMutation.isPending}>{reserveMutation.isPending ? "Reserving..." : "Reserve Stock"}</Button> : null}
+          {order && actions?.canRelease ? <Link href={`/customer-orders/${order.id}/release`}><Button className="bg-emerald-600 text-white hover:bg-emerald-700">Release Order</Button></Link> : null}
+          {order && actions?.canCancel ? <Button variant="outline" className="border-red-200 text-red-700 hover:bg-red-50" onClick={() => setIsCancelOpen(true)}>Cancel Order</Button> : null}
         </div>
       }
     >
       {isLoading ? <div className="flex items-center gap-2 rounded-xl border p-6 text-slate-500"><Loader2 className="h-4 w-4 animate-spin" />Loading order...</div> : null}
       {error ? <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{(error as Error).message}</div> : null}
       {cancelMutation.error ? <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{(cancelMutation.error as Error).message}</div> : null}
+      {reserveMutation.error ? <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{(reserveMutation.error as Error).message}</div> : null}
       {order ? (
         <div className="grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
           <Card>
@@ -134,7 +170,7 @@ export default function CustomerOrderDetailsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <Label htmlFor="cancellation-note">Cancellation note</Label>
+            <Label htmlFor="cancellation-note">Cancellation note{order && order.downpayment > 0 ? " (required)" : ""}</Label>
             <Textarea
               id="cancellation-note"
               value={cancellationNote}
@@ -147,7 +183,7 @@ export default function CustomerOrderDetailsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCancelOpen(false)} disabled={cancelMutation.isPending}>Keep Order</Button>
-            <Button variant="destructive" onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending}>{cancelMutation.isPending ? "Cancelling..." : "Cancel Order"}</Button>
+            <Button variant="destructive" onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending || Boolean(order && order.downpayment > 0 && !cancellationNote.trim())}>{cancelMutation.isPending ? "Cancelling..." : "Cancel Order"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useShellAccess } from "@/components/shell-access-context";
+import { getCustomerOrderActions, type CustomerOrderStatusCode } from "@/lib/customer-order-actions";
 
 type OrderDetail = {
   id: string;
@@ -18,6 +20,7 @@ type OrderDetail = {
   customer: string;
   branch: string;
   status: string;
+  statusCode: CustomerOrderStatusCode;
   paymentStatus: string;
   totalAmount: number;
   downpayment: number;
@@ -41,6 +44,8 @@ export default function ReleaseCustomerOrderPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const access = useShellAccess();
+  const role = access.authenticated ? access.identity.role : null;
   const orderId = params.id;
   const { data: order, isLoading, error } = useQuery({ queryKey: ["customer-order", orderId], queryFn: () => fetchOrder(orderId), enabled: Boolean(orderId) });
   const releaseMutation = useMutation({
@@ -58,11 +63,21 @@ export default function ReleaseCustomerOrderPage() {
       return json.data;
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["customer-order", orderId] });
-      await queryClient.invalidateQueries({ queryKey: ["customer-orders"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["customer-order", orderId] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-orders-list"] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-direct-sales-list"] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-order-options"] }),
+        queryClient.invalidateQueries({ queryKey: ["pos-options"] }),
+        queryClient.invalidateQueries({ queryKey: ["inventory-locations"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["customers"] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-history"] }),
+      ]);
       router.push(`/customer-orders/${orderId}`);
     },
   });
+  const actions = order ? getCustomerOrderActions({ role, statusCode: order.statusCode, downpayment: order.downpayment, balance: order.balance }) : null;
 
   return (
     <PageShell
@@ -109,12 +124,12 @@ export default function ReleaseCustomerOrderPage() {
                 <Summary label="Downpayment" value={formatPeso(order.downpayment)} />
                 <Summary label="Remaining Balance" value={formatPeso(order.balance)} strong />
               </div>
-              <form className="mt-6 space-y-4" action={(formData) => releaseMutation.mutate(formData)}>
+              {actions?.canRelease ? <form className="mt-6 space-y-4" action={(formData) => releaseMutation.mutate(formData)}>
                 <div className="space-y-2"><Label htmlFor="finalReceiptNumber">Final Receipt Number</Label><Input id="finalReceiptNumber" name="finalReceiptNumber" placeholder="Handwritten receipt number" /></div>
                 <div className="space-y-2"><Label htmlFor="paymentMethod">Payment Method</Label><select id="paymentMethod" name="paymentMethod" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="CASH">Cash</option><option value="GCASH">GCash</option><option value="MAYA">Maya</option><option value="BANK_TRANSFER">Bank Transfer</option><option value="CREDIT_CARD">Credit Card</option><option value="SPLIT">Split</option></select></div>
                 <div className="space-y-2"><Label htmlFor="notes">Release Notes</Label><Input id="notes" name="notes" placeholder="Released by, remarks, etc." /></div>
-                <Button type="submit" className="w-full bg-emerald-600 text-white hover:bg-emerald-700" disabled={releaseMutation.isPending || !["Reserved", "For Release"].includes(order.status)}>{releaseMutation.isPending ? "Releasing..." : "Confirm Release"}</Button>
-              </form>
+                <Button type="submit" className="w-full bg-emerald-600 text-white hover:bg-emerald-700" disabled={releaseMutation.isPending}>{releaseMutation.isPending ? "Releasing..." : "Confirm Release"}</Button>
+              </form> : <p className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">This order cannot be released in its current state or by your role.</p>}
             </CardContent>
           </Card>
         </div>

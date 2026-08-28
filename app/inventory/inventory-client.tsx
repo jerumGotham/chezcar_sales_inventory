@@ -558,6 +558,8 @@ export function InventoryClient({
             <div className="flex flex-wrap gap-2">
               {canReceiveSupplierStock && <Link href="/inventory/receive"><Button className="bg-emerald-600 text-white hover:bg-emerald-700">Receive from Supplier</Button></Link>}
               {isAdmin && <Button className="bg-amber-600 text-white hover:bg-amber-700" onClick={openAdjustModal}>Adjust Stock</Button>}
+              <Button variant="outline" onClick={() => setIsStockCardOpen(true)}>Stock Movement</Button>
+              <Button variant="outline" onClick={() => setIsAvailabilityOpen(true)}>Availability (Prototype)</Button>
               <Link href="/stock-transfers"><Button variant="outline">{isStockStaff ? "Stock Transfers" : "Open Stock Transfers"}</Button></Link>
             </div>
           </CardContent>
@@ -1409,9 +1411,9 @@ export function InventoryClient({
     "
         >
           <SheetHeader>
-            <SheetTitle>Availability</SheetTitle>
+            <SheetTitle>Availability (Prototype)</SheetTitle>
             <SheetDescription>
-              Global stock availability by product and location.
+              Demonstration availability data by product and location. Use the inventory list for live balances.
             </SheetDescription>
           </SheetHeader>
 

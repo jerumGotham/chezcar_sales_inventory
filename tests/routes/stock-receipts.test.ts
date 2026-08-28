@@ -16,4 +16,22 @@ describe("stock receipt route", () => {
     expect(mocks.requireCapability).toHaveBeenCalledWith(expect.any(Headers), "inventory-receiving:create");
     expect(mocks.createStockReceipt).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["an invalid line", [{ productId: "product-1", quantity: 0, unitCost: 10 }]],
+    ["duplicate products", [
+      { productId: "product-1", quantity: 1, unitCost: 10 },
+      { productId: "product-1", quantity: 2, unitCost: 20 },
+    ]],
+  ])("rejects the entire payload for %s", async (_label, lines) => {
+    mocks.requireCapability.mockResolvedValue({ userId: "user-1", role: "STOCK_STAFF" });
+    const response = await POST(new Request("http://localhost/api/stock-receipts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reference: "DR-1001", supplier: "Acme", lines }),
+    }));
+
+    expect(response.status).toBe(400);
+    expect(mocks.createStockReceipt).not.toHaveBeenCalled();
+  });
 });

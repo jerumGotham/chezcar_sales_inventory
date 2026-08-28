@@ -18,6 +18,37 @@ export const receiptBookletInputSchema = z.string().trim().max(50).optional().de
 export const manualReceiptNumberSchema = z.string().trim().min(1).max(100);
 export const paymentMethodSchema = z.enum(["CASH", "GCASH", "MAYA", "BANK_TRANSFER", "CREDIT_CARD", "SPLIT"]);
 
+const receiptMoneySchema = z.number().finite().min(0).max(9_999_999_999.99).multipleOf(0.01, "Money values may have at most two decimal places");
+
+export const receiptComparisonLineSchema = z.object({
+  itemCode: z.string().trim().min(1).max(100),
+  quantity: z.number().int().positive(),
+  unitPrice: receiptMoneySchema,
+});
+
+export const receiptComparisonSchema = z.object({
+  receiptBooklet: receiptBookletSchema,
+  receiptNumber: manualReceiptNumberSchema,
+  paymentMethod: paymentMethodSchema,
+  discountAmount: receiptMoneySchema,
+  amountPaid: receiptMoneySchema,
+  totalAmount: receiptMoneySchema,
+  lines: z.array(receiptComparisonLineSchema).min(1),
+}).superRefine((comparison, context) => {
+  const seen = new Set<string>();
+  comparison.lines.forEach((line, index) => {
+    if (seen.has(line.itemCode)) {
+      context.addIssue({
+        code: "custom",
+        path: ["lines", index, "itemCode"],
+        message: "An item may appear only once",
+      });
+    }
+    seen.add(line.itemCode);
+  });
+});
+export type ReceiptComparison = z.infer<typeof receiptComparisonSchema>;
+
 export const REVIEW_STATUSES = ["UNVERIFIED", "VERIFIED", "MISMATCH_REPORTED"] as const;
 export type ReviewStatusDto = (typeof REVIEW_STATUSES)[number];
 
@@ -63,15 +94,7 @@ export const accountingReviewRequestSchema = z.object({
   status: z.enum(["VERIFIED", "MISMATCH_REPORTED"]),
   mismatchCategory: z.enum(["PRICE_MISMATCH", "QUANTITY_MISMATCH", "ITEM_MISMATCH", "TOTAL_MISMATCH", "RECEIPT_NOT_FOUND", "OTHER"]).optional(),
   notes: z.string().trim().max(5_000).optional(),
-  comparison: z.object({
-    receiptBooklet: z.string(),
-    receiptNumber: z.string(),
-    paymentMethod: paymentMethodSchema,
-    discountAmount: z.number(),
-    amountPaid: z.number(),
-    totalAmount: z.number(),
-    lines: z.array(z.object({ itemCode: z.string(), quantity: z.number(), unitPrice: z.number() })),
-  }),
+  comparison: receiptComparisonSchema,
   receiptPhotoKey: z.string().trim().max(200).optional(),
 });
 export type AccountingReviewRequest = z.infer<typeof accountingReviewRequestSchema>;

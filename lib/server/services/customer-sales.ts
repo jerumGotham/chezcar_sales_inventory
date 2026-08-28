@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { Prisma, type CustomerOrderStatus, type CustomerOrderType, type PaymentMethod } from "@prisma/client";
 import { z } from "zod";
 
+import { receiptComparisonSchema, type ReceiptComparison } from "../../contracts/sales";
 import type { AuthContext } from "../authorization";
 import { prisma } from "../prisma";
 import { createNotifications, notifyInventoryThresholdChange } from "./notifications";
@@ -11,16 +12,6 @@ import { isReceiptEvidenceKey } from "./receipt-evidence";
 
 const positiveInt = z.coerce.number().int().positive();
 const money = z.coerce.number().min(0);
-const paymentMethodSchema = z.enum(["CASH", "GCASH", "MAYA", "BANK_TRANSFER", "CREDIT_CARD", "SPLIT"]);
-const receiptComparisonSchema = z.object({
-  receiptBooklet: z.string().trim().max(50).default(""),
-  receiptNumber: z.string().trim().min(1).max(100),
-  paymentMethod: paymentMethodSchema,
-  discountAmount: money.default(0),
-  amountPaid: money,
-  totalAmount: money,
-  lines: z.array(z.object({ itemCode: z.string().trim().min(1).max(100), quantity: positiveInt, unitPrice: money })).min(1),
-});
 
 export const customerMutationSchema = z.object({
   name: z.string().trim().min(1).max(200),
@@ -163,8 +154,6 @@ function receiptPhotoType(key: string | undefined) {
   return key?.endsWith(".jpg") ? "image/jpeg" : key?.endsWith(".png") ? "image/png" : key?.endsWith(".webp") ? "image/webp" : null;
 }
 
-type ReceiptComparison = z.infer<typeof receiptComparisonSchema>;
-
 export function compareReceipt(sale: {
   manualReceiptNumber: string;
   receiptBooklet: string;
@@ -193,6 +182,17 @@ export function compareReceipt(sale: {
   }
   for (const itemCode of paperLines.keys()) if (!saleLines.has(itemCode)) differences.push(`Unexpected receipt line: ${itemCode}`);
   return differences;
+}
+
+function cents(value: number) {
+  return Math.round(value * 100);
+}
+
+function assertUniqueComparisonLines(comparison: ReceiptComparison) {
+  const itemCodes = comparison.lines.map((line) => line.itemCode);
+  if (new Set(itemCodes).size !== itemCodes.length) {
+    throw new CustomerSalesError("INVALID_LINES", "A receipt item may appear only once", 400);
+  }
 }
 
 async function notifySaleParties(tx: Prisma.TransactionClient, sale: { id: string; reference: string; manualReceiptNumber: string; postedById: string; locationId: string }, title: string, description: string) {
@@ -442,6 +442,23 @@ export async function getCustomerOrderById(actor: AuthContext, id: string) {
   return serializeOrder(order);
 }
 
+export async function reserveCustomerOrder(actor: AuthContext, id: string) {
+  assertBranchOrAdmin(actor);
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "CustomerOrder" WHERE id = ${id} FOR UPDATE`;
+    const order = await tx.customerOrder.findUnique({ where: { id }, include: ORDER_INCLUDE });
+    if (!order) throw new CustomerSalesError("NOT_FOUND", "Order not found", 404);
+    if (actor.role === "BRANCH_STAFF" && order.locationId !== actorLocationId(actor)) throw new CustomerSalesError("FORBIDDEN", "Order is outside assigned branch", 403);
+    if (order.status !== "WAITING_STOCK") throw new CustomerSalesError("INVALID_STATUS", "Only waiting-stock orders can be reserved", 409);
+
+    const productIds = order.lines.map((line) => line.productId).sort();
+    await tx.$queryRaw`SELECT id FROM "InventoryBalance" WHERE "locationId" = ${order.locationId} AND "productId" IN (${Prisma.join(productIds)}) ORDER BY "productId" FOR UPDATE`;
+    await reserveLines(tx, order.locationId, order.lines);
+
+    return serializeOrder(await tx.customerOrder.update({ where: { id: order.id }, data: { status: "RESERVED" }, include: ORDER_INCLUDE }));
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
 export async function releaseCustomerOrder(actor: AuthContext, id: string, input: z.infer<typeof releaseOrderSchema>) {
   assertBranchOrAdmin(actor);
   try {
@@ -471,7 +488,8 @@ export async function cancelCustomerOrder(actor: AuthContext, id: string, input:
     if (!order) throw new CustomerSalesError("NOT_FOUND", "Order not found", 404);
     if (actor.role === "BRANCH_STAFF" && order.locationId !== actorLocationId(actor)) throw new CustomerSalesError("FORBIDDEN", "Order is outside assigned branch", 403);
     if (order.status === "COMPLETED" || order.status === "CANCELLED") throw new CustomerSalesError("INVALID_STATUS", "Completed or cancelled orders cannot be cancelled", 409);
-    if (order.downpaymentAmount.toNumber() > 0 && (actor.role !== "ADMIN" || !input.note)) throw new CustomerSalesError("DP_CANCEL_ADMIN_ONLY", "Downpayment cancellation requires Admin note", 403);
+    if (order.downpaymentAmount.toNumber() > 0 && actor.role !== "ADMIN") throw new CustomerSalesError("DP_CANCEL_ADMIN_ONLY", "Only Admin can cancel an order with a downpayment", 403);
+    if (order.downpaymentAmount.toNumber() > 0 && !input.note) throw new CustomerSalesError("CANCELLATION_NOTE_REQUIRED", "A cancellation note is required for an order with a downpayment", 400);
     if (order.status === "RESERVED" || order.status === "READY_FOR_RELEASE") {
       for (const line of order.lines) await tx.inventoryBalance.update({ where: { locationId_productId: { locationId: order.locationId, productId: line.productId } }, data: { reserved: { decrement: line.quantity }, version: { increment: 1 } } });
     }
@@ -678,6 +696,7 @@ export async function getSaleById(actor: AuthContext, saleId: string) {
 
 export async function reviewSale(actor: AuthContext, saleId: string, input: z.infer<typeof accountingReviewSchema>) {
   assertAccountingReviewActor(actor);
+  assertUniqueComparisonLines(input.comparison);
   if (input.receiptPhotoKey && !isReceiptEvidenceKey(input.receiptPhotoKey)) throw new CustomerSalesError("INVALID_INPUT", "Invalid receipt evidence key", 400);
   return prisma.$transaction(async (tx) => {
     // Lock sale and review for Serializable safety
@@ -792,15 +811,19 @@ export async function resolveSale(actor: AuthContext, saleId: string, input: z.i
 
     const replacement = input.replacement;
     if (!replacement) throw new CustomerSalesError("INVALID_INPUT", "Replacement sale details are required", 400);
+    assertUniqueComparisonLines(replacement);
     if (!review.branchReplacementReceiptNumber || replacement.receiptNumber !== review.branchReplacementReceiptNumber) throw new CustomerSalesError("INVALID_REPLACEMENT_RECEIPT", "Use the replacement receipt number confirmed by the branch", 409);
     const productIds = replacement.lines.map((line) => line.itemCode);
     if (new Set(productIds).size !== productIds.length) throw new CustomerSalesError("INVALID_LINES", "A replacement product may appear only once", 400);
     const products = await tx.product.findMany({ where: { itemCode: { in: productIds }, status: "ACTIVE" }, select: { id: true, itemCode: true, name: true } });
     if (products.length !== new Set(productIds).size) throw new CustomerSalesError("INVALID_LINES", "Every replacement line must reference an active product", 400);
     const productsByCode = new Map(products.map((product) => [product.itemCode, product]));
-    const replacementTotal = replacement.lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0) - replacement.discountAmount;
-    if (replacement.discountAmount > replacement.lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0)) throw new CustomerSalesError("INVALID_DISCOUNT", "Discount cannot exceed replacement subtotal", 400);
-    if (replacement.amountPaid !== replacementTotal) throw new CustomerSalesError("INVALID_PAYMENT", "Replacement payment must match replacement total", 400);
+    const replacementSubtotalCents = cents(replacement.lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0));
+    const replacementTotalCents = replacementSubtotalCents - cents(replacement.discountAmount);
+    if (replacementTotalCents < 0) throw new CustomerSalesError("INVALID_DISCOUNT", "Discount cannot exceed replacement subtotal", 400);
+    if (cents(replacement.totalAmount) !== replacementTotalCents) throw new CustomerSalesError("INVALID_TOTAL", "Replacement total must match lines less discount", 400);
+    if (cents(replacement.amountPaid) !== replacementTotalCents) throw new CustomerSalesError("INVALID_PAYMENT", "Replacement payment must match replacement total", 400);
+    const replacementTotal = replacementTotalCents / 100;
     const reference = `SALE-${randomUUID()}`;
     await updateSaleInventory(tx, sale.locationId, sale.lines.map((line) => ({ productId: line.productId, quantity: line.quantity })), "reverse", actor.userId, `CORRECTION-REVERSAL-${reference}`);
     await updateSaleInventory(tx, sale.locationId, replacement.lines.map((line) => ({ productId: productsByCode.get(line.itemCode)!.id, quantity: line.quantity })), "deduct", actor.userId, `CORRECTION-${reference}`);
@@ -990,14 +1013,14 @@ function serializeOrder(order: Prisma.CustomerOrderGetPayload<{ include: typeof 
     COMPLETED: "Released",
     CANCELLED: "Cancelled",
   };
-  return { id: order.id, orderNo: order.reference, customer: order.customer.name, branch: order.location.name, itemSummary: order.lines.map((line) => line.productName).join(", "), totalItems: order.lines.reduce((sum, line) => sum + line.quantity, 0), status: statusLabels[order.status], type: order.type, paymentStatus: order.remainingBalance.toNumber() === 0 ? "Paid" : order.downpaymentAmount.toNumber() > 0 ? "Partial" : "Unpaid", downpayment: serializeMoney(order.downpaymentAmount), totalAmount: serializeMoney(order.totalAmount), balance: serializeMoney(order.remainingBalance), orderDate: order.createdAt.toISOString(), releaseDate: order.expectedReleaseDate?.toISOString() ?? "", finalReceiptNumber: order.finalReceiptNumber, downpaymentReceiptNumber: order.downpaymentReceiptNumber, notes: order.notes, cancelledAt: order.cancelledAt?.toISOString() ?? null, releasedAt: order.releasedAt?.toISOString() ?? null, lines: order.lines.map((line) => ({ productId: line.productId, itemCode: line.productItemCode, name: line.productName, quantity: line.quantity, unitPrice: serializeMoney(line.finalUnitPrice), amount: line.quantity * line.finalUnitPrice.toNumber() })) };
+  return { id: order.id, orderNo: order.reference, customer: order.customer.name, branch: order.location.name, itemSummary: order.lines.map((line) => line.productName).join(", "), totalItems: order.lines.reduce((sum, line) => sum + line.quantity, 0), status: statusLabels[order.status], statusCode: order.status, type: order.type, paymentStatus: order.remainingBalance.toNumber() === 0 ? "Paid" : order.downpaymentAmount.toNumber() > 0 ? "Partial" : "Unpaid", downpayment: serializeMoney(order.downpaymentAmount), totalAmount: serializeMoney(order.totalAmount), balance: serializeMoney(order.remainingBalance), orderDate: order.createdAt.toISOString(), releaseDate: order.expectedReleaseDate?.toISOString() ?? "", finalReceiptNumber: order.finalReceiptNumber, downpaymentReceiptNumber: order.downpaymentReceiptNumber, notes: order.notes, cancelledAt: order.cancelledAt?.toISOString() ?? null, releasedAt: order.releasedAt?.toISOString() ?? null, lines: order.lines.map((line) => ({ productId: line.productId, itemCode: line.productItemCode, name: line.productName, quantity: line.quantity, unitPrice: serializeMoney(line.finalUnitPrice), amount: line.quantity * line.finalUnitPrice.toNumber() })) };
 }
 
 function parseReportedComparison(comparisonJson: string | null | undefined) {
   if (!comparisonJson) return null;
   try {
-    const stored = JSON.parse(comparisonJson) as { comparison?: unknown };
-    const parsed = receiptComparisonSchema.safeParse(stored.comparison);
+    const stored = JSON.parse(comparisonJson) as { comparison?: unknown; replacement?: unknown };
+    const parsed = receiptComparisonSchema.safeParse(stored.comparison ?? stored.replacement);
     return parsed.success ? parsed.data : null;
   } catch {
     return null;

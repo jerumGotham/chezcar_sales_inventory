@@ -36,7 +36,7 @@ describe("customer orders, direct sales, accounting", () => {
         lines: [{ productId: product.id, quantity: 2 }],
       });
 
-      expect(order).toMatchObject({ status: "Reserved", downpayment: 50, balance: 150 });
+      expect(order).toMatchObject({ status: "Reserved", statusCode: "RESERVED", downpayment: 50, balance: 150 });
       await expect(recordCustomerOrderPayment(branchActor, order.id, { amount: 25, reference: "DP-0002" })).resolves.toMatchObject({ downpayment: 75, balance: 125 });
       await expect(recordCustomerOrderPayment(branchActor, order.id, { amount: 5 })).resolves.toMatchObject({ downpayment: 80, balance: 120 });
       await expect(recordCustomerOrderPayment(branchActor, order.id, { amount: 121, reference: "DP-TOO-MUCH" })).rejects.toMatchObject({ code: "INVALID_PAYMENT" });
@@ -74,6 +74,7 @@ describe("customer orders, direct sales, accounting", () => {
 
       const dp = await createCustomerOrder(branchActor, { customer: { name: "DP" }, type: "RESERVATION_WITH_DP", downpaymentAmount: 10, downpaymentReceiptNumber: "DP-CANCEL-1", lines: [{ productId: product.id, quantity: 1 }] });
       await expect(cancelCustomerOrder(branchActor, dp.id, {})).rejects.toMatchObject({ code: "DP_CANCEL_ADMIN_ONLY" });
+      await expect(cancelCustomerOrder(adminActor, dp.id, {})).rejects.toMatchObject({ code: "CANCELLATION_NOTE_REQUIRED", status: 400 });
       await expect(cancelCustomerOrder(adminActor, dp.id, { note: "Refund approved" })).resolves.toMatchObject({ status: "Cancelled" });
     });
   }, 30_000);
@@ -100,6 +101,77 @@ describe("customer orders, direct sales, accounting", () => {
     });
   }, 30_000);
 
+  it("creates waiting-stock orders for unavailable products and reserves all lines atomically", async () => {
+    await withDisposableDatabase(async ({ prisma }) => {
+      const fixture = await createAuthFixture(prisma, { namespace: "waiting-stock-reserve" });
+      const [availableProduct, unavailableProduct] = await Promise.all([
+        prisma.product.create({ data: { itemCode: "WAITING-A", name: "Waiting A", price: 100, status: "ACTIVE" } }),
+        prisma.product.create({ data: { itemCode: "WAITING-B", name: "Waiting B", price: 200, status: "ACTIVE" } }),
+      ]);
+      await Promise.all([
+        prisma.inventoryBalance.create({ data: { locationId: fixture.locations.branches.QC.id, productId: availableProduct.id, onHand: 2, reserved: 0, unitCost: 10 } }),
+        prisma.inventoryBalance.create({ data: { locationId: fixture.locations.branches.QC.id, productId: unavailableProduct.id, onHand: 0, reserved: 0, unitCost: 20 } }),
+      ]);
+      const { createCustomerOrder, reserveCustomerOrder } = await import("../../lib/server/services/customer-sales");
+      const branchActor = actor(fixture.users.branchStaff, fixture.locations.branches.QC);
+      const order = await createCustomerOrder(branchActor, {
+        customer: { name: "Waiting Customer" },
+        type: "WAITING_STOCK",
+        downpaymentAmount: 0,
+        lines: [
+          { productId: availableProduct.id, quantity: 1 },
+          { productId: unavailableProduct.id, quantity: 1 },
+        ],
+      });
+
+      expect(order).toMatchObject({ status: "Pending", statusCode: "WAITING_STOCK" });
+      await expect(reserveCustomerOrder(branchActor, order.id)).rejects.toMatchObject({ code: "INSUFFICIENT_STOCK" });
+      await expect(prisma.inventoryBalance.findUniqueOrThrow({ where: { locationId_productId: { locationId: fixture.locations.branches.QC.id, productId: availableProduct.id } } })).resolves.toMatchObject({ reserved: 0 });
+
+      await prisma.inventoryBalance.update({ where: { locationId_productId: { locationId: fixture.locations.branches.QC.id, productId: unavailableProduct.id } }, data: { onHand: 1 } });
+      testEnvironment.getSession.mockResolvedValue({ user: { id: fixture.users.branchStaff.id } });
+      const { POST } = await import("../../app/api/customer-orders/[orderId]/[action]/route");
+      const reserveResponse = await POST(new Request(`http://localhost/api/customer-orders/${order.id}/reserve`, { method: "POST" }), { params: Promise.resolve({ orderId: order.id, action: "reserve" }) });
+      expect(reserveResponse.status).toBe(200);
+      await expect(reserveResponse.json()).resolves.toMatchObject({ data: { status: "Reserved", statusCode: "RESERVED" } });
+      const balances = await prisma.inventoryBalance.findMany({ where: { productId: { in: [availableProduct.id, unavailableProduct.id] } }, orderBy: { productId: "asc" } });
+      expect(balances.every((balance) => balance.reserved === 1)).toBe(true);
+      await expect(reserveCustomerOrder(branchActor, order.id)).rejects.toMatchObject({ code: "INVALID_STATUS" });
+    });
+  }, 30_000);
+
+  it("includes unavailable products only when customer orders request them", async () => {
+    await withDisposableDatabase(async ({ prisma }) => {
+      const fixture = await createAuthFixture(prisma, { namespace: "order-options-unavailable" });
+      const [availableProduct, unavailableProduct] = await Promise.all([
+        prisma.product.create({ data: { itemCode: "OPTION-AVAILABLE", name: "Available", price: 10, status: "ACTIVE" } }),
+        prisma.product.create({ data: { itemCode: "OPTION-UNAVAILABLE", name: "Unavailable", price: 20, status: "ACTIVE" } }),
+      ]);
+      await Promise.all([
+        prisma.inventoryBalance.create({ data: { locationId: fixture.locations.branches.QC.id, productId: availableProduct.id, onHand: 1, reserved: 0, unitCost: 1 } }),
+        prisma.inventoryBalance.create({ data: { locationId: fixture.locations.branches.QC.id, productId: unavailableProduct.id, onHand: 0, reserved: 0, unitCost: 1 } }),
+      ]);
+      testEnvironment.getSession.mockResolvedValue({ user: { id: fixture.users.branchStaff.id } });
+      const { GET } = await import("../../app/api/customer-orders/options/route");
+      const baseUrl = `http://localhost/api/customer-orders/options?locationId=${fixture.locations.branches.QC.id}`;
+
+      const posResponse = await GET(new Request(baseUrl));
+      const posPayload = await posResponse.json() as { data: { products: Array<{ id: string }> } };
+      expect(posPayload.data.products.map((product) => product.id)).toEqual([availableProduct.id]);
+
+      const waitingResponse = await GET(new Request(`${baseUrl}&includeUnavailable=true`));
+      const waitingPayload = await waitingResponse.json() as { data: { products: Array<{ id: string; availableQuantity: number }> } };
+      expect(waitingPayload.data.products).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: availableProduct.id, availableQuantity: 1 }),
+        expect.objectContaining({ id: unavailableProduct.id, availableQuantity: 0 }),
+      ]));
+
+      testEnvironment.getSession.mockResolvedValue({ user: { id: fixture.users.accountingStaff.id } });
+      const deniedResponse = await GET(new Request(baseUrl));
+      expect(deniedResponse.status).toBe(403);
+    });
+  }, 30_000);
+
   it("lets Admin void a mismatched sale and create a JSON-safe replacement", async () => {
     await withDisposableDatabase(async ({ prisma }) => {
       const fixture = await createAuthFixture(prisma, { namespace: "sale-replacement" });
@@ -121,6 +193,11 @@ describe("customer orders, direct sales, accounting", () => {
           expect.objectContaining({
             id: original.id,
             reportedComparison: expect.objectContaining({
+              receiptBooklet: "",
+              receiptNumber: "ORIGINAL-001",
+              paymentMethod: "CASH",
+              discountAmount: 0,
+              amountPaid: 100,
               totalAmount: 100,
               lines: [expect.objectContaining({ itemCode: product.itemCode, quantity: 2 })],
             }),
@@ -140,6 +217,8 @@ describe("customer orders, direct sales, accounting", () => {
         })],
       });
       await expect(resolveSale(accountingActor, original.id, { action: "VOIDED_REPLACED", note: "Accounting attempted correction", replacement: { receiptBooklet: "", receiptNumber: "REPLACEMENT-001", paymentMethod: "CASH", discountAmount: 0, amountPaid: 100, totalAmount: 100, lines: [{ itemCode: product.itemCode, quantity: 2, unitPrice: 50 }] } })).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(resolveSale(adminActor, original.id, { action: "VOIDED_REPLACED", note: "Inconsistent total", replacement: { receiptBooklet: "", receiptNumber: "REPLACEMENT-001", paymentMethod: "CASH", discountAmount: 0, amountPaid: 100, totalAmount: 99.99, lines: [{ itemCode: product.itemCode, quantity: 2, unitPrice: 50 }] } })).rejects.toMatchObject({ code: "INVALID_TOTAL" });
+      await expect(resolveSale(adminActor, original.id, { action: "VOIDED_REPLACED", note: "Duplicate line", replacement: { receiptBooklet: "", receiptNumber: "REPLACEMENT-001", paymentMethod: "CASH", discountAmount: 0, amountPaid: 100, totalAmount: 100, lines: [{ itemCode: product.itemCode, quantity: 1, unitPrice: 50 }, { itemCode: product.itemCode, quantity: 1, unitPrice: 50 }] } })).rejects.toMatchObject({ code: "INVALID_LINES" });
       const result = await resolveSale(adminActor, original.id, { action: "VOIDED_REPLACED", note: "Corrected from paper receipt", replacement: { receiptBooklet: "", receiptNumber: "REPLACEMENT-001", paymentMethod: "CASH", discountAmount: 0, amountPaid: 100, totalAmount: 100, lines: [{ itemCode: product.itemCode, quantity: 2, unitPrice: 50 }] } });
 
       expect(() => JSON.stringify(result)).not.toThrow();

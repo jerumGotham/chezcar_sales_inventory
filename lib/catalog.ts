@@ -18,6 +18,10 @@ export type ProductRow = {
 export type ProductsApiResponse = {
   data: ProductRow[];
   meta: PaginationMeta;
+  filterOptions: {
+    categories: string[];
+    brands: string[];
+  };
   summary: {
     totalProducts: number;
     activeProducts: number;
