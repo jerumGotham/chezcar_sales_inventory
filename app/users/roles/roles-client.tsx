@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Loader2, Pencil, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Loader2, Pencil, ShieldCheck, X } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
@@ -92,7 +92,9 @@ function RoleEditor({
           })
         : createRole({ name, description, scope, permissions }),
     onSuccess: (role) =>
-      onSaved(existing ? `${role.name} was updated.` : `${role.name} was created.`),
+      onSaved(
+        existing ? `${role.name} was updated.` : `${role.name} was created.`,
+      ),
     onError: (requestError) => setError(requestError.message),
   });
 
@@ -111,12 +113,16 @@ function RoleEditor({
   }
 
   return (
-    <Dialog open onOpenChange={(open) => !open && !mutation.isPending && onClose()}>
+    <Dialog
+      open
+      onOpenChange={(open) => !open && !mutation.isPending && onClose()}
+    >
       <DialogContent className="flex max-h-[92vh] flex-col sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>{existing ? "Edit Role" : "Create Role"}</DialogTitle>
           <DialogDescription>
-            Assign only the capabilities this role needs. Changes to permissions sign out assigned users.
+            Assign only the capabilities this role needs. Changes to permissions
+            sign out assigned users.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -139,7 +145,10 @@ function RoleEditor({
             <div className="space-y-2">
               <Label htmlFor="role-scope">Operational Scope</Label>
               <Select<AssignableRoleScope>
-                items={ASSIGNABLE_ROLE_SCOPES.map((value) => ({ value, label: SCOPE_LABELS[value] }))}
+                items={ASSIGNABLE_ROLE_SCOPES.map((value) => ({
+                  value,
+                  label: SCOPE_LABELS[value],
+                }))}
                 value={scope}
                 onValueChange={(value) => value && setScope(value)}
                 disabled={scopeLocked || mutation.isPending}
@@ -149,13 +158,16 @@ function RoleEditor({
                 </SelectTrigger>
                 <SelectContent>
                   {ASSIGNABLE_ROLE_SCOPES.map((value) => (
-                    <SelectItem key={value} value={value}>{SCOPE_LABELS[value]}</SelectItem>
+                    <SelectItem key={value} value={value}>
+                      {SCOPE_LABELS[value]}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               {scopeLocked && (
                 <p className="text-muted-foreground text-xs">
-                  Scope cannot change while {existing?.assignedUserCount} user(s) are assigned.
+                  Scope cannot change while {existing?.assignedUserCount}{" "}
+                  user(s) are assigned.
                 </p>
               )}
             </div>
@@ -174,7 +186,9 @@ function RoleEditor({
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h3 className="font-semibold">Permissions</h3>
-                <p className="text-muted-foreground text-sm">{permissions.length} selected</p>
+                <p className="text-muted-foreground text-sm">
+                  {permissions.length} selected
+                </p>
               </div>
               <Button
                 type="button"
@@ -185,11 +199,15 @@ function RoleEditor({
                   setPermissions(
                     permissions.length === ASSIGNABLE_CAPABILITY_CATALOG.length
                       ? []
-                      : ASSIGNABLE_CAPABILITY_CATALOG.map((capability) => capability.id),
+                      : ASSIGNABLE_CAPABILITY_CATALOG.map(
+                          (capability) => capability.id,
+                        ),
                   )
                 }
               >
-                {permissions.length === ASSIGNABLE_CAPABILITY_CATALOG.length ? "Clear All" : "Select All"}
+                {permissions.length === ASSIGNABLE_CAPABILITY_CATALOG.length
+                  ? "Clear All"
+                  : "Select All"}
               </Button>
             </div>
             {CAPABILITY_GROUPS.map(([module, capabilities]) => (
@@ -197,7 +215,10 @@ function RoleEditor({
                 <legend className="px-1 text-sm font-semibold">{module}</legend>
                 <div className="grid gap-3 pt-2 md:grid-cols-2">
                   {capabilities.map((capability) => (
-                    <label key={capability.id} className="flex items-center gap-3 text-sm">
+                    <label
+                      key={capability.id}
+                      className="flex items-center gap-3 text-sm"
+                    >
                       <Checkbox
                         checked={permissions.includes(capability.id)}
                         disabled={mutation.isPending}
@@ -210,7 +231,11 @@ function RoleEditor({
               </fieldset>
             ))}
           </div>
-          {error && <p role="alert" className="text-destructive text-sm">{error}</p>}
+          {error && (
+            <p role="alert" className="text-destructive text-sm">
+              {error}
+            </p>
+          )}
         </form>
         <DialogFooter>
           <Button
@@ -226,7 +251,9 @@ function RoleEditor({
             form="role-editor-form"
             disabled={mutation.isPending || !name.trim()}
           >
-            {mutation.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
+            {mutation.isPending && (
+              <Loader2 className="mr-2 size-4 animate-spin" />
+            )}
             {existing ? "Save Changes" : "Create Role"}
           </Button>
         </DialogFooter>
@@ -254,14 +281,31 @@ export function RolesClient() {
         subtitle="Create and edit persisted access roles and capability grants."
         actions={
           <div className="flex flex-wrap gap-2">
-            <Link href="/users" className={buttonVariants({ variant: "outline" })}>
+            {/* <Link href="/users" className={buttonVariants({ variant: "outline" })}>
               <ArrowLeft className="mr-2 size-4" /> Back to Users
-            </Link>
-            <Button onClick={() => setEditor({ mode: "create" })}>Create Role</Button>
+            </Link> */}
+            <Button onClick={() => setEditor({ mode: "create" })}>
+              Create Role
+            </Button>
           </div>
         }
       >
-        {banner && <div role="status" className="border-primary/30 bg-primary/10 mb-4 rounded-xl border px-4 py-3 text-sm">{banner}</div>}
+        {banner && (
+          <div
+            role="status"
+            className="border-primary/30 bg-primary/10 mb-4 flex items-start justify-between gap-3 rounded-xl border px-4 py-3"
+          >
+            <p className="text-primary break-words text-sm">{banner}</p>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Dismiss notification"
+              onClick={() => setBanner(null)}
+            >
+              <X aria-hidden />
+            </Button>
+          </div>
+        )}
         <Card>
           <CardContent className="p-0">
             {query.isLoading ? (
@@ -270,8 +314,16 @@ export function RolesClient() {
               </div>
             ) : query.isError ? (
               <div className="py-16 text-center">
-                <p role="alert" className="text-destructive text-sm">We could not load roles.</p>
-                <Button className="mt-3" variant="outline" onClick={() => void query.refetch()}>Try Again</Button>
+                <p role="alert" className="text-destructive text-sm">
+                  We could not load roles.
+                </p>
+                <Button
+                  className="mt-3"
+                  variant="outline"
+                  onClick={() => void query.refetch()}
+                >
+                  Try Again
+                </Button>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -290,20 +342,38 @@ export function RolesClient() {
                       <tr key={role.id} className="border-b last:border-b-0">
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-2 font-medium">
-                            {role.isOwner && <ShieldCheck className="text-primary size-4" />}
+                            {role.isOwner && (
+                              <ShieldCheck className="text-primary size-4" />
+                            )}
                             {role.name}
-                            {role.isSystem && <Badge variant="secondary">Built-in</Badge>}
+                            {role.isSystem && (
+                              <Badge variant="secondary">Built-in</Badge>
+                            )}
                           </div>
-                          <p className="text-muted-foreground mt-1 max-w-md text-sm">{role.description || "No description"}</p>
+                          <p className="text-muted-foreground mt-1 max-w-md text-sm">
+                            {role.description || "No description"}
+                          </p>
                         </td>
-                        <td className="px-5 py-4 text-sm">{SCOPE_LABELS[role.scope]}</td>
-                        <td className="px-5 py-4 text-sm">{role.assignedUserCount}</td>
-                        <td className="px-5 py-4 text-sm">{role.permissions.length}</td>
+                        <td className="px-5 py-4 text-sm">
+                          {SCOPE_LABELS[role.scope]}
+                        </td>
+                        <td className="px-5 py-4 text-sm">
+                          {role.assignedUserCount}
+                        </td>
+                        <td className="px-5 py-4 text-sm">
+                          {role.permissions.length}
+                        </td>
                         <td className="px-5 py-4">
                           {role.isOwner ? (
-                            <Badge variant="outline">Immutable, full access</Badge>
+                            <Badge variant="outline">
+                              Immutable, full access
+                            </Badge>
                           ) : (
-                            <Button size="sm" variant="outline" onClick={() => setEditor({ mode: "edit", role })}>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setEditor({ mode: "edit", role })}
+                            >
                               <Pencil className="mr-2 size-4" /> Edit
                             </Button>
                           )}
@@ -318,7 +388,11 @@ export function RolesClient() {
         </Card>
       </PageShell>
       {editor && (
-        <RoleEditor state={editor} onClose={() => setEditor(null)} onSaved={(message) => void handleSaved(message)} />
+        <RoleEditor
+          state={editor}
+          onClose={() => setEditor(null)}
+          onSaved={(message) => void handleSaved(message)}
+        />
       )}
     </>
   );
