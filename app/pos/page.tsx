@@ -169,13 +169,6 @@ function formatPeso(amount: number) {
   }).format(amount);
 }
 
-async function fetchPosCustomers() {
-  const response = await fetch("/api/customers?page=1&pageSize=100&status=active", { credentials: "same-origin" });
-  const json = await response.json();
-  if (!response.ok) throw new Error(json.error?.message ?? "Unable to load customers");
-  return json.data as { data: PosCustomer[] };
-}
-
 const selectStyles: StylesConfig<SelectOption, false> = {
   control: (base, state) => ({
     ...base,
@@ -425,20 +418,24 @@ function AddCustomerDialog({
 function PosTab() {
   const access = useShellAccess();
   const queryClient = useQueryClient();
-  const role = access.authenticated ? access.identity.role : null;
+  const capabilities = access.authenticated ? access.capabilities : [];
+  const canUseOfflineSales = capabilities.includes("offline-sales:snapshot") && capabilities.includes("offline-sales:sync");
+  const requiresLocationSelection = access.authenticated && access.scope.locationId === null;
   const [selectedLocation, setSelectedLocation] = useState<SelectOption | null>(null);
-  const activeLocationId = role === "ADMIN" ? selectedLocation?.value ?? null : access.authenticated ? access.scope.locationId : null;
+  const activeLocationId = requiresLocationSelection ? selectedLocation?.value ?? null : access.authenticated ? access.scope.locationId : null;
   const posOptionsQuery = useQuery({
     queryKey: ["pos-options", activeLocationId],
     queryFn: async () => {
-      const response = await fetch(`/api/customer-orders/options?locationId=${encodeURIComponent(activeLocationId ?? "")}`, { credentials: "same-origin" });
+      const locationQuery = activeLocationId
+        ? `?locationId=${encodeURIComponent(activeLocationId)}`
+        : "";
+      const response = await fetch(`/api/customer-orders/options${locationQuery}`, { credentials: "same-origin" });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error?.message ?? "Unable to load sales options");
       return json.data as { customers: PosCustomer[]; products: Array<{ id: string; itemCode: string; name: string; category: string; price: number; availableQuantity: number }>; branches: Array<{ id: string; code: string; name: string }> };
     },
-    enabled: role === "ADMIN" || Boolean(activeLocationId),
+    enabled: access.authenticated,
   });
-  const customersQuery = useQuery({ queryKey: ["pos-customers"], queryFn: fetchPosCustomers });
   const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
   const [offlineSnapshot, setOfflineSnapshot] = useState<OfflineSnapshot | null>(null);
   const [offlineSaleCount, setOfflineSaleCount] = useState(0);
@@ -458,7 +455,7 @@ function PosTab() {
     })) ?? [];
 
     if (posOptionsQuery.data) return branchProducts;
-    if (role === "BRANCH_STAFF" && offlineSnapshot) {
+    if (canUseOfflineSales && offlineSnapshot) {
       return offlineSnapshot.products.map((item) => ({
         id: item.id,
         sku: item.itemCode,
@@ -470,7 +467,7 @@ function PosTab() {
       }));
     }
     return [];
-  }, [offlineSnapshot, posOptionsQuery.data, role]);
+  }, [canUseOfflineSales, offlineSnapshot, posOptionsQuery.data]);
 
   const categoryOptions = useMemo<SelectOption[]>(() => {
     const uniqueCategories = Array.from(
@@ -505,7 +502,7 @@ function PosTab() {
 
   const customerOptions: SelectOption[] = [
     { value: "guest", label: "Guest" },
-    ...(customersQuery.data?.data.map((customer) => ({ value: customer.id, label: customer.name })) ?? []),
+    ...(posOptionsQuery.data?.customers.map((customer) => ({ value: customer.id, label: customer.name })) ?? []),
   ];
 
   const filteredProducts = useMemo(() => {
@@ -545,19 +542,19 @@ function PosTab() {
   const total = Math.max(subtotal - discount, 0);
 
   const refreshOfflineQueueStatus = useCallback(async () => {
-    if (!OFFLINE_POS_ENABLED || !offlineSupported() || role !== "BRANCH_STAFF") return 0;
+    if (!OFFLINE_POS_ENABLED || !offlineSupported() || !canUseOfflineSales) return 0;
     const queued = await listQueuedOfflineSales();
     const pendingCount = queued.filter((sale) => sale.status === "PENDING_SYNC").length;
     setOfflineSaleCount(pendingCount);
     return pendingCount;
-  }, [role]);
+  }, [canUseOfflineSales]);
 
   const syncOfflineQueue = useCallback(async (source: "manual" | "auto" = "manual") => {
-    if (!OFFLINE_POS_ENABLED || !offlineSupported() || role !== "BRANCH_STAFF" || offlineSyncInFlightRef.current) return;
+    if (!OFFLINE_POS_ENABLED || !offlineSupported() || !canUseOfflineSales || offlineSyncInFlightRef.current) return;
     offlineSyncInFlightRef.current = true;
     try {
       const pendingBeforeSync = await refreshOfflineQueueStatus();
-      if (!shouldAttemptOfflineSync({ role, online: navigator.onLine, pendingCount: pendingBeforeSync, inFlight: false })) {
+      if (!shouldAttemptOfflineSync({ enabled: canUseOfflineSales, online: navigator.onLine, pendingCount: pendingBeforeSync, inFlight: false })) {
         if (source === "manual" && pendingBeforeSync === 0) setOfflineSyncMessage("No pending offline sales to sync.");
         return;
       }
@@ -588,7 +585,7 @@ function PosTab() {
       offlineSyncInFlightRef.current = false;
       setIsOfflineSyncing(false);
     }
-  }, [queryClient, refreshOfflineQueueStatus, role]);
+  }, [canUseOfflineSales, queryClient, refreshOfflineQueueStatus]);
 
   useEffect(() => {
     if (!OFFLINE_POS_ENABLED) return;
@@ -615,7 +612,7 @@ function PosTab() {
   }, [syncOfflineQueue]);
 
   useEffect(() => {
-    if (!OFFLINE_POS_ENABLED || !offlineSupported() || role !== "BRANCH_STAFF") return;
+    if (!OFFLINE_POS_ENABLED || !offlineSupported() || !canUseOfflineSales) return;
     if ("serviceWorker" in navigator) {
       void navigator.serviceWorker.register("/sw.js").then(() =>
         navigator.serviceWorker.ready.then((registration) => {
@@ -625,25 +622,25 @@ function PosTab() {
     }
     window.setTimeout(() => void refreshOfflineQueueStatus(), 0);
     void readOfflineSnapshot().then(setOfflineSnapshot);
-  }, [refreshOfflineQueueStatus, role]);
+  }, [canUseOfflineSales, refreshOfflineQueueStatus]);
 
   useEffect(() => {
-    if (!OFFLINE_POS_ENABLED || !offlineSupported() || role !== "BRANCH_STAFF" || !isOnline) return;
+    if (!OFFLINE_POS_ENABLED || !offlineSupported() || !canUseOfflineSales || !isOnline) return;
     void syncOfflineQueue("auto");
-  }, [isOnline, role, syncOfflineQueue]);
+  }, [canUseOfflineSales, isOnline, syncOfflineQueue]);
 
   useEffect(() => {
-    if (!OFFLINE_POS_ENABLED || !offlineSupported() || role !== "BRANCH_STAFF" || !isOnline || offlineSaleCount === 0) return;
+    if (!OFFLINE_POS_ENABLED || !offlineSupported() || !canUseOfflineSales || !isOnline || offlineSaleCount === 0) return;
     const retryId = window.setInterval(() => void syncOfflineQueue("auto"), 30_000);
     return () => window.clearInterval(retryId);
-  }, [isOnline, offlineSaleCount, role, syncOfflineQueue]);
+  }, [canUseOfflineSales, isOnline, offlineSaleCount, syncOfflineQueue]);
 
   useEffect(() => {
-    if (!OFFLINE_POS_ENABLED || !offlineSupported() || role !== "BRANCH_STAFF" || !isOnline) return;
+    if (!OFFLINE_POS_ENABLED || !offlineSupported() || !canUseOfflineSales || !isOnline) return;
     void refreshOfflineSnapshot().then((snapshot) => {
       if (snapshot) setOfflineSnapshot(snapshot);
     });
-  }, [isOnline, role, activeLocationId]);
+  }, [activeLocationId, canUseOfflineSales, isOnline]);
 
   const addToCart = (product: Product) => {
     setCart((prev) => {
@@ -747,7 +744,7 @@ function PosTab() {
       clearSale();
       setSuccessMessage("Customer sale posted successfully.");
     } catch (error) {
-      if (OFFLINE_POS_ENABLED && role === "BRANCH_STAFF" && offlineSupported() && (!navigator.onLine || error instanceof TypeError)) {
+      if (OFFLINE_POS_ENABLED && canUseOfflineSales && offlineSupported() && (!navigator.onLine || error instanceof TypeError)) {
         await queueOfflineSale(salePayload);
         await refreshOfflineQueueStatus();
         clearSale();
@@ -764,7 +761,7 @@ function PosTab() {
 
   return (
     <>
-      {OFFLINE_POS_ENABLED && role === "BRANCH_STAFF" ? (
+      {OFFLINE_POS_ENABLED && canUseOfflineSales ? (
         <div className={cn(
           "mb-6 flex flex-col gap-3 rounded-xl border px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between",
           isOnline ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800",
@@ -803,7 +800,7 @@ function PosTab() {
             <p className="font-semibold text-slate-900">Selling branch</p>
             <p className="text-sm text-slate-500">Products and stock are limited to this branch.</p>
           </div>
-          {role === "ADMIN" ? (
+          {requiresLocationSelection ? (
             <Select
               instanceId="pos-location"
               className="min-w-64"
@@ -823,7 +820,7 @@ function PosTab() {
           )}
         </CardContent>
       </Card>
-      {role === "ADMIN" && !activeLocationId ? <p className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">Select a branch to load available products.</p> : null}
+      {requiresLocationSelection && !activeLocationId ? <p className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">Select a branch to load available products.</p> : null}
       {posOptionsQuery.isError ? <p className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{(posOptionsQuery.error as Error).message}</p> : null}
       <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,0.9fr)]">
         <div className="min-w-0 space-y-6">

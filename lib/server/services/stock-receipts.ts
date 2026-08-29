@@ -8,26 +8,11 @@ import {
   type AuthContext,
 } from "@/lib/server/authorization";
 import { prisma } from "@/lib/server/prisma";
+import { canAccessLocation, hasAllLocationAccess } from "@/lib/server/policy/access";
 
 export class StockReceiptError extends Error {
   constructor(public readonly code: string, message: string, public readonly status = 409) {
     super(message);
-  }
-}
-
-function assertStockRoomReceivingActor(actor: AuthContext) {
-  if (actor.isOwner) {
-    return;
-  }
-  if (
-    actor.roleScope !== "STOCK_ROOM" ||
-    actor.locationId === null ||
-    actor.location?.id !== actor.locationId ||
-    actor.location.code !== "SR" ||
-    actor.location.type !== "WAREHOUSE" ||
-    !actor.location.isActive
-  ) {
-    throw new StockReceiptError("FORBIDDEN", "Owner or active Stock Room scope is required", 403);
   }
 }
 
@@ -53,9 +38,9 @@ function serializeReceipt(receipt: {
 
 export async function listStockReceipts(actor: AuthContext) {
   assertCapability(actor, "stock-receipts:view");
-  assertStockRoomReceivingActor(actor);
 
   const receipts = await prisma.stockReceipt.findMany({
+    where: hasAllLocationAccess(actor) ? {} : { locationId: { in: [...actor.locationIds] } },
     orderBy: { receivedAt: "desc" },
     include: {
       location: { select: { id: true, code: true, name: true } },
@@ -67,7 +52,6 @@ export async function listStockReceipts(actor: AuthContext) {
 
 export async function createStockReceipt(actor: AuthContext, input: CreateStockReceiptInput) {
   assertCapability(actor, "inventory-receiving:create");
-  assertStockRoomReceivingActor(actor);
   const productIds = input.lines.map((line) => line.productId);
   if (new Set(productIds).size !== productIds.length) {
     throw new StockReceiptError("INVALID_LINES", "A product may appear only once", 400);
@@ -76,13 +60,14 @@ export async function createStockReceipt(actor: AuthContext, input: CreateStockR
   try {
     return await prisma.$transaction(async (tx) => {
       const stockRoom = await tx.location.findFirst({
-        where: actor.isOwner
-          ? { code: "SR", type: "WAREHOUSE", isActive: true }
-          : { id: actor.locationId!, code: "SR", type: "WAREHOUSE", isActive: true },
+        where: { code: "SR", type: "WAREHOUSE", isActive: true },
         select: { id: true, code: true, name: true },
       });
       if (!stockRoom) {
         throw new StockReceiptError("FORBIDDEN", "Supplier receipts may only be posted to active Stock Room", 403);
+      }
+      if (!canAccessLocation(actor, stockRoom.id)) {
+        throw new StockReceiptError("FORBIDDEN", "Stock Room is outside your assigned locations", 403);
       }
 
       const products = await tx.product.findMany({

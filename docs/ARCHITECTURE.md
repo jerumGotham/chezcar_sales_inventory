@@ -3,7 +3,7 @@
 
 ## System overview
 
-Chezcar Sales & Inventory is a Next.js 16 App Router modular monolith. It is still primarily a UI prototype with a growing production-oriented foundation: database-backed authentication (plus a guarded internal credential engine), persisted role/capability and location authorization from pages through APIs, owner-Admin user and role management with immediate session revocation, a first-login credential prompt, capability-aware shell navigation, scoped Product/Inventory reads, durable Stock Room transfers and supplier receipts, persistent per-user workflow notifications, deterministic catalog onboarding tooling, and a disposable-database test harness.
+Chezcar Sales & Inventory is a Next.js 16 App Router modular monolith. It is still primarily a UI prototype with a growing production-oriented foundation: database-backed authentication (plus a guarded internal credential engine), action-capability and multi-location authorization from pages through APIs, delegated user and role management with immediate session revocation, a first-login credential prompt, capability-aware shell navigation, scoped Product/Inventory reads, durable Stock Room transfers and supplier receipts, persistent per-user workflow notifications, deterministic catalog onboarding tooling, and a disposable-database test harness.
 
 Most sales/customer/order screens, stock-card history, reports, and offline workflows remain page-local or fixture-backed. Their presence in the UI is not evidence of persistence unless documented here or in `docs/API.md`.
 
@@ -43,19 +43,19 @@ graph TD
 | --- | --- | --- |
 | Authentication | Better Auth email/password sessions; public sign-up disabled; generic admin operations unroutable | `lib/server/auth.ts`, `app/api/auth/[...all]/route.ts` |
 | Internal credentials | Server-only unmounted Better Auth Admin-plugin engine exposing only guarded staff `createUser`/`setUserPassword` primitives | `lib/server/internal-user-auth.ts` |
-| Page protection | Proxy validates sessions, reloads the persisted User/Location, maps the first path segment to a named capability, and redirects unauthenticated requests to `/sign-in` or forbidden requests to `/access-denied` | `proxy.ts`, `app/access-denied/page.tsx` |
-| Authorization | Compile-time action-capability catalog evaluated against reloaded User, persisted RoleDefinition grants, and RoleScope/Location; action grants imply module view only, every mutation requires its exact grant, and owner receives the full catalog | `lib/contracts/roles.ts`, `lib/permissions.ts`, `lib/server/policy/access.ts`, `lib/server/authorization.ts` |
+| Page protection | Proxy validates sessions, reloads persisted capabilities and UserLocation assignments, maps the first path segment to a named capability, and redirects unauthenticated requests to `/sign-in` or forbidden requests to `/access-denied` | `proxy.ts`, `app/access-denied/page.tsx` |
+| Authorization | Reloaded action capabilities plus explicit `isOwner` and UserLocation assignments; owner/`locations:all` reaches every active location, restricted empty assignments fail closed | `lib/contracts/roles.ts`, `lib/server/policy/access.ts`, `lib/server/authorization.ts` |
 | Persistence | One server-only Prisma singleton and additive migration history for implemented auth, catalog, inventory, sales, and workflow models | `lib/server/prisma.ts`, `prisma/migrations/` |
 | Products | Validated paginated Prisma list/maintenance plus private authenticated product-image storage; add/edit/delete/image actions are independently capability-gated | `app/api/products/`, `lib/server/catalog.ts`, `lib/server/services/product-images.ts`, `app/products/page.tsx` |
 | Inventory | Product-first list pagination plus live availability reads; persisted active-location scope enforced at the APIs and mirrored by role-clamped client controls | `app/api/inventory/`, `lib/server/catalog.ts`, `lib/server/inventory-availability.ts`, `app/inventory/`, `components/location-scope-control.tsx` |
 | Customers | Database-backed customer CRUD and persisted sales/order history; customer records are shared by POS and Customer Orders | `app/api/customers/`, `lib/server/services/customer-sales.ts`, `app/customers/` |
-| Customer orders | Database-backed reservations with Admin branch selection and branch-aware available-stock options | `app/api/customer-orders/`, `lib/server/services/customer-sales.ts`, `app/customer-orders/` |
+| Customer orders and POS options | Accessible branches load before selection; selected-branch products require explicit location access, and the shared endpoint independently accepts `customer-orders:create` or `sales:post` | `app/api/customer-orders/options/route.ts`, `lib/server/services/customer-sales.ts`, `app/customer-orders/`, `app/pos/` |
 | Receipt verification | Admin/Accounting initial review, persisted branch-scoped mismatch confirmation, and Admin-only transactional void-and-replace correction | `app/api/accounting/receipts/`, `lib/server/services/customer-sales.ts`, `app/accounting/receipt-verification/` |
 | Provisioning | Environment-driven owner Admin plus deterministic six-location canonical catalog seed/reload behind positive disposable-target gates | `prisma/seed.mjs`, `lib/server/services/catalog-reset.ts`, `.env.example` |
 | Data onboarding tooling | Read-only workbook profiler, fail-closed canonicalizer with keyed owner resolutions, and byte-stable fixture generator — developer CLIs only, no HTTP/UI surface | `scripts/data-onboarding/`, `prisma/fixtures/opening-catalog.json` |
-| User management | Owner-Admin-only `/api/users` lifecycle (list/create/update/status/password) with transactional session revocation and safe DTOs | `app/api/users/`, `lib/server/services/users.ts`, `app/users/` |
-| Role maintenance | Owner-only persisted role create/edit, assigned counts, optimistic versions, and grant-change session revocation | `app/api/roles/`, `lib/server/services/roles.ts`, `app/users/roles/` |
-| Branch maintenance | Owner-only `branches:view`/`branches:create`/`branches:update` persisted active-branch workflow; shared Location boundary supplies and validates branch options across production workflows | `lib/server/locations.ts`, `lib/server/services/branches.ts`, `app/api/branches/`, `app/branches/` |
+| User management | Capability-delegated, location-constrained lifecycle with actor-scoped filters/options, grant ceilings, self-management refusal, transactional session revocation, and safe DTOs | `app/api/users/`, `lib/server/services/users.ts`, `app/users/` |
+| Role maintenance | Action-only roles with delegated grant ceilings, self-role refusal, assigned counts, optimistic versions, assignment serialization, and grant-change session revocation | `app/api/roles/`, `lib/server/services/roles.ts`, `app/users/roles/` |
+| Branch maintenance | Capability-delegated, location-constrained active-branch workflow | `lib/server/services/branches.ts`, `app/api/branches/`, `app/branches/` |
 | Stock transfers | Durable SR-to-branch transfer lifecycle with Admin operational cover for Stock Staff actions, discrepancy investigation/resolution, inventory movements, audit view, and persisted workflow notifications | `app/api/stock-transfers/`, `lib/server/services/stock-transfers.ts`, `app/stock-transfers/` |
 | Stock receipts | Durable Stock Room supplier receipts that increment SR balances and write inventory movements | `app/api/stock-receipts/route.ts`, `app/inventory/receive/`, `lib/server/services/stock-receipts.ts` |
 | Notifications | Per-user persisted inbox rows with cursor replay, SSE wake-ups, browser push attempts, and read timestamps; escalation deferred | `app/api/notifications/`, `lib/server/services/notifications.ts`, `lib/server/services/push-notifications.ts`, `app/notifications/page.tsx` |
@@ -71,7 +71,7 @@ graph TD
 1. The browser posts email/password to Better Auth's same-origin handler.
 2. Better Auth verifies the credential Account and writes a database Session.
 3. The browser receives a secure session cookie according to Better Auth environment defaults.
-4. `proxy.ts` resolves the session, reloads the persisted User plus RoleDefinition and Location, and maps the path to a named capability before serving page routes.
+4. `proxy.ts` resolves the session, reloads the persisted User plus RoleDefinition and UserLocation rows, and maps the path to a named capability before serving page routes.
 5. Protected APIs validate the session again, reload the persisted User, require `ACTIVE` status, and enforce the same capability policy.
 
 A session identifies a user but does not independently authorize a resource.
@@ -84,11 +84,12 @@ A session identifies a user but does not independently authorize a resource.
 
 ### User management and credentials
 
-1. The owner Admin's `/users` server page gates on `users:view`, then each list/create/update/status/password operation requires its exact owner-only capability.
-2. Create/update/status/password mutations run in application services owning Prisma transactions; user rows use `FOR UPDATE`, role assignment serializes against role-scope edits, and access changes delete all target sessions in the same transaction.
-3. Role dropdowns and writes use persisted `roleId`; services derive Location semantics and synchronize the compatibility UserRole enum from RoleScope.
-4. Staff credentials are created and reset only through the guarded internal Better Auth primitives (`lib/server/internal-user-auth.ts`); the public auth catch-all keeps an Admin-plugin-free instance, so generic admin operations are structurally unroutable.
-5. After sign-in with an armed `credentialSetupRequired`, a blocking dialog offers change or skip; either consumes the prompt exactly once per arming, and a later Admin reset re-arms it.
+1. `/users` gates on `users:view`; each operation, filter, summary, and form option is constrained by effective location and capability reach.
+2. Create/update/status/password mutations run in application services owning Prisma transactions. Delegated lifecycle mutations lock and re-read the target user with `FOR UPDATE`, share-lock the current role, and require the target's current effective capabilities and complete effective location set to fit within the actor's authority; access changes delete all target sessions in the same transaction.
+3. Role dropdowns use persisted `roleId`; user writes replace authoritative UserLocation rows atomically, and delegated managers cannot assign beyond their own effective grants, manage a target whose complete effective location set exceeds theirs, or self-manage access.
+4. Delegated role edits require both the role's current and requested permissions to remain within the actor's effective capability ceiling.
+5. Staff credentials are created and reset only through the guarded internal Better Auth primitives (`lib/server/internal-user-auth.ts`); the public auth catch-all keeps an Admin-plugin-free instance, so generic admin operations are structurally unroutable.
+6. After sign-in with an armed `credentialSetupRequired`, a blocking dialog offers change or skip; either consumes the prompt exactly once per arming, and a later Admin reset re-arms it.
 
 ### Products
 
@@ -102,7 +103,7 @@ A session identifies a user but does not independently authorize a resource.
 
 1. `/inventory` calls `GET /api/inventory` through TanStack Query.
 2. The API permits Admin, Stock Staff, and Branch Staff.
-3. Branch Staff scope comes from persisted `User.locationId`; request filters cannot widen it.
+3. Location scope comes from active UserLocation rows; request filters cannot widen it.
 4. The server filters and paginates Products first, then returns all matching balances for those products.
 5. Availability and stock status are derived, not trusted from client input.
 6. The Inventory Availability sheet independently queries all matching balances and receives dynamic filter options within the same active-location scope.
@@ -128,22 +129,22 @@ The committed schema intentionally includes only models implemented by this slic
 - StockTransfer, transfer lines, discrepancy, investigation, resolution, and InventoryMovement
 - StockReceipt and receipt lines
 - Notification with per-user read state
-- RoleDefinition with RoleScope, persisted capability grants, optimistic version, and assigned Users
-- User with required accessRole, synchronized compatibility UserRole, `ACTIVE`/`INACTIVE` status, optional Location assignment, and `credentialSetupRequired`
+- RoleDefinition with action grants, explicit singleton `isOwner`, optimistic version, and assigned Users
+- User with required accessRole, `ACTIVE`/`INACTIVE` status, many UserLocation assignments, and compatibility role/location columns
 - Better Auth Session (with plugin-compatible `impersonatedBy`), Account, and Verification
 
-The additive trusted-foundation migration enforces the role/location nullability matrix with a CHECK constraint, backs the singleton owner Admin with a partial unique index, and adds Better Auth 1.6.23 Admin-plugin compatibility fields that lifecycle services keep inert (`User.status` remains the sole activation authority).
+The explicit-location authorization migration backfills UserLocation assignments, removes the obsolete role/location nullability CHECK, and adds singleton owner-role and owner-user indexes. Better Auth compatibility fields remain inert (`User.status` remains the sole activation authority).
 
 Unimplemented draft order, sale, job, payment, and general adjustment models are kept out of migration history until their canonical workflow is built. See `docs/product/PROVISIONAL-DATA-MODEL.md`.
 
 ## Security properties
 
 - Public sign-up is disabled and refused before any database mutation; generic Better Auth admin operations return 404 through the unchanged public catch-all, proven by regression tests.
-- The Better Auth Admin plugin exists only inside the server-only unmounted `internalUserAuth` facade, which accepts just the three staff roles for creation and refuses ADMIN targets for password resets — second-Admin creation is blocked by guard plus the `User_single_admin_key` unique index.
+- The Better Auth Admin plugin exists only inside the server-only unmounted `internalUserAuth` facade; second-owner creation is blocked by service guards and singleton database indexes.
 - Seed credentials come only from environment variables and are hashed before storage.
 - Prisma and both Better Auth instances stay in server-only modules.
 - Product, inventory, and user query parameters are validated with Zod.
-- Branch/Stock Room/business-wide scope is determined by persisted RoleScope, not the browser; incompatible caller location values cannot widen it.
+- Effective locations are owner/`locations:all` or explicit active UserLocation IDs; incompatible caller targets cannot widen them.
 - Non-owner authorization reads persisted grants on every request. Owner gets the complete compile-time catalog; grant changes revoke assigned sessions transactionally.
 - Page routing is fail-closed at the proxy with a central page-capability map; denial surfaces stay data-free by construction (fixed URL at the proxy, prop-free fixed copy at the page).
 - Inactive users and users without an allowed capability are denied by application APIs before query parsing or protected work.

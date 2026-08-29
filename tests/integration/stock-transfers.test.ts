@@ -22,6 +22,87 @@ function actor(
 }
 
 describe("stock transfer posting", () => {
+  it("keeps source-side transfer reach separate from destination business data", async () => {
+    await withDisposableDatabase(async ({ prisma }) => {
+      const fixture = await createAuthFixture(prisma, {
+        namespace: "transfer-source-boundary",
+      });
+      const product = await prisma.product.create({
+        data: { itemCode: "SOURCE-BOUNDARY", name: "Source Boundary", status: "ACTIVE" },
+      });
+      await prisma.inventoryBalance.createMany({
+        data: [
+          { locationId: fixture.locations.stockRoom.id, productId: product.id, onHand: 10 },
+          { locationId: fixture.locations.branches.LU.id, productId: product.id, onHand: 4 },
+        ],
+      });
+      await prisma.sale.create({
+        data: {
+          reference: "SOURCE-BOUNDARY-SALE",
+          manualReceiptNumber: "SOURCE-BOUNDARY-SALE",
+          locationId: fixture.locations.branches.LU.id,
+          paymentMethod: "CASH",
+          totalAmount: 10,
+          amountPaid: 10,
+          postedById: fixture.users.branchStaff.id,
+          lines: {
+            create: {
+              productId: product.id,
+              productItemCode: product.itemCode,
+              productName: product.name,
+              quantity: 1,
+              unitPrice: 10,
+            },
+          },
+        },
+      });
+      const {
+        canAccessTransferRecord,
+        createTransfer,
+        listTransfers,
+      } = await import("../../lib/server/services/stock-transfers");
+      const { inventoryListQuerySchema, listInventory } = await import(
+        "../../lib/server/catalog"
+      );
+      const { listSales } = await import("../../lib/server/services/customer-sales");
+      const stockActor = actor(fixture.users.stockStaff, fixture.locations.stockRoom);
+      const qcActor = actor(fixture.users.branchStaff, fixture.locations.branches.QC);
+
+      const qcTransfer = await createTransfer(stockActor, {
+        destinationId: fixture.locations.branches.QC.id,
+        lines: [{ productId: product.id, quantity: 1 }],
+      });
+      const luTransfer = await createTransfer(stockActor, {
+        destinationId: fixture.locations.branches.LU.id,
+        lines: [{ productId: product.id, quantity: 1 }],
+      });
+
+      expect(
+        canAccessTransferRecord(
+          stockActor,
+          fixture.locations.stockRoom.id,
+          fixture.locations.branches.LU.id,
+        ),
+      ).toBe(true);
+      await expect(listTransfers(stockActor)).resolves.toMatchObject({
+        data: expect.arrayContaining([
+          expect.objectContaining({ id: qcTransfer.id }),
+          expect.objectContaining({ id: luTransfer.id }),
+        ]),
+      });
+      await expect(listTransfers(qcActor)).resolves.toMatchObject({
+        data: [expect.objectContaining({ id: qcTransfer.id })],
+      });
+      await expect(
+        listInventory(
+          inventoryListQuerySchema.parse({ location: "LU" }),
+          stockActor,
+        ),
+      ).rejects.toThrow(/Invalid inventory location scope/i);
+      await expect(listSales(stockActor)).resolves.toEqual([]);
+    });
+  }, 30_000);
+
   it("lets Admin cover SR dispatch and moves stock only after exact receipt", async () => {
     await withDisposableDatabase(async ({ prisma }) => {
       const fixture = await createAuthFixture(prisma, {

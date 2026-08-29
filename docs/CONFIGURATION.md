@@ -13,11 +13,12 @@ Copy the sanitized `.env.example` to an untracked `.env` and replace every place
 | `PRODUCT_IMAGE_STORAGE_PATH` | Product image upload | `./data/product-images` | Private JPEG/PNG/WebP product-image directory. Mount persistent storage in deployed environments; files are served only through the authenticated product-image API. |
 | `BETTER_AUTH_SECRET` | Runtime | None | At least 32 random characters used to protect authentication state. Use a deployment secret. |
 | `BETTER_AUTH_URL` | Runtime | Application origin | Canonical application origin, such as `http://localhost:3000` locally. |
+| `BETTER_AUTH_TRUSTED_ORIGINS` | Runtime | Empty | Optional comma-separated additional browser origins for local LAN device testing. |
 | `SEED_ADMIN_EMAIL` | Seed only | None | Email for the first development Admin. |
 | `SEED_ADMIN_PASSWORD` | Seed only | None | Admin password; the seed rejects examples and values shorter than 12 characters. |
 | `SEED_ADMIN_NAME` | Seed only | None | Display name for the seeded Admin. |
-| `ALLOW_CATALOG_RESET` | Catalog seed/reload and the phase gate only | None | Must equal `true`; still requires `NODE_ENV=test` with the exact disposable test URL or `NODE_ENV=development` with the exact isolated development URL, and is always refused in production or against the checked-in bind mount. |
-| `ALLOW_OPERATIONAL_DATA_RESET` | `db:data:reset` only | None | Must equal `true`; the reset accepts only the exact isolated development or disposable test URL and preserves users/auth, roles, products, and locations. |
+| `ALLOW_CATALOG_RESET` | Local catalog seed/reload and the phase gate only | `true` in `.env.example` | Must equal `true`; accepts only the exact local Compose URL or disposable test URL and refuses production or unknown targets. |
+| `ALLOW_OPERATIONAL_DATA_RESET` | `db:data:reset` only | `true` in `.env.example` | Accepts only the exact local Compose or disposable test URL and preserves users/auth, roles, products, and locations. |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Browser push only | Empty | Public VAPID key exposed to authenticated browsers for PushManager subscription. |
 | `VAPID_PRIVATE_KEY` | Browser push only | Empty | Private VAPID key used server-side for best-effort browser push delivery attempts. |
 | `VAPID_SUBJECT` | Browser push only | `mailto:admin@example.invalid` | Contact subject passed to push providers. Use an owner/operator email or HTTPS URL. |
@@ -28,6 +29,7 @@ Use the credentials configured for your environment and do not commit the popula
 DATABASE_URL="postgresql://<user>:<password>@localhost:5435/<database>?schema=public"
 BETTER_AUTH_SECRET="<at-least-32-random-characters>"
 BETTER_AUTH_URL="http://localhost:3000"
+BETTER_AUTH_TRUSTED_ORIGINS="http://localhost:3000,http://192.168.1.14:3000"
 RECEIPT_STORAGE_PATH="./data/receipt-photos"
 PRODUCT_IMAGE_STORAGE_PATH="./data/product-images"
 NEXT_PUBLIC_VAPID_PUBLIC_KEY="<base64url-public-key>"
@@ -61,9 +63,9 @@ The npm scripts in `package.json` are:
 | `npm run prisma:generate` | `prisma generate` | Regenerate Prisma Client from the checked-in schema. |
 | `npm run db:migrate` | `prisma migrate dev` | Create/apply development migrations. Production uses `prisma migrate deploy`. |
 | `npm run db:migrate:deploy` | `prisma migrate deploy` | Apply checked-in migrations in a controlled deployment task against a backed-up target. |
-| `npm run db:seed` | `prisma db seed` | Transactionally load the approved canonical opening catalog and environment-supplied owner Admin on an explicitly allowed isolated target. |
-| `npm run db:catalog:reload` | `node prisma/seed.mjs --catalog-only` | Transactionally replace canonical products/opening balances and upsert the six import locations while preserving auth and additional Branch Maintenance rows; uses the same positive reset gates. |
-| `npm run db:data:reset` | `node --env-file=.env prisma/reset-operational-data.mjs` | Transactionally delete operational data while preserving users/auth, roles, products, and required locations; requires explicit opt-in and an exact approved isolated database identity. |
+| `npm run db:seed` | `prisma db seed` | Transactionally reconcile the local canonical catalog, replace opening balances, and create or update the environment-supplied owner Admin while preserving product identities. |
+| `npm run db:catalog:reload` | `node --env-file=.env prisma/seed.mjs --catalog-only` | Transactionally reconcile canonical products, replace opening balances, and upsert the six import locations while preserving product identities, auth, and additional records; uses the same positive reset gates. |
+| `npm run db:data:reset` | `node --env-file=.env prisma/reset-operational-data.mjs` | Transactionally delete local operational data while preserving users/auth, roles, products, and required locations; requires the exact approved Compose database identity. |
 | `npm run verify:phase-01 -- [--validate-evidence]` | `node scripts/verify-phase-01.mjs` | Phase 1 evidence gate: asserts the disposable test target and seed/reset environment, then runs fresh migration deploy, seed, two equivalent catalog reloads, full unit/integration suites, typecheck, and build; captures lint's expected failure baseline separately and writes/validates `docs/verification/phase-01-evidence.md`. |
 
 `package-lock.json` is present, so npm is the repository's locked package manager.

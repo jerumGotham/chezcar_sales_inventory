@@ -8,7 +8,7 @@ import AppLayoutShell from "@/components/app-layout-shell";
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata = {
-  title: "Chezcar UI Starter",
+  title: "Chezcar Sales & Monitoring System",
   description:
     "Sales and inventory system UI starter built with Next.js, Tailwind, and Prisma structure.",
   manifest: "/manifest.webmanifest",

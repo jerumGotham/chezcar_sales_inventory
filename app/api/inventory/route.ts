@@ -12,10 +12,7 @@ import {
 export async function GET(request: Request) {
   try {
     const user = await requireCapability(request.headers, "inventory:view");
-    const query = parseInventoryListQuery(
-      new URL(request.url).searchParams,
-      user,
-    );
+    const query = parseInventoryListQuery(new URL(request.url).searchParams);
 
     return Response.json(await listInventory(query, user));
   } catch (error) {

@@ -54,6 +54,7 @@ describe("operational data reset", () => {
       );
 
       const result = await resetOperationalData(prisma, {
+        nodeEnv: "test",
         databaseUrl: testDatabaseUrl,
         allowOperationalDataReset: "true",
       });

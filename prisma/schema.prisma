@@ -153,6 +153,7 @@ model Location {
   isActive             Boolean             @default(true)
   inventoryBalances    InventoryBalance[]
   users                User[]
+  userAssignments      UserLocation[]
   destinationTransfers StockTransfer[]     @relation("TransferDestination")
   inventoryMovements   InventoryMovement[]
   stockReceipts        StockReceipt[]
@@ -232,6 +233,7 @@ model User {
   banExpires              DateTime?
   locationId              String?
   location                Location?                    @relation(fields: [locationId], references: [id])
+  locationAssignments     UserLocation[]
   sessions                Session[]
   accounts                Account[]
   createdTransfers        StockTransfer[]              @relation("TransferCreatedBy")
@@ -271,6 +273,7 @@ model RoleDefinition {
   description String    @db.Text
   scope       RoleScope
   permissions String[]  @default([])
+  isOwner     Boolean   @default(false)
   isSystem    Boolean   @default(false)
   version     Int       @default(1)
   users       User[]
@@ -278,6 +281,17 @@ model RoleDefinition {
   updatedAt   DateTime  @updatedAt
 
   @@index([scope])
+}
+
+model UserLocation {
+  userId     String
+  locationId String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@id([userId, locationId])
+  @@index([locationId])
 }
 
 model StockTransfer {

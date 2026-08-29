@@ -12,6 +12,7 @@ import {
 } from "../authorization";
 import { prisma } from "../prisma";
 import { findActiveBranch } from "../locations";
+import { canAccessLocation, hasAllLocationAccess } from "../policy/access";
 import { createNotifications, notifyInventoryThresholdChange } from "./notifications";
 import { isReceiptEvidenceKey } from "./receipt-evidence";
 
@@ -134,34 +135,30 @@ export class CustomerSalesError extends Error {
 }
 
 function assertOperationalActor(actor: AuthContext) {
-  if (!actor.isOwner && actor.roleScope !== "BRANCH") {
-    throw new CustomerSalesError("FORBIDDEN", "Owner or Branch scope is required", 403);
-  }
+  if (!hasAllLocationAccess(actor) && actor.locationIds.length === 0) throw new CustomerSalesError("FORBIDDEN", "A location assignment is required", 403);
 }
 
 function assertAccounting(actor: AuthContext) {
-  if (!actor.isOwner && actor.roleScope !== "BUSINESS_WIDE") {
-    throw new CustomerSalesError("FORBIDDEN", "Owner or Business-wide scope is required", 403);
-  }
-}
-
-function actorLocationId(actor: AuthContext) {
-  if (actor.roleScope !== "BRANCH" || !actor.locationId || actor.location?.id !== actor.locationId || actor.location.type !== "BRANCH" || !actor.location.isActive) {
-    throw new CustomerSalesError("FORBIDDEN", "Active Branch scope is required", 403);
-  }
-  return actor.locationId;
+  void actor;
 }
 
 function operationalLocationId(actor: AuthContext, requestedLocationId?: string) {
   assertOperationalActor(actor);
-  return actor.roleScope === "BRANCH" ? actorLocationId(actor) : requestedLocationId;
+  if (!requestedLocationId || !canAccessLocation(actor, requestedLocationId)) {
+    throw new CustomerSalesError("FORBIDDEN", "Select an assigned active location", 403);
+  }
+  return requestedLocationId;
 }
 
 function assertOperationalResource(actor: AuthContext, locationId: string) {
   assertOperationalActor(actor);
-  if (actor.roleScope === "BRANCH" && locationId !== actorLocationId(actor)) {
-    throw new CustomerSalesError("FORBIDDEN", "Resource is outside assigned branch", 403);
+  if (!canAccessLocation(actor, locationId)) {
+    throw new CustomerSalesError("FORBIDDEN", "Resource is outside assigned locations", 403);
   }
+}
+
+function locationIdFilter(actor: AuthContext): Prisma.StringFilter | undefined {
+  return hasAllLocationAccess(actor) ? undefined : { in: [...actor.locationIds] };
 }
 
 function decimal(value: number) { return new Prisma.Decimal(value); }
@@ -216,7 +213,12 @@ async function notifySaleParties(tx: Prisma.TransactionClient, sale: { id: strin
   const recipients = await tx.user.findMany({
     where: {
       status: "ACTIVE",
-      OR: [{ role: "ADMIN" }, { role: "BRANCH_STAFF", locationId: sale.locationId }],
+      accessRole: { OR: [{ isOwner: true }, { permissions: { has: "sales:mismatch:respond" } }] },
+      OR: [
+        { accessRole: { isOwner: true } },
+        { accessRole: { permissions: { has: "locations:all" } } },
+        { locationAssignments: { some: { locationId: sale.locationId } } },
+      ],
     },
     select: { id: true },
   });
@@ -380,7 +382,7 @@ export async function listCustomers(actor: AuthContext, query: z.infer<typeof cu
 
 export async function getCustomerHistory(actor: AuthContext, id: string) {
   assertCapability(actor, "customers:view");
-  const locationFilter = actor.roleScope === "BRANCH" ? { locationId: actorLocationId(actor) } : {};
+  const locationFilter = { locationId: locationIdFilter(actor) };
   const customer = await prisma.customer.findUnique({
     where: { id },
     include: {
@@ -449,7 +451,7 @@ const ORDER_INCLUDE = { customer: true, location: true, lines: true } as const;
 
 export async function listCustomerOrders(actor: AuthContext) {
   assertCapability(actor, "customer-orders:view");
-  const where = actor.roleScope === "BRANCH" ? { locationId: actorLocationId(actor) } : {};
+  const where = { locationId: locationIdFilter(actor) };
   const orders = await prisma.customerOrder.findMany({ where, orderBy: { createdAt: "desc" }, include: ORDER_INCLUDE, take: 200 });
   return orders.map(serializeOrder);
 }
@@ -458,9 +460,7 @@ export async function getCustomerOrderById(actor: AuthContext, id: string) {
   assertCapability(actor, "customer-orders:view");
   const order = await prisma.customerOrder.findUnique({ where: { id }, include: ORDER_INCLUDE });
   if (!order) throw new CustomerSalesError("NOT_FOUND", "Order not found", 404);
-  if (actor.roleScope === "BRANCH" && order.locationId !== actorLocationId(actor)) {
-    throw new CustomerSalesError("FORBIDDEN", "Resource is outside assigned branch", 403);
-  }
+  assertOperationalResource(actor, order.locationId);
   return serializeOrder(order);
 }
 
@@ -549,16 +549,7 @@ export async function recordCustomerOrderPayment(
       if (!order) {
         throw new CustomerSalesError("NOT_FOUND", "Order not found", 404);
       }
-      if (
-        actor.roleScope === "BRANCH" &&
-        order.locationId !== actorLocationId(actor)
-      ) {
-        throw new CustomerSalesError(
-          "FORBIDDEN",
-          "Order is outside assigned branch",
-          403,
-        );
-      }
+      assertOperationalResource(actor, order.locationId);
       if (order.status === "COMPLETED" || order.status === "CANCELLED") {
         throw new CustomerSalesError(
           "INVALID_STATUS",
@@ -656,10 +647,7 @@ const SALE_INCLUDE = { customer: true, location: true, lines: true, accountingRe
 
 export async function listSales(actor: AuthContext) {
   assertCapability(actor, "sales:view");
-  if (actor.roleScope === "STOCK_ROOM") {
-    throw new CustomerSalesError("FORBIDDEN", "Stock Room scope cannot read sales", 403);
-  }
-  const where = actor.roleScope === "BRANCH" ? { locationId: actorLocationId(actor) } : {};
+  const where = { locationId: locationIdFilter(actor) };
   const sales = await prisma.sale.findMany({ where, orderBy: { postedAt: "desc" }, include: SALE_INCLUDE, take: 200 });
   return sales.map(serializeSale);
 }
@@ -703,21 +691,20 @@ function receiptVerificationWhere(
 
 export async function listReceiptVerifications(actor: AuthContext, rawInput: unknown) {
   assertCapability(actor, "sales:verify:view");
-  if (actor.roleScope !== "BRANCH") assertAccounting(actor);
+  assertAccounting(actor);
   const input = receiptVerificationListQuerySchema.parse(rawInput);
   const baseWhere = receiptVerificationWhere(input, false);
   const filteredWhere = receiptVerificationWhere(input, true);
-  if (actor.roleScope === "BRANCH") {
-    const locationId = actorLocationId(actor);
-    baseWhere.locationId = locationId;
-    filteredWhere.locationId = locationId;
-    if (!input.saleId) filteredWhere.accountingReview = { status: "MISMATCH_REPORTED", resolvedAt: null };
+  const permittedLocationIds = locationIdFilter(actor);
+  if (permittedLocationIds) {
+    baseWhere.locationId = permittedLocationIds;
+    filteredWhere.locationId = permittedLocationIds;
   }
   const [totalItems, unverified, verified, mismatches] = await Promise.all([
     prisma.sale.count({ where: filteredWhere }),
-    actor.roleScope === "BRANCH" ? Promise.resolve(0) : prisma.sale.count({ where: { ...baseWhere, accountingReview: { status: "UNVERIFIED" } } }),
-    actor.roleScope === "BRANCH" ? Promise.resolve(0) : prisma.sale.count({ where: { ...baseWhere, accountingReview: { status: "VERIFIED" } } }),
-    prisma.sale.count({ where: actor.roleScope === "BRANCH" ? filteredWhere : { ...baseWhere, accountingReview: { status: "MISMATCH_REPORTED" } } }),
+    prisma.sale.count({ where: { ...baseWhere, accountingReview: { status: "UNVERIFIED" } } }),
+    prisma.sale.count({ where: { ...baseWhere, accountingReview: { status: "VERIFIED" } } }),
+    prisma.sale.count({ where: { ...baseWhere, accountingReview: { status: "MISMATCH_REPORTED" } } }),
   ]);
   const totalPages = Math.max(1, Math.ceil(totalItems / input.pageSize));
   const page = Math.min(input.page, totalPages);
@@ -737,12 +724,9 @@ export async function listReceiptVerifications(actor: AuthContext, rawInput: unk
 
 export async function getSaleById(actor: AuthContext, saleId: string) {
   assertCapability(actor, "sales:view");
-  if (actor.roleScope === "STOCK_ROOM") {
-    throw new CustomerSalesError("FORBIDDEN", "Stock Room scope cannot read sales", 403);
-  }
   const sale = await prisma.sale.findUnique({ where: { id: saleId }, include: SALE_INCLUDE });
   if (!sale) throw new CustomerSalesError("NOT_FOUND", "Sale not found", 404);
-  if (actor.roleScope === "BRANCH") assertOperationalResource(actor, sale.locationId);
+  assertOperationalResource(actor, sale.locationId);
   return serializeSale(sale);
 }
 
@@ -756,6 +740,7 @@ export async function reviewSale(actor: AuthContext, saleId: string, input: z.in
     await tx.$queryRaw`SELECT id FROM "Sale" WHERE id = ${saleId} FOR UPDATE`;
     const sale = await tx.sale.findUnique({ where: { id: saleId }, include: { accountingReview: true, lines: true } });
     if (!sale) throw new CustomerSalesError("NOT_FOUND", "Sale not found", 404);
+    assertOperationalResource(actor, sale.locationId);
     if (sale.status !== "POSTED") throw new CustomerSalesError("INVALID_STATE", "Only posted sales can be verified", 409);
     const review = sale.accountingReview ?? await tx.saleAccountingReview.findUnique({ where: { saleId } });
     if (!review) throw new CustomerSalesError("NOT_FOUND", "Accounting review not found", 404);
@@ -788,12 +773,11 @@ export async function reviewSale(actor: AuthContext, saleId: string, input: z.in
 
 export async function respondToSaleMismatch(actor: AuthContext, saleId: string, input: z.infer<typeof branchMismatchResponseSchema>) {
   assertCapability(actor, "sales:mismatch:respond");
-  actorLocationId(actor);
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "Sale" WHERE id = ${saleId} FOR UPDATE`;
     const sale = await tx.sale.findUnique({ where: { id: saleId }, include: { accountingReview: true } });
     if (!sale) throw new CustomerSalesError("NOT_FOUND", "Sale not found", 404);
-    if (sale.locationId !== actorLocationId(actor)) throw new CustomerSalesError("FORBIDDEN", "Sale is outside assigned branch", 403);
+    assertOperationalResource(actor, sale.locationId);
     if (sale.status !== "POSTED" || sale.accountingReview?.status !== "MISMATCH_REPORTED" || sale.accountingReview.resolvedAt) {
       throw new CustomerSalesError("INVALID_STATE", "Only unresolved branch mismatches can receive a response", 409);
     }
@@ -820,7 +804,15 @@ export async function respondToSaleMismatch(actor: AuthContext, saleId: string, 
       },
     });
     const reviewers = await tx.user.findMany({
-      where: { status: "ACTIVE", role: { in: ["ADMIN", "ACCOUNTING_STAFF"] } },
+      where: {
+        status: "ACTIVE",
+        accessRole: { OR: [{ isOwner: true }, { permissions: { has: "sales:resolve" } }] },
+        OR: [
+          { accessRole: { isOwner: true } },
+          { accessRole: { permissions: { has: "locations:all" } } },
+          { locationAssignments: { some: { locationId: sale.locationId } } },
+        ],
+      },
       select: { id: true },
     });
     const responseLabel = input.response === "ORIGINAL_ENCODING_CORRECT" ? "confirmed the original encoding" : "confirmed that receipt correction is needed";
@@ -851,6 +843,7 @@ export async function resolveSale(actor: AuthContext, saleId: string, input: z.i
     await tx.$queryRaw`SELECT id FROM "Sale" WHERE id = ${saleId} FOR UPDATE`;
     const sale = await tx.sale.findUnique({ where: { id: saleId }, include: { accountingReview: true, lines: true } });
     if (!sale) throw new CustomerSalesError("NOT_FOUND", "Sale not found", 404);
+    assertOperationalResource(actor, sale.locationId);
     if (sale.status !== "POSTED" || sale.accountingReview?.status !== "MISMATCH_REPORTED") throw new CustomerSalesError("INVALID_STATE", "Only reported mismatches can be resolved", 409);
     const review = sale.accountingReview;
     if (!review.branchResponse) throw new CustomerSalesError("BRANCH_RESPONSE_REQUIRED", "Wait for the branch to review the mismatch", 409);
@@ -929,33 +922,21 @@ function dateKey(date: Date) {
 }
 
 function saleScope(actor: AuthContext): Prisma.SaleWhereInput {
-  if (actor.roleScope === "BRANCH") return { locationId: actorLocationId(actor) };
-  if (actor.isOwner || actor.roleScope === "BUSINESS_WIDE") return {};
-  return { locationId: "__not_visible__" };
+  return { locationId: locationIdFilter(actor) };
 }
 
 function orderScope(actor: AuthContext): Prisma.CustomerOrderWhereInput {
-  if (actor.roleScope === "BRANCH") return { locationId: actorLocationId(actor) };
-  if (actor.isOwner || actor.roleScope === "BUSINESS_WIDE") return {};
-  return { locationId: "__not_visible__" };
+  return { locationId: locationIdFilter(actor) };
 }
 
 export async function getDashboardSummary(actor: AuthContext) {
   assertCapability(actor, "dashboard:view");
   const scopedSales = saleScope(actor);
   const scopedOrders = orderScope(actor);
-  const inventoryScope: Prisma.InventoryBalanceWhereInput = actor.roleScope === "BRANCH"
-    ? { locationId: actorLocationId(actor) }
-    : actor.roleScope === "STOCK_ROOM"
-      ? { location: { code: "SR" } }
-      : actor.isOwner
-        ? {}
-        : { locationId: "__not_visible__" };
-  const transferScope: Prisma.StockTransferWhereInput = actor.roleScope === "BRANCH"
-    ? { destinationId: actorLocationId(actor) }
-    : actor.isOwner || actor.roleScope === "STOCK_ROOM"
-      ? {}
-      : { destinationId: "__not_visible__" };
+  const inventoryScope: Prisma.InventoryBalanceWhereInput = { locationId: locationIdFilter(actor) };
+  const transferScope: Prisma.StockTransferWhereInput = {
+    destinationId: locationIdFilter(actor),
+  };
   const today = dayStart();
   const month = monthStart();
   const trendStart = dayStart();
@@ -974,15 +955,13 @@ export async function getDashboardSummary(actor: AuthContext) {
       where: inventoryScope,
       include: { product: { select: { itemCode: true, name: true, status: true, reorderLevel: true } }, location: { select: { name: true } } },
     }),
-    actor.roleScope === "STOCK_ROOM" ? prisma.stockReceipt.count({ where: { location: { code: "SR" }, receivedAt: { gte: today } } }) : Promise.resolve(0),
+    prisma.stockReceipt.count({ where: { locationId: locationIdFilter(actor), receivedAt: { gte: today } } }),
     prisma.stockTransfer.count({ where: { ...transferScope, status: "DRAFT" } }),
     prisma.stockTransfer.count({ where: { ...transferScope, status: "FOR_DISPATCH" } }),
     prisma.stockTransfer.count({ where: { ...transferScope, status: "IN_TRANSIT" } }),
     prisma.stockTransfer.count({ where: { ...transferScope, status: { in: ["DISCREPANCY_REPORTED", "UNDER_REVIEW"] } } }),
-    actor.roleScope === "BRANCH" ? prisma.stockTransfer.count({ where: { destinationId: actorLocationId(actor), status: "IN_TRANSIT" } }) : Promise.resolve(0),
-    actor.isOwner || actor.roleScope === "BUSINESS_WIDE"
-      ? prisma.sale.findMany({ where: { ...scopedSales, status: "POSTED", postedAt: { gte: trendStart } }, select: { postedAt: true, totalAmount: true, location: { select: { name: true } } } })
-      : Promise.resolve([]),
+    prisma.stockTransfer.count({ where: { ...transferScope, status: "IN_TRANSIT" } }),
+    prisma.sale.findMany({ where: { ...scopedSales, status: "POSTED", postedAt: { gte: trendStart } }, select: { postedAt: true, totalAmount: true, location: { select: { name: true } } } }),
   ]);
   const lowStock = lowBalances
     .filter((balance) => balance.onHand - balance.reserved <= balance.product.reorderLevel)
@@ -1013,7 +992,7 @@ export async function getDashboardSummary(actor: AuthContext) {
   }
 
   return {
-    role: actor.role,
+    capabilities: actor.capabilities,
     todaySales: todaySales._sum.totalAmount?.toNumber() ?? 0,
     todayTransactions: todaySales._count,
     monthSales: mtdSales._sum.totalAmount?.toNumber() ?? 0,
@@ -1043,12 +1022,11 @@ export async function getDashboardSummary(actor: AuthContext) {
 export async function getReportsSummary(actor: AuthContext) {
   assertCapability(actor, "reports:view");
   assertAccounting(actor);
+  const permittedLocationIds = locationIdFilter(actor);
   const [saleRecords, orderRecords, inventory] = await Promise.all([
-    prisma.sale.findMany({ orderBy: { postedAt: "desc" }, include: SALE_INCLUDE, take: 200 }),
-    prisma.customerOrder.findMany({ orderBy: { createdAt: "desc" }, include: ORDER_INCLUDE, take: 200 }),
-    actor.isOwner
-      ? prisma.inventoryBalance.findMany({ include: { product: true, location: true }, take: 500 })
-      : Promise.resolve([]),
+    prisma.sale.findMany({ where: { locationId: permittedLocationIds }, orderBy: { postedAt: "desc" }, include: SALE_INCLUDE, take: 200 }),
+    prisma.customerOrder.findMany({ where: { locationId: permittedLocationIds }, orderBy: { createdAt: "desc" }, include: ORDER_INCLUDE, take: 200 }),
+    prisma.inventoryBalance.findMany({ where: { locationId: permittedLocationIds }, include: { product: true, location: true }, take: 500 }),
   ]);
   const sales = saleRecords.map(serializeSale);
   const orders = orderRecords.map(serializeOrder);

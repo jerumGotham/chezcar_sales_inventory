@@ -27,6 +27,7 @@ import { auth } from "../../lib/server/auth";
 import { prisma as sharedPrisma } from "../../lib/server/prisma";
 import { withDisposableDatabase } from "../helpers/database";
 import {
+  authContextFor,
   createAuthFixture,
   createLocationFixtures,
   createUserFixture,
@@ -130,10 +131,11 @@ type UserListBody = {
     id: string;
     name: string;
     email: string;
-    role: string;
+    roleDefinitionId: string;
+    roleName: string;
     status: string;
     isOwner: boolean;
-    location: { id: string; code: string; type: string } | null;
+    locations: Array<{ id: string; code: string; name: string; type: string }>;
     credentialSetupRequired: boolean;
   }>;
   meta?: {
@@ -153,11 +155,11 @@ type MutationBody = {
     id: string;
     name: string;
     email: string;
-    role: string;
+    roleDefinitionId: string;
+    roleName: string;
     status: string;
     isOwner: boolean;
-    locationId?: string | null;
-    location: { id: string; code: string; type: string } | null;
+    locations: Array<{ id: string; code: string; name: string; type: string }>;
     credentialSetupRequired: boolean;
   };
   error?: { code: string; message: string };
@@ -218,12 +220,10 @@ describe("user management list and create", () => {
             "id",
             "isOwner",
             "lastSignInAt",
-            "location",
+            "locations",
             "name",
-            "role",
             "roleDefinitionId",
             "roleName",
-            "roleScope",
             "status",
             "updatedAt",
           ].sort(),
@@ -237,9 +237,9 @@ describe("user management list and create", () => {
       expect(page2.data).toHaveLength(3);
       const ownerRow = page2.data?.find((row) => row.email === OWNER_EMAIL);
       expect(ownerRow).toBeDefined();
-      expect(ownerRow?.role).toBe("ADMIN");
+      expect(ownerRow?.roleName).toBe("Admin");
       expect(ownerRow?.isOwner).toBe(true);
-      expect(ownerRow?.location).toBeNull();
+      expect(ownerRow?.locations).toEqual([]);
 
       const beyondResponse = await usersRoute.GET(
         usersRequest("/api/users?page=9", { headers: ownerHeaders }),
@@ -276,11 +276,11 @@ describe("user management list and create", () => {
 
       const searched = await listQuery("search=stock-staff.um-owner");
       expect(searched.meta?.totalItems).toBe(1);
-      expect(searched.data?.map((row) => row.role)).toEqual(["STOCK_STAFF"]);
+      expect(searched.data?.map((row) => row.roleName)).toEqual(["Stock Staff"]);
 
       const branchOnly = await listQuery("roleId=role-branch-staff");
       expect(branchOnly.meta?.totalItems).toBe(6);
-      expect(branchOnly.data?.every((row) => row.role === "BRANCH_STAFF")).toBe(
+      expect(branchOnly.data?.every((row) => row.roleName === "Branch Staff")).toBe(
         true,
       );
 
@@ -290,12 +290,12 @@ describe("user management list and create", () => {
 
       const atBl = await listQuery("location=BL");
       expect(atBl.meta?.totalItems).toBe(5);
-      expect(atBl.data?.every((row) => row.location?.code === "BL")).toBe(true);
+      expect(atBl.data?.every((row) => row.locations.some((location) => location.code === "BL"))).toBe(true);
 
       const unassigned = await listQuery("location=none");
       expect(unassigned.meta?.totalItems).toBe(1);
       expect(unassigned.data?.some((row) => row.isOwner)).toBe(true);
-      expect(unassigned.data?.some((row) => row.role === "ACCOUNTING_STAFF")).toBe(true);
+      expect(unassigned.data?.some((row) => row.roleName === "Accounting Staff")).toBe(true);
 
       const dynamicBranch = await prisma.location.create({
         data: { code: "DV", name: "Davao City", type: "BRANCH" },
@@ -307,11 +307,14 @@ describe("user management list and create", () => {
           role: "BRANCH_STAFF",
           roleDefinitionId: "role-branch-staff",
           locationId: dynamicBranch.id,
+          locationAssignments: {
+            create: { locationId: dynamicBranch.id },
+          },
         },
       });
       const atDynamicBranch = await listQuery("location=DV");
       expect(atDynamicBranch.meta?.totalItems).toBe(1);
-      expect(atDynamicBranch.data?.[0]?.location?.code).toBe("DV");
+      expect(atDynamicBranch.data?.[0]?.locations[0]?.code).toBe("DV");
 
       const invalidLocationResponse = await usersRoute.GET(
         usersRequest("/api/users?location=UNKNOWN", { headers: ownerHeaders }),
@@ -345,12 +348,12 @@ describe("user management list and create", () => {
         email: "Stock.Person@Example.test",
         temporaryPassword: "Temp-Pass-123",
         // Hostile extra field must be ignored: Stock Staff resolves to SR only.
-        locationId: locations.branches.QC.id,
+        locationIds: [locations.stockRoom.id],
       });
       expect(stockResult.status).toBe(201);
       expect(stockResult.body.error).toBeUndefined();
-      expect(stockResult.body.data?.role).toBe("STOCK_STAFF");
-      expect(stockResult.body.data?.location?.code).toBe("SR");
+      expect(stockResult.body.data?.roleName).toBe("Stock Staff");
+      expect(stockResult.body.data?.locations[0]?.code).toBe("SR");
       expect(stockResult.body.data?.credentialSetupRequired).toBe(true);
       expect(stockResult.body.data?.isOwner).toBe(false);
       const stockDtoJson = JSON.stringify(stockResult.body);
@@ -371,10 +374,10 @@ describe("user management list and create", () => {
         name: "Branch Person",
         email: "branch.person@example.test",
         temporaryPassword: "Temp-Pass-123",
-        locationId: locations.branches.QC.id,
+        locationIds: [locations.branches.QC.id],
       });
       expect(branchResult.status).toBe(201);
-      expect(branchResult.body.data?.location?.code).toBe("QC");
+      expect(branchResult.body.data?.locations[0]?.code).toBe("QC");
 
       const accountingResult = await postUser({
         roleId: "role-accounting-staff",
@@ -382,10 +385,10 @@ describe("user management list and create", () => {
         email: "accounting.person@example.test",
         temporaryPassword: "Temp-Pass-123",
         // Hostile extra field must never assign a location to Accounting.
-        locationId: locations.branches.BL.id,
+        locationIds: [],
       });
       expect(accountingResult.status).toBe(201);
-      expect(accountingResult.body.data?.location).toBeNull();
+      expect(accountingResult.body.data?.locations).toEqual([]);
       const accountingRow = await prisma.user.findUniqueOrThrow({
         where: { email: "accounting.person@example.test" },
       });
@@ -440,7 +443,7 @@ describe("user management list and create", () => {
               name: "Dup Candidate",
               email,
               temporaryPassword: "Temp-Pass-123",
-              locationId: locations.branches.QC.id,
+              locationIds: [locations.branches.QC.id],
             },
           }),
         );
@@ -516,7 +519,7 @@ describe("user management list and create", () => {
             name: "Escalated",
             email: "escalated@example.test",
             temporaryPassword: "Temp-Pass-123",
-            locationId: locations.branches.QC.id,
+            locationIds: [locations.branches.QC.id],
           },
         }),
       );
@@ -558,6 +561,199 @@ describe("user management list and create", () => {
       );
       expect(unknownRole.status).toBe(400);
       expect(await prisma.user.count()).toBe(usersBefore);
+    });
+  }, 90_000);
+
+  it("keeps delegated filters, summaries, and form locations inside actor access", async () => {
+    await withDisposableDatabase(async ({ prisma }) => {
+      const fixture = await createAuthFixture(prisma, { namespace: "delegated-user-list" });
+      const multiLocationTarget = await createUserFixture(prisma, fixture.locations, {
+        namespace: "delegated-user-list",
+        key: "qc-lu-target",
+        role: "BRANCH_STAFF",
+        locationId: fixture.locations.branches.QC.id,
+      });
+      await prisma.userLocation.create({
+        data: {
+          userId: multiLocationTarget.id,
+          locationId: fixture.locations.branches.LU.id,
+        },
+      });
+      const higherPrivilegeRole = await prisma.roleDefinition.create({
+        data: {
+          key: "same-location-higher-privilege",
+          name: "Same-location higher privilege",
+          description: "Exceeds the delegated manager capability ceiling",
+          scope: "BRANCH",
+          permissions: ["sales:void-replace"],
+        },
+      });
+      const higherPrivilegeTarget = await createUserFixture(prisma, fixture.locations, {
+        namespace: "delegated-user-list",
+        key: "qc-higher-privilege",
+        role: "BRANCH_STAFF",
+        locationId: fixture.locations.branches.QC.id,
+      });
+      await prisma.user.update({
+        where: { id: higherPrivilegeTarget.id },
+        data: { roleDefinitionId: higherPrivilegeRole.id },
+      });
+      await createUserFixture(prisma, fixture.locations, {
+        namespace: "delegated-user-list",
+        key: "qc-inactive-extra",
+        role: "BRANCH_STAFF",
+        status: "INACTIVE",
+        locationId: fixture.locations.branches.QC.id,
+      });
+      const branchRole = await prisma.roleDefinition.findUniqueOrThrow({
+        where: { id: "role-branch-staff" },
+        select: { permissions: true },
+      });
+      const { effectiveCapabilities } = await import("../../lib/permissions");
+      const branchCapabilities = effectiveCapabilities(
+        branchRole.permissions as Parameters<typeof effectiveCapabilities>[0],
+      );
+      const actor = {
+        userId: fixture.users.branchStaff.id,
+        roleDefinitionId: fixture.users.branchStaff.roleDefinitionId,
+        capabilities: [...new Set([
+          ...branchCapabilities,
+          "users:view",
+          "users:update",
+          "users:set-status",
+          "users:reset-password",
+        ])],
+        isOwner: false,
+        locationIds: [fixture.locations.branches.QC.id],
+      };
+      const { listAssignableUserLocations, listUsers } = await import(
+        "../../lib/server/services/users"
+      );
+      const { userListQuerySchema } = await import("../../lib/contracts/users");
+
+      const visible = await listUsers(actor, userListQuerySchema.parse({}));
+      expect(visible.data.map((user) => user.email).sort()).toEqual([
+        fixture.users.branchStaff.email,
+        "qc-higher-privilege.delegated-user-list@example.test",
+        "qc-inactive-extra.delegated-user-list@example.test",
+      ].sort());
+      expect(visible.meta).toMatchObject({ totalStaff: 3, activeStaff: 2, inactiveStaff: 1 });
+      expect(
+        visible.data.every((user) =>
+          user.locations.every((location) => location.code === "QC"),
+        ),
+      ).toBe(true);
+
+      const searched = await listUsers(
+        actor,
+        userListQuerySchema.parse({ search: fixture.users.inactiveBranchStaff.email }),
+      );
+      expect(searched.data).toEqual([]);
+      expect(searched.meta).toMatchObject({ totalStaff: 3, activeStaff: 2, inactiveStaff: 1 });
+
+      const { resetStaffPassword, setStaffStatus, updateStaffUser } = await import(
+        "../../lib/server/services/users"
+      );
+      await expect(
+        updateStaffUser(actor, multiLocationTarget.id, { name: "Unauthorized rename" }),
+      ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+      await expect(
+        setStaffStatus(actor, multiLocationTarget.id, "INACTIVE"),
+      ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+      await expect(
+        resetStaffPassword(
+          actor,
+          new Headers(),
+          multiLocationTarget.id,
+          "New-Password-123",
+        ),
+      ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+      await expect(
+        setStaffStatus(actor, fixture.users.accountingStaff.id, "INACTIVE"),
+      ).rejects.toMatchObject({ code: "TARGET_ROLE_EXCEEDS_ACTOR", status: 403 });
+      await expect(
+        updateStaffUser(actor, higherPrivilegeTarget.id, {
+          name: "Unauthorized same-location edit",
+        }),
+      ).rejects.toMatchObject({ code: "TARGET_ROLE_EXCEEDS_ACTOR", status: 403 });
+      await expect(
+        setStaffStatus(actor, higherPrivilegeTarget.id, "INACTIVE"),
+      ).rejects.toMatchObject({ code: "TARGET_ROLE_EXCEEDS_ACTOR", status: 403 });
+      await expect(
+        resetStaffPassword(
+          actor,
+          new Headers(),
+          higherPrivilegeTarget.id,
+          "New-Password-123",
+        ),
+      ).rejects.toMatchObject({ code: "TARGET_ROLE_EXCEEDS_ACTOR", status: 403 });
+      await expect(
+        prisma.user.findUniqueOrThrow({ where: { id: higherPrivilegeTarget.id } }),
+      ).resolves.toMatchObject({ name: higherPrivilegeTarget.name, status: "ACTIVE" });
+
+      await expect(
+        listUsers(actor, userListQuerySchema.parse({ location: "BL" })),
+      ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+      await expect(
+        listUsers(actor, userListQuerySchema.parse({ location: "none" })),
+      ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+
+      const options = await listAssignableUserLocations(actor);
+      expect(options.map((location) => location.code)).toEqual(["QC"]);
+    });
+  }, 90_000);
+
+  it("cleans failed credential finalization and leaves failed cleanup inactive", async () => {
+    await withDisposableDatabase(async ({ prisma }) => {
+      const fixture = await createAuthFixture(prisma, {
+        namespace: "credential-finalization",
+      });
+      const owner = authContextFor(fixture.users.admin, null);
+      const { createStaffUser } = await import("../../lib/server/services/users");
+      const baseInput = {
+        roleId: "role-branch-staff",
+        name: "Provisioning Failure",
+        temporaryPassword: "Temp-Pass-123",
+        locationIds: [fixture.locations.branches.QC.id],
+      };
+
+      await expect(
+        createStaffUser(
+          owner,
+          { ...baseInput, email: "cleaned.failure@example.test" },
+          { injectFailureAfterCredentialWrite: true },
+        ),
+      ).rejects.toThrow(/credential-finalization failure/i);
+      expect(
+        await prisma.user.findUnique({ where: { email: "cleaned.failure@example.test" } }),
+      ).toBeNull();
+
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        await expect(
+          createStaffUser(
+            owner,
+            { ...baseInput, email: "retained.failure@example.test" },
+            {
+              injectFailureAfterCredentialWrite: true,
+              injectCleanupFailure: true,
+            },
+          ),
+        ).rejects.toThrow(/credential-finalization failure/i);
+        const retained = await prisma.user.findUniqueOrThrow({
+          where: { email: "retained.failure@example.test" },
+          include: { accounts: true, locationAssignments: true },
+        });
+        expect(retained).toMatchObject({ status: "INACTIVE" });
+        expect(retained.accounts).toHaveLength(1);
+        expect(retained.locationAssignments).toHaveLength(0);
+        expect(errorSpy).toHaveBeenCalledWith(
+          "Unable to remove a partially provisioned user",
+          expect.any(Error),
+        );
+      } finally {
+        errorSpy.mockRestore();
+      }
     });
   }, 90_000);
 });
@@ -608,7 +804,7 @@ describe("user management lifecycle", () => {
 
   it("updates staff fields and enforces the full resulting assignment", async () => {
     await withDisposableDatabase(async ({ prisma }) => {
-      const { locations, ownerHeaders, staffHeaders, targetId } =
+      const { locations, ownerHeaders, targetId } =
         await prepareLifecycle(prisma);
       if (!userIdRoute) throw new Error("PATCH route module missing");
 
@@ -628,10 +824,10 @@ describe("user management lifecycle", () => {
       const renamed = (await renameResponse.json()) as MutationBody;
       expect(renamed.data?.name).toBe("Renamed Staff");
       expect(renamed.data?.email).toBe("renamed.staff@example.test");
-      expect(renamed.data?.location?.code).toBe("QC");
+      expect(renamed.data?.locations[0]?.code).toBe("QC");
       expect(await prisma.session.count({ where: { userId: targetId } })).toBeGreaterThanOrEqual(1);
 
-      // Role change to Accounting clears the location and revokes sessions.
+      // Role changes do not derive location semantics and revoke sessions.
       const accountingResponse = await userIdRoute.PATCH(
         patchRequest(`/api/users/${targetId}`, ownerHeaders, {
           roleId: "role-accounting-staff",
@@ -640,11 +836,11 @@ describe("user management lifecycle", () => {
       );
       expect(accountingResponse.status).toBe(200);
       const accountant = (await accountingResponse.json()) as MutationBody;
-      expect(accountant.data?.role).toBe("ACCOUNTING_STAFF");
-      expect(accountant.data?.location).toBeNull();
+      expect(accountant.data?.roleName).toBe("Accounting Staff");
+      expect(accountant.data?.locations.map((location) => location.code)).toEqual(["QC"]);
       expect(await prisma.session.count({ where: { userId: targetId } })).toBe(0);
 
-      // Stock Staff resolves to SR server-side.
+      // Another role change preserves the authoritative assignment by default.
       const stockResponse = await userIdRoute.PATCH(
         patchRequest(`/api/users/${targetId}`, ownerHeaders, {
           roleId: "role-stock-staff",
@@ -652,16 +848,16 @@ describe("user management lifecycle", () => {
         await routeContext(targetId),
       );
       expect(stockResponse.status).toBe(200);
-      expect(((await stockResponse.json()) as MutationBody).data?.location?.code).toBe("SR");
+      expect(((await stockResponse.json()) as MutationBody).data?.locations[0]?.code).toBe("QC");
 
-      // Switching into Branch Staff without an explicit active branch fails
-      // with an unchanged resulting state.
+      // Explicitly clearing locations for a restricted role fails unchanged.
       const beforeFailedBranch = await prisma.user.findUniqueOrThrow({
         where: { id: targetId },
       });
       const missingBranchResponse = await userIdRoute.PATCH(
         patchRequest(`/api/users/${targetId}`, ownerHeaders, {
           roleId: "role-branch-staff",
+          locationIds: [],
         }),
         await routeContext(targetId),
       );
@@ -671,17 +867,17 @@ describe("user management lifecycle", () => {
       });
       expect(afterFailedBranch.role).toBe(beforeFailedBranch.role);
       expect(afterFailedBranch.locationId).toBe(beforeFailedBranch.locationId);
-      expect(afterFailedBranch.locationId).toBe(locations.stockRoom.id);
+      expect(afterFailedBranch.locationId).toBe(locations.branches.QC.id);
 
       const branchResponse = await userIdRoute.PATCH(
         patchRequest(`/api/users/${targetId}`, ownerHeaders, {
           roleId: "role-branch-staff",
-          locationId: locations.branches.BL.id,
+          locationIds: [locations.branches.BL.id],
         }),
         await routeContext(targetId),
       );
       expect(branchResponse.status).toBe(200);
-      expect(((await branchResponse.json()) as MutationBody).data?.location?.code).toBe("BL");
+      expect(((await branchResponse.json()) as MutationBody).data?.locations[0]?.code).toBe("BL");
 
       // Duplicate email conflicts map to a stable 409 with no change.
       const duplicateEmailResponse = await userIdRoute.PATCH(
@@ -696,7 +892,7 @@ describe("user management lifecycle", () => {
         (await prisma.user.findUniqueOrThrow({ where: { id: targetId } })).email,
       ).toBe("renamed.staff@example.test");
 
-      // Hostile location payloads never assign a location to Accounting.
+      // An all-location role may retain explicit assignments, though it does not require them.
       const accountingTarget = (
         await prisma.user.findUniqueOrThrow({
           where: { email: "accounting-staff.um-owner@example.test" },
@@ -704,12 +900,12 @@ describe("user management lifecycle", () => {
       ).id;
       const hostileLocationResponse = await userIdRoute.PATCH(
         patchRequest(`/api/users/${accountingTarget}`, ownerHeaders, {
-          locationId: locations.branches.QC.id,
+          locationIds: [locations.branches.QC.id],
         }),
         await routeContext(accountingTarget),
       );
       expect(hostileLocationResponse.status).toBe(200);
-      expect(((await hostileLocationResponse.json()) as MutationBody).data?.location).toBeNull();
+      expect(((await hostileLocationResponse.json()) as MutationBody).data?.locations[0]?.code).toBe("QC");
 
       // The owner Admin is not manageable.
       const admin = (await prisma.user.findUniqueOrThrow({ where: { email: OWNER_EMAIL } }));
@@ -750,7 +946,7 @@ describe("user management lifecycle", () => {
 
   it("deactivates and reactivates idempotently without duplicates or a delete surface", async () => {
     await withDisposableDatabase(async ({ prisma }) => {
-      const { ownerHeaders, staffHeaders, targetId } = await prepareLifecycle(prisma);
+      const { ownerHeaders, targetId } = await prepareLifecycle(prisma);
       if (!userStatusRoute) throw new Error("status route module missing");
 
       expect(await prisma.session.count({ where: { userId: targetId } })).toBeGreaterThanOrEqual(1);
@@ -818,7 +1014,7 @@ describe("user management lifecycle", () => {
 
   it("resets credentials safely without duplication, echo, or surviving sessions", async () => {
     await withDisposableDatabase(async ({ prisma }) => {
-      const { ownerHeaders, staffHeaders, targetId } = await prepareLifecycle(prisma);
+      const { ownerHeaders, targetId } = await prepareLifecycle(prisma);
       if (!userPasswordRoute) throw new Error("password route module missing");
 
       const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});

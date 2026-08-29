@@ -112,11 +112,7 @@ type CreateStaffCredentialInput = {
     name: string;
     role: StaffRole;
     roleDefinitionId: string;
-    /**
-     * Persisted canonical Location id. Required by the database CHECK
-     * constraint for Stock/Branch Staff and forbidden for Accounting Staff;
-     * Plan 01-09 resolves and validates the exact D-13 assignment.
-     */
+    /** Legacy Better Auth compatibility location. Authorization uses UserLocation. */
     locationId?: string | null;
   };
 };
@@ -168,9 +164,9 @@ async function setStaffCredential(input: SetStaffCredentialInput) {
   // manages its own credential through authenticated self-service flows.
   const target = await prisma.user.findUnique({
     where: { id: input.body.userId },
-    select: { id: true, accessRole: { select: { scope: true } } },
+    select: { id: true, accessRole: { select: { isOwner: true } } },
   });
-  if (!target || target.accessRole.scope === "OWNER") {
+  if (!target || target.accessRole.isOwner) {
     throw new Error(
       "Only existing non-Admin staff accounts accept internal credential resets",
     );

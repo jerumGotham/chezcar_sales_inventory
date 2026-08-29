@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 
 export type OperationalResetEnvironment = {
+  nodeEnv: string | undefined;
   databaseUrl: string | undefined;
   allowOperationalDataReset: string | undefined;
 };
@@ -14,5 +15,5 @@ export function resetOperationalData(
   environment: OperationalResetEnvironment,
 ): Promise<{
   deleted: Record<string, number>;
-  preserved: { users: number; products: number; locations: number };
+  preserved: { users: number; products: number; locations: number; roles: number };
 }>;

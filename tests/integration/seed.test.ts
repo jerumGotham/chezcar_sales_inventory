@@ -110,6 +110,24 @@ describe("canonical opening seed", () => {
         await prisma.product.count({ where: { price: null, status: "INACTIVE" } }),
       ).toBe(707);
 
+      const ownerBefore = await prisma.user.findUniqueOrThrow({
+        where: { email: ADMIN_ENV.SEED_ADMIN_EMAIL },
+        select: { id: true },
+      });
+      const ownerAccountBefore = await prisma.account.findUniqueOrThrow({
+        where: {
+          providerId_accountId: {
+            providerId: "credential",
+            accountId: ownerBefore.id,
+          },
+        },
+        select: { id: true },
+      });
+      const canonicalProductBefore = await prisma.product.findUniqueOrThrow({
+        where: { itemCode: openingCatalog.products[0].itemCode },
+        select: { id: true },
+      });
+
       const qc = await prisma.location.findUniqueOrThrow({ where: { code: "QC" } });
       const dynamicBranch = await prisma.location.create({
         data: { code: "DV", name: "Davao City", type: "BRANCH" },
@@ -123,6 +141,13 @@ describe("canonical opening seed", () => {
           roleDefinitionId: "role-branch-staff",
           locationId: qc.id,
         },
+      });
+      const lu = await prisma.location.findUniqueOrThrow({ where: { code: "LU" } });
+      await prisma.userLocation.createMany({
+        data: [
+          { userId: staff.id, locationId: qc.id },
+          { userId: staff.id, locationId: lu.id },
+        ],
       });
       await prisma.session.create({
         data: {
@@ -151,6 +176,18 @@ describe("canonical opening seed", () => {
 
       expect(await canonicalRows(prisma)).toEqual(expectedRows);
       expect(await prisma.user.count({ where: { role: "ADMIN" } })).toBe(1);
+      expect(
+        await prisma.user.findUnique({ where: { id: ownerBefore.id } }),
+      ).not.toBeNull();
+      expect(
+        await prisma.account.findUnique({ where: { id: ownerAccountBefore.id } }),
+      ).not.toBeNull();
+      expect(
+        await prisma.product.findUniqueOrThrow({
+          where: { itemCode: openingCatalog.products[0].itemCode },
+          select: { id: true },
+        }),
+      ).toEqual(canonicalProductBefore);
       expect(await prisma.user.findUnique({ where: { id: staff.id } })).not.toBeNull();
       expect(
         await prisma.location.findUnique({ where: { id: dynamicBranch.id } }),
@@ -161,6 +198,30 @@ describe("canonical opening seed", () => {
       expect(
         await prisma.session.findUnique({ where: { id: "preserved-session" } }),
       ).not.toBeNull();
+      expect(
+        await prisma.userLocation.findMany({
+          where: { userId: staff.id },
+          orderBy: { location: { code: "asc" } },
+          select: { location: { select: { code: true } } },
+        }),
+      ).toEqual([
+        { location: { code: "LU" } },
+        { location: { code: "QC" } },
+      ]);
+      const seededRoles = await prisma.roleDefinition.findMany({
+        where: { id: { in: ["role-admin", "role-accounting-staff", "role-stock-staff"] } },
+        select: { id: true, isOwner: true, permissions: true },
+      });
+      expect(seededRoles.find((role) => role.id === "role-admin")).toMatchObject({
+        isOwner: true,
+        permissions: expect.arrayContaining(["locations:all"]),
+      });
+      expect(
+        seededRoles.find((role) => role.id === "role-accounting-staff")?.permissions,
+      ).toContain("locations:all");
+      expect(
+        seededRoles.find((role) => role.id === "role-stock-staff")?.permissions,
+      ).not.toContain("locations:all");
 
       const beforeFailure = await canonicalRows(prisma);
       await expect(

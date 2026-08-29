@@ -34,12 +34,12 @@ function productErrorResponse(error: unknown) {
 
 export async function GET(request: Request) {
   try {
-    await requireCapability(request.headers, "products:view");
+    const actor = await requireCapability(request.headers, "products:view");
     const query = productListQuerySchema.parse(
       Object.fromEntries(new URL(request.url).searchParams),
     );
 
-    return Response.json(await listProducts(query));
+    return Response.json(await listProducts(query, actor));
   } catch (error) {
     if (error instanceof ZodError) {
       return Response.json(

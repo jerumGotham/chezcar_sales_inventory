@@ -12,7 +12,8 @@ import {
   createBranchSchema,
   updateBranchSchema,
 } from "@/lib/contracts/branches";
-import { authorizationErrorResponse } from "@/lib/server/authorization";
+import { AuthorizationError, authorizationErrorResponse, type AuthContext } from "@/lib/server/authorization";
+import { canAccessLocation, hasAllLocationAccess } from "@/lib/server/policy/access";
 import { prisma } from "@/lib/server/prisma";
 
 const branchSelect = {
@@ -49,16 +50,21 @@ function toDto(branch: BranchRecord): BranchDto {
   };
 }
 
-export async function listBranches(): Promise<BranchDto[]> {
+export async function listBranches(actor: AuthContext): Promise<BranchDto[]> {
   const rows = await prisma.location.findMany({
-    where: { type: "BRANCH", isActive: true },
+    where: {
+      type: "BRANCH",
+      isActive: true,
+      ...(hasAllLocationAccess(actor) ? {} : { id: { in: [...actor.locationIds] } }),
+    },
     select: branchSelect,
     orderBy: [{ code: "asc" }, { name: "asc" }],
   });
   return rows.map(toDto);
 }
 
-export async function createBranch(input: CreateBranchRequest): Promise<BranchDto> {
+export async function createBranch(actor: AuthContext, input: CreateBranchRequest): Promise<BranchDto> {
+  if (!hasAllLocationAccess(actor)) throw new AuthorizationError("All-location access is required to create a branch");
   const branch = createBranchSchema.parse(input);
   try {
     const row = await prisma.location.create({
@@ -75,10 +81,12 @@ export async function createBranch(input: CreateBranchRequest): Promise<BranchDt
 }
 
 export async function updateBranch(
+  actor: AuthContext,
   branchId: string,
   input: UpdateBranchRequest,
 ): Promise<BranchDto> {
   const editable = updateBranchSchema.parse(input);
+  if (!canAccessLocation(actor, branchId)) throw new AuthorizationError("Branch is outside assigned locations");
   const existing = await prisma.location.findFirst({
     where: { id: branchId, type: "BRANCH", isActive: true },
     select: { id: true },

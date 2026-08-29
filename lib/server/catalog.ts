@@ -17,7 +17,9 @@ import {
   type AuthContext,
 } from "@/lib/server/authorization";
 import {
+  canAccessLocation,
   evaluateAccess,
+  hasAllLocationAccess,
   type PersistedAccessContext,
   validatePersistedAssignment,
 } from "@/lib/server/policy/access";
@@ -96,7 +98,7 @@ type InventoryListQuery = z.infer<typeof inventoryListQuerySchema>;
 type InventoryMovementsQuery = z.infer<typeof inventoryMovementsQuerySchema>;
 
 export type ResolvedLocationScope =
-  | { kind: "all" }
+  | { kind: "all"; locationIds?: string[] }
   | { kind: "location"; locationId: string };
 
 export class ProductMutationError extends Error {
@@ -109,17 +111,11 @@ export class InventoryMutationError extends Error {
 
 export function parseInventoryListQuery(
   searchParams: URLSearchParams,
-  context: PersistedAccessContext,
 ): InventoryListQuery {
   const input: Record<string, string | string[]> = {};
   const keys = [...new Set(searchParams.keys())].sort();
 
   for (const key of keys) {
-    if (key === "location" && !context.isOwner) {
-      input.location = "all";
-      continue;
-    }
-
     const values = searchParams.getAll(key);
     const distinctValues = [...new Set(values)];
     input[key] =
@@ -131,17 +127,11 @@ export function parseInventoryListQuery(
 
 export function parseInventoryMovementsQuery(
   searchParams: URLSearchParams,
-  context: PersistedAccessContext,
 ): InventoryMovementsQuery {
   const input: Record<string, string | string[]> = {};
   const keys = [...new Set(searchParams.keys())].sort();
 
   for (const key of keys) {
-    if (key === "location" && !context.isOwner) {
-      input.location = "all";
-      continue;
-    }
-
     const values = searchParams.getAll(key);
     const distinctValues = [...new Set(values)];
     input[key] = distinctValues.length === 1 ? distinctValues[0] : distinctValues;
@@ -161,17 +151,15 @@ export async function resolveLocationScope(
     throw new AuthorizationError("Invalid persisted inventory scope");
   }
 
-  if (context.roleScope === "BRANCH" || context.roleScope === "STOCK_ROOM") {
-    return { kind: "location", locationId: context.locationId as string };
-  }
-
   if (requestedLocation === "all") {
-    return { kind: "all" };
+    return hasAllLocationAccess(context)
+      ? { kind: "all" }
+      : { kind: "all", locationIds: [...context.locationIds] };
   }
 
   const location = await findActiveOperationalLocation(requestedLocation);
 
-  if (!location) {
+  if (!location || !canAccessLocation(context, location.id)) {
     throw new AuthorizationError("Invalid inventory location scope");
   }
 
@@ -190,7 +178,11 @@ function pagination(page: number, pageSize: number, total: number) {
 
 export async function listProducts(
   query: ProductListQuery,
+  context: PersistedAccessContext,
 ): Promise<ProductsApiResponse> {
+  const locationId = hasAllLocationAccess(context)
+    ? undefined
+    : { in: [...context.locationIds] };
   const where: Prisma.ProductWhereInput = {
     itemCode: query.itemCode
       ? { contains: query.itemCode, mode: "insensitive" }
@@ -209,12 +201,12 @@ export async function listProducts(
   };
 
   if (query.stockStatus === "has-stock") {
-    where.inventoryBalances = { some: { onHand: { gt: 0 } } };
+    where.inventoryBalances = { some: { locationId, onHand: { gt: 0 } } };
   } else if (query.stockStatus === "no-stock") {
-    where.inventoryBalances = { none: { onHand: { gt: 0 } } };
+    where.inventoryBalances = { none: { locationId, onHand: { gt: 0 } } };
   } else if (query.stockStatus === "inactive-with-stock") {
     where.status = "INACTIVE";
-    where.inventoryBalances = { some: { OR: [{ onHand: { gt: 0 } }, { reserved: { gt: 0 } }] } };
+    where.inventoryBalances = { some: { locationId, OR: [{ onHand: { gt: 0 } }, { reserved: { gt: 0 } }] } };
   }
 
   const [total, totalProducts, activeProducts, inactiveProducts, withReorderLevel, categoryRows, brandRows] =
@@ -242,7 +234,7 @@ export async function listProducts(
     skip,
     take: query.pageSize,
     include: {
-       inventoryBalances: { select: { onHand: true, reserved: true } },
+       inventoryBalances: { where: { locationId }, select: { onHand: true, reserved: true } },
       transferLines: { select: { id: true }, take: 1 },
       receiptLines: { select: { id: true }, take: 1 },
       inventoryMovements: { select: { id: true }, take: 1 },
@@ -282,13 +274,7 @@ export async function listProducts(
 }
 
 function assertInventoryMutationScope(actor: AuthContext, locationId: string) {
-  if (actor.isOwner) return;
-  if (
-    !actor.locationId ||
-    actor.locationId !== locationId ||
-    actor.location?.id !== actor.locationId ||
-    !actor.location.isActive
-  ) {
+  if (!canAccessLocation(actor, locationId)) {
     throw new InventoryMutationError("FORBIDDEN", "Inventory balance is outside your assigned location", 403);
   }
 }
@@ -413,9 +399,13 @@ export async function listInventory(
   const scope = await resolveLocationScope(context, query.location);
   const scopeLocationId =
     scope.kind === "location" ? scope.locationId : undefined;
+  const scopedLocation = scopeLocationId ??
+    (scope.kind === "all" && scope.locationIds
+      ? { in: scope.locationIds }
+      : undefined);
   const balanceWhere: Prisma.InventoryBalanceWhereInput = {
     id: query.balanceId,
-    locationId: scopeLocationId,
+    locationId: scopedLocation,
   };
   const productWhere: Prisma.ProductWhereInput = {
     itemCode: query.itemCode
@@ -440,17 +430,14 @@ export async function listInventory(
       },
     }),
     prisma.inventoryBalance.findMany({
-      where: { locationId: scopeLocationId },
+      where: { locationId: scopedLocation },
       select: { productId: true, onHand: true, reserved: true, product: { select: { reorderLevel: true } } },
     }),
     prisma.stockTransferLine.aggregate({
       where: {
         transfer: {
           status: "IN_TRANSIT",
-          destinationId:
-            context.roleScope === "BRANCH"
-              ? (context.locationId as string)
-              : scopeLocationId,
+          destinationId: scopedLocation,
         },
       },
       _sum: { inTransitQuantity: true },
@@ -500,10 +487,7 @@ export async function listInventory(
       totalUnits,
       needsRestock,
       incomingItems: incomingItems._sum.inTransitQuantity ?? 0,
-      incomingItemsLabel:
-        context.roleScope === "STOCK_ROOM"
-          ? "Items in transit to branches"
-          : "Incoming items",
+      incomingItemsLabel: "Incoming items",
     },
   };
 }
@@ -515,7 +499,12 @@ export async function listInventoryMovements(
   assertCapability(context, "inventory-movements:view");
   const scope = await resolveLocationScope(context, query.location);
   const where: Prisma.InventoryMovementWhereInput = {
-    locationId: scope.kind === "location" ? scope.locationId : undefined,
+    locationId:
+      scope.kind === "location"
+        ? scope.locationId
+        : scope.locationIds
+          ? { in: scope.locationIds }
+          : undefined,
     product: query.product === "all" ? undefined : { itemCode: query.product },
     type: query.type === "all" ? undefined : movementTypeFromLabel(query.type),
     reference: query.reference ? { contains: query.reference, mode: "insensitive" } : undefined,

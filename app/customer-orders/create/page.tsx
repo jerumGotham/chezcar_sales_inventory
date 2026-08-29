@@ -87,8 +87,10 @@ type OrderOptions = {
   branches: Array<{ id: string; code: string; name: string }>;
 };
 
-async function fetchOrderOptions(locationId: string, includeUnavailable: boolean) {
-  const response = await fetch(`/api/customer-orders/options?locationId=${encodeURIComponent(locationId)}&includeUnavailable=${includeUnavailable}`, { credentials: "same-origin" });
+async function fetchOrderOptions(locationId: string | null, includeUnavailable: boolean) {
+  const params = new URLSearchParams({ includeUnavailable: String(includeUnavailable) });
+  if (locationId) params.set("locationId", locationId);
+  const response = await fetch(`/api/customer-orders/options?${params}`, { credentials: "same-origin" });
   const json = await response.json();
   if (!response.ok) throw new Error(json.error?.message ?? "Unable to load order options");
   return json.data as OrderOptions;
@@ -98,18 +100,18 @@ export default function CreateCustomerOrderPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const access = useShellAccess();
-  const role = access.authenticated ? access.identity.role : null;
   const capabilities = access.authenticated ? access.capabilities : [];
   const canCreate = hasCapability(capabilities, "customer-orders:create");
   const [location, setLocation] = useState<SelectOption | null>(null);
   const [status, setStatus] = useState<SelectOption>(STATUS_OPTIONS[1]);
-  const branchStaffLocationId = access.authenticated ? access.scope.locationId : null;
-  const activeLocationId = role === "ADMIN" ? location?.value ?? null : branchStaffLocationId;
+  const assignedLocationId = access.authenticated ? access.scope.locationId : null;
+  const requiresLocationSelection = access.authenticated && access.scope.locationId === null;
+  const activeLocationId = requiresLocationSelection ? location?.value ?? null : assignedLocationId;
   const includeUnavailable = status.value === "WAITING_STOCK";
   const optionsQuery = useQuery({
     queryKey: ["customer-order-options", activeLocationId, { includeUnavailable }],
-    queryFn: () => fetchOrderOptions(activeLocationId ?? "", includeUnavailable),
-    enabled: role === "ADMIN" || Boolean(activeLocationId),
+    queryFn: () => fetchOrderOptions(activeLocationId, includeUnavailable),
+    enabled: access.authenticated && canCreate,
   });
   const [customer, setCustomer] = useState<SelectOption | null>(null);
   const [downpayment, setDownpayment] = useState("0");
@@ -138,7 +140,7 @@ export default function CreateCustomerOrderPage() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!customer) throw new Error("Select a customer.");
-      if (role === "ADMIN" && !location) throw new Error("Select a branch.");
+      if (!activeLocationId) throw new Error("Select a branch.");
       if (items.some((item) => !item.item || item.quantity < 1)) throw new Error("Select a product and valid quantity for every line.");
       if (status.value === "RESERVED" && items.some((item) => item.item && item.quantity > (productById.get(item.item.value)?.availableQuantity ?? 0))) throw new Error("Order quantity cannot exceed available branch stock.");
       const orderType = status.value === "WAITING_STOCK"
@@ -154,7 +156,7 @@ export default function CreateCustomerOrderPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customer: { id: customer.value, name: customer.label },
-          locationId: location?.value,
+          locationId: activeLocationId,
           type: orderType,
           expectedReleaseDate: releaseDate || undefined,
           notes: notes || undefined,
@@ -301,7 +303,7 @@ export default function CreateCustomerOrderPage() {
 
                 <div className="space-y-2">
                   <Label>Branch</Label>
-                  {role === "ADMIN" ? (
+                  {requiresLocationSelection ? (
                     <Select
                       instanceId="create-order-location"
                       options={optionsQuery.data?.branches.map((item) => ({ value: item.id, label: `${item.name} (${item.code})` })) ?? []}

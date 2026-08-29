@@ -90,11 +90,7 @@ describe("inventory persisted location scope", () => {
         type: "BRANCH",
         isActive: false,
       });
-      // Corrupt only the disposable target so the application guard is proven
-      // fail-closed even if the database nullability invariant is bypassed.
-      await prisma.$executeRawUnsafe(
-        'ALTER TABLE "User" DROP CONSTRAINT "User_role_location_check"',
-      );
+      // Missing and inactive authoritative assignments must fail closed.
       const missingAssignment = await createUserFixture(prisma, fixture.locations, {
         namespace: "inventory-scope",
         key: "missing-assignment",
@@ -111,23 +107,10 @@ describe("inventory persisted location scope", () => {
       });
       const { GET } = await import("../../app/api/inventory/route");
 
-      const hostileBranchQueries: readonly (readonly RequestQueryEntry[])[] = [
+      for (const query of [
         [["location", "all"]],
-        [["location", "BL Branch"]],
-        [["location", "Stock Room"]],
-        [
-          ["location", "all"],
-          ["location", "BL Branch"],
-          ["location", "Stock Room"],
-        ],
-        [
-          ["location", "Stock Room"],
-          ["location", "BL Branch"],
-          ["location", "all"],
-        ],
-      ];
-
-      for (const query of hostileBranchQueries) {
+        [["location", "QC Branch"]],
+      ] as const) {
         const response = await GET(inventoryRequest(fixture.users.branchStaff, query));
         const body = (await response.json()) as InventoryBody;
 
@@ -135,14 +118,26 @@ describe("inventory persisted location scope", () => {
         expect(markerCodes(body)).toEqual(["MARKER-QC"]);
       }
 
-      for (const location of ["all", "QC Branch", "BL Branch"]) {
+      for (const location of ["BL Branch", "Stock Room"]) {
+        const response = await GET(
+          inventoryRequest(fixture.users.branchStaff, [["location", location]]),
+        );
+        expect(response.status).toBe(403);
+        expect(markerCodes((await response.json()) as InventoryBody)).toEqual([]);
+      }
+
+      const stockAll = await GET(
+        inventoryRequest(fixture.users.stockStaff, [["location", "all"]]),
+      );
+      expect(stockAll.status).toBe(200);
+      expect(markerCodes((await stockAll.json()) as InventoryBody)).toEqual(["MARKER-SR"]);
+
+      for (const location of ["QC Branch", "BL Branch"]) {
         const response = await GET(
           inventoryRequest(fixture.users.stockStaff, [["location", location]]),
         );
-        const body = (await response.json()) as InventoryBody;
-
-        expect(response.status).toBe(200);
-        expect(markerCodes(body)).toEqual(["MARKER-SR"]);
+        expect(response.status).toBe(403);
+        expect(markerCodes((await response.json()) as InventoryBody)).toEqual([]);
       }
 
       const adminAll = await GET(

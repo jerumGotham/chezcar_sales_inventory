@@ -4,7 +4,7 @@ export type ShellRole =
   | "BRANCH_STAFF"
   | "ACCOUNTING_STAFF";
 
-import type { CapabilityId, RoleScopeDto } from "./roles";
+import type { CapabilityId } from "./roles";
 
 export type ShellCapabilityId = CapabilityId;
 
@@ -47,15 +47,13 @@ export type ShellMenuEntryDto = {
 export type ShellIdentityDto = {
   name: string;
   email: string;
-  role: ShellRole;
   roleDefinitionId: string;
   roleName: string;
-  roleScope: RoleScopeDto;
   isOwner: boolean;
 };
 
 export type LocationScopeDto = {
-  kind: "all-locations" | "location" | "business-wide";
+  kind: "all-locations" | "assigned-locations" | "location";
   label: string;
   locationId: string | null;
   code: string | null;

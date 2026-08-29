@@ -1,5 +1,5 @@
 import { updateBranchSchema } from "@/lib/contracts/branches";
-import { AuthorizationError, requireCapability } from "@/lib/server/authorization";
+import { requireCapability } from "@/lib/server/authorization";
 import {
   branchesErrorResponse,
   updateBranch,
@@ -10,10 +10,9 @@ type BranchRouteContext = { params: Promise<{ branchId: string }> };
 export async function PATCH(request: Request, context: BranchRouteContext) {
   try {
     const actor = await requireCapability(request.headers, "branches:update");
-    if (!actor.isOwner) throw new AuthorizationError("Insufficient permissions");
     const { branchId } = await context.params;
     const input = updateBranchSchema.parse(await request.json());
-    return Response.json({ data: await updateBranch(branchId, input) });
+    return Response.json({ data: await updateBranch(actor, branchId, input) });
   } catch (error) {
     return branchesErrorResponse(error, "Unable to update branch");
   }

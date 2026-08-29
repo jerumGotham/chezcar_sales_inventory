@@ -17,6 +17,8 @@ Inventory answers, "What stock is available at this location?" Stock Transfers i
 
 Branch Staff cannot edit dispatched quantities or directly adjust stock. Admin may create, edit, finalize, dispatch, and investigate transfers as operational cover for Stock Staff. Stock Staff cannot post the final discrepancy resolution. Admin approval is required before the linked stock outcome is posted.
 
+Transfer records are authorized by source or destination. A user assigned to active `SR` with the relevant transfer action capability can create and manage outbound records to any active branch; this workflow-specific reach does not grant access to that branch's inventory, sales, orders, reports, or other business data. A destination-side user can see and act only on transfers whose destination is one of their active assignments.
+
 ## Planned Flow
 
 1. Stock Staff creates and dispatches a multi-item transfer from `SR` to a branch.

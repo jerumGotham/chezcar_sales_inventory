@@ -1,40 +1,16 @@
 import "server-only";
 
-import type { LocationType, RoleScope, UserRole } from "@prisma/client";
-
 import { CAPABILITY_IDS, type CapabilityId } from "../../contracts/roles";
 import { effectiveCapabilities, hasCapability } from "../../permissions";
 
-export type AccessResource =
-  | "dashboard"
-  | "customers"
-  | "customer-orders"
-  | "products"
-  | "inventory"
-  | "users"
-  | "reports"
-  | "stock-transfers";
-
-export type AccessAction = "view" | "manage";
-
 export type Capability = CapabilityId;
-
-export type PersistedAccessLocation = {
-  id: string;
-  code: string;
-  type: LocationType;
-  isActive: boolean;
-};
 
 export type PersistedAccessContext = {
   userId: string;
-  role: UserRole;
   roleDefinitionId: string;
-  roleScope: RoleScope;
   capabilities: readonly string[];
   isOwner: boolean;
-  locationId: string | null;
-  location: PersistedAccessLocation | null;
+  locationIds: readonly string[];
 };
 
 export const CAPABILITIES = {
@@ -64,54 +40,35 @@ export const CAPABILITIES = {
   stockTransfersView: "stock-transfers:view",
 } as const satisfies Record<string, Capability>;
 
-const COMPATIBILITY_ROLE_BY_SCOPE = {
-  OWNER: "ADMIN",
-  BRANCH: "BRANCH_STAFF",
-  STOCK_ROOM: "STOCK_STAFF",
-  BUSINESS_WIDE: "ACCOUNTING_STAFF",
-} as const satisfies Record<RoleScope, UserRole>;
+export function hasAllLocationAccess(context: PersistedAccessContext): boolean {
+  return context.isOwner || context.capabilities.includes("locations:all");
+}
 
-export function validatePersistedAssignment(
+export function validatePersistedAssignment(context: PersistedAccessContext): boolean {
+  return hasAllLocationAccess(context) || context.locationIds.length > 0;
+}
+
+export function canAccessLocation(
   context: PersistedAccessContext,
+  locationId: string,
 ): boolean {
-  const { role, roleScope, locationId, location } = context;
-  if (
-    role !== COMPATIBILITY_ROLE_BY_SCOPE[roleScope] ||
-    context.isOwner !== (roleScope === "OWNER")
-  ) {
-    return false;
-  }
-  const hasConsistentLocation =
-    locationId !== null && location !== null && location.id === locationId;
+  return validatePersistedAssignment(context) &&
+    (hasAllLocationAccess(context) || context.locationIds.includes(locationId));
+}
 
-  switch (roleScope) {
-    case "OWNER":
-    case "BUSINESS_WIDE":
-      return locationId === null && location === null;
-    case "STOCK_ROOM":
-      return (
-        hasConsistentLocation &&
-        location.isActive &&
-        location.code === "SR" &&
-        location.type === "WAREHOUSE"
-      );
-    case "BRANCH":
-      return (
-        hasConsistentLocation &&
-        location.isActive &&
-        location.type === "BRANCH"
-      );
-  }
+export function accessibleLocationWhere(context: PersistedAccessContext):
+  | Record<string, never>
+  | { id: { in: string[] } } {
+  return hasAllLocationAccess(context)
+    ? {}
+    : { id: { in: [...context.locationIds] } };
 }
 
 export function evaluateAccess(
   context: PersistedAccessContext,
   capability: Capability,
 ): boolean {
-  if (!validatePersistedAssignment(context)) {
-    return false;
-  }
-
+  if (!validatePersistedAssignment(context)) return false;
   const granted = context.capabilities.filter((item): item is CapabilityId =>
     CAPABILITY_IDS.includes(item as CapabilityId),
   );
@@ -121,10 +78,7 @@ export function evaluateAccess(
 export function capabilitiesFor(
   context: PersistedAccessContext,
 ): readonly Capability[] {
-  if (!validatePersistedAssignment(context)) {
-    return [];
-  }
-
+  if (!validatePersistedAssignment(context)) return [];
   if (context.isOwner) return CAPABILITY_IDS;
   const granted = context.capabilities.filter((item): item is CapabilityId =>
     CAPABILITY_IDS.includes(item as CapabilityId),

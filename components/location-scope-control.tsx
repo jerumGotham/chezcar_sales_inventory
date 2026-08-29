@@ -2,7 +2,7 @@
 
 import { Lock } from "lucide-react";
 
-import type { LocationScopeDto, ShellRole } from "@/lib/contracts/access";
+import type { LocationScopeDto } from "@/lib/contracts/access";
 import { cn } from "@/lib/utils";
 
 export type ScopeLocationOption = {
@@ -12,7 +12,6 @@ export type ScopeLocationOption = {
 };
 
 export type LocationScopeControlProps = {
-  role: ShellRole;
   scope: LocationScopeDto;
   locations: readonly ScopeLocationOption[];
   /** Current selected scope value: "all" or one active operational location code. */
@@ -41,18 +40,13 @@ function scopeOptions(locations: readonly ScopeLocationOption[]) {
  *   its Business-wide feedback lives only in the global AppHeader.
  */
 export function LocationScopeControl({
-  role,
   scope,
   locations,
   value,
   onValueChange,
   id,
 }: LocationScopeControlProps) {
-  if (role === "ACCOUNTING_STAFF") {
-    return null;
-  }
-
-  if (role === "ADMIN") {
+  if (scope.kind !== "location") {
     return (
       <select
         id={id}
@@ -70,8 +64,7 @@ export function LocationScopeControl({
     );
   }
 
-  // Stock Staff and Branch Staff see their persisted scope as static,
-  // read-only feedback; no selection control exists for these roles.
+  // A single selected location is static read-only feedback.
   return (
     <div
       id={id}

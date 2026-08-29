@@ -113,7 +113,15 @@ export async function notifyInventoryThresholdChange(
   if (!nextStatus || nextStatus === previousStatus) return;
 
   const recipients = await tx.user.findMany({
-    where: { status: "ACTIVE", OR: [{ role: "ADMIN" }, { locationId: input.locationId }] },
+    where: {
+      status: "ACTIVE",
+      accessRole: { OR: [{ isOwner: true }, { permissions: { has: "notifications:view" } }] },
+      OR: [
+        { accessRole: { isOwner: true } },
+        { accessRole: { permissions: { has: "locations:all" } } },
+        { locationAssignments: { some: { locationId: input.locationId } } },
+      ],
+    },
     select: { id: true },
   });
   await createNotifications(tx, recipients.map((recipient) => ({

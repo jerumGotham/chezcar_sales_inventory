@@ -59,6 +59,7 @@ describe("sales tracer — per-branch receipt, stock deduction, Accounting VERIF
 
       // BL posts same booklet+number succeeds
       const blSale = await createDirectSale(blActor, {
+        locationId: fixture.locations.branches.BL.id,
         receiptBooklet: booklet,
         manualReceiptNumber: receiptNumber,
         amountPaid: 100,
@@ -74,6 +75,7 @@ describe("sales tracer — per-branch receipt, stock deduction, Accounting VERIF
 
       // QC posts same booklet+number succeeds (per-branch isolation)
       const qcSale = await createDirectSale(qcActor, {
+        locationId: fixture.locations.branches.QC.id,
         receiptBooklet: booklet,
         manualReceiptNumber: receiptNumber,
         amountPaid: 50,
@@ -87,6 +89,7 @@ describe("sales tracer — per-branch receipt, stock deduction, Accounting VERIF
       // Duplicate same branch/booklet/number → 409
       await expect(
         createDirectSale(blActor, {
+          locationId: fixture.locations.branches.BL.id,
           receiptBooklet: booklet,
           manualReceiptNumber: receiptNumber,
           amountPaid: 50,
@@ -97,6 +100,7 @@ describe("sales tracer — per-branch receipt, stock deduction, Accounting VERIF
 
       // Same number different booklet in same branch succeeds (different composite)
       const altBookletSale = await createDirectSale(blActor, {
+        locationId: fixture.locations.branches.BL.id,
         receiptBooklet: "BK-02",
         manualReceiptNumber: receiptNumber,
         amountPaid: 50,
@@ -111,6 +115,7 @@ describe("sales tracer — per-branch receipt, stock deduction, Accounting VERIF
       });
       await expect(
         createDirectSale(blActor, {
+          locationId: fixture.locations.branches.BL.id,
           receiptBooklet: "BK-01",
           manualReceiptNumber: "0099",
           amountPaid: 1000,
@@ -127,6 +132,7 @@ describe("sales tracer — per-branch receipt, stock deduction, Accounting VERIF
       // Server total validation (amountPaid mismatch)
       await expect(
         createDirectSale(blActor, {
+          locationId: fixture.locations.branches.BL.id,
           receiptBooklet: "BK-01",
           manualReceiptNumber: "0098",
           amountPaid: 999,

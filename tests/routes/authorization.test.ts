@@ -106,10 +106,10 @@ const branch: PersistedLocation = {
 };
 
 const roleAccess = {
-  ADMIN: { id: "role-admin", scope: "OWNER", permissions: [] },
-  STOCK_STAFF: { id: "role-stock-staff", scope: "STOCK_ROOM", permissions: ["dashboard:view", "customers:view", "customer-orders:view", "products:view", "inventory:view"] },
-  BRANCH_STAFF: { id: "role-branch-staff", scope: "BRANCH", permissions: ["dashboard:view", "customers:view", "customer-orders:view", "inventory:view"] },
-  ACCOUNTING_STAFF: { id: "role-accounting-staff", scope: "BUSINESS_WIDE", permissions: ["dashboard:view", "customers:view", "customer-orders:view"] },
+  ADMIN: { id: "role-admin", isOwner: true, permissions: [] },
+  STOCK_STAFF: { id: "role-stock-staff", isOwner: false, permissions: ["customers:view", "products:view", "inventory:view"] },
+  BRANCH_STAFF: { id: "role-branch-staff", isOwner: false, permissions: ["dashboard:view", "customers:view", "inventory:view"] },
+  ACCOUNTING_STAFF: { id: "role-accounting-staff", isOwner: false, permissions: ["locations:all", "dashboard:view", "customer-orders:view"] },
 } as const;
 
 const routes: readonly RouteSpec[] = [
@@ -119,7 +119,7 @@ const routes: readonly RouteSpec[] = [
     capability: "dashboard:view",
     handler: getDashboard,
     allowed: ["ACCOUNTING_STAFF", null],
-    denied: ["ADMIN", branch],
+    denied: ["STOCK_STAFF", stockRoom],
     protectedMarker: "protected-dashboard",
     service: null,
   },
@@ -129,7 +129,7 @@ const routes: readonly RouteSpec[] = [
     capability: "customers:view",
     handler: getCustomers,
     allowed: ["STOCK_STAFF", stockRoom],
-    denied: ["STOCK_STAFF", branch],
+    denied: ["ACCOUNTING_STAFF", null],
     protectedMarker: "protected-customer",
     service: mocks.listCustomers,
   },
@@ -174,10 +174,9 @@ function persistedUser(
     id: `user-${role.toLowerCase()}`,
     role,
     roleDefinitionId: accessRole.id,
-    accessRole: { scope: accessRole.scope, permissions: accessRole.permissions },
+    accessRole: { isOwner: accessRole.isOwner, permissions: accessRole.permissions },
     status: "ACTIVE",
-    locationId: location?.id ?? null,
-    location,
+    locationAssignments: location?.isActive ? [{ locationId: location.id }] : [],
   };
 }
 
@@ -237,10 +236,7 @@ describe.each(routes)("$name authorization", (route) => {
     expect(body).toEqual({
       error: {
         code: "FORBIDDEN",
-        message:
-          route.name === "products" || route.name === "inventory"
-            ? "Insufficient permissions"
-            : "Invalid persisted access assignment",
+        message: "Insufficient permissions",
       },
     });
     expect(JSON.stringify(body)).not.toContain(route.protectedMarker);

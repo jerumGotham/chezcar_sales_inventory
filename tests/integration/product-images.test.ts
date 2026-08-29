@@ -87,6 +87,7 @@ describe("product images", () => {
 
       const listed = await listProducts(
         productListQuerySchema.parse({ itemCode: "IMAGE-ITEM" }),
+        admin,
       );
       expect(listed.data).toHaveLength(1);
       expect(listed.data[0]?.imageUrl).toBe(uploaded.imageUrl);

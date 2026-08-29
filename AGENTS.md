@@ -7,7 +7,7 @@ Chezcar Sales & Inventory is a Next.js 16/React 19 **UI prototype**, not a produ
 
 Current gaps are intentional and material:
 
-- Better Auth email/password sessions, active-account checks, persisted RoleDefinition capability grants, and RoleScope/location authorization are implemented. Public sign-up is disabled; `UserRole` remains only a synchronized operational-scope compatibility field.
+- Better Auth email/password sessions, active-account checks, action-only RoleDefinition grants, explicit owner identity, and UserLocation authorization are implemented. Public sign-up is disabled; `UserRole`, `User.locationId`, and `RoleDefinition.scope` remain compatibility storage only.
 - Products, Inventory and Availability, customers/orders/sales/accounting, stock receiving/transfers, notifications, users, roles, and branches use PostgreSQL through Prisma. Job Orders and some supporting panels remain mock/local behavior.
 - Checked-in additive migrations and an environment-driven development seed exist. The seed provisions reference catalog data, deterministic built-in roles, and the first Admin without committed credentials.
 - Vitest unit and serial disposable-PostgreSQL integration suites run locally and in GitHub Actions CI. Coverage and automated browser tests do not exist.
@@ -64,8 +64,8 @@ npm run test:integration # serial disposable-PostgreSQL integration project
 npm run prisma:generate
 npm run db:migrate     # development migration; requires DATABASE_URL
 npm run db:migrate:deploy # deployment migration; requires a reviewed, backed-up target
-npm run db:seed        # requires DATABASE_URL and SEED_ADMIN_* values
-npm run db:data:reset  # guarded isolated reset; preserves users/auth, products, locations
+npm run db:seed        # guarded local catalog replacement; requires DATABASE_URL and SEED_ADMIN_* values
+npm run db:data:reset  # guarded local reset; preserves users/auth, products, locations
 docker compose up -d postgres
 docker compose stop postgres
 docker build -t chezcar .
@@ -113,7 +113,7 @@ For production work, proceed incrementally:
 1. Reconcile UI needs with canonical domain contracts and validation schemas.
 2. Extend the committed foundation migration additively as each canonical workflow is implemented.
 3. Add deterministic unit, route, and database integration tests plus dependable type-check/lint scripts.
-4. Expand the existing authentication and persisted capability/RoleScope authorization to each new server workflow.
+4. Expand the existing authentication, action-capability, and UserLocation authorization to each new server workflow.
 6. Implement transactional mutations one workflow at a time, with auditability and concurrency/idempotency protections.
 7. Add end-to-end coverage and CI only after local commands and durable workflows are reliable.
 

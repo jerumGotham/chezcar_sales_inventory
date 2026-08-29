@@ -18,7 +18,7 @@ Current UI columns may inform this model, but page-local fixtures are not author
 5. Snapshot product descriptions and prices on transaction lines so history survives product edits.
 6. Use integer quantities and integer centavos or PostgreSQL Decimal for money.
 7. Add `createdAt`, `updatedAt`, actor IDs, status, and optimistic version fields where concurrent workflows require them.
-8. Enforce role and branch/location scope on the server.
+8. Enforce action capabilities and authoritative multi-location access on the server.
 9. Preserve offline submissions and idempotency results separately from canonical business records.
 
 ## Identity and Access
@@ -30,19 +30,21 @@ Current UI columns may inform this model, but page-local fixtures are not author
 - `email`
 - authentication-provider/credential reference
 - `roleDefinitionId`: the authoritative persisted access-role assignment
-- `role`: synchronized `ADMIN`, `STOCK_STAFF`, `BRANCH_STAFF`, or `ACCOUNTING_STAFF` compatibility value derived from the role scope
-- assigned `locationId` for location-scoped roles: `SR` for `STOCK_ROOM` or exactly one branch for `BRANCH`; `OWNER` and `BUSINESS_WIDE` have no location assignment
+- legacy `role` and `locationId` compatibility values; neither authorizes access
+- zero or more authoritative `UserLocation` assignments; restricted users require at least one active operational assignment
 - `status`: active/inactive
 - timestamps
 
-The system seeds four deterministic built-in roles and permits the owner Admin to create additional assignable roles. `RoleDefinition.permissions` is authoritative for non-owner authorization; `RoleDefinition.scope` controls location semantics and compatibility-role synchronization. The single `OWNER` role is immutable, always receives the full capability catalog, and cannot be assigned through User Management.
+The system seeds four deterministic built-in roles and permits delegated role managers to create additional assignable roles. `RoleDefinition.permissions`, explicit `isOwner`, `locations:all`, and UserLocation assignments are authoritative. The single owner role is immutable, always receives the full capability catalog, and cannot be assigned through User Management.
 
 ### RoleDefinition
 
 - `id` and stable unique `key`
 - case-insensitively unique `name`
 - description
-- `scope`: `OWNER`, `BRANCH`, `STOCK_ROOM`, or `BUSINESS_WIDE`
+- legacy `scope` compatibility value, not an authorization input
+- `isOwner`: explicit singleton owner identity
+- action permission IDs, including independent `locations:all` location reach
 - executable capability grants
 - built-in marker
 - optimistic `version`

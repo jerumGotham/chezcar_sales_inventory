@@ -34,7 +34,7 @@ export default function ReportsPage() {
   const reports = data?.data;
 
   return (
-    <PageShell title="Reports" subtitle="Read-only live summaries for Sales, Accounting/Reconciliation, and Admin Inventory.">
+    <PageShell title="Reports" subtitle="Read-only live summaries for Sales, Accounting/Reconciliation, Orders, and authorized Inventory.">
       {isLoading ? (
         <Card><CardContent className="flex items-center gap-2 p-6 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading reports...</CardContent></Card>
       ) : error || !reports ? (

@@ -163,18 +163,32 @@ describe("live inventory availability", () => {
         ]),
       );
       const branchBody = (await branchResponse.json()) as AvailabilityBody;
-      expect(branchResponse.status).toBe(200);
-      expect(new Set(branchBody.data?.map((row) => row.location.code))).toEqual(
+      expect(branchResponse.status).toBe(403);
+      expect(branchBody.error?.code).toBe("FORBIDDEN");
+
+      const assignedBranchResponse = await GET(
+        availabilityRequest(fixture.users.branchStaff),
+      );
+      const assignedBranchBody = (await assignedBranchResponse.json()) as AvailabilityBody;
+      expect(assignedBranchResponse.status).toBe(200);
+      expect(new Set(assignedBranchBody.data?.map((row) => row.location.code))).toEqual(
         new Set(["QC"]),
       );
-      expect(branchBody.filterOptions?.locations.map((location) => location.code)).toEqual(["QC"]);
+      expect(assignedBranchBody.filterOptions?.locations.map((location) => location.code)).toEqual(["QC"]);
 
       const stockResponse = await GET(
         availabilityRequest(fixture.users.stockStaff, [["location", "QC"]]),
       );
       const stockBody = (await stockResponse.json()) as AvailabilityBody;
-      expect(stockResponse.status).toBe(200);
-      expect(new Set(stockBody.data?.map((row) => row.location.code))).toEqual(
+      expect(stockResponse.status).toBe(403);
+      expect(stockBody.error?.code).toBe("FORBIDDEN");
+
+      const assignedStockResponse = await GET(
+        availabilityRequest(fixture.users.stockStaff),
+      );
+      const assignedStockBody = (await assignedStockResponse.json()) as AvailabilityBody;
+      expect(assignedStockResponse.status).toBe(200);
+      expect(new Set(assignedStockBody.data?.map((row) => row.location.code))).toEqual(
         new Set(["SR"]),
       );
 

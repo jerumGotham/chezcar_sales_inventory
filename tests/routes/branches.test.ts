@@ -50,7 +50,9 @@ describe("branch maintenance routes", () => {
       expect.any(Headers),
       "branches:view",
     );
-    expect(mocks.listBranches).toHaveBeenCalledOnce();
+    expect(mocks.listBranches).toHaveBeenCalledWith(
+      expect.objectContaining({ isOwner: true }),
+    );
   });
 
   it("normalizes new branch codes before calling the service", async () => {
@@ -65,6 +67,7 @@ describe("branch maintenance routes", () => {
 
     expect(response.status).toBe(201);
     expect(mocks.createBranch).toHaveBeenCalledWith(
+      expect.objectContaining({ isOwner: true }),
       expect.objectContaining({ code: "DV", name: "Davao City" }),
     );
   });
@@ -81,9 +84,11 @@ describe("branch maintenance routes", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(mocks.updateBranch).toHaveBeenCalledWith("branch-dv", {
-      name: "Davao",
-    });
+    expect(mocks.updateBranch).toHaveBeenCalledWith(
+      expect.objectContaining({ isOwner: true }),
+      "branch-dv",
+      { name: "Davao" },
+    );
   });
 
   it("does not parse or create when authorization fails", async () => {
@@ -99,7 +104,7 @@ describe("branch maintenance routes", () => {
     expect(mocks.branchesErrorResponse).toHaveBeenCalled();
   });
 
-  it("does not list branches for a non-owner with the capability", async () => {
+  it("allows delegated branch administration with the exact capability", async () => {
     mocks.requireCapability.mockResolvedValue({
       role: "BRANCH_STAFF",
       isOwner: false,
@@ -107,8 +112,7 @@ describe("branch maintenance routes", () => {
 
     const response = await GET(new Request("http://localhost/api/branches"));
 
-    expect(response.status).toBe(403);
-    expect(mocks.listBranches).not.toHaveBeenCalled();
-    expect(mocks.branchesErrorResponse).toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(mocks.listBranches).toHaveBeenCalled();
   });
 });

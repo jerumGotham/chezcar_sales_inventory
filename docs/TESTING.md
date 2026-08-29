@@ -67,13 +67,13 @@ Unit project (`npm run test`):
 | `scripts/data-onboarding/workbook-profile.test.ts` | 01-02 | Read-only selected-sheet profiling, inert formulas, hostile fixture determinism |
 | `scripts/data-onboarding/canonicalize.test.ts` | 01-03/01-04 | Row classification, temporary codes, blocking findings, owner-resolution coverage |
 | `scripts/data-onboarding/generate-seed.test.ts` | 01-05 | Byte-stable canonical fixture and source-map generation |
-| `lib/server/services/catalog-reset.test.ts` | 01-06 | Positive reset gates; production/unknown/bind-mount refusal |
-| `lib/server/authorization.test.ts` | Authorization | Persisted role grants, scope assignment, owner full access, and capability guards |
+| `lib/server/services/catalog-reset.test.ts` | 01-06 | Positive local/test reset gates and production/unknown-target refusal |
+| `lib/server/authorization.test.ts` | Authorization | Persisted reload over forged session fields, missing/inactive users, custom roles, assignments, owner expansion, and capability denial |
 | `tests/routes/authorization.test.ts` | 01-07/01-14 | Direct-handler authorization order for dashboard/customers/orders/products/inventory |
 | `lib/permissions.test.ts` | Granular authorization | Action-to-view implications and sibling-action isolation |
 | `lib/customer-order-actions.test.ts` | Customer Orders | Capability-specific action visibility across order states and paid cancellation |
 | `tests/routes/branches.test.ts` | Branch Maintenance | Exact view/create/update authorization order, uppercase create input, and immutable PATCH code handling |
-| `tests/routes/roles.test.ts` | Role Maintenance | Owner authorization order and create/update contract parsing |
+| `tests/routes/roles.test.ts` | Role Maintenance | Capability authorization order, actor propagation, and create/update contract parsing |
 | `lib/server/shell.test.ts` | 01-08 | Four-role shell DTOs and scope feedback |
 | `proxy.test.ts` | 01-15 | Page session routing, capability denial, safe callbacks |
 | `tests/helpers/database.test.ts` | 01-13 | Disposable target assertion and lifecycle |
@@ -90,9 +90,11 @@ Integration project (`npm run test:integration`, serial over disposable PostgreS
 | `tests/integration/inventory-availability.test.ts` | Independent cleanup slice | Active-location availability rows, dynamic filters, derived quantities/status, fixed staff scopes, and Accounting denial |
 | `tests/integration/product-images.test.ts` | Product images | Private image validation, upload/read/replace/remove, list serialization, and non-Admin denial |
 | `tests/integration/auth-admin-surface.test.ts` | 01-17 | Internal credential engine; public sign-up and generic admin operations unroutable |
-| `tests/integration/user-management.test.ts` | 01-09 | Owner-only user list/create/update semantics and error envelopes |
+| `tests/integration/user-management.test.ts` | 01-09 | Delegated location-constrained filters, summaries, options, lifecycle writes, and error envelopes |
 | `tests/integration/branch-maintenance.test.ts` | Branch Maintenance slice | Persisted active-branch add/edit, uppercase unique immutable codes, and shared active-location sources |
-| `tests/integration/role-maintenance.test.ts` | Role Maintenance | Case-insensitive names, owner-only grant rejection, serialized scope assignment, optimistic conflict, immutable owner, and grant-change session revocation |
+| `tests/integration/role-maintenance.test.ts` | Role Maintenance | Case-insensitive names, current/requested delegated grant ceilings, superior-role and self-edit refusal, safe all-location removal, optimistic conflict, assignment concurrency, immutable owner, and session revocation |
+| `tests/integration/user-management.test.ts` | User Management | Safe DTOs, complete-target location authority, all-location target refusal, provisioning cleanup failures, lifecycle writes, and session revocation |
+| `tests/integration/migration.test.ts`, `tests/integration/seed.test.ts` | Authorization migration/seed | Exact SQL legacy backfill, owner-role/user singleton constraints, multi-location preservation, owner marker, and expected `locations:all` grants |
 | `tests/integration/granular-permissions.test.ts` | Granular authorization | Real persisted Product Add-only role gets implied view while direct edit/delete requests return `403` without mutation |
 | `tests/integration/session-revocation.test.ts` | 01-09 | Atomic access-change/session revocation, rollback, concurrency |
 | `tests/integration/credential-setup.test.ts` | 01-10 | Prompt arming/consumption, change/skip, other-session revocation |

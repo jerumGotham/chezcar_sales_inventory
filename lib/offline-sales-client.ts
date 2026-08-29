@@ -41,12 +41,12 @@ export function offlineSupported() {
 }
 
 export function shouldAttemptOfflineSync(input: {
-  role: string | null;
+  enabled: boolean;
   online: boolean;
   pendingCount: number;
   inFlight: boolean;
 }) {
-  return input.role === "BRANCH_STAFF" && input.online && input.pendingCount > 0 && !input.inFlight;
+  return input.enabled && input.online && input.pendingCount > 0 && !input.inFlight;
 }
 
 export function getOfflineDeviceId() {

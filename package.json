@@ -17,7 +17,7 @@
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
-    "db:catalog:reload": "node prisma/seed.mjs --catalog-only",
+    "db:catalog:reload": "node --env-file=.env prisma/seed.mjs --catalog-only",
     "db:data:reset": "node --env-file=.env prisma/reset-operational-data.mjs",
     "verify:phase-01": "node scripts/verify-phase-01.mjs"
   },

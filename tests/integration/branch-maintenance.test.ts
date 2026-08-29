@@ -29,6 +29,14 @@ import {
 } from "../../lib/server/services/branches";
 import { withDisposableDatabase } from "../helpers/database";
 
+const ownerActor = {
+  userId: "branch-maintenance-owner",
+  roleDefinitionId: "role-admin",
+  capabilities: [],
+  isOwner: true,
+  locationIds: [],
+} as const;
+
 afterEach(async () => {
   await sharedPrisma.$disconnect();
 });
@@ -42,7 +50,7 @@ describe("persisted branch maintenance", () => {
         city: "Davao City",
         email: "davao@example.test",
       } as CreateBranchRequest;
-      const created = await createBranch(input);
+      const created = await createBranch(ownerActor, input);
 
       expect(created).toMatchObject({
         code: "DV",
@@ -56,11 +64,11 @@ describe("persisted branch maintenance", () => {
       });
 
       const update = { code: "XX", name: "Davao" } as UpdateBranchRequest;
-      await expect(updateBranch(created.id, update)).resolves.toMatchObject({
+      await expect(updateBranch(ownerActor, created.id, update)).resolves.toMatchObject({
         code: "DV",
         name: "Davao",
       });
-      await expect(listBranches()).resolves.toHaveLength(1);
+      await expect(listBranches(ownerActor)).resolves.toHaveLength(1);
     });
   });
 
@@ -69,10 +77,10 @@ describe("persisted branch maintenance", () => {
       await prisma.location.create({
         data: { code: "SR", name: "Stock Room", type: "WAREHOUSE" },
       });
-      await createBranch({ code: "qc", name: "Quezon City" });
+      await createBranch(ownerActor, { code: "qc", name: "Quezon City" });
 
       await expect(
-        createBranch({ code: "QC", name: "Other" }),
+        createBranch(ownerActor, { code: "QC", name: "Other" }),
       ).rejects.toMatchObject({
         status: 409,
         code: "BRANCH_CODE_IN_USE",

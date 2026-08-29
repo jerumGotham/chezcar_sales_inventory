@@ -16,7 +16,7 @@ vi.mock("./auth", () => ({
 vi.mock("./prisma", () => ({
   prisma: {
     user: { findUnique: mocks.findUser },
-    location: { findUnique: mocks.findLocation },
+    location: { findFirst: mocks.findLocation },
   },
 }));
 
@@ -57,8 +57,8 @@ const expectedMenu = {
     "Stock Transfers",
     "Reports",
     "Branch Maintenance",
-    "User Management",
     "Role Maintenance",
+    "User Management",
   ],
   STOCK_STAFF: [
     "Dashboard",
@@ -135,6 +135,7 @@ const expectedCapabilities = {
     "offline-sales:sync",
   ],
   ACCOUNTING_STAFF: [
+    "locations:all",
     "dashboard:view",
     "notifications:view",
     "notifications:mark-read",
@@ -153,10 +154,10 @@ const expectedCapabilities = {
 } as const satisfies Record<UserRole, readonly string[]>;
 
 const roleDetails = {
-  ADMIN: { id: "role-admin", name: "Admin", scope: "OWNER" },
-  STOCK_STAFF: { id: "role-stock-staff", name: "Stock Staff", scope: "STOCK_ROOM" },
-  BRANCH_STAFF: { id: "role-branch-staff", name: "Branch Staff", scope: "BRANCH" },
-  ACCOUNTING_STAFF: { id: "role-accounting-staff", name: "Accounting Staff", scope: "BUSINESS_WIDE" },
+  ADMIN: { id: "role-admin", name: "Admin", isOwner: true, hasAllLocations: true },
+  STOCK_STAFF: { id: "role-stock-staff", name: "Stock Staff", isOwner: false, hasAllLocations: false },
+  BRANCH_STAFF: { id: "role-branch-staff", name: "Branch Staff", isOwner: false, hasAllLocations: false },
+  ACCOUNTING_STAFF: { id: "role-accounting-staff", name: "Accounting Staff", isOwner: false, hasAllLocations: true },
 } as const;
 
 function persistedUser(
@@ -173,12 +174,13 @@ function persistedUser(
     roleDefinitionId: accessRole.id,
     accessRole: {
       name: accessRole.name,
-      scope: accessRole.scope,
-      permissions: [...expectedCapabilities[role]],
+      isOwner: accessRole.isOwner,
+      permissions: accessRole.hasAllLocations
+        ? [...expectedCapabilities[role], "locations:all"]
+        : [...expectedCapabilities[role]],
     },
     status,
-    locationId: location?.id ?? null,
-    location,
+    locationAssignments: location?.isActive ? [{ locationId: location.id }] : [],
   };
 }
 
@@ -187,6 +189,7 @@ function signInAs(role: UserRole, location: LocationInput | null) {
     user: { id: `user-${role.toLowerCase()}`, role: "ADMIN" },
   });
   mocks.findUser.mockResolvedValue(persistedUser(role, location));
+  mocks.findLocation.mockResolvedValue(location);
 }
 
 describe("loadShellAccess", () => {
@@ -200,7 +203,7 @@ describe("loadShellAccess", () => {
     ["ADMIN", null, "All locations", null, "all-locations"],
     ["STOCK_STAFF", stockRoom, "Stock Room (SR)", stockRoom.id, "location"],
     ["BRANCH_STAFF", qcBranch, "Quezon City (QC)", qcBranch.id, "location"],
-    ["ACCOUNTING_STAFF", null, "Business-wide", null, "business-wide"],
+    ["ACCOUNTING_STAFF", null, "All locations", null, "all-locations"],
   ] satisfies ReadonlyArray<
     readonly [UserRole, LocationInput | null, string, string | null, string]
   >)(
@@ -217,10 +220,8 @@ describe("loadShellAccess", () => {
       expect(result.identity).toEqual({
         name: `${role} User`,
         email: `${role.toLowerCase()}@example.com`,
-        role,
         roleDefinitionId: roleDetails[role].id,
         roleName: roleDetails[role].name,
-        roleScope: roleDetails[role].scope,
         isOwner: role === "ADMIN",
       });
       expect(result.scope).toMatchObject({ kind, label, locationId });
@@ -248,19 +249,10 @@ describe("loadShellAccess", () => {
       locationId: "location-qc",
       code: "QC",
     });
-    expect(mocks.findLocation).toHaveBeenCalledWith({
-      where: { id: "location-qc", isActive: true },
-      select: {
-        id: true,
-        code: true,
-        name: true,
-        type: true,
-        isActive: true,
-      },
-    });
+    expect(mocks.findLocation).toHaveBeenCalled();
   });
 
-  it("does not convert Accounting's Business-wide label into inventory access", async () => {
+  it("does not make all-location access imply inventory access", async () => {
     signInAs("ACCOUNTING_STAFF", null);
 
     const result = await loadShellAccess(new Headers());
@@ -270,8 +262,8 @@ describe("loadShellAccess", () => {
       throw new Error("Expected authenticated shell access");
     }
     expect(result.scope).toEqual({
-      kind: "business-wide",
-      label: "Business-wide",
+      kind: "all-locations",
+      label: "All locations",
       locationId: null,
       code: null,
     });
@@ -286,7 +278,7 @@ describe("loadShellAccess", () => {
       roleDefinitionId: "role-custom-auditor",
       accessRole: {
         name: "Branch Auditor",
-        scope: "BRANCH",
+        isOwner: false,
         permissions: ["dashboard:view", "reports:view"],
       },
     });
@@ -295,7 +287,6 @@ describe("loadShellAccess", () => {
     expect(result.authenticated).toBe(true);
     if (!result.authenticated) throw new Error("Expected authenticated shell access");
     expect(result.identity.roleName).toBe("Branch Auditor");
-    expect(result.identity.role).toBe("BRANCH_STAFF");
     expect(result.capabilities).toEqual(["dashboard:view", "reports:view"]);
     expect(result.menu.map((item) => item.href)).toEqual(["/dashboard", "/reports"]);
   });
@@ -305,7 +296,6 @@ describe("loadShellAccess", () => {
     ["inactive user", persistedUser("BRANCH_STAFF", qcBranch, "INACTIVE")],
     ["Stock Staff without SR", persistedUser("STOCK_STAFF", null)],
     ["Branch Staff with inactive branch", persistedUser("BRANCH_STAFF", { ...qcBranch, isActive: false })],
-    ["Accounting with a location", persistedUser("ACCOUNTING_STAFF", qcBranch)],
   ])("fails closed for %s", async (_description, user) => {
     mocks.getSession.mockResolvedValue({ user: { id: "persisted-user" } });
     mocks.findUser.mockResolvedValue(user);

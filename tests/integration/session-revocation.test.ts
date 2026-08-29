@@ -142,7 +142,7 @@ describe("access change and session revocation atomicity", () => {
       await signIn(prisma, target.email, STAFF_PASSWORD);
 
       const service = await import("../../lib/server/services/users");
-      const actor = await service.requireOwnerAdmin(ownerHeaders);
+      const actor = await service.requireUserManager(ownerHeaders);
 
       const sessionsBefore = await prisma.session.count({
         where: { userId: target.id },
@@ -198,7 +198,7 @@ describe("access change and session revocation atomicity", () => {
       );
 
       const service = await import("../../lib/server/services/users");
-      const actor = await service.requireOwnerAdmin(ownerHeaders);
+      const actor = await service.requireUserManager(ownerHeaders);
 
       // Concurrent deactivation and role change must serialize into one valid
       // final assignment without leaving the pre-change session alive.
@@ -230,15 +230,15 @@ describe("access change and session revocation atomicity", () => {
       const moveOutcomes = await Promise.allSettled([
         service.updateStaffUser(actor, target.id, {
           roleId: "role-branch-staff",
-          locationId: locations.branches.BL.id,
+          locationIds: [locations.branches.BL.id],
         }),
         service.updateStaffUser(actor, target.id, {
           roleId: "role-branch-staff",
-          locationId: locations.branches.VC.id,
+          locationIds: [locations.branches.VC.id],
         }),
       ]);
       const settledMoves = moveOutcomes.map((outcome) =>
-        outcome.status === "fulfilled" ? outcome.value.location?.code : "rejected",
+        outcome.status === "fulfilled" ? outcome.value.locations[0]?.code : "rejected",
       );
       expect(settledMoves.filter((code) => code === "rejected")).toHaveLength(0);
 
@@ -268,11 +268,11 @@ describe("access change and session revocation atomicity", () => {
       const oldScopeCookie = await signIn(prisma, target.email, STAFF_PASSWORD);
 
       const service = await import("../../lib/server/services/users");
-      const actor = await service.requireOwnerAdmin(ownerHeaders);
+      const actor = await service.requireUserManager(ownerHeaders);
       const changed = await service.updateStaffUser(actor, target.id, {
         roleId: "role-accounting-staff",
       });
-      expect(changed.role).toBe("ACCOUNTING_STAFF");
+      expect(changed.roleDefinitionId).toBe("role-accounting-staff");
 
       const { GET: getProducts } = await import("../../app/api/products/route");
       const { GET: getInventory } = await import("../../app/api/inventory/route");

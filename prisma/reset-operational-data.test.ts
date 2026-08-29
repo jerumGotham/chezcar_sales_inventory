@@ -3,12 +3,13 @@ import { describe, expect, it } from "vitest";
 import { assertOperationalResetEnvironment } from "./reset-operational-data.mjs";
 
 const developmentDatabaseUrl =
-  "postgresql://postgres:postgres@localhost:55436/chezcar_catalog_dev?schema=public";
+  "postgresql://postgres:postgres@localhost:5435/chezcar_db?schema=public";
 
 describe("operational data reset guard", () => {
   it("requires explicit opt-in", () => {
     expect(() =>
       assertOperationalResetEnvironment({
+        nodeEnv: "development",
         databaseUrl: developmentDatabaseUrl,
         allowOperationalDataReset: undefined,
       }),
@@ -18,15 +19,27 @@ describe("operational data reset guard", () => {
   it("rejects unapproved database identities", () => {
     expect(() =>
       assertOperationalResetEnvironment({
+        nodeEnv: "development",
         databaseUrl: "postgresql://postgres:postgres@db/production?schema=public",
         allowOperationalDataReset: "true",
       }),
-    ).toThrow("outside the approved isolated development or test database");
+    ).toThrow("outside the approved local development or disposable test database");
   });
 
-  it("accepts the isolated development database with explicit opt-in", () => {
+  it("rejects production even when the URL matches local Compose", () => {
     expect(() =>
       assertOperationalResetEnvironment({
+        nodeEnv: "production",
+        databaseUrl: developmentDatabaseUrl,
+        allowOperationalDataReset: "true",
+      }),
+    ).toThrow("production");
+  });
+
+  it("accepts the local Compose database with explicit opt-in", () => {
+    expect(() =>
+      assertOperationalResetEnvironment({
+        nodeEnv: "development",
         databaseUrl: developmentDatabaseUrl,
         allowOperationalDataReset: "true",
       }),

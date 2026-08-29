@@ -1,7 +1,7 @@
 # Chezcar Sales and Inventory MVP
 
 **Status:** Confirmed MVP process
-**Last updated:** 2026-08-28
+**Last updated:** 2026-08-30
 **Source:** Owner discussion, real inventory workbook, and current UI prototype
 
 > **Current-state warning:** The checked-in application is still partly a UI prototype. Authentication, Product/Inventory reads, user management, Stock Room receiving, SR-to-branch transfers/discrepancy resolution, Customer Orders, direct sales, dashboard production metrics, Accounting verification, durable notifications, browser push attempts, and limited offline direct-sale sync have a PostgreSQL-backed foundation. Offline transfer receipt/discrepancy capture, deployment operations, and remaining advanced/deferred screens are not complete until implemented and verified.
@@ -12,7 +12,7 @@ Chezcar needs a simple cloud-based internal system for monitoring sales and inve
 
 Stock Staff records stock received into `SR`, dispatches stock from `SR` to a branch, and records the dispatch in the system. The destination branch is notified in real time. Branch Staff compares the physical delivery with the transfer and either confirms an exact match or submits a discrepancy form. Stock Staff investigates discrepancies; Admin makes the final stock correction.
 
-The system has four built-in operational roles, owner-Admin-only user and role management, persisted capability-based access, dashboards, low-stock monitoring, durable real-time notifications, and limited branch offline continuity for temporary internet outages.
+The system has four built-in roles, delegable action-based user and role management, explicit owner identity, authoritative multi-location assignments, dashboards, low-stock monitoring, durable real-time notifications, and limited branch offline continuity for temporary internet outages.
 
 ## Confirmed Locations
 
@@ -80,8 +80,8 @@ All MVP replenishment enters `SR`. Transfers are `SR` to branch only. Branch-to-
 - The MVP has one owner Admin account; User Management does not create additional Admin accounts
 - View all branches, sales, stock, transfers, discrepancies, low-stock alerts, users, and audit history
 - Create and update Stock Staff, Branch Staff, and Accounting Staff accounts
-- Assign a persisted non-owner role; its operational scope fixes Stock Room users to `SR`, requires exactly one branch for branch-scoped users, or grants business-wide access without a location
-- Create and edit non-owner roles and their capability grants; changing grants revokes assigned users' sessions
+- Assign a persisted non-owner role and one or more active operational locations unless the role grants `locations:all`
+- Create and edit non-owner action-only roles; changing grants revokes assigned users' sessions
 - Deactivate users instead of hard-deleting their identity
 - Manage products, prices, locations, Stock Room receiving, Stock Staff transfer actions when operational cover is needed, and controlled corrections
 - Review unverified receipts as operational cover for Accounting
@@ -215,9 +215,8 @@ If anything does not match:
 
 ### Reports
 
-- Reports are read-only and available only to Admin and Accounting Staff.
-- Admin can access Sales, Accounting/Reconciliation, and Inventory reports.
-- Accounting Staff can access Sales and Accounting/Reconciliation reports only.
+- Reports are read-only and require `reports:view`.
+- Sales, Accounting/Reconciliation, Orders, and Inventory report data are limited to assigned locations unless the role grants `locations:all`.
 - Reports support date presets plus custom date ranges.
 - Reports export to PDF only; CSV report export is deferred.
 - Report data is queried live from the database; saved report snapshots are deferred.

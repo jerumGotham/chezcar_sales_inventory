@@ -1,7 +1,7 @@
 import { updateRoleRequestSchema } from "@/lib/contracts/roles";
 import {
   getRoleDefinition,
-  requireOwnerRoleManager,
+  requireRoleManager,
   rolesErrorResponse,
   updateRoleDefinition,
 } from "@/lib/server/services/roles";
@@ -10,7 +10,7 @@ type RoleRouteContext = { params: Promise<{ roleId: string }> };
 
 export async function GET(request: Request, context: RoleRouteContext) {
   try {
-    await requireOwnerRoleManager(request.headers, "roles:view");
+    await requireRoleManager(request.headers, "roles:view");
     const { roleId } = await context.params;
     return Response.json({ data: await getRoleDefinition(roleId) });
   } catch (error) {
@@ -20,10 +20,10 @@ export async function GET(request: Request, context: RoleRouteContext) {
 
 export async function PATCH(request: Request, context: RoleRouteContext) {
   try {
-    await requireOwnerRoleManager(request.headers, "roles:update");
+    const actor = await requireRoleManager(request.headers, "roles:update");
     const { roleId } = await context.params;
     const input = updateRoleRequestSchema.parse(await request.json());
-    return Response.json({ data: await updateRoleDefinition(roleId, input) });
+    return Response.json({ data: await updateRoleDefinition(actor, roleId, input) });
   } catch (error) {
     return rolesErrorResponse(error, "Unable to update role");
   }

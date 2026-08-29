@@ -44,10 +44,6 @@ function pageCapability(pathname: string): Capability | readonly Capability[] | 
   return PAGE_CAPABILITIES[rootSegment as keyof typeof PAGE_CAPABILITIES] ?? null;
 }
 
-function isOwnerOnlyPage(pathname: string): boolean {
-  return pathname === "/users" || pathname.startsWith("/users/");
-}
-
 function safeLocalCallback(request: NextRequest): string {
   const callback = `${request.nextUrl.pathname}${request.nextUrl.search}`;
   return callback.startsWith("/") && !callback.startsWith("//")
@@ -63,15 +59,19 @@ export async function proxy(request: NextRequest) {
         where: { id: session.user.id },
         select: {
           id: true,
-          role: true,
           status: true,
-          locationId: true,
           roleDefinitionId: true,
           accessRole: {
-            select: { scope: true, permissions: true },
+            select: { isOwner: true, permissions: true },
           },
-          location: {
-            select: { id: true, code: true, type: true, isActive: true },
+          locationAssignments: {
+            where: {
+              location: {
+                isActive: true,
+                OR: [{ type: "BRANCH" }, { code: "SR", type: "WAREHOUSE" }],
+              },
+            },
+            select: { locationId: true },
           },
         },
       })
@@ -93,20 +93,16 @@ export async function proxy(request: NextRequest) {
   if (user && !isSignIn && !isAccessDenied && capability) {
     const context: PersistedAccessContext = {
       userId: user.id,
-      role: user.role,
       roleDefinitionId: user.roleDefinitionId,
-      roleScope: user.accessRole.scope,
       capabilities: user.accessRole.permissions,
-      isOwner: user.accessRole.scope === "OWNER",
-      locationId: user.locationId,
-      location: user.location,
+      isOwner: user.accessRole.isOwner,
+      locationIds: user.locationAssignments.map(({ locationId }) => locationId),
     };
 
     if (
       !(Array.isArray(capability)
         ? capability.some((item) => evaluateAccess(context, item))
-        : evaluateAccess(context, capability as Capability)) ||
-      (isOwnerOnlyPage(request.nextUrl.pathname) && !context.isOwner)
+        : evaluateAccess(context, capability as Capability))
     ) {
       return NextResponse.redirect(new URL("/access-denied", request.url));
     }

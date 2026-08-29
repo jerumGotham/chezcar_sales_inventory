@@ -8,7 +8,7 @@ import { reloadOpeningCatalog } from "./catalog-reset";
 const TEST_DATABASE_URL =
   "postgresql://postgres:postgres@localhost:55435/chezcar_test_01_13?schema=public";
 const DEVELOPMENT_DATABASE_URL =
-  "postgresql://postgres:postgres@localhost:55436/chezcar_catalog_dev?schema=public";
+  "postgresql://postgres:postgres@localhost:5435/chezcar_db?schema=public";
 
 function prismaWithTransaction(transaction = vi.fn()) {
   return { $transaction: transaction } as unknown as PrismaClient;
@@ -23,10 +23,10 @@ describe("reloadOpeningCatalog safety", () => {
       allowCatalogReset: "true",
     },
     {
-      name: "the checked-in development bind mount",
+      name: "the superseded isolated development database",
       nodeEnv: "development",
       databaseUrl:
-        "postgresql://postgres:postgres@localhost:5435/chezcar_db?schema=public",
+        "postgresql://postgres:postgres@localhost:55436/chezcar_catalog_dev?schema=public",
       allowCatalogReset: "true",
     },
     {
@@ -53,7 +53,7 @@ describe("reloadOpeningCatalog safety", () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 
-  it("accepts only the explicit disposable test and isolated development identities", async () => {
+  it("accepts only the explicit disposable test and local Compose identities", async () => {
     const completed = {
       locations: 6,
       products: 1432,
@@ -73,12 +73,17 @@ describe("reloadOpeningCatalog safety", () => {
         databaseUrl: DEVELOPMENT_DATABASE_URL,
         allowCatalogReset: "true",
       },
+      {
+        nodeEnv: undefined,
+        databaseUrl: DEVELOPMENT_DATABASE_URL,
+        allowCatalogReset: "true",
+      },
     ]) {
       await expect(
         reloadOpeningCatalog({ prisma, environment }),
       ).resolves.toEqual(completed);
     }
-    expect(transaction).toHaveBeenCalledTimes(2);
+    expect(transaction).toHaveBeenCalledTimes(3);
   });
 
   it("rejects an empty or malformed fixture before opening a transaction", async () => {

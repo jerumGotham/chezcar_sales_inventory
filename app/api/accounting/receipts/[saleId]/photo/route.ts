@@ -6,6 +6,7 @@ import {
 } from "@/lib/server/authorization";
 import { prisma } from "@/lib/server/prisma";
 import { CustomerSalesError } from "@/lib/server/services/customer-sales";
+import { canAccessLocation } from "@/lib/server/policy/access";
 import {
   readReceiptEvidence,
   removeReceiptEvidence,
@@ -20,10 +21,7 @@ async function assertEvidenceScope(actor: AuthContext, saleId: string) {
     select: { locationId: true },
   });
   if (!sale) throw new CustomerSalesError("NOT_FOUND", "Sale not found", 404);
-  if (actor.roleScope === "STOCK_ROOM") {
-    throw new AuthorizationError("Insufficient permissions");
-  }
-  if (actor.roleScope === "BRANCH" && sale.locationId !== actor.locationId) {
+  if (!canAccessLocation(actor, sale.locationId)) {
     throw new AuthorizationError("Insufficient permissions");
   }
 }
@@ -41,9 +39,6 @@ export async function POST(request: Request, context: Context) {
     if (review.status === "VERIFIED" || review.resolvedAt) {
       throw new CustomerSalesError("INVALID_STATE", "Receipt evidence cannot be changed after review", 409);
     }
-    if (actor.roleScope === "BRANCH" && review.status !== "MISMATCH_REPORTED") {
-      throw new AuthorizationError("Insufficient permissions");
-    }
     const formData = await request.formData();
     const file = formData.get("photo");
     if (!(file instanceof File)) throw new CustomerSalesError("INVALID_INPUT", "Receipt photo is required", 400);
@@ -51,7 +46,7 @@ export async function POST(request: Request, context: Context) {
     const updated = await prisma.saleAccountingReview.updateMany({
       where: {
         id: review.id,
-        status: actor.roleScope === "BRANCH" ? "MISMATCH_REPORTED" : { not: "VERIFIED" },
+        status: { not: "VERIFIED" },
         resolvedAt: null,
       },
       data: { receiptPhotoKey: evidence.key, receiptPhotoType: evidence.contentType },

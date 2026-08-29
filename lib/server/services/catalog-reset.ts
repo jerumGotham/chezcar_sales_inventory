@@ -10,7 +10,7 @@ import openingCatalog from "../../../prisma/fixtures/opening-catalog.json";
 const TEST_DATABASE_URL =
   "postgresql://postgres:postgres@localhost:55435/chezcar_test_01_13?schema=public";
 const DEVELOPMENT_DATABASE_URL =
-  "postgresql://postgres:postgres@localhost:55436/chezcar_catalog_dev?schema=public";
+  "postgresql://postgres:postgres@localhost:5435/chezcar_db?schema=public";
 const APPROVED_FIXTURE_HASH =
   "a1570f220c260b7fe66e2e4a2eaf1eebe27538563b0b721fd0c9d80f6896d76b";
 const LOCATION_CODES = ["BL", "LU", "QC", "SP", "SR", "VC"] as const;
@@ -158,11 +158,11 @@ export function assertCatalogResetEnvironment(
   const acceptedTestTarget =
     environment.nodeEnv === "test" && environment.databaseUrl === TEST_DATABASE_URL;
   const acceptedDevelopmentTarget =
-    environment.nodeEnv === "development" &&
+    (environment.nodeEnv === undefined || environment.nodeEnv === "development") &&
     environment.databaseUrl === DEVELOPMENT_DATABASE_URL;
   if (!acceptedTestTarget && !acceptedDevelopmentTarget) {
     throw new Error(
-      "Refusing catalog replacement outside the approved disposable test or isolated development database",
+      "Refusing catalog replacement outside the approved disposable test or local development database",
     );
   }
 }
@@ -208,18 +208,38 @@ export async function replaceOpeningCatalog(
   }
 
   await tx.inventoryBalance.deleteMany();
-  await tx.product.deleteMany();
   if (options.failAfterDelete) {
     throw new Error("Injected catalog reload failure after delete");
   }
 
+  const existingProducts = await tx.product.findMany({
+    where: { itemCode: { in: fixture.products.map((product) => product.itemCode) } },
+    select: { itemCode: true },
+  });
+  const existingCodes = new Set(existingProducts.map((product) => product.itemCode));
+  await Promise.all(
+    fixture.products
+      .filter((product) => existingCodes.has(product.itemCode))
+      .map((product) =>
+        tx.product.update({
+          where: { itemCode: product.itemCode },
+          data: {
+            name: product.name,
+            price: product.salePrice,
+            status: product.status,
+          },
+        }),
+      ),
+  );
   await tx.product.createMany({
-    data: fixture.products.map((product) => ({
-      itemCode: product.itemCode,
-      name: product.name,
-      price: product.salePrice,
-      status: product.status,
-    })),
+    data: fixture.products
+      .filter((product) => !existingCodes.has(product.itemCode))
+      .map((product) => ({
+        itemCode: product.itemCode,
+        name: product.name,
+        price: product.salePrice,
+        status: product.status,
+      })),
   });
   const [locations, products] = await Promise.all([
     tx.location.findMany({

@@ -9,6 +9,7 @@ import {
 } from "@/lib/server/authorization";
 import { prisma } from "@/lib/server/prisma";
 import { findActiveBranch } from "@/lib/server/locations";
+import { canAccessLocation } from "@/lib/server/policy/access";
 import { createOfflineDirectSale, CustomerSalesError, directSaleSchema } from "@/lib/server/services/customer-sales";
 
 const activationSchema = z.object({
@@ -29,11 +30,12 @@ export class OfflineSalesError extends Error {
   constructor(public readonly code: string, message: string, public readonly status = 400) { super(message); }
 }
 
-function assertBranchActor(actor: AuthContext) {
-  if (actor.roleScope !== "BRANCH" || !actor.locationId || actor.location?.id !== actor.locationId || actor.location.type !== "BRANCH" || !actor.location.isActive) {
-    throw new OfflineSalesError("FORBIDDEN", "Active Branch scope is required", 403);
+async function assertBranchActor(actor: AuthContext, locationId: string) {
+  const location = await findActiveBranch(locationId);
+  if (!location || !canAccessLocation(actor, location.id)) {
+    throw new OfflineSalesError("FORBIDDEN", "Select an assigned active branch", 403);
   }
-  return actor.locationId;
+  return location.id;
 }
 
 function requestHash(input: unknown) {
@@ -42,10 +44,12 @@ function requestHash(input: unknown) {
 
 export async function activateOfflineDevice(actor: AuthContext, rawInput: unknown) {
   assertCapability(actor, "offline-sales:activate-device");
-  if (!actor.isOwner) throw new OfflineSalesError("FORBIDDEN", "Owner access required", 403);
   const input = activationSchema.parse(rawInput);
   const location = await findActiveBranch(input.locationId);
   if (!location) throw new OfflineSalesError("INVALID_LOCATION", "Select an active branch", 400);
+  if (!canAccessLocation(actor, location.id)) {
+    throw new OfflineSalesError("FORBIDDEN", "Branch is outside your assigned locations", 403);
+  }
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
@@ -67,9 +71,11 @@ export async function activateOfflineDevice(actor: AuthContext, rawInput: unknow
 
 export async function getOfflineSnapshot(actor: AuthContext, rawInput: unknown) {
   assertCapability(actor, "offline-sales:snapshot");
-  const locationId = assertBranchActor(actor);
   const input = snapshotQuerySchema.parse(rawInput);
-  const activation = await authorizeDevice(input.deviceId, locationId, true);
+  const activation = await prisma.offlineDeviceActivation.findUnique({ where: { deviceId: input.deviceId } });
+  if (!activation) throw new OfflineSalesError("OFFLINE_DEVICE_NOT_AUTHORIZED", "Offline device authorization is missing or expired", 403);
+  const locationId = await assertBranchActor(actor, activation.locationId);
+  const authorizedActivation = await authorizeDevice(input.deviceId, locationId, true);
   const balances = await prisma.inventoryBalance.findMany({
     where: { locationId, product: { status: "ACTIVE", price: { not: null } } },
     include: { product: true },
@@ -80,8 +86,8 @@ export async function getOfflineSnapshot(actor: AuthContext, rawInput: unknown) 
   return {
     deviceId: input.deviceId,
     locationId,
-    authorizedAt: activation.lastAuthorizedAt.toISOString(),
-    expiresAt: activation.expiresAt.toISOString(),
+    authorizedAt: authorizedActivation.lastAuthorizedAt.toISOString(),
+    expiresAt: authorizedActivation.expiresAt.toISOString(),
     products: balances.map((balance) => ({
       id: balance.productId,
       itemCode: balance.product.itemCode,
@@ -95,8 +101,10 @@ export async function getOfflineSnapshot(actor: AuthContext, rawInput: unknown) 
 
 export async function syncOfflineSale(actor: AuthContext, rawInput: unknown) {
   assertCapability(actor, "offline-sales:sync");
-  const locationId = assertBranchActor(actor);
   const input = syncSchema.parse(rawInput);
+  const activation = await prisma.offlineDeviceActivation.findUnique({ where: { deviceId: input.deviceId } });
+  if (!activation) throw new OfflineSalesError("OFFLINE_DEVICE_NOT_AUTHORIZED", "Offline device authorization is missing or expired", 403);
+  const locationId = await assertBranchActor(actor, activation.locationId);
   await authorizeDevice(input.deviceId, locationId, false);
   const hash = requestHash(input);
 

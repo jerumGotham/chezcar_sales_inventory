@@ -1,5 +1,4 @@
 import { z } from "zod";
-import type { RoleScopeDto } from "./roles";
 
 /**
  * Client-safe User Management contracts: compatibility wire types, Zod request
@@ -40,22 +39,20 @@ const temporaryPasswordSchema = z
   .regex(/\d/, "Password must contain a number");
 
 /**
- * Create accepts a persisted assignable role ID. Its RoleScope determines the
- * server-side location rules, while the compatibility UserRole is derived and
- * cannot be submitted by the caller.
+ * Create accepts a persisted assignable role ID and explicit location grants.
  */
 export const createUserRequestSchema = z.object({
   roleId: z.string().min(1),
   name: userNameSchema,
   email: userEmailSchema,
   temporaryPassword: temporaryPasswordSchema,
-  locationId: z.string().min(1).optional(),
+  locationIds: z.array(z.string().min(1)).max(100).default([]),
 });
 export type CreateUserRequest = z.infer<typeof createUserRequestSchema>;
 
 /**
  * Update validates the full resulting role/location assignment server-side.
- * `roleId` and `locationId` are optional; the service derives the effective
+ * `roleId` and `locationIds` are optional; the service derives the effective
  * assignment from the persisted target state.
  */
 export const updateUserRequestSchema = z
@@ -63,7 +60,7 @@ export const updateUserRequestSchema = z
     name: userNameSchema.optional(),
     email: userEmailSchema.optional(),
     roleId: z.string().min(1).optional(),
-    locationId: z.string().min(1).nullable().optional(),
+    locationIds: z.array(z.string().min(1)).max(100).optional(),
   })
   .refine((value) => Object.values(value).some((field) => field !== undefined), {
     message: "At least one field is required",
@@ -122,13 +119,11 @@ export type ManagedUserDto = {
   id: string;
   name: string;
   email: string;
-  role: ManagedUserRole;
   roleDefinitionId: string;
   roleName: string;
-  roleScope: RoleScopeDto;
   status: UserStatusDto;
   isOwner: boolean;
-  location: UserLocationDto | null;
+  locations: UserLocationDto[];
   credentialSetupRequired: boolean;
   createdAt: string;
   updatedAt: string;

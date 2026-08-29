@@ -80,10 +80,10 @@ const pageAccess = {
 } as const satisfies Record<UserRole, readonly string[]>;
 
 const roleAccess = {
-  ADMIN: { id: "role-admin", scope: "OWNER", permissions: [] },
-  STOCK_STAFF: { id: "role-stock-staff", scope: "STOCK_ROOM", permissions: ["dashboard:view", "customers:view", "customer-orders:view", "products:view", "inventory:view"] },
-  BRANCH_STAFF: { id: "role-branch-staff", scope: "BRANCH", permissions: ["dashboard:view", "customers:view", "customer-orders:view", "inventory:view"] },
-  ACCOUNTING_STAFF: { id: "role-accounting-staff", scope: "BUSINESS_WIDE", permissions: ["dashboard:view", "customers:view", "customer-orders:view"] },
+  ADMIN: { id: "role-admin", isOwner: true, hasAllLocations: true, permissions: [] },
+  STOCK_STAFF: { id: "role-stock-staff", isOwner: false, hasAllLocations: false, permissions: ["dashboard:view", "customers:view", "customer-orders:view", "products:view", "inventory:view"] },
+  BRANCH_STAFF: { id: "role-branch-staff", isOwner: false, hasAllLocations: false, permissions: ["dashboard:view", "customers:view", "customer-orders:view", "inventory:view"] },
+  ACCOUNTING_STAFF: { id: "role-accounting-staff", isOwner: false, hasAllLocations: true, permissions: ["dashboard:view", "customers:view", "customer-orders:view"] },
 } as const;
 
 function persistedUser(
@@ -96,10 +96,14 @@ function persistedUser(
     id: `user-${role.toLowerCase()}`,
     role,
     roleDefinitionId: accessRole.id,
-    accessRole: { scope: accessRole.scope, permissions: accessRole.permissions },
+    accessRole: {
+      isOwner: accessRole.isOwner,
+      permissions: accessRole.hasAllLocations
+        ? [...accessRole.permissions, "locations:all"]
+        : accessRole.permissions,
+    },
     status,
-    locationId: location?.id ?? null,
-    location,
+    locationAssignments: location?.isActive ? [{ locationId: location.id }] : [],
   };
 }
 
@@ -119,7 +123,12 @@ function authenticateWithPermissions(
   mocks.getSession.mockResolvedValue({ user: { id: `user-${role.toLowerCase()}` } });
   mocks.findUser.mockResolvedValue({
     ...persistedUser(role, assignmentByRole[role]),
-    accessRole: { ...roleAccess[role], permissions },
+    accessRole: {
+      ...persistedUser(role, assignmentByRole[role]).accessRole,
+      permissions: role === "ACCOUNTING_STAFF"
+        ? [...permissions, "locations:all"]
+        : permissions,
+    },
   });
 }
 
@@ -238,7 +247,10 @@ describe("persisted page capability routing", () => {
 
   it("treats an invalid persisted assignment as authenticated but forbidden", async () => {
     mocks.getSession.mockResolvedValue({ user: { id: "invalid-stock-user" } });
-    mocks.findUser.mockResolvedValue(persistedUser("STOCK_STAFF", branch));
+    mocks.findUser.mockResolvedValue({
+      ...persistedUser("STOCK_STAFF", null),
+      accessRole: { isOwner: false, permissions: ["dashboard:view"] },
+    });
 
     const response = await request("/dashboard");
 

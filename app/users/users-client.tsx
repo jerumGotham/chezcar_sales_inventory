@@ -15,6 +15,7 @@ import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -53,11 +54,7 @@ import {
   type UpdateUserRequest,
   type UserStatusDto,
 } from "@/lib/contracts/users";
-import type {
-  AssignableRoleDto,
-  CapabilityId,
-  RoleScopeDto,
-} from "@/lib/contracts/roles";
+import type { AssignableRoleDto, CapabilityId } from "@/lib/contracts/roles";
 
 /**
  * Admin User Management client (UI-SPEC surface 3/4/5).
@@ -144,12 +141,10 @@ function staffRoleLabel(user: ManagedUserDto): string {
 }
 
 function locationScopeLabel(user: ManagedUserDto): string {
-  if (user.roleScope === "OWNER" || user.roleScope === "BUSINESS_WIDE") {
-    return "Business-wide";
-  }
-  if (!user.location) return "Not assigned";
-  if (user.location.code === "SR") return "Stock Room (SR)";
-  return `${user.location.name} (${user.location.code})`;
+  if (user.isOwner || user.locations.length === 0) return "All locations";
+  return user.locations
+    .map((location) => location.code === "SR" ? "Stock Room (SR)" : location.code)
+    .join(", ");
 }
 
 function statusLabel(status: UserStatusDto): string {
@@ -204,8 +199,8 @@ function validatePasswordConfirmation(
   return undefined;
 }
 
-function validateBranchSelection(locationId: string): string | undefined {
-  if (!locationId) return "Select the staff member’s branch.";
+function validateBranchSelection(locationIds: readonly string[]): string | undefined {
+  if (locationIds.length === 0) return "Select at least one location.";
   return undefined;
 }
 
@@ -322,17 +317,6 @@ function PasswordInput({
   );
 }
 
-function ReadOnlyScopeDisplay({ label }: { label: string }) {
-  return (
-    <div
-      className="border-input bg-muted/40 text-muted-foreground flex h-8 w-full items-center rounded-lg border px-2.5 text-sm"
-      aria-live="polite"
-    >
-      {label}
-    </div>
-  );
-}
-
 function MutationAlert({
   message,
   retryLabel,
@@ -397,9 +381,9 @@ function UserFormDialog({
   const [email, setEmail] = useState(user?.email ?? "");
   const [roleId, setRoleId] = useState(user?.roleDefinitionId ?? roles[0]?.id ?? "");
   const selectedRole = roles.find((role) => role.id === roleId) ?? roles[0];
-  const roleScope: RoleScopeDto = selectedRole?.scope ?? "BUSINESS_WIDE";
-  const [branchLocationId, setBranchLocationId] = useState(
-    user?.location && user.location.code !== "SR" ? user.location.id : "",
+  const hasAllLocations = selectedRole?.permissions.includes("locations:all") ?? false;
+  const [locationIds, setLocationIds] = useState<string[]>(
+    user?.locations.map((location) => location.id) ?? [],
   );
   const [temporaryPassword, setTemporaryPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -413,30 +397,18 @@ function UserFormDialog({
   const passwordRef = useRef<HTMLInputElement>(null);
   const confirmPasswordRef = useRef<HTMLInputElement>(null);
 
-  const branchOptions = useMemo(
-    () =>
-      locations
-        .filter((location) => location.type === "BRANCH")
-        .map((location) => ({
-          value: location.id,
-          label: `${location.name} (${location.code})`,
-        })),
-    [locations],
-  );
-
-  const originalLocationId = user?.location?.id ?? null;
-  const nextLocationId = roleScope === "BRANCH" ? branchLocationId || null : null;
+  const originalLocationIds = user?.locations.map((location) => location.id) ?? [];
   const accessWillChange =
     !isCreate &&
     Boolean(user) &&
-    (roleId !== user!.roleDefinitionId || nextLocationId !== originalLocationId);
+    (roleId !== user!.roleDefinitionId ||
+      originalLocationIds.length !== locationIds.length ||
+      originalLocationIds.some((id) => !locationIds.includes(id)));
 
   function handleRoleChange(next: string) {
     setRoleId(next);
-    const nextScope = roles.find((role) => role.id === next)?.scope;
-    // Changing role clears an incompatible prior location before submit.
-    if (nextScope !== "BRANCH") {
-      setBranchLocationId("");
+    if (roles.find((role) => role.id === next)?.permissions.includes("locations:all")) {
+      setLocationIds([]);
     }
     setFieldErrors((previous) => {
       const next2 = { ...previous };
@@ -452,9 +424,7 @@ function UserFormDialog({
       case "email":
         return validateEmail(email);
       case "branch":
-        return roleScope === "BRANCH"
-          ? validateBranchSelection(branchLocationId)
-          : undefined;
+        return hasAllLocations ? undefined : validateBranchSelection(locationIds);
       case "password":
         return isCreate ? validateTemporaryPassword(temporaryPassword) : undefined;
       case "confirmPassword":
@@ -552,7 +522,7 @@ function UserFormDialog({
          name: displayName,
          email: trimmedEmail,
          temporaryPassword,
-         ...(roleScope === "BRANCH" ? { locationId: branchLocationId } : {}),
+          locationIds: hasAllLocations ? [] : locationIds,
        };
       mutation.mutate({ request, displayName });
       return;
@@ -562,7 +532,7 @@ function UserFormDialog({
       name: displayName,
       email: trimmedEmail,
       roleId,
-      locationId: roleScope === "BRANCH" ? branchLocationId : null,
+      ...(hasAllLocations ? {} : { locationIds }),
     };
     mutation.mutate({ request, displayName });
   }
@@ -657,38 +627,38 @@ function UserFormDialog({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor={roleScope === "BRANCH" ? "user-form-branch" : undefined}>
-                  Location Scope
-                </Label>
-                {roleScope === "STOCK_ROOM" && (
-                  <ReadOnlyScopeDisplay label="Stock Room (SR)" />
-                )}
-                {roleScope === "BUSINESS_WIDE" && (
-                  <ReadOnlyScopeDisplay label="Business-wide" />
-                )}
-                {roleScope === "BRANCH" && (
-                  <>
-                    <UsersSelect
-                      value={branchLocationId}
-                      onValueChange={(next) => {
-                        setBranchLocationId(next);
-                        setFieldErrors((previous) => {
-                          const next2 = { ...previous };
-                          delete next2.branch;
-                          return next2;
-                        });
-                      }}
-                      options={branchOptions}
-                      ariaLabel="Branch"
-                      triggerRef={branchRef}
-                    />
+                <Label>Locations</Label>
+                {hasAllLocations ? (
+                  <p className="text-muted-foreground rounded-lg border p-3 text-sm">
+                    This role can access all active locations, so individual assignments are not required.
+                  </p>
+                ) : (
+                  <div className="grid gap-2 rounded-lg border p-3 sm:grid-cols-2">
+                    {locations.map((location, index) => (
+                      <label key={location.id} className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          ref={index === 0 ? branchRef : undefined}
+                          checked={locationIds.includes(location.id)}
+                          disabled={isBusy}
+                          onCheckedChange={() => {
+                            setLocationIds((current) => current.includes(location.id)
+                              ? current.filter((id) => id !== location.id)
+                              : [...current, location.id]);
+                            setFieldErrors((previous) => ({ ...previous, branch: undefined }));
+                          }}
+                        />
+                        {location.code === "SR"
+                          ? "Stock Room (SR)"
+                          : `${location.name} (${location.code})`}
+                      </label>
+                    ))}
                     {fieldErrors.branch && (
                       <FieldError
                         id="user-form-branch-error"
                         message={fieldErrors.branch}
                       />
                     )}
-                  </>
+                  </div>
                 )}
               </div>
 

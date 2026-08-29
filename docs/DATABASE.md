@@ -21,6 +21,7 @@ The implemented database boundary consists of:
 - `prisma/migrations/20260828030000_branch_display_names/migration.sql`: updates the six canonical Location display names without replacing their identities.
 - `prisma/migrations/20260828040000_persisted_roles_permissions/migration.sql`: additive RoleScope/RoleDefinition storage, deterministic built-in grants, existing-user backfill, case-insensitive role-name uniqueness, and required User access-role relation.
 - `prisma/migrations/20260828050000_product_images/migration.sql`: optional paired Product image key/MIME metadata and unique private-storage keys.
+- `prisma/migrations/20260829190000_explicit_location_authorization/migration.sql`: explicit owner marker, authoritative UserLocation join/backfill, all-location grant backfill, singleton indexes, and removal of the obsolete legacy role/location CHECK.
 - `lib/server/prisma.ts`: server-only development-safe Prisma singleton.
 - `lib/server/auth.ts`: Better Auth Prisma adapter configuration (public instance, sign-up disabled).
 - `lib/server/internal-user-auth.ts`: server-only unmounted Better Auth Admin-plugin credential engine used only by staff-lifecycle services.
@@ -33,8 +34,8 @@ The implemented database boundary consists of:
 - `lib/server/services/stock-transfers.ts`: authorized serializable transfer state transitions and inventory posting.
 - `lib/server/services/stock-receipts.ts`: authorized serializable Stock Room supplier receipt posting.
 - `lib/server/services/customer-sales.ts`: customer/order/sale/accounting transactions plus dashboard/report summaries.
-- `lib/server/services/branches.ts`: owner-only persisted active-branch add/edit workflow.
-- `lib/server/services/roles.ts`: owner-only custom-role maintenance with optimistic concurrency and session revocation.
+- `lib/server/services/branches.ts`: capability-delegated, location-constrained active-branch add/edit workflow.
+- `lib/server/services/roles.ts`: capability-delegated custom-role maintenance with optimistic concurrency and session revocation.
 - `tests/helpers/database.ts`: fixed-identity disposable PostgreSQL 17 integration lifecycle (container `chezcar_test_postgres_01_13`, port 55435, database `chezcar_test_01_13`, no bind mount).
 
 ## Implemented models
@@ -77,16 +78,11 @@ The additive `20260826020000_persistent_notifications` migration introduces dura
 
 ### User and Better Auth
 
-User contains Better Auth identity fields, required `roleDefinitionId`, the synchronized internal `UserRole` operational discriminator, `ACTIVE`/`INACTIVE` status, optional Location assignment, and `credentialSetupRequired`. `RoleDefinition` stores key, case-insensitively unique name, description, RoleScope, capability ids, system marker, optimistic version, users, and timestamps. `User.status` remains the sole application activation authority.
+User contains Better Auth identity fields, required `roleDefinitionId`, `ACTIVE`/`INACTIVE` status, many authoritative `UserLocation` assignments, and `credentialSetupRequired`. `RoleDefinition` stores action permissions and explicit `isOwner`. `User.role`, `User.locationId`, and `RoleDefinition.scope` remain temporary compatibility columns and are not authorization inputs. `User.status` remains the sole application activation authority.
 
-Deterministic built-ins are Admin, Stock Staff, Branch Staff, and Accounting Staff. Admin is the single immutable OWNER role; custom roles use only `BRANCH`, `STOCK_ROOM`, or `BUSINESS_WIDE`. Compatibility synchronization is:
+Deterministic built-ins are Admin, Stock Staff, Branch Staff, and Accounting Staff. Admin is the single immutable role marked `isOwner`; existing owner and business-wide roles receive `locations:all` during migration.
 
-- `OWNER -> ADMIN`
-- `BRANCH -> BRANCH_STAFF`
-- `STOCK_ROOM -> STOCK_STAFF`
-- `BUSINESS_WIDE -> ACCOUNTING_STAFF`
-
-The application reloads User, accessRole, and Location on protected requests. Non-owner capability decisions use `RoleDefinition.permissions`; `UserRole` is not authoritative for grants. Capabilities are action-specific strings such as `products:view`, `products:create`, `products:update`, and `products:delete`. Action grants imply only the module views needed to use that action; they never imply sibling mutations. The additive `20260829170000_granular_action_permissions` migration translates existing broad grants according to RoleScope, preserves custom-role operational intent, increments affected role versions, and removes the superseded administration `*:manage` strings. A functional index enforces case-insensitive role names and a partial index permits one OWNER role.
+Protected requests reload permissions, `isOwner`, and active operational UserLocation rows. Restricted users with no valid assignment fail closed. Capabilities are action-specific strings such as `products:view`, `products:create`, `products:update`, and `products:delete`; action grants imply only required views and never sibling mutations. `locations:all` implies no action. A functional index enforces case-insensitive role names and partial indexes preserve one owner role and owner user.
 
 ## Deliberately absent models
 
@@ -111,9 +107,11 @@ BETTER_AUTH_URL="http://localhost:3000"
 SEED_ADMIN_EMAIL="<internal-admin-email>"
 SEED_ADMIN_PASSWORD="<strong-development-password>"
 SEED_ADMIN_NAME="<admin-display-name>"
+ALLOW_CATALOG_RESET="true"
+ALLOW_OPERATIONAL_DATA_RESET="true"
 ```
 
-The ordinary application runtime may use the bind-mounted development database. Destructive catalog seed/reload must not. For catalog onboarding, start a separately isolated PostgreSQL 17 database with no bind mount at the exact development identity `localhost:55436/chezcar_catalog_dev`, set `NODE_ENV=development`, set `ALLOW_CATALOG_RESET=true`, and then run:
+The local application, seed, catalog reload, and operational reset use the checked-in Compose database at `localhost:5435/chezcar_db`. Copy `.env.example`, replace the Admin and Better Auth placeholders, then run:
 
 ```bash
 npm run prisma:generate
@@ -124,19 +122,17 @@ npm run db:catalog:reload
 
 `db:migrate` uses Prisma's development migration workflow. Deployment should use `prisma migrate deploy` against a backed-up target.
 
-The seed validates the approved fixture hash and complete six-location/product/balance shape, then upserts the six import locations and replaces products/opening balances with the first Admin in one transaction. It preserves additional Branch Maintenance locations, rejects placeholder credentials, passwords shorter than 12 characters, and a different existing Admin. `db:catalog:reload` runs the same catalog-only CLI path and preserves users, accounts, and sessions. No credential is committed.
+The seed validates the approved fixture hash and complete six-location/product/balance shape, then upserts the six import locations, reconciles canonical products, replaces opening balances, and creates or updates the first Admin in one transaction. It preserves canonical product IDs, additional products, additional Branch Maintenance locations, users, and sessions; rejects placeholder credentials, passwords shorter than 12 characters, and a different existing Admin. `db:catalog:reload` runs the same catalog-only CLI path without changing the Admin credential. No credential is committed. The operator workflow is documented in [Local Database Seeding](SEEDING.md).
 
-Both commands refuse before opening a write transaction unless `ALLOW_CATALOG_RESET=true` and the URL exactly identifies either the isolated development target above or the fixed disposable integration target. Production, unknown URLs, and the checked-in port-5435 bind mount are always refused. The service additionally verifies the connected database name with `current_database()` inside the transaction before its first write and validates the approved fixture hash plus complete six-location/product/balance shape. Catalog reload replaces products and opening balances, upserts the six import locations with their confirmed display names, and preserves additional authoritative Location rows and user assignments created through Branch Maintenance.
+Both commands refuse before opening a write transaction unless `ALLOW_CATALOG_RESET=true` and the URL exactly identifies either the local Compose target above or the fixed disposable integration target. Production and unknown URLs are always refused. The service additionally verifies the connected database name with `current_database()` inside the transaction before its first write and validates the approved fixture hash plus complete six-location/product/balance shape. Catalog reload updates or inserts canonical products without deleting their identities, replaces opening balances, upserts the six import locations with their confirmed display names, and preserves additional products, authoritative Location rows, and user assignments.
 
-To clear transactional development data without replacing master identities or products, set `ALLOW_OPERATIONAL_DATA_RESET=true` and run `npm run db:data:reset`. This separate transaction deletes inventory balances/movements, receipts, transfers, customers, orders, sales/reviews, notifications/push records, offline records, and temporary verification tokens. It preserves `User`, `Account`, `Session`, `RoleDefinition`, `Product` (including image metadata), and `Location` rows, verifies `current_database()`, and accepts only the exact isolated development or disposable test identity. It is not a production reset path.
+To clear transactional development data without replacing master identities or products, run `npm run db:data:reset`. This separate transaction requires `ALLOW_OPERATIONAL_DATA_RESET=true`, deletes inventory balances/movements, receipts, transfers, customers, orders, sales/reviews, notifications/push records, offline records, and temporary verification tokens. It preserves `User`, `Account`, `Session`, `RoleDefinition`, `Product` (including image metadata), and `Location` rows, verifies `current_database()`, and accepts only the exact local Compose or disposable test identity. It is not a production reset path.
 
 The same gates back the phase verification gate: `npm run verify:phase-01 -- --validate-evidence` applies fresh committed migrations with `prisma migrate deploy`, seeds, reloads the catalog twice on this disposable target, proves both reloads produce identical canonical row counts and content hashes (6 locations, 1,432 products, 8,592 balances), and records the results in `docs/verification/phase-01-evidence.md`. The runner fails closed when the target is not the exact disposable test identity, when example seed credentials are supplied, and on any command failure other than the expected lint baseline.
 
 ## Local data warning
 
 `docker-compose.yml` bind-mounts PostgreSQL under ignored `data/sales_inventory_postgres/`. That directory is mutable server state, not a migration or backup artifact.
-
-During the 2026-08-24 verification, the existing local bind mount could not start because its `postgresql.conf` was malformed. It was left untouched. Migration, seed, authentication, and scoped-read verification used a disposable PostgreSQL 17 container on port `5436` instead.
 
 Do not delete or replace a developer's existing data directory without confirming it contains no needed data. Use logical backups for useful databases.
 

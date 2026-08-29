@@ -5,7 +5,7 @@ import { PrismaClient } from "@prisma/client";
 const TEST_DATABASE_URL =
   "postgresql://postgres:postgres@localhost:55435/chezcar_test_01_13?schema=public";
 const DEVELOPMENT_DATABASE_URL =
-  "postgresql://postgres:postgres@localhost:55436/chezcar_catalog_dev?schema=public";
+  "postgresql://postgres:postgres@localhost:5435/chezcar_db?schema=public";
 
 export function assertOperationalResetEnvironment(environment) {
   if (environment.allowOperationalDataReset !== "true") {
@@ -13,12 +13,15 @@ export function assertOperationalResetEnvironment(environment) {
       "ALLOW_OPERATIONAL_DATA_RESET=true is required for operational data reset",
     );
   }
+  if (environment.nodeEnv === "production") {
+    throw new Error("Refusing operational data reset in production");
+  }
   if (
     environment.databaseUrl !== TEST_DATABASE_URL &&
     environment.databaseUrl !== DEVELOPMENT_DATABASE_URL
   ) {
     throw new Error(
-      "Refusing operational data reset outside the approved isolated development or test database",
+      "Refusing operational data reset outside the approved local development or disposable test database",
     );
   }
 }
@@ -86,6 +89,7 @@ async function main() {
   const prisma = new PrismaClient();
   try {
     const result = await resetOperationalData(prisma, {
+      nodeEnv: process.env.NODE_ENV,
       databaseUrl: process.env.DATABASE_URL,
       allowOperationalDataReset: process.env.ALLOW_OPERATIONAL_DATA_RESET,
     });

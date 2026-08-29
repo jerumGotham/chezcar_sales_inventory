@@ -4,9 +4,14 @@ import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 
 import { prisma } from "@/lib/server/prisma";
+import { resolveAuthTrustedOrigins } from "@/lib/server/auth-origins";
 
 export const auth = betterAuth({
   appName: "Chezcar Sales & Inventory",
+  trustedOrigins: resolveAuthTrustedOrigins({
+    BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
+    BETTER_AUTH_TRUSTED_ORIGINS: process.env.BETTER_AUTH_TRUSTED_ORIGINS,
+  }),
   database: prismaAdapter(prisma, {
     provider: "postgresql",
   }),

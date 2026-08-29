@@ -8,7 +8,7 @@ const prisma = new PrismaClient();
 const TEST_DATABASE_URL =
   "postgresql://postgres:postgres@localhost:55435/chezcar_test_01_13?schema=public";
 const DEVELOPMENT_DATABASE_URL =
-  "postgresql://postgres:postgres@localhost:55436/chezcar_catalog_dev?schema=public";
+  "postgresql://postgres:postgres@localhost:5435/chezcar_db?schema=public";
 const APPROVED_FIXTURE_HASH =
   "a1570f220c260b7fe66e2e4a2eaf1eebe27538563b0b721fd0c9d80f6896d76b";
 const LOCATION_CODES = Object.freeze(["BL", "LU", "QC", "SP", "SR", "VC"]);
@@ -21,6 +21,7 @@ const LOCATION_DISPLAY_NAMES = Object.freeze({
   VC: "Vigan City",
 });
 const ALL_CAPABILITIES = Object.freeze([
+  "locations:all",
   "dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push",
   "customers:view", "customers:create", "customers:update", "customers:deactivate",
   "customer-orders:view", "customer-orders:create", "customer-orders:reserve",
@@ -47,6 +48,7 @@ const BUILT_IN_ROLES = Object.freeze([
     name: "Admin",
     description: "Immutable owner role with full application access.",
     scope: "OWNER",
+    isOwner: true,
     permissions: ALL_CAPABILITIES,
   },
   {
@@ -55,6 +57,7 @@ const BUILT_IN_ROLES = Object.freeze([
     name: "Stock Staff",
     description: "Built-in Stock Room operational role.",
     scope: "STOCK_ROOM",
+    isOwner: false,
     permissions: [
       "dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push",
       "customers:view", "customer-orders:view", "products:view",
@@ -71,6 +74,7 @@ const BUILT_IN_ROLES = Object.freeze([
     name: "Branch Staff",
     description: "Built-in branch operational role.",
     scope: "BRANCH",
+    isOwner: false,
     permissions: [
       "dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push",
       "customers:view", "customers:create", "customers:update", "customers:deactivate",
@@ -88,8 +92,9 @@ const BUILT_IN_ROLES = Object.freeze([
     name: "Accounting Staff",
     description: "Built-in business-wide accounting role.",
     scope: "BUSINESS_WIDE",
+    isOwner: false,
     permissions: [
-      "dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push",
+      "locations:all", "dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push",
       "customers:view", "customer-orders:view", "sales:view", "sales:verify",
       "sales:verify:view", "sales:resolve", "sales:evidence:view", "sales:evidence:upload",
       "reports:view", "reports:export",
@@ -107,6 +112,7 @@ async function upsertBuiltInRoles(tx) {
         description: role.description,
         scope: role.scope,
         permissions: role.permissions,
+        isOwner: role.isOwner,
         isSystem: true,
       },
     });
@@ -120,11 +126,11 @@ function assertCatalogResetEnvironment() {
   const acceptedTestTarget =
     process.env.NODE_ENV === "test" && process.env.DATABASE_URL === TEST_DATABASE_URL;
   const acceptedDevelopmentTarget =
-    process.env.NODE_ENV === "development" &&
+    (process.env.NODE_ENV === undefined || process.env.NODE_ENV === "development") &&
     process.env.DATABASE_URL === DEVELOPMENT_DATABASE_URL;
   if (!acceptedTestTarget && !acceptedDevelopmentTarget) {
     throw new Error(
-      "Refusing catalog replacement outside the approved disposable test or isolated development database",
+      "Refusing catalog replacement outside the approved disposable test or local development database",
     );
   }
 }
@@ -269,14 +275,34 @@ async function replaceOpeningCatalog(tx, fixture) {
   }
 
   await tx.inventoryBalance.deleteMany();
-  await tx.product.deleteMany();
+  const existingProducts = await tx.product.findMany({
+    where: { itemCode: { in: fixture.products.map((product) => product.itemCode) } },
+    select: { itemCode: true },
+  });
+  const existingCodes = new Set(existingProducts.map((product) => product.itemCode));
+  await Promise.all(
+    fixture.products
+      .filter((product) => existingCodes.has(product.itemCode))
+      .map((product) =>
+        tx.product.update({
+          where: { itemCode: product.itemCode },
+          data: {
+            name: product.name,
+            price: product.salePrice,
+            status: product.status,
+          },
+        }),
+      ),
+  );
   await tx.product.createMany({
-    data: fixture.products.map((product) => ({
-      itemCode: product.itemCode,
-      name: product.name,
-      price: product.salePrice,
-      status: product.status,
-    })),
+    data: fixture.products
+      .filter((product) => !existingCodes.has(product.itemCode))
+      .map((product) => ({
+        itemCode: product.itemCode,
+        name: product.name,
+        price: product.salePrice,
+        status: product.status,
+      })),
   });
   const [locations, products] = await Promise.all([
     tx.location.findMany({ select: { id: true, code: true } }),

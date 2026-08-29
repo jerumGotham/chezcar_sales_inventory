@@ -53,13 +53,10 @@ describe("notifications service", () => {
 
     const rows = await listNotificationsAfter({
       userId: "user-1",
-      role: "ADMIN",
       roleDefinitionId: "role-admin",
-      roleScope: "OWNER",
       capabilities: [],
       isOwner: true,
-      locationId: null,
-      location: null,
+      locationIds: [],
     }, BigInt(1));
 
     expect(prisma.notification.findMany).toHaveBeenCalledWith({
@@ -95,10 +92,16 @@ describe("notifications service", () => {
       nextAvailable: 3,
     });
 
-    expect(tx.user.findMany).toHaveBeenCalledWith({
-      where: { status: "ACTIVE", OR: [{ role: "ADMIN" }, { locationId: "location-qc" }] },
+    expect(tx.user.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        status: "ACTIVE",
+        accessRole: expect.any(Object),
+        OR: expect.arrayContaining([
+          { locationAssignments: { some: { locationId: "location-qc" } } },
+        ]),
+      }),
       select: { id: true },
-    });
+    }));
     expect(tx.notification.createMany).toHaveBeenCalledWith({
       data: expect.arrayContaining([
         expect.objectContaining({ userId: "admin-1", title: "Low Stock: ITEM-1", relatedId: "balance-1" }),

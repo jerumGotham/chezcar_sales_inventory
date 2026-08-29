@@ -2,6 +2,8 @@ import "server-only";
 
 import type { Location, Prisma, PrismaClient } from "@prisma/client";
 
+import type { PersistedAccessContext } from "./policy/access";
+import { accessibleLocationWhere } from "./policy/access";
 import { prisma } from "./prisma";
 
 type LocationDb = PrismaClient | Prisma.TransactionClient;
@@ -38,6 +40,21 @@ export async function listActiveBranches(
   });
 }
 
+export async function listAccessibleActiveBranches(
+  context: PersistedAccessContext,
+  db: LocationDb = prisma,
+): Promise<ActiveBranchOption[]> {
+  return db.location.findMany({
+    where: {
+      type: "BRANCH",
+      isActive: true,
+      ...accessibleLocationWhere(context),
+    },
+    select: { id: true, code: true, name: true },
+    orderBy: [{ code: "asc" }, { name: "asc" }],
+  });
+}
+
 export async function findActiveBranch(
   locationId: string,
   db: LocationDb = prisma,
@@ -55,6 +72,27 @@ export async function listActiveOperationalLocations(
     where: {
       isActive: true,
       OR: [{ type: "BRANCH" }, { code: "SR", type: "WAREHOUSE" }],
+    },
+    select: { id: true, code: true, name: true, type: true, isActive: true },
+    orderBy: [{ code: "asc" }, { name: "asc" }],
+  });
+
+  return locations.sort((left, right) => {
+    if (left.code === "SR") return -1;
+    if (right.code === "SR") return 1;
+    return left.code.localeCompare(right.code);
+  });
+}
+
+export async function listAccessibleOperationalLocations(
+  context: PersistedAccessContext,
+  db: LocationDb = prisma,
+): Promise<ActiveLocationRecord[]> {
+  const locations = await db.location.findMany({
+    where: {
+      isActive: true,
+      OR: [{ type: "BRANCH" }, { code: "SR", type: "WAREHOUSE" }],
+      ...accessibleLocationWhere(context),
     },
     select: { id: true, code: true, name: true, type: true, isActive: true },
     orderBy: [{ code: "asc" }, { name: "asc" }],

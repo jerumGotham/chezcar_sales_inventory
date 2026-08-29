@@ -12,7 +12,7 @@ import {
 export async function GET(request: Request) {
   try {
     const user = await requireCapability(request.headers, "inventory-movements:view");
-    const query = parseInventoryMovementsQuery(new URL(request.url).searchParams, user);
+    const query = parseInventoryMovementsQuery(new URL(request.url).searchParams);
 
     return Response.json(await listInventoryMovements(query, user));
   } catch (error) {

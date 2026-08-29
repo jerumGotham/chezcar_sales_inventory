@@ -41,7 +41,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { correctInventory, fetchInventory, fetchInventoryMovements, updateInventoryUnitCost } from "@/lib/catalog";
-import type { LocationScopeDto, ShellRole } from "@/lib/contracts/access";
+import type { LocationScopeDto } from "@/lib/contracts/access";
 import { fetchInventoryAvailability } from "@/lib/inventory-availability";
 
 import {
@@ -68,7 +68,6 @@ export type InventoryLocationOption = {
 };
 
 export type InventoryClientProps = {
-  role: ShellRole;
   scope: LocationScopeDto;
   locations: readonly InventoryLocationOption[];
   initialBalanceId?: string;
@@ -82,13 +81,12 @@ function locationLabel(location: InventoryLocationOption): string {
 }
 
 export function InventoryClient({
-  role,
   scope,
   locations,
   initialBalanceId,
 }: InventoryClientProps) {
   const queryClient = useQueryClient();
-  const isAdmin = role === "ADMIN";
+  const canSelectLocations = scope.kind !== "location";
   const canReceiveSupplierStock = useCan("inventory-receiving:create");
   const canAdjustStock = useCan("inventory:adjust");
   const canUpdateCost = useCan("inventory:cost:update");
@@ -99,7 +97,7 @@ export function InventoryClient({
   // Applied location starts from the server-derived scope DTO and can never
   // exceed it: only Admin may request anything besides All locations.
   const scopedLocationValue =
-    isAdmin && scope.kind === "location" && scope.code
+    scope.kind === "location" && scope.code
       ? scope.code
       : ALL_LOCATIONS_VALUE;
 
@@ -130,7 +128,7 @@ export function InventoryClient({
     useState(scopedLocationValue);
   const [appliedStatus, setAppliedStatus] = useState("all");
 
-  const summaryScopeLabel = isAdmin
+  const summaryScopeLabel = canSelectLocations
     ? appliedLocation === ALL_LOCATIONS_VALUE
       ? "all locations"
       : optionForValue(appliedLocation).label
@@ -399,7 +397,7 @@ export function InventoryClient({
     setAppliedItemCode(itemCode);
     setAppliedName(name);
     setAppliedCategory(category.value);
-    setAppliedLocation(isAdmin ? location.value : ALL_LOCATIONS_VALUE);
+    setAppliedLocation(canSelectLocations ? location.value : scopedLocationValue);
     setAppliedStatus(status.value);
   };
 
@@ -617,7 +615,6 @@ export function InventoryClient({
             <div className="w-full">
               <LocationScopeControl
                 id="inventory-location-filter"
-                role={role}
                 scope={scope}
                 locations={locations}
                 value={location.value}
@@ -744,7 +741,7 @@ export function InventoryClient({
                       const stockedLocations = group.locations.filter(
                         (item) => item.onHand > 0,
                       );
-                      const visibleLocations = isAdmin
+                      const visibleLocations = canSelectLocations
                         ? group.locations
                         : stockedLocations;
                       const emptyLocationCount = group.locations.length - stockedLocations.length;
@@ -840,7 +837,7 @@ export function InventoryClient({
                                         Where this product is available
                                       </p>
                                       <p className="text-sm text-slate-500">
-                                        {isAdmin
+                                        {canSelectLocations
                                           ? "Admin can review and edit each location's reorder level."
                                           : "Only locations with stock are shown."}
                                       </p>

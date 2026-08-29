@@ -1,11 +1,13 @@
 import "server-only";
 
-import { Prisma, type RoleScope } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
-import type {
-  CapabilityId,
+import {
+  CAPABILITY_IDS,
+  type CapabilityId,
 } from "@/lib/contracts/roles";
+import { effectiveCapabilities } from "@/lib/permissions";
 import type {
   CreateUserRequest,
   ManagedUserDto,
@@ -19,21 +21,17 @@ import { internalUserAuth } from "@/lib/server/internal-user-auth";
 import type { PersistedAccessContext } from "@/lib/server/policy/access";
 import {
   AuthenticationError,
-  AuthorizationError,
   authorizationErrorResponse,
   requireActiveUser,
   requireCapability,
 } from "@/lib/server/authorization";
 import { prisma } from "@/lib/server/prisma";
-import {
-  findActiveBranch,
-  findActiveOperationalLocation,
-} from "@/lib/server/locations";
+import { findActiveOperationalLocation, listActiveOperationalLocations } from "@/lib/server/locations";
+import { canAccessLocation, hasAllLocationAccess } from "@/lib/server/policy/access";
 
 /**
- * Owner-Admin user lifecycle application service.
+ * Delegated user lifecycle application service.
  *
- * Only the single owner Admin may list or mutate non-owner staff accounts.
  * Credential creation and replacement go through the guarded, unmounted
  * `internalUserAuth` primitives; role/location/status writes and any required
  * session revocation commit in one Prisma transaction so access changes can
@@ -69,8 +67,17 @@ const managedUserSelect = {
   credentialSetupRequired: true,
   createdAt: true,
   updatedAt: true,
-  location: { select: { id: true, code: true, name: true, type: true } },
-  accessRole: { select: { name: true, scope: true } },
+  locationAssignments: {
+    where: {
+      location: {
+        isActive: true,
+        OR: [{ type: "BRANCH" }, { code: "SR", type: "WAREHOUSE" }],
+      },
+    },
+    select: { location: { select: { id: true, code: true, name: true, type: true } } },
+    orderBy: { location: { code: "asc" } },
+  },
+  accessRole: { select: { name: true, isOwner: true, permissions: true } },
 } satisfies Prisma.UserSelect;
 
 type ManagedUserRecord = Prisma.UserGetPayload<{ select: typeof managedUserSelect }>;
@@ -83,20 +90,11 @@ export function toManagedUserDto(
     id: user.id,
     name: user.name,
     email: user.email,
-    role: user.role,
     roleDefinitionId: user.roleDefinitionId,
     roleName: user.accessRole.name,
-    roleScope: user.accessRole.scope,
     status: user.status,
-    isOwner: user.accessRole.scope === "OWNER",
-    location: user.location
-      ? {
-          id: user.location.id,
-          code: user.location.code,
-          name: user.location.name,
-          type: user.location.type,
-        }
-      : null,
+    isOwner: user.accessRole.isOwner,
+    locations: user.locationAssignments.map(({ location }) => location),
     credentialSetupRequired: user.credentialSetupRequired,
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
@@ -137,35 +135,88 @@ export function usersErrorResponse(
 
 // Imported late to keep the error mapper readable above the auth boundary.
 
-export async function requireOwnerAdmin(
+export async function requireUserManager(
   headers: Headers,
   capability: CapabilityId = "users:view",
 ): Promise<PersistedAccessContext> {
-  const context = await requireCapability(headers, capability);
-  if (!context.isOwner) {
-    throw new AuthorizationError("Insufficient permissions");
-  }
-  return context;
+  return requireCapability(headers, capability);
 }
 
-function assertOwnerActor(actor: PersistedAccessContext): void {
-  if (!actor.isOwner) {
-    throw new AuthorizationError("Insufficient permissions");
-  }
+export async function listAssignableUserLocations(actor: PersistedAccessContext) {
+  const locations = await listActiveOperationalLocations();
+  return hasAllLocationAccess(actor)
+    ? locations
+    : locations.filter((location) => actor.locationIds.includes(location.id));
 }
 
-function assertManageableTarget<T extends { id: string; accessRole: { scope: RoleScope } }>(
+function assertManageableTarget<T extends { id: string; accessRole: { isOwner: boolean } }>(
   target: T | null,
 ): asserts target is T {
   if (!target) {
     throw lifecycleFailure(404, "USER_NOT_FOUND", "User not found");
   }
-  if (target.accessRole.scope === "OWNER") {
+  if (target.accessRole.isOwner) {
     throw lifecycleFailure(
       403,
       "USER_NOT_MANAGEABLE",
       "The owner Admin account cannot be changed through user management",
     );
+  }
+}
+
+function assertTargetLocationAccess(
+  actor: PersistedAccessContext,
+  target: ManagedUserRecord,
+): void {
+  if (hasAllLocationAccess(actor)) return;
+
+  const targetHasAllLocations = target.accessRole.permissions.includes("locations:all");
+  const targetLocationIds = target.locationAssignments.map(
+    (assignment) => assignment.location.id,
+  );
+  if (
+    targetHasAllLocations ||
+    targetLocationIds.length === 0 ||
+    targetLocationIds.some((locationId) => !actor.locationIds.includes(locationId))
+  ) {
+    throw lifecycleFailure(403, "FORBIDDEN", "User is outside your assigned locations");
+  }
+}
+
+function assertTargetCapabilityAccess(
+  actor: PersistedAccessContext,
+  target: ManagedUserRecord,
+): void {
+  if (actor.isOwner) return;
+
+  const knownPermissions = target.accessRole.permissions.filter(
+    (permission): permission is CapabilityId =>
+      CAPABILITY_IDS.includes(permission as CapabilityId),
+  );
+  const targetCapabilities = new Set<string>([
+    ...target.accessRole.permissions,
+    ...effectiveCapabilities(knownPermissions),
+  ]);
+  if (
+    [...targetCapabilities].some(
+      (capability) => !actor.capabilities.includes(capability),
+    )
+  ) {
+    throw lifecycleFailure(
+      403,
+      "TARGET_ROLE_EXCEEDS_ACTOR",
+      "The user's current role exceeds your access",
+    );
+  }
+}
+
+function assertNotSelf(
+  actor: PersistedAccessContext,
+  userId: string,
+  message: string,
+): void {
+  if (!actor.isOwner && actor.userId === userId) {
+    throw lifecycleFailure(403, "SELF_MANAGEMENT_FORBIDDEN", message);
   }
 }
 
@@ -182,11 +233,29 @@ function looksLikeExistingEmailConflict(error: unknown): boolean {
   );
 }
 
-async function lockUserRow(tx: Prisma.TransactionClient, userId: string) {
-  const locked = await tx.$queryRaw<Array<{ id: string }>>`
-    SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE
+async function loadLockedManageableTarget(
+  tx: Prisma.TransactionClient,
+  actor: PersistedAccessContext,
+  userId: string,
+) {
+  const locked = await tx.$queryRaw<Array<{ roleDefinitionId: string }>>`
+    SELECT "roleDefinitionId" FROM "User" WHERE id = ${userId} FOR UPDATE
   `;
-  return locked.length > 0;
+  const roleDefinitionId = locked[0]?.roleDefinitionId;
+  if (!roleDefinitionId) {
+    throw lifecycleFailure(404, "USER_NOT_FOUND", "User not found");
+  }
+  await tx.$queryRaw`
+    SELECT id FROM "RoleDefinition" WHERE id = ${roleDefinitionId} FOR SHARE
+  `;
+  const target = await tx.user.findUnique({
+    where: { id: userId },
+    select: managedUserSelect,
+  });
+  assertManageableTarget(target);
+  assertTargetCapabilityAccess(actor, target);
+  assertTargetLocationAccess(actor, target);
+  return target;
 }
 
 async function assertNoEmailConflict(
@@ -207,83 +276,59 @@ async function assertNoEmailConflict(
   }
 }
 
-async function resolveStockRoom(db: Prisma.TransactionClient) {
-  const stockRoom = await db.location.findFirst({
-    where: { code: "SR", type: "WAREHOUSE", isActive: true },
-    select: { id: true, code: true },
-  });
-  if (!stockRoom) {
-    throw lifecycleFailure(
-      400,
-      "LOCATION_UNAVAILABLE",
-      "The Stock Room (SR) is not available for assignment",
-    );
-  }
-  return stockRoom;
-}
-
-async function validateActiveBranch(
-  db: Prisma.TransactionClient,
-  locationId: string,
-): Promise<void> {
-  if (!(await findActiveBranch(locationId, db))) {
-    throw lifecycleFailure(
-      400,
-      "INVALID_ASSIGNMENT",
-      "Branch Staff requires exactly one active branch assignment",
-    );
-  }
-}
-
-/**
- * Resolve the exact location semantics for a persisted role scope.
- */
-const compatibilityRoleByScope = {
-  BRANCH: "BRANCH_STAFF",
-  STOCK_ROOM: "STOCK_STAFF",
-  BUSINESS_WIDE: "ACCOUNTING_STAFF",
-} as const;
-
 async function resolveAssignableRole(
   db: Prisma.TransactionClient,
+  actor: PersistedAccessContext,
   roleId: string,
-): Promise<{ id: string; scope: "BRANCH" | "STOCK_ROOM" | "BUSINESS_WIDE" }> {
+): Promise<{ id: string; hasAllLocations: boolean; permissions: string[] }> {
   await db.$queryRaw`SELECT "id" FROM "RoleDefinition" WHERE "id" = ${roleId} FOR SHARE`;
   const role = await db.roleDefinition.findUnique({
     where: { id: roleId },
-    select: { id: true, scope: true },
+    select: { id: true, isOwner: true, permissions: true },
   });
-  if (!role || role.scope === "OWNER") {
+  if (!role || role.isOwner) {
     throw lifecycleFailure(400, "INVALID_ROLE", "Select an assignable role");
   }
-  return { id: role.id, scope: role.scope };
-}
-
-async function resolveAssignmentLocationId(
-  db: Prisma.TransactionClient,
-  scope: "BRANCH" | "STOCK_ROOM" | "BUSINESS_WIDE",
-  requestedLocationId?: string | null,
-): Promise<string | null> {
-  switch (scope) {
-    case "STOCK_ROOM":
-      return (await resolveStockRoom(db)).id;
-    case "BRANCH": {
-      if (!requestedLocationId) {
-        throw lifecycleFailure(
-          400,
-          "INVALID_ASSIGNMENT",
-          "Branch Staff requires exactly one active branch assignment",
-        );
-      }
-      await validateActiveBranch(db, requestedLocationId);
-      return requestedLocationId;
-    }
-    case "BUSINESS_WIDE":
-      return null;
+  if (
+    !actor.isOwner &&
+    role.permissions.some((permission) => !actor.capabilities.includes(permission as CapabilityId))
+  ) {
+    throw lifecycleFailure(403, "ROLE_GRANT_EXCEEDS_ACTOR", "The selected role exceeds your access");
   }
+  return {
+    id: role.id,
+    hasAllLocations: role.permissions.includes("locations:all"),
+    permissions: role.permissions,
+  };
 }
 
-export async function listUsers(query: UserListQuery): Promise<{
+async function resolveAssignmentLocationIds(
+  db: Prisma.TransactionClient,
+  actor: PersistedAccessContext,
+  hasAllLocations: boolean,
+  requestedLocationIds: readonly string[],
+): Promise<string[]> {
+  const ids = [...new Set(requestedLocationIds)];
+  if (hasAllLocations && !hasAllLocationAccess(actor)) {
+    throw lifecycleFailure(403, "FORBIDDEN", "You cannot grant all-location access");
+  }
+  if (!hasAllLocations && ids.length === 0) {
+    throw lifecycleFailure(400, "INVALID_ASSIGNMENT", "Select at least one active location");
+  }
+  if (ids.length === 0) return [];
+  if (ids.some((id) => !canAccessLocation(actor, id))) {
+    throw lifecycleFailure(403, "FORBIDDEN", "A selected location is outside your access");
+  }
+  const count = await db.location.count({
+    where: { id: { in: ids }, isActive: true, OR: [{ type: "BRANCH" }, { code: "SR", type: "WAREHOUSE" }] },
+  });
+  if (count !== ids.length) {
+    throw lifecycleFailure(400, "INVALID_ASSIGNMENT", "Select only active operational locations");
+  }
+  return ids;
+}
+
+export async function listUsers(actor: PersistedAccessContext, query: UserListQuery): Promise<{
   data: ManagedUserDto[];
   meta: {
     page: number;
@@ -297,26 +342,61 @@ export async function listUsers(query: UserListQuery): Promise<{
 }> {
   const page = query.page;
 
-  const where: Prisma.UserWhereInput = {};
+  const actorWhere: Prisma.UserWhereInput = hasAllLocationAccess(actor)
+    ? {}
+    : {
+        AND: [
+          { accessRole: { isOwner: false } },
+          { NOT: { accessRole: { permissions: { has: "locations:all" } } } },
+          {
+            locationAssignments: {
+              some: {
+                locationId: { in: [...actor.locationIds] },
+                location: {
+                  isActive: true,
+                  OR: [{ type: "BRANCH" }, { code: "SR", type: "WAREHOUSE" }],
+                },
+              },
+            },
+          },
+          {
+            locationAssignments: {
+              none: {
+                locationId: { notIn: [...actor.locationIds] },
+                location: {
+                  isActive: true,
+                  OR: [{ type: "BRANCH" }, { code: "SR", type: "WAREHOUSE" }],
+                },
+              },
+            },
+          },
+        ],
+      };
+  const filters: Prisma.UserWhereInput[] = [];
   if (query.search) {
-    where.OR = [
-      { name: { contains: query.search, mode: "insensitive" } },
-      { email: { contains: query.search, mode: "insensitive" } },
-    ];
+    filters.push({
+      OR: [
+        { name: { contains: query.search, mode: "insensitive" } },
+        { email: { contains: query.search, mode: "insensitive" } },
+      ],
+    });
   }
   if (query.roleId) {
     const role = await prisma.roleDefinition.findFirst({
-      where: { id: query.roleId, scope: { not: "OWNER" } },
+      where: { id: query.roleId, isOwner: false },
       select: { id: true },
     });
     if (!role) {
       throw lifecycleFailure(400, "INVALID_ROLE_FILTER", "Select an assignable role");
     }
-    where.roleDefinitionId = role.id;
+    filters.push({ roleDefinitionId: role.id });
   }
-  if (query.status) where.status = query.status;
+  if (query.status) filters.push({ status: query.status });
   if (query.location === "none") {
-    where.locationId = null;
+    if (!hasAllLocationAccess(actor)) {
+      throw lifecycleFailure(403, "FORBIDDEN", "Unassigned users are outside your location access");
+    }
+    filters.push({ locationAssignments: { none: {} } });
   } else if (query.location) {
     const location = await findActiveOperationalLocation(query.location);
     if (!location) {
@@ -326,12 +406,20 @@ export async function listUsers(query: UserListQuery): Promise<{
         "Select an active location",
       );
     }
-    where.locationId = location.id;
+    if (!canAccessLocation(actor, location.id)) {
+      throw lifecycleFailure(403, "FORBIDDEN", "The selected location is outside your access");
+    }
+    filters.push({ locationAssignments: { some: { locationId: location.id } } });
   }
+
+  const where: Prisma.UserWhereInput = { AND: [actorWhere, ...filters] };
 
   // Metadata counts staff only; the immutable owner row still appears in data.
   const staffOnlyWhere: Prisma.UserWhereInput = {
-    AND: [where, { accessRole: { scope: { not: "OWNER" } } }],
+    AND: [where, { accessRole: { isOwner: false } }],
+  };
+  const actorStaffWhere: Prisma.UserWhereInput = {
+    AND: [actorWhere, { accessRole: { isOwner: false } }],
   };
 
   const [rows, totalItems, activeStaff, inactiveStaff] = await Promise.all([
@@ -343,8 +431,8 @@ export async function listUsers(query: UserListQuery): Promise<{
       take: USER_LIST_PAGE_SIZE,
     }),
     prisma.user.count({ where: staffOnlyWhere }),
-    prisma.user.count({ where: { accessRole: { scope: { not: "OWNER" } }, status: "ACTIVE" } }),
-    prisma.user.count({ where: { accessRole: { scope: { not: "OWNER" } }, status: "INACTIVE" } }),
+    prisma.user.count({ where: { AND: [actorStaffWhere, { status: "ACTIVE" }] } }),
+    prisma.user.count({ where: { AND: [actorStaffWhere, { status: "INACTIVE" }] } }),
   ]);
 
   // Last sign-in derives from the most recent session record per listed user.
@@ -390,19 +478,19 @@ export async function createStaffUser(
   input: CreateUserRequest,
   options: StaffCreationOptions = {},
 ): Promise<ManagedUserDto> {
-  assertOwnerActor(actor);
   let createdUserId: string | undefined;
 
   try {
     const initialAssignment = await prisma.$transaction(async (tx) => {
-      const accessRole = await resolveAssignableRole(tx, input.roleId);
-      const locationId = await resolveAssignmentLocationId(
+      const accessRole = await resolveAssignableRole(tx, actor, input.roleId);
+      const locationIds = await resolveAssignmentLocationIds(
         tx,
-        accessRole.scope,
-        input.locationId,
+        actor,
+        accessRole.hasAllLocations,
+        input.locationIds,
       );
       await assertNoEmailConflict(tx, input.email);
-      return { accessRole, locationId };
+      return { accessRole, locationIds };
     });
 
     const created = await internalUserAuth.api.createUser({
@@ -410,11 +498,12 @@ export async function createStaffUser(
         email: input.email,
         password: input.temporaryPassword,
         name: input.name,
-        role: compatibilityRoleByScope[initialAssignment.accessRole.scope],
+        // Better Auth still requires its legacy enum-shaped role field.
+        role: "BRANCH_STAFF",
         roleDefinitionId: initialAssignment.accessRole.id,
-        ...(initialAssignment.locationId === null
-          ? {}
-          : { locationId: initialAssignment.locationId }),
+        ...(initialAssignment.locationIds[0]
+          ? { locationId: initialAssignment.locationIds[0] }
+          : {}),
       },
     });
     createdUserId = created.user.id;
@@ -423,18 +512,21 @@ export async function createStaffUser(
     }
 
     return await prisma.$transaction(async (tx) => {
-      const accessRole = await resolveAssignableRole(tx, input.roleId);
-      const locationId = await resolveAssignmentLocationId(
+      const accessRole = await resolveAssignableRole(tx, actor, input.roleId);
+      const locationIds = await resolveAssignmentLocationIds(
         tx,
-        accessRole.scope,
-        input.locationId,
+        actor,
+        accessRole.hasAllLocations,
+        input.locationIds,
       );
       await tx.user.update({
         where: { id: created.user.id },
         data: {
-          role: compatibilityRoleByScope[accessRole.scope],
           roleDefinitionId: accessRole.id,
-          locationId,
+          locationId: locationIds[0] ?? null,
+          locationAssignments: {
+            createMany: { data: locationIds.map((locationId) => ({ locationId })) },
+          },
           status: "ACTIVE",
           credentialSetupRequired: true,
         },
@@ -479,17 +571,11 @@ export async function updateStaffUser(
   input: UpdateUserRequest,
   options: StaffMutationOptions = {},
 ): Promise<ManagedUserDto> {
-  assertOwnerActor(actor);
-
+  if (input.roleId !== undefined || input.locationIds !== undefined) {
+    assertNotSelf(actor, userId, "You cannot change your own role or locations");
+  }
   const updated = await prisma.$transaction(async (tx) => {
-    if (!(await lockUserRow(tx, userId))) {
-      throw lifecycleFailure(404, "USER_NOT_FOUND", "User not found");
-    }
-    const target = await tx.user.findUnique({
-      where: { id: userId },
-      select: managedUserSelect,
-    });
-    assertManageableTarget(target);
+    const target = await loadLockedManageableTarget(tx, actor, userId);
 
     if (input.email && input.email !== target.email) {
       await assertNoEmailConflict(tx, input.email, userId);
@@ -497,40 +583,42 @@ export async function updateStaffUser(
 
     // The target is already guarded as non-owner by assertManageableTarget.
     const nextAccessRole = input.roleId
-      ? await resolveAssignableRole(tx, input.roleId)
-      : { id: target.roleDefinitionId, scope: target.accessRole.scope };
-    if (nextAccessRole.scope === "OWNER") {
-      throw lifecycleFailure(400, "INVALID_ROLE", "Select an assignable role");
-    }
-    const nextRole = compatibilityRoleByScope[nextAccessRole.scope];
-    let requestedLocationId: string | null | undefined = input.locationId;
-    if (requestedLocationId === undefined) {
-      // Keep the current branch only when the target already holds one as a
-      // Branch Staff member; switching into Branch Staff requires an explicit
-      // active branch.
-      requestedLocationId =
-        target.accessRole.scope === "BRANCH" ? target.location?.id ?? null : undefined;
-    }
-    const nextLocationId = await resolveAssignmentLocationId(
+      ? await resolveAssignableRole(tx, actor, input.roleId)
+      : {
+          id: target.roleDefinitionId,
+          hasAllLocations: target.accessRole.permissions.includes("locations:all"),
+          permissions: target.accessRole.permissions,
+        };
+    const requestedLocationIds = input.locationIds ??
+      target.locationAssignments.map((assignment) => assignment.location.id);
+    const nextLocationIds = await resolveAssignmentLocationIds(
       tx,
-      nextAccessRole.scope,
-      requestedLocationId,
+      actor,
+      nextAccessRole.hasAllLocations,
+      requestedLocationIds,
     );
 
     const nextName = input.name ?? target.name;
     const nextEmail = input.email ?? target.email;
-    const currentLocationId = target.location?.id ?? null;
+    const currentLocationIds = target.locationAssignments.map(
+      (assignment) => assignment.location.id,
+    );
     const accessChanged =
-      nextAccessRole.id !== target.roleDefinitionId || nextLocationId !== currentLocationId;
+      nextAccessRole.id !== target.roleDefinitionId ||
+      currentLocationIds.length !== nextLocationIds.length ||
+      currentLocationIds.some((id) => !nextLocationIds.includes(id));
 
     await tx.user.update({
       where: { id: userId },
       data: {
         name: nextName,
         email: nextEmail,
-        role: nextRole,
         roleDefinitionId: nextAccessRole.id,
-        locationId: nextLocationId,
+        locationId: nextLocationIds[0] ?? null,
+        locationAssignments: {
+          deleteMany: {},
+          createMany: { data: nextLocationIds.map((locationId) => ({ locationId })) },
+        },
       },
     });
 
@@ -556,27 +644,9 @@ export async function setStaffStatus(
   status: UserStatusDto,
   options: StaffMutationOptions = {},
 ): Promise<ManagedUserDto> {
-  assertOwnerActor(actor);
-
-  // Idempotent fast path: an already-settled status is a successful no-op.
-  const current = await prisma.user.findUnique({
-    where: { id: userId },
-    select: managedUserSelect,
-  });
-  assertManageableTarget(current);
-  if (current.status === status) {
-    return toManagedUserDto(current);
-  }
-
+  assertNotSelf(actor, userId, "You cannot change your own account status");
   const updated = await prisma.$transaction(async (tx) => {
-    if (!(await lockUserRow(tx, userId))) {
-      throw lifecycleFailure(404, "USER_NOT_FOUND", "User not found");
-    }
-    const target = await tx.user.findUnique({
-      where: { id: userId },
-      select: managedUserSelect,
-    });
-    assertManageableTarget(target);
+    const target = await loadLockedManageableTarget(tx, actor, userId);
     if (target.status === status) {
       return target;
     }
@@ -607,22 +677,16 @@ export async function resetStaffPassword(
   newPassword: string,
   options: StaffMutationOptions = {},
 ): Promise<ManagedUserDto> {
-  assertOwnerActor(actor);
+  assertNotSelf(actor, userId, "You cannot reset your own password through user management");
+  const user = await prisma.$transaction(async (tx) => {
+    await loadLockedManageableTarget(tx, actor, userId);
 
-  const target = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true, accessRole: { select: { scope: true } } },
-  });
-  assertManageableTarget(target);
-
-  // Better Auth owns credential hashing/replacement; it never creates another
-  // User, Account, or Session row for an existing account.
-  await internalUserAuth.api.setUserPassword({
-    body: { userId, newPassword },
-    headers,
-  });
-
-  await prisma.$transaction(async (tx) => {
+    // Better Auth owns credential hashing/replacement; it never creates another
+    // User, Account, or Session row for an existing account.
+    await internalUserAuth.api.setUserPassword({
+      body: { userId, newPassword },
+      headers,
+    });
     await tx.user.update({
       where: { id: userId },
       data: { credentialSetupRequired: true },
@@ -632,11 +696,10 @@ export async function resetStaffPassword(
     if (options.injectFailureAfterAccessWrite) {
       throw new Error("Injected access-change failure");
     }
-  });
-
-  const user = await prisma.user.findUniqueOrThrow({
-    where: { id: userId },
-    select: managedUserSelect,
+    return tx.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: managedUserSelect,
+    });
   });
   return toManagedUserDto(user);
 }

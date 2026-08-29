@@ -23,7 +23,6 @@ export type MenuDefinition = {
   icon: LucideIcon;
   iconId: ShellMenuIcon;
   capability: ShellCapabilityId | readonly ShellCapabilityId[];
-  ownerOnly?: boolean;
 };
 
 // Navigation is deliberately closed over server-authorized capabilities. Prototype
@@ -100,19 +99,17 @@ export const menus = [
     capability: "branches:view",
   },
   {
-    label: "User Management",
-    href: "/users",
-    icon: UserCog,
-    iconId: "users",
-    capability: "users:view",
-    ownerOnly: true,
-  },
-  {
     label: "Role Maintenance",
     href: "/users/roles",
     icon: UserCog,
     iconId: "roles",
     capability: "roles:view",
-    ownerOnly: true,
+  },
+  {
+    label: "User Management",
+    href: "/users",
+    icon: UserCog,
+    iconId: "users",
+    capability: "users:view",
   },
 ] as const satisfies readonly MenuDefinition[];

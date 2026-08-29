@@ -171,7 +171,7 @@ When adding a shared shadcn-style primitive, keep `components.json` aliases and 
 | `npm run prisma:generate` | Regenerate Prisma Client. |
 | `npm run db:migrate` | Create/apply development migrations. |
 | `npm run db:seed` | Seed reference catalog data and the environment-supplied Admin. |
-| `npm run db:data:reset` | Clear isolated development operational data while preserving users/auth, products, and locations; requires `ALLOW_OPERATIONAL_DATA_RESET=true`. |
+| `npm run db:data:reset` | Clear local Compose operational data while preserving users/auth, products, and locations; requires `ALLOW_OPERATIONAL_DATA_RESET=true`. |
 
 There is no formatting script, browser-test script, or coverage script.
 
@@ -224,4 +224,4 @@ CI provides the command-level gate, while contributors provide the behavioral co
 - Avoid opportunistic rewrites of oversized pages in an unrelated feature change. Extract behavior in small steps and preserve the current interaction while adding verification.
 - Do not copy hard-coded identities, client-only permissions, arbitrary timeouts, console-only submission handlers, or fixed dynamic-route records into new work.
 
-The strongest foundations to preserve are the App Router layout, shared responsive shell, `PageShell`, reusable UI primitives, semantic theme tokens, strict TypeScript configuration, root import alias, complete React Query keys, server-only Prisma boundary, and persisted capability authorization policy. Add executable capabilities only to the client-safe catalog, define required view implications in `lib/permissions.ts`, load RoleDefinition grants on each request, require the exact action grant before parsing mutation input, and render controls from the same capability IDs. RoleScope remains the resource-location constraint; `User.role` is only synchronized operational-scope compatibility. Duplicated fixtures, oversized pages, fake mutations, and hard-coded role dropdowns are debt to retire rather than patterns to standardize.
+The strongest foundations to preserve are the App Router layout, shared responsive shell, `PageShell`, reusable UI primitives, semantic theme tokens, strict TypeScript configuration, root import alias, complete React Query keys, server-only Prisma boundary, and persisted capability authorization policy. Add executable capabilities only to the client-safe catalog, define required view implications in `lib/permissions.ts`, load RoleDefinition grants on each request, require the exact action grant before parsing mutation input, and render controls from the same capability IDs. `RoleDefinition.isOwner`, `locations:all`, and active `UserLocation` rows determine location reach; legacy role/scope/location fields are compatibility storage only. Duplicated fixtures, oversized pages, fake mutations, and hard-coded role dropdowns are debt to retire rather than patterns to standardize.

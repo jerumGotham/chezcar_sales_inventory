@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  requireOwnerRoleManager: vi.fn(),
+  requireRoleManager: vi.fn(),
   listRoleDefinitions: vi.fn(),
   getRoleDefinition: vi.fn(),
   createRoleDefinition: vi.fn(),
@@ -18,14 +18,14 @@ import { GET as getRole, PATCH as updateRole } from "../../app/api/roles/[roleId
 describe("role maintenance routes", () => {
   beforeEach(() => {
     Object.values(mocks).forEach((mock) => mock.mockReset());
-    mocks.requireOwnerRoleManager.mockResolvedValue({ isOwner: true });
+    mocks.requireRoleManager.mockResolvedValue({ isOwner: true });
     mocks.rolesErrorResponse.mockReturnValue(new Response(null, { status: 400 }));
   });
 
   it("authorizes before reading role data", async () => {
     mocks.listRoleDefinitions.mockResolvedValue([]);
     await listRoles(new Request("http://localhost/api/roles"));
-    expect(mocks.requireOwnerRoleManager).toHaveBeenCalledWith(
+    expect(mocks.requireRoleManager).toHaveBeenCalledWith(
       expect.any(Headers),
       "roles:view",
     );
@@ -47,14 +47,14 @@ describe("role maintenance routes", () => {
         body: JSON.stringify({
           name: "Cashier",
           description: "Branch sales",
-          scope: "BRANCH",
           permissions: ["sales:post"],
         }),
       }),
     );
     expect(created.status).toBe(201);
     expect(mocks.createRoleDefinition).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "Cashier", scope: "BRANCH" }),
+      expect.objectContaining({ isOwner: true }),
+      expect.objectContaining({ name: "Cashier", permissions: ["sales:post"] }),
     );
 
     mocks.updateRoleDefinition.mockResolvedValue({ id: "role-1", version: 2 });
@@ -67,13 +67,14 @@ describe("role maintenance routes", () => {
       { params: Promise.resolve({ roleId: "role-1" }) },
     );
     expect(mocks.updateRoleDefinition).toHaveBeenCalledWith(
+      expect.objectContaining({ isOwner: true }),
       "role-1",
       { version: 1, permissions: ["dashboard:view"] },
     );
   });
 
   it("does not parse hostile input after owner authorization fails", async () => {
-    mocks.requireOwnerRoleManager.mockRejectedValue(new Error("denied"));
+    mocks.requireRoleManager.mockRejectedValue(new Error("denied"));
     await createRole(
       new Request("http://localhost/api/roles", { method: "POST", body: "not-json" }),
     );

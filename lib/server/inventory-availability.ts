@@ -16,7 +16,9 @@ import {
   listActiveOperationalLocations,
 } from "@/lib/server/locations";
 import {
+  canAccessLocation,
   evaluateAccess,
+  hasAllLocationAccess,
   validatePersistedAssignment,
 } from "@/lib/server/policy/access";
 import { prisma } from "@/lib/server/prisma";
@@ -37,16 +39,10 @@ type InventoryAvailabilityQuery = z.infer<
 
 export function parseInventoryAvailabilityQuery(
   searchParams: URLSearchParams,
-  context: AuthContext,
 ): InventoryAvailabilityQuery {
   const input: Record<string, string | string[]> = {};
 
   for (const key of [...new Set(searchParams.keys())].sort()) {
-    if (key === "location" && context.role !== "ADMIN") {
-      input.location = "all";
-      continue;
-    }
-
     const values = searchParams.getAll(key);
     const distinctValues = [...new Set(values)];
     input[key] =
@@ -67,15 +63,11 @@ async function resolveAvailabilityLocation(
     throw new AuthorizationError("Invalid persisted inventory scope");
   }
 
-  if (context.role === "BRANCH_STAFF" || context.role === "STOCK_STAFF") {
-    return context.locationId as string;
-  }
-
   if (requestedLocation === "all") return undefined;
 
   const location = await findActiveOperationalLocation(requestedLocation);
 
-  if (!location) {
+  if (!location || !canAccessLocation(context, location.id)) {
     throw new AuthorizationError("Invalid inventory location scope");
   }
 
@@ -97,7 +89,11 @@ export async function listInventoryAvailability(
 ): Promise<InventoryAvailabilityResponse> {
   const locationId = await resolveAvailabilityLocation(context, query.location);
   const scopeWhere: Prisma.InventoryBalanceWhereInput = {
-    locationId,
+    locationId: locationId
+      ? locationId
+      : hasAllLocationAccess(context)
+        ? undefined
+        : { in: [...context.locationIds] },
     location: {
       isActive: true,
       OR: [{ type: "BRANCH" }, { code: "SR", type: "WAREHOUSE" }],
@@ -190,7 +186,11 @@ export async function listInventoryAvailability(
       ),
       categories: [...categories].sort(),
       locations: locations
-        .filter((location) => !locationId || location.id === locationId)
+        .filter((location) =>
+          locationId
+            ? location.id === locationId
+            : hasAllLocationAccess(context) || context.locationIds.includes(location.id),
+        )
         .map((location) => ({
           id: location.id,
           code: location.code,

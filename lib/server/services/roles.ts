@@ -2,24 +2,21 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
-import { Prisma, type RoleScope } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
 import {
   CAPABILITY_IDS,
-  OWNER_ONLY_CAPABILITY_IDS,
-  capabilityIsAssignableToScope,
-  type AssignableRoleScope,
   type CapabilityId,
   type CreateRoleRequest,
   type RoleDefinitionDto,
   type UpdateRoleRequest,
 } from "@/lib/contracts/roles";
 import {
-  AuthorizationError,
   authorizationErrorResponse,
   requireCapability,
 } from "@/lib/server/authorization";
+import type { PersistedAccessContext } from "@/lib/server/policy/access";
 import { prisma } from "@/lib/server/prisma";
 
 export class RoleMaintenanceError extends Error {
@@ -38,8 +35,8 @@ const roleSelect = {
   key: true,
   name: true,
   description: true,
-  scope: true,
   permissions: true,
+  isOwner: true,
   isSystem: true,
   version: true,
   createdAt: true,
@@ -56,16 +53,15 @@ function toRoleDto(role: RoleRecord): RoleDefinitionDto {
     key: role.key,
     name: role.name,
     description: role.description,
-    scope: role.scope,
     permissions:
-      role.scope === "OWNER"
+      role.isOwner
         ? [...CAPABILITY_IDS]
         : role.permissions.filter((permission): permission is CapabilityId =>
             known.has(permission),
           ),
     isSystem: role.isSystem,
-    isOwner: role.scope === "OWNER",
-    isAssignable: role.scope !== "OWNER",
+    isOwner: role.isOwner,
+    isAssignable: !role.isOwner,
     assignedUserCount: role._count.users,
     version: role.version,
     createdAt: role.createdAt.toISOString(),
@@ -78,19 +74,6 @@ function normalizePermissions(permissions: readonly CapabilityId[]): CapabilityI
   return CAPABILITY_IDS.filter((permission) => requested.has(permission));
 }
 
-function assertAssignablePermissions(
-  scope: AssignableRoleScope,
-  permissions: readonly CapabilityId[],
-) {
-  const ownerOnly = new Set<CapabilityId>(OWNER_ONLY_CAPABILITY_IDS);
-  if (permissions.some((permission) => ownerOnly.has(permission))) {
-    throw roleFailure(400, "OWNER_PERMISSION_ONLY", "Owner-only permissions are reserved for the owner Admin");
-  }
-  if (permissions.some((permission) => !capabilityIsAssignableToScope(permission, scope))) {
-    throw roleFailure(400, "PERMISSION_SCOPE_MISMATCH", "One or more permissions cannot be used with this operational scope");
-  }
-}
-
 function samePermissions(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((permission, index) => permission === right[index]);
 }
@@ -99,29 +82,50 @@ function roleFailure(status: number, code: string, message: string): RoleMainten
   return new RoleMaintenanceError(status, code, message);
 }
 
-export async function requireOwnerRoleManager(
+function assertGrantCeiling(
+  actor: PersistedAccessContext,
+  permissions: readonly string[],
+): void {
+  if (
+    !actor.isOwner &&
+    permissions.some((permission) => !actor.capabilities.includes(permission))
+  ) {
+    throw roleFailure(403, "ROLE_GRANT_EXCEEDS_ACTOR", "A role cannot grant access you do not hold");
+  }
+}
+
+export async function requireRoleManager(
   headers: Headers,
   capability: CapabilityId,
 ) {
-  const actor = await requireCapability(headers, capability);
-  if (!actor.isOwner) throw new AuthorizationError("Insufficient permissions");
-  return actor;
+  return requireCapability(headers, capability);
 }
 
 export async function listRoleDefinitions(): Promise<RoleDefinitionDto[]> {
   const roles = await prisma.roleDefinition.findMany({
     select: roleSelect,
-    orderBy: [{ scope: "asc" }, { name: "asc" }],
+    orderBy: [{ isOwner: "desc" }, { name: "asc" }],
   });
   return roles.map(toRoleDto);
 }
 
-export async function listAssignableRoleDefinitions() {
-  return prisma.roleDefinition.findMany({
-    where: { scope: { not: "OWNER" } },
-    select: { id: true, name: true, description: true, scope: true },
+export async function listAssignableRoleDefinitions(actor: PersistedAccessContext) {
+  const roles = await prisma.roleDefinition.findMany({
+    where: { isOwner: false },
+    select: { id: true, name: true, description: true, permissions: true },
     orderBy: { name: "asc" },
   });
+  const known = new Set<string>(CAPABILITY_IDS);
+  return roles
+    .map((role) => ({
+      ...role,
+      permissions: role.permissions.filter((permission): permission is CapabilityId => known.has(permission)),
+    }))
+    .filter(
+      (role) =>
+        actor.isOwner ||
+        role.permissions.every((permission) => actor.capabilities.includes(permission)),
+    );
 }
 
 export async function getRoleDefinition(roleId: string): Promise<RoleDefinitionDto> {
@@ -133,16 +137,21 @@ export async function getRoleDefinition(roleId: string): Promise<RoleDefinitionD
   return toRoleDto(role);
 }
 
-export async function createRoleDefinition(input: CreateRoleRequest): Promise<RoleDefinitionDto> {
-  assertAssignablePermissions(input.scope, input.permissions);
+export async function createRoleDefinition(
+  actor: PersistedAccessContext,
+  input: CreateRoleRequest,
+): Promise<RoleDefinitionDto> {
+  const permissions = normalizePermissions(input.permissions);
+  assertGrantCeiling(actor, permissions);
   try {
     const role = await prisma.roleDefinition.create({
       data: {
         key: `custom-${randomUUID()}`,
         name: input.name,
         description: input.description,
-        scope: input.scope,
-        permissions: normalizePermissions(input.permissions),
+        // Retained only for compatibility with the additive legacy schema.
+        scope: "BUSINESS_WIDE",
+        permissions,
       },
       select: roleSelect,
     });
@@ -156,6 +165,7 @@ export async function createRoleDefinition(input: CreateRoleRequest): Promise<Ro
 }
 
 export async function updateRoleDefinition(
+  actor: PersistedAccessContext,
   roleId: string,
   input: UpdateRoleRequest,
 ): Promise<RoleDefinitionDto> {
@@ -167,32 +177,63 @@ export async function updateRoleDefinition(
         select: roleSelect,
       });
       if (!current) throw roleFailure(404, "ROLE_NOT_FOUND", "Role not found");
-      if (current.scope === "OWNER") {
+      if (current.isOwner) {
         throw roleFailure(403, "OWNER_ROLE_IMMUTABLE", "The owner Admin role cannot be changed");
+      }
+      if (!actor.isOwner) {
+        const assignedToActor = await tx.user.findFirst({
+          where: { id: actor.userId, roleDefinitionId: roleId },
+          select: { id: true },
+        });
+        if (assignedToActor) {
+          throw roleFailure(403, "SELF_ROLE_EDIT_FORBIDDEN", "You cannot edit your own assigned role");
+        }
+        assertGrantCeiling(actor, current.permissions);
       }
       if (current.version !== input.version) {
         throw roleFailure(409, "ROLE_VERSION_CONFLICT", "This role was changed by another request. Reload and try again.");
       }
 
-      const nextScope = input.scope ?? current.scope;
-      if (nextScope !== current.scope && current._count.users > 0) {
-        throw roleFailure(409, "ROLE_SCOPE_ASSIGNED", "Remove all user assignments before changing this role's scope");
-      }
       const nextPermissions = input.permissions
         ? normalizePermissions(input.permissions)
         : normalizePermissions(current.permissions as CapabilityId[]);
-      assertAssignablePermissions(nextScope, nextPermissions);
+      assertGrantCeiling(actor, nextPermissions);
       const permissionsChanged = !samePermissions(
         normalizePermissions(current.permissions as CapabilityId[]),
         nextPermissions,
       );
+      if (
+        current.permissions.includes("locations:all") &&
+        !nextPermissions.includes("locations:all")
+      ) {
+        const invalidUser = await tx.user.findFirst({
+          where: {
+            roleDefinitionId: roleId,
+            locationAssignments: {
+              none: {
+                location: {
+                  isActive: true,
+                  OR: [{ type: "BRANCH" }, { code: "SR", type: "WAREHOUSE" }],
+                },
+              },
+            },
+          },
+          select: { id: true },
+        });
+        if (invalidUser) {
+          throw roleFailure(
+            409,
+            "LOCATION_ASSIGNMENT_REQUIRED",
+            "Assign at least one active location to every user before removing all-location access",
+          );
+        }
+      }
 
       const result = await tx.roleDefinition.updateMany({
-        where: { id: roleId, version: input.version, scope: { not: "OWNER" } },
+        where: { id: roleId, version: input.version, isOwner: false },
         data: {
           ...(input.name === undefined ? {} : { name: input.name }),
           ...(input.description === undefined ? {} : { description: input.description }),
-          scope: nextScope as RoleScope,
           permissions: nextPermissions,
           version: { increment: 1 },
         },

@@ -1,7 +1,8 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { listActiveOperationalLocations } from "@/lib/server/locations";
+import { requireCapability } from "@/lib/server/authorization";
+import { listAccessibleOperationalLocations } from "@/lib/server/locations";
 import { loadShellAccess } from "@/lib/server/shell";
 
 import {
@@ -14,7 +15,8 @@ export default async function InventoryPage({
 }: {
   searchParams: Promise<{ balanceId?: string }>;
 }) {
-  const access = await loadShellAccess(await headers());
+  const requestHeaders = await headers();
+  const access = await loadShellAccess(requestHeaders);
   const { balanceId } = await searchParams;
 
   if (!access.authenticated) {
@@ -27,12 +29,12 @@ export default async function InventoryPage({
     redirect("/access-denied");
   }
 
+  const actor = await requireCapability(requestHeaders, "inventory:view");
   const orderedLocations: InventoryLocationOption[] =
-    await listActiveOperationalLocations();
+    await listAccessibleOperationalLocations(actor);
 
   return (
     <InventoryClient
-      role={access.identity.role}
       scope={access.scope}
       locations={orderedLocations}
       initialBalanceId={balanceId}

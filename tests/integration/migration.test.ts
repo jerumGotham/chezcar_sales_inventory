@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 import type { PrismaClient } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 
@@ -24,6 +26,109 @@ async function insertUser(prisma: PrismaClient, input: UserInsert) {
 }
 
 describe("trusted foundation migration", () => {
+  it("executes the authorization migration SQL across its legacy backfill boundary", async () => {
+    await withDisposableDatabase(async ({ prisma }) => {
+      const migrationSql = await readFile(
+        "prisma/migrations/20260829190000_explicit_location_authorization/migration.sql",
+        "utf8",
+      );
+      const statements = migrationSql
+        .split(/;\s*(?:\r?\n|$)/)
+        .map((statement) => statement.trim())
+        .filter(Boolean);
+
+      await prisma.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe(`CREATE SCHEMA "authorization_boundary"`);
+        await tx.$executeRawUnsafe(`SET LOCAL search_path TO "authorization_boundary"`);
+        await tx.$executeRawUnsafe(`
+          CREATE TABLE "RoleDefinition" (
+            "id" TEXT PRIMARY KEY,
+            "scope" TEXT NOT NULL,
+            "permissions" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+            "version" INTEGER NOT NULL DEFAULT 1
+          )
+        `);
+        await tx.$executeRawUnsafe(`
+          CREATE TABLE "Location" ("id" TEXT PRIMARY KEY)
+        `);
+        await tx.$executeRawUnsafe(`
+          CREATE TABLE "User" (
+            "id" TEXT PRIMARY KEY,
+            "roleDefinitionId" TEXT NOT NULL,
+            "locationId" TEXT NULL
+          )
+        `);
+        await tx.$executeRawUnsafe(`
+          INSERT INTO "RoleDefinition" ("id", "scope", "permissions") VALUES
+            ('role-admin', 'OWNER', ARRAY['users:view']),
+            ('role-accounting-staff', 'BUSINESS_WIDE', ARRAY['reports:view']),
+            ('role-branch-staff', 'BRANCH', ARRAY['sales:post'])
+        `);
+        await tx.$executeRawUnsafe(`
+          INSERT INTO "Location" ("id") VALUES ('qc'), ('lu')
+        `);
+        await tx.$executeRawUnsafe(`
+          INSERT INTO "User" ("id", "roleDefinitionId", "locationId") VALUES
+            ('owner', 'role-admin', NULL),
+            ('qc-user', 'role-branch-staff', 'qc'),
+            ('unassigned-user', 'role-branch-staff', NULL)
+        `);
+
+        for (const statement of statements) {
+          await tx.$executeRawUnsafe(statement);
+        }
+
+        const roles = await tx.$queryRawUnsafe<
+          Array<{ id: string; isOwner: boolean; permissions: string[] }>
+        >(`
+          SELECT "id", "isOwner", "permissions"
+          FROM "RoleDefinition"
+          ORDER BY "id"
+        `);
+        expect(roles).toEqual([
+          {
+            id: "role-accounting-staff",
+            isOwner: false,
+            permissions: ["reports:view", "locations:all"],
+          },
+          {
+            id: "role-admin",
+            isOwner: true,
+            permissions: ["users:view", "locations:all"],
+          },
+          {
+            id: "role-branch-staff",
+            isOwner: false,
+            permissions: ["sales:post"],
+          },
+        ]);
+        const assignments = await tx.$queryRawUnsafe<
+          Array<{ userId: string; locationId: string }>
+        >(`SELECT "userId", "locationId" FROM "UserLocation" ORDER BY "userId"`);
+        expect(assignments).toEqual([{ userId: "qc-user", locationId: "qc" }]);
+      });
+
+      await expect(
+        prisma.$transaction(async (tx) => {
+          await tx.$executeRawUnsafe(`SET LOCAL search_path TO "authorization_boundary"`);
+          await tx.$executeRawUnsafe(`
+            INSERT INTO "RoleDefinition" ("id", "scope", "isOwner")
+            VALUES ('second-owner-role', 'BUSINESS_WIDE', true)
+          `);
+        }),
+      ).rejects.toThrow(/23505|unique constraint/i);
+      await expect(
+        prisma.$transaction(async (tx) => {
+          await tx.$executeRawUnsafe(`SET LOCAL search_path TO "authorization_boundary"`);
+          await tx.$executeRawUnsafe(`
+            INSERT INTO "User" ("id", "roleDefinitionId", "locationId")
+            VALUES ('second-owner-user', 'role-admin', NULL)
+          `);
+        }),
+      ).rejects.toThrow(/23505|unique constraint/i);
+    });
+  }, 30_000);
+
   it("adds nullable catalog prices and Better Auth compatibility defaults", async () => {
     await withDisposableDatabase(async ({ prisma }) => {
       await prisma.$executeRaw`
@@ -95,7 +200,7 @@ describe("trusted foundation migration", () => {
     });
   }, 30_000);
 
-  it("rejects invalid role scope and a second Admin", async () => {
+  it("keeps legacy columns compatible while enforcing singleton ownership and assignments", async () => {
     await withDisposableDatabase(async ({ prisma }) => {
       await prisma.location.createMany({
         data: [
@@ -128,36 +233,21 @@ describe("trusted foundation migration", () => {
         locationId: null,
       });
 
-      for (const invalid of [
-        {
-          id: "admin-with-location",
-          email: "admin-location@example.test",
-          role: "ADMIN" as const,
-          locationId: "qc-branch",
-        },
-        {
-          id: "accounting-with-location",
-          email: "accounting-location@example.test",
-          role: "ACCOUNTING_STAFF" as const,
-          locationId: "qc-branch",
-        },
-        {
-          id: "stock-without-location",
-          email: "stock-null@example.test",
-          role: "STOCK_STAFF" as const,
-          locationId: null,
-        },
-        {
-          id: "branch-without-location",
-          email: "branch-null@example.test",
-          role: "BRANCH_STAFF" as const,
-          locationId: null,
-        },
-      ]) {
-        await expect(insertUser(prisma, invalid)).rejects.toThrow(
-          /User_role_location_check/,
-        );
-      }
+      await insertUser(prisma, {
+        id: "branch-without-legacy-location",
+        email: "branch-null@example.test",
+        role: "BRANCH_STAFF",
+        locationId: null,
+      });
+      await prisma.userLocation.createMany({
+        data: [
+          { userId: "stock-staff", locationId: "stock-room" },
+          { userId: "branch-staff", locationId: "qc-branch" },
+          { userId: "branch-without-legacy-location", locationId: "qc-branch" },
+        ],
+        skipDuplicates: true,
+      });
+      expect(await prisma.userLocation.count()).toBe(3);
 
       const singletonAdminIndexes = await prisma.$queryRaw<
         Array<{ indexname: string }>
@@ -169,6 +259,20 @@ describe("trusted foundation migration", () => {
       expect(singletonAdminIndexes).toEqual([
         { indexname: "User_single_admin_key" },
       ]);
+      expect(await prisma.roleDefinition.findUnique({ where: { id: "role-admin" }, select: { isOwner: true } })).toEqual({ isOwner: true });
+
+      await expect(
+        prisma.roleDefinition.create({
+          data: {
+            key: "second-owner",
+            name: "Second Owner",
+            description: "Must violate singleton ownership",
+            scope: "BUSINESS_WIDE",
+            permissions: [],
+            isOwner: true,
+          },
+        }),
+      ).rejects.toThrow(/unique constraint/i);
 
       await expect(
         insertUser(prisma, {

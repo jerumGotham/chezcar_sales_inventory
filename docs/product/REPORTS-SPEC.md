@@ -100,17 +100,17 @@ Admin-only.
 - PDF generation must use server-authorized report data.
 - PDF must not include UI-only charts in the first implementation.
 - PDF must include selected filters and generated metadata.
-- Accounting PDF must not include Admin-only inventory data.
+- PDF output must use the same capability and effective-location scope as the interactive report.
 
 ## Acceptance Criteria
 
-1. Stock Staff and Branch Staff cannot access Reports page or report APIs.
-2. Accounting Staff cannot access Inventory Report.
+1. Reports page and APIs require `reports:view` regardless of built-in role name.
+2. Every report dataset is filtered to assigned locations unless the actor has `locations:all`.
 3. Date presets and custom date range return consistent live DB results.
 4. Sales totals exclude cancelled/voided transactions.
 5. Cancelled/voided transactions appear separately when relevant.
 6. Sales Report includes summary and receipt-level detail.
 7. Accounting Report includes verification counts and flagged mismatch details.
-8. Admin Inventory Report includes current stock and movement summaries.
+8. Inventory Report includes current stock summaries within effective location access.
 9. PDF export works for each authorized report and includes company header metadata.
 10. Reports have no CSV export in the first implementation.

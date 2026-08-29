@@ -3,6 +3,7 @@ import { ZodError } from "zod";
 import { authorizationErrorResponse, requireCapability } from "@/lib/server/authorization";
 import { CustomerSalesError, listReceiptVerifications } from "@/lib/server/services/customer-sales";
 import { listActiveBranches } from "@/lib/server/locations";
+import { hasAllLocationAccess } from "@/lib/server/policy/access";
 
 export async function GET(request: Request) {
   try {
@@ -11,9 +12,9 @@ export async function GET(request: Request) {
     const [receipts, branches] = await Promise.all([
       listReceiptVerifications(actor, params),
       listActiveBranches().then((rows) =>
-        actor.role === "BRANCH_STAFF"
-          ? rows.filter((branch) => branch.id === actor.locationId)
-          : rows,
+        hasAllLocationAccess(actor)
+          ? rows
+          : rows.filter((branch) => actor.locationIds.includes(branch.id)),
       ),
     ]);
     return Response.json({ ...receipts, branches });

@@ -1,23 +1,21 @@
 import { describe, expect, it } from "vitest";
 
-import { capabilityIsAssignableToScope } from "./roles";
+import { ASSIGNABLE_CAPABILITY_CATALOG, createRoleRequestSchema } from "./roles";
 
-describe("role capability scope compatibility", () => {
-  it("keeps shared reads assignable across operational scopes", () => {
-    expect(capabilityIsAssignableToScope("customer-orders:view", "STOCK_ROOM")).toBe(true);
-    expect(capabilityIsAssignableToScope("inventory:view", "BUSINESS_WIDE")).toBe(true);
+describe("role action permissions", () => {
+  it("makes every granular capability assignable, including administration", () => {
+    const ids = ASSIGNABLE_CAPABILITY_CATALOG.map(({ id }) => id);
+    expect(ids).toContain("locations:all");
+    expect(ids).toContain("roles:update");
+    expect(ids).toContain("sales:void-replace");
   });
 
-  it("limits workflow actions to scopes supported by their services", () => {
-    expect(capabilityIsAssignableToScope("customer-orders:create", "BRANCH")).toBe(true);
-    expect(capabilityIsAssignableToScope("customer-orders:create", "BUSINESS_WIDE")).toBe(false);
-    expect(capabilityIsAssignableToScope("stock-transfers:dispatch", "STOCK_ROOM")).toBe(true);
-    expect(capabilityIsAssignableToScope("stock-transfers:dispatch", "BRANCH")).toBe(false);
-    expect(capabilityIsAssignableToScope("sales:resolve", "BUSINESS_WIDE")).toBe(true);
-    expect(capabilityIsAssignableToScope("sales:resolve", "BRANCH")).toBe(false);
-  });
-
-  it("never exposes owner-only capabilities to assignable scopes", () => {
-    expect(capabilityIsAssignableToScope("sales:void-replace", "BUSINESS_WIDE")).toBe(false);
+  it("does not accept operational scope in the role contract", () => {
+    const result = createRoleRequestSchema.parse({
+      name: "Delegated manager",
+      scope: "BUSINESS_WIDE",
+      permissions: ["users:view"],
+    });
+    expect(result).not.toHaveProperty("scope");
   });
 });

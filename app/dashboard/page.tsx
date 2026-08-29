@@ -12,7 +12,7 @@ import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Too
 
 type DashboardResponse = {
   summary: {
-    role: string;
+    capabilities: string[];
     todaySales: number;
     todayTransactions: number;
     monthSales: number;
@@ -69,21 +69,21 @@ export default function DashboardPage() {
       ) : (
         <div className="space-y-6">
            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-             {summary.role === "ADMIN" ? (
+             {summary.capabilities.includes("locations:all") && summary.capabilities.includes("sales:post") ? (
                <>
                  <MetricCard icon={<TrendingUp className="h-5 w-5 text-emerald-600" />} label="Today Sales" value={formatPeso(summary.todaySales)} hint={`${summary.todayTransactions} transaction(s) today`} />
                  <MetricCard icon={<ReceiptText className="h-5 w-5 text-sky-600" />} label="Today Transactions" value={String(summary.todayTransactions)} hint="Posted sales today" />
                  <MetricCard icon={<TrendingUp className="h-5 w-5 text-indigo-600" />} label="Month-to-Date Sales" value={formatPeso(summary.monthSales)} hint={`${summary.monthTransactions} posted transaction(s)`} />
                  <MetricCard icon={<ClipboardList className="h-5 w-5 text-violet-600" />} label="Open Reservations" value={String(summary.openOrders)} hint={`${summary.readyOrders} ready for release`} />
                </>
-             ) : summary.role === "STOCK_STAFF" ? (
+              ) : summary.capabilities.includes("inventory-receiving:create") && !summary.capabilities.includes("sales:post") ? (
                <>
                  <MetricCard icon={<Warehouse className="h-5 w-5 text-sky-600" />} label="SR Available Stock" value={String(summary.availableStock)} hint="Available units in Stock Room" />
                   <MetricCard icon={<ReceiptText className="h-5 w-5 text-emerald-600" />} label="Supplier Receipts Today" value={String(summary.supplierReceiptsToday)} hint="Posted into Stock Room" />
                   <MetricCard icon={<ClipboardList className="h-5 w-5 text-violet-600" />} label="Transfer Drafts" value={String(summary.transferDrafts)} hint="Drafts to complete" />
                   <MetricCard icon={<AlertTriangle className="h-5 w-5 text-amber-600" />} label="Low / Out Stock" value={String(summary.lowStockCount)} hint={`${summary.outOfStockCount} out of stock`} />
                </>
-             ) : summary.role === "BRANCH_STAFF" ? (
+              ) : summary.capabilities.includes("sales:post") ? (
                <>
                  <MetricCard icon={<TrendingUp className="h-5 w-5 text-emerald-600" />} label="Today Sales" value={formatPeso(summary.todaySales)} hint={`${summary.todayTransactions} transaction(s) today`} />
                   <MetricCard icon={<AlertTriangle className="h-5 w-5 text-amber-600" />} label="Low / Out Stock" value={String(summary.lowStockCount)} hint={`${summary.outOfStockCount} out of stock`} />
@@ -100,7 +100,7 @@ export default function DashboardPage() {
              )}
            </div>
 
-           {summary.role === "ADMIN" || summary.role === "ACCOUNTING_STAFF" ? (
+           {summary.capabilities.includes("reports:view") ? (
              <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
                <Card>
                  <CardContent className="p-5">
@@ -152,7 +152,7 @@ export default function DashboardPage() {
            ) : null}
 
            <div className="grid gap-6 xl:grid-cols-2">
-             {summary.role !== "ACCOUNTING_STAFF" ? (
+             {summary.capabilities.includes("inventory:view") ? (
             <Card>
               <CardContent className="p-5">
                 <div className="flex items-center justify-between gap-3">

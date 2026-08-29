@@ -62,6 +62,14 @@ The framework baseline is Next.js `16.3.2`. The application remains a non-produc
 
 4. Open `/sign-in` and use the `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` values from your untracked environment.
 
+To clear local transactional data while retaining the Admin, products, roles, and locations, run:
+
+```bash
+npm run db:data:reset
+```
+
+Rerunning `npm run db:seed` reconciles canonical product fields and replaces opening inventory balances while preserving the Admin identity and canonical product IDs. See [Local Database Seeding](SEEDING.md) for the exact safety and preservation behavior.
+
 5. After signing in, confirm the Prisma-backed product API responds using the browser session. Direct unauthenticated curl requests correctly return `401`.
 
    ```bash
@@ -101,7 +109,8 @@ The checked-in `docker-compose.yml` defines PostgreSQL 17 as the `postgres` serv
    ```dotenv
    DATABASE_URL="postgresql://<user>:<password>@localhost:5435/<database>?schema=public"
    BETTER_AUTH_SECRET="<at-least-32-random-characters>"
-   BETTER_AUTH_URL="http://localhost:3000"
+    BETTER_AUTH_URL="http://localhost:3000"
+    BETTER_AUTH_TRUSTED_ORIGINS="http://localhost:3000,http://192.168.1.14:3000"
    ```
 
 3. Stop PostgreSQL when it is no longer needed:
@@ -120,10 +129,10 @@ The current `5435:5432` mapping publishes PostgreSQL on all host interfaces and 
 
 - `lib/server/prisma.ts` is the only shared runtime Prisma client.
 - Better Auth and all application reads require an active persisted User; public sign-up is disabled.
-- Products, Inventory and Availability, customers/orders/sales/accounting, stock receiving/transfers, notifications, and owner-only user/role/branch maintenance call protected Prisma-backed endpoints.
+- Products, Inventory and Availability, customers/orders/sales/accounting, stock receiving/transfers, notifications, and capability-delegated user/role/branch maintenance call protected Prisma-backed endpoints.
 - Job Orders, stock cards, and explicitly labeled supporting panels still use mock/local data.
 - Checked-in additive migrations and one environment-driven development seed exist.
-- Vitest unit and serial PostgreSQL integration suites are checked in; startup-time typed environment validation, browser coverage, and CI are not.
+- Vitest unit and serial PostgreSQL integration suites plus GitHub Actions CI are checked in; startup-time typed environment validation, browser coverage, and coverage tooling are not.
 
 Treat only the workflows documented in [API](API.md) and [Database](DATABASE.md) as implemented persistence.
 
@@ -179,7 +188,7 @@ npm run start
 
 ### Prisma reports that `DATABASE_URL` is missing
 
-This error applies to Prisma commands, not to the current Next.js runtime. Create an untracked `.env` with the placeholder-based URL shown above, replace the placeholders, and ensure the optional PostgreSQL service is running. Do not look for `.env.example`; it is not present.
+Create an untracked `.env` from the checked-in `.env.example`, replace the placeholders, and ensure the PostgreSQL service is running.
 
 ### PostgreSQL is unavailable on the default port
 
@@ -194,4 +203,7 @@ docker compose ps
 - Read the project overview and implementation status in the [README](../README.md).
 - Review the system boundaries and mock-data flow in [Architecture](ARCHITECTURE.md).
 - See environment and tool configuration details in [Configuration](CONFIGURATION.md).
+- Follow [Admin-to-Role User Flow](USER-ROLE-FLOW.md) to create roles and onboard staff.
+- Follow [Coolify Deployment](DEPLOYMENT.md) for manual production releases.
+- Follow [Local Database Seeding](SEEDING.md) for seed and reset operations.
 - Read the [Development guide](DEVELOPMENT.md) and [Testing guide](TESTING.md) for the current unit, integration, and manual verification paths.

@@ -3,7 +3,7 @@
 
 ## Current status
 
-The application exposes Better Auth handlers, authenticated read endpoints, owner-Admin-only User, Role, and Branch Maintenance surfaces, durable Stock Transfer and Stock Room supplier-receiving workflows, customer CRUD/history, customer-order creation, Accounting receipt verification, durable notifications with authenticated SSE wake-ups, and a first-login credential-setup surface. These maintenance and documented business APIs use PostgreSQL through Prisma.
+The application exposes Better Auth handlers, authenticated reads, capability-delegated User, Role, and Branch Maintenance, durable inventory/sales workflows, notifications, and first-login credential setup. These APIs use PostgreSQL through Prisma.
 
 All endpoints use same-origin cookie sessions. Public email/password sign-up is disabled.
 
@@ -11,7 +11,7 @@ All endpoints use same-origin cookie sessions. Public email/password sign-up is 
 
 Better Auth is mounted at `/api/auth/[...all]` using the public `auth` instance from `lib/server/auth.ts`. That instance has **no Admin plugin**: it provides sign-in, sign-out, and session endpoints only, and public sign-up is refused (`emailAndPassword.disableSignUp`) before any database mutation. A separate server-only Better Auth instance exists in `lib/server/internal-user-auth.ts`; it is deliberately **unmounted** — it exposes only the guarded `createUser`/`setUserPassword` Admin-plugin primitives to trusted server services and can never be reached over HTTP. Regression tests prove that public sign-up and every generic Better Auth admin operation remain unroutable through the public catch-all (`tests/integration/auth-admin-surface.test.ts`).
 
-Protected application endpoints resolve the Better Auth session, reload the persisted User with its `accessRole`, require `ACTIVE` status, validate the RoleScope/location assignment, and authorize against one named capability before parsing query input or executing protected work. Owner receives the complete compile-time catalog; non-owner grants come from `RoleDefinition.permissions` on every request. They return:
+Protected endpoints reload the active User, `RoleDefinition.isOwner`, permissions, and active `UserLocation` assignments. Owner receives the complete catalog. `locations:all` or owner grants every active operational location; otherwise at least one assignment is required and resources are filtered to those IDs. `User.role`, `User.locationId`, and `RoleDefinition.scope` are compatibility storage only. Endpoints return:
 
 ```json
 {
@@ -29,16 +29,16 @@ Protected application endpoints resolve the Better Auth session, reload the pers
 
 ## Capability matrix
 
-Authorization uses the compile-time catalog in `lib/contracts/roles.ts`, evaluated against the reloaded User, RoleDefinition, and Location. Permissions are action-specific. Each module has a view grant and independent create/update/delete or workflow grants. An action grant implies only the views needed to perform it; a view grant never authorizes a mutation, and one mutation grant never authorizes a sibling action. For example, `products:create` makes Products visible and permits `POST /api/products`, but it does not permit `PATCH` or `DELETE`.
+Authorization uses the compile-time catalog in `lib/contracts/roles.ts`, evaluated against the reloaded User, RoleDefinition, and UserLocation assignments. Permissions are action-specific. Each module has a view grant and independent create/update/delete or workflow grants. An action grant implies only the views needed to perform it; a view grant never authorizes a mutation, and one mutation grant never authorizes a sibling action. For example, `products:create` makes Products visible and permits `POST /api/products`, but it does not permit `PATCH` or `DELETE`.
 
 | Seeded role | Main action grants |
 | --- | --- |
-| Owner Admin | Full current capability catalog, including owner-only users/roles/branches/offline-device administration |
+| Owner Admin | Full current capability catalog and all-location access |
 | Stock Staff | Product and SR inventory views, supplier receiving, transfer create/edit/delete/finalize/dispatch/investigate; no final transfer resolution |
 | Branch Staff | Customer CRUD, customer-order create/reserve/payment/release/unpaid cancel, direct sales, mismatch response/evidence, assigned-branch transfer receipt/discrepancy |
 | Accounting Staff | Business-wide sales/receipt views, review, confirm-correct resolution, evidence, and report export; no stock-changing void-and-replace |
 
-The complete list and Role Maintenance labels are generated from `CAPABILITY_CATALOG`. Owner-only user, role, branch, and offline-device capabilities cannot be assigned to non-owner roles. Role Maintenance offers only capabilities supported by the selected operational scope, and the API rejects incompatible scope/capability combinations. A persisted assignment that contradicts RoleScope fails closed: `BRANCH` requires one active branch, `STOCK_ROOM` requires active `SR`, and `BUSINESS_WIDE`/`OWNER` require no location. RoleScope also constrains resources after capability authorization. `User.role` remains a synchronized operational-scope discriminator, not the capability authority.
+The complete list and Role Maintenance labels are generated from `CAPABILITY_CATALOG`. All action permissions, including administration, are independently assignable. `locations:all` grants location reach only. The owner role remains immutable and nonassignable. Restricted users with no active operational assignment fail closed.
 
 ## Endpoints
 
@@ -52,21 +52,21 @@ The complete list and Role Maintenance labels are generated from `CAPABILITY_CAT
 | `GET` | `/api/notifications/push-public-key` | Environment VAPID public key | `notifications:push` |
 | `POST`, `DELETE` | `/api/notifications/push-subscription` | Prisma PushSubscription | `notifications:push`; current user only |
 | `POST` | `/api/notifications/:notificationId/read` | Prisma Notification read timestamp | `notifications:mark-read` |
-| `POST` | `/api/offline/activations` | Prisma OfflineDeviceActivation | `offline-sales:activate-device`; owner Admin only |
+| `POST` | `/api/offline/activations` | Prisma OfflineDeviceActivation | `offline-sales:activate-device` plus target-location access |
 | `GET` | `/api/offline/snapshot?deviceId=<id>` | Prisma InventoryBalance/Product | `offline-sales:snapshot`; assigned Branch scope only |
 | `POST` | `/api/offline/sync` | Prisma OfflineSyncOperation/OfflineSaleSubmission/Sale | `offline-sales:sync`; assigned Branch scope only |
 | `GET`, `POST` | `/api/customers` | Prisma Customer | `customers:view` / `customers:create` |
 | `GET`, `PATCH`, `DELETE` | `/api/customers/:id` | Prisma Customer, sales, and customer orders | `customers:view` / `customers:update` / `customers:deactivate` |
-| `GET` | `/api/customer-orders/options?locationId=<branchId>&includeUnavailable=<boolean>` | Active customers and branch products | `customer-orders:create` plus operational scope |
+| `GET` | `/api/customer-orders/options?locationId=<branchId>&includeUnavailable=<boolean>` | Accessible branches, active customers, and selected-branch products | `customer-orders:create` or `sales:post`; target-location access applies when `locationId` is present |
 | `GET`, `POST` | `/api/customer-orders` | Prisma CustomerOrder/Customer/InventoryBalance | `customer-orders:view` / `customer-orders:create` |
 | `GET` | `/api/customer-orders/:orderId` | Single persisted customer order with lines and release/payment summary | `customer-orders:view`; Branch Staff restricted to assigned branch |
-| `POST` | `/api/customer-orders/:orderId/:action` | Prisma CustomerOrder/Sale/InventoryMovement | Exact `customer-orders:reserve`, `:record-payment`, `:release`, or `:cancel`; paid cancellation also requires owner-only `:cancel-paid` |
-| `GET`, `POST` | `/api/sales` | Prisma Sale/SaleLine/InventoryMovement | `sales:view` / `sales:post` plus operational scope |
+| `POST` | `/api/customer-orders/:orderId/:action` | Prisma CustomerOrder/Sale/InventoryMovement | Exact `customer-orders:reserve`, `:record-payment`, `:release`, or `:cancel`; paid cancellation also requires `:cancel-paid` |
+| `GET`, `POST` | `/api/sales` | Prisma Sale/SaleLine/InventoryMovement | `sales:view` / `sales:post` plus effective location access |
 | `GET` | `/api/accounting/receipts?page=1&pageSize=10&reviewStatus=all&saleStatus=POSTED` | Prisma Sale/SaleLine/SaleAccountingReview/Location | `sales:verify:view`; server-side filters and pagination |
 | `POST` | `/api/accounting/receipts/:saleId/review` | Prisma SaleAccountingReview/Notification | `sales:verify`; Accounting Staff only |
-| `POST` | `/api/accounting/receipts/:saleId/resolve` | Prisma Sale/SaleLine/SaleAccountingReview/InventoryMovement/Notification | `sales:resolve` for confirm-correct; owner-only `sales:void-replace` for stock-changing replacement |
+| `POST` | `/api/accounting/receipts/:saleId/resolve` | Prisma Sale/SaleLine/SaleAccountingReview/InventoryMovement/Notification | `sales:resolve` for confirm-correct; `sales:void-replace` for stock-changing replacement |
 | `POST`, `GET` | `/api/accounting/receipts/:saleId/photo` | Coolify persistent receipt-evidence storage | `sales:evidence:upload` / `sales:evidence:view`; Branch scope is enforced by sale location |
-| `GET` | `/api/reports` | Prisma sales/orders/accounting/inventory summaries | `reports:view`; PDF additionally requires `reports:export` |
+| `GET` | `/api/reports` | Prisma sales/orders/accounting/inventory summaries | `reports:view`; every dataset is restricted to effective locations; PDF additionally requires `reports:export` |
 | `GET`, `POST` | `/api/products` | Prisma Product/InventoryBalance | `products:view` / `products:create` |
 | `PATCH`, `DELETE` | `/api/products/:productId` | Prisma Product | `products:update` / `products:delete` |
 | `GET`, `POST`, `DELETE` | `/api/products/:productId/image` | Prisma Product + private persistent image storage | `products:view` / `products:image:update` |
@@ -79,19 +79,19 @@ The complete list and Role Maintenance labels are generated from `CAPABILITY_CAT
 | `POST` | `/api/stock-transfers/:id/:action` | Prisma transfer/inventory transaction | Matching `stock-transfers:update/delete/finalize/dispatch/receive/report-discrepancy/investigate/resolve` plus scope/state policy |
 | `POST` | `/api/accounting/receipts/:saleId/branch-response` | Prisma Accounting review | Assigned Branch Staff for an unresolved own-branch mismatch |
 | `GET`, `POST` | `/api/stock-receipts` | Prisma supplier-receipt/inventory transaction | `stock-receipts:view` / `inventory-receiving:create`; OWNER/STOCK_ROOM scope, destination fixed to `SR` |
-| `GET`, `POST` | `/api/users` | Prisma User (+Location) | `users:view` / `users:create`; owner only |
-| `GET`, `POST` | `/api/roles` | Prisma RoleDefinition | `roles:view` / `roles:create`; owner only |
-| `GET`, `PATCH` | `/api/roles/:roleId` | Prisma RoleDefinition | `roles:view` / `roles:update`; owner only; no delete/deactivate route |
-| `GET`, `POST` | `/api/branches` | Prisma Location (`BRANCH`) | `branches:view` / `branches:create`; owner only |
-| `PATCH` | `/api/branches/:branchId` | Prisma Location (`BRANCH`) | `branches:update`; owner only; code immutable |
-| `PATCH` | `/api/users/:userId` | Prisma User | `users:update`; owner only |
-| `POST` | `/api/users/:userId/status` | Prisma User | `users:set-status`; owner only |
-| `POST` | `/api/users/:userId/password` | Better Auth internal + Prisma User | `users:reset-password`; owner only |
+| `GET`, `POST` | `/api/users` | Prisma User + UserLocation | `users:view` / `users:create`; effective locations apply |
+| `GET`, `POST` | `/api/roles` | Prisma RoleDefinition | `roles:view` / `roles:create` |
+| `GET`, `PATCH` | `/api/roles/:roleId` | Prisma RoleDefinition | `roles:view` / `roles:update`; owner immutable |
+| `GET`, `POST` | `/api/branches` | Prisma Location (`BRANCH`) | `branches:view` / `branches:create`; creation also requires all-location reach |
+| `PATCH` | `/api/branches/:branchId` | Prisma Location (`BRANCH`) | `branches:update`; effective locations apply; code immutable |
+| `PATCH` | `/api/users/:userId` | Prisma User + UserLocation | `users:update`; effective locations apply |
+| `POST` | `/api/users/:userId/status` | Prisma User | `users:set-status`; effective locations apply |
+| `POST` | `/api/users/:userId/password` | Better Auth internal + Prisma User | `users:reset-password`; effective locations apply |
 | `GET`, `POST` | `/api/credential-setup` | Better Auth + Prisma User | Any authenticated active role |
 
 ## Customer orders, sales, and Accounting
 
-`POST /api/customer-orders` creates or reuses a customer, snapshots product item code/name/current price, validates active products, and creates one order in a serializable transaction. Branch Staff may create only for their persisted branch; Admin must select an active branch. The options endpoint returns only products with positive available stock (`onHand - reserved`) by default. `includeUnavailable=true` also returns active products without available branch stock so the waiting-stock create flow can select them; POS does not request this mode. Reservation orders validate available branch stock and increment `reserved` without decrementing `onHand`. Waiting-stock orders do not reserve stock. DP reservations require `downpaymentAmount > 0` and globally unique `downpaymentReceiptNumber`.
+`POST /api/customer-orders` creates or reuses a customer, snapshots product item code/name/current price, validates active products, and creates one order in a serializable transaction. Branch Staff may create only for their persisted branch; Admin must select an active branch. The options endpoint returns accessible branches, active customers, and only products with positive available stock (`onHand - reserved`) by default. POS uses this single `sales:post`-authorized response and does not require `customers:view` or issue a separate `/api/customers` request. `includeUnavailable=true` also returns active products without available branch stock so the waiting-stock create flow can select them; POS does not request this mode. Reservation orders validate available branch stock and increment `reserved` without decrementing `onHand`. Waiting-stock orders do not reserve stock. DP reservations require `downpaymentAmount > 0` and globally unique `downpaymentReceiptNumber`.
 
 `POST /api/customer-orders/:orderId/reserve` transitions only a `WAITING_STOCK` order to `RESERVED`. Admin may reserve any branch order and Branch Staff only their assigned branch. The serializable transaction locks the relevant inventory balances, verifies all order lines are now available, increments every reserved quantity, and rolls back the whole operation if any line is unavailable.
 
@@ -103,9 +103,9 @@ The complete list and Role Maintenance labels are generated from `CAPABILITY_CAT
 
 `POST /api/sales` posts direct branch sales with branch-scoped receipt identity, an optional `discountAmount` not exceeding the subtotal, deducts available branch stock immediately, creates `DIRECT_SALE` inventory movements, and creates an unverified Accounting review row. Branch Staff use their persisted branch; Admin must supply an active `locationId`. Branch Staff select a customer from the shared customer master before clicking `Complete Sale`. `GET /api/accounting/receipts` is visible to Admin and Accounting Staff for the full queue; Branch Staff receive only unresolved mismatches from their persisted branch. It accepts `page`, `pageSize` (5-50), `search` (receipt/booklet/reference/customer/branch), `reviewStatus`, `saleStatus`, `locationId`, `dateFrom`, and `dateTo` filters. A mismatch row includes the validated persisted `reportedComparison`, allowing reviewers to see exact reported quantities, prices, and calculated total without relying on notes. Admin and Accounting Staff can verify or report an unverified receipt mismatch. A mismatch notifies active Branch Staff assigned to the sale branch. Branch must respond with either `ORIGINAL_ENCODING_CORRECT` or `RECEIPT_CORRECTION_NEEDED`; correction responses require a replacement receipt number. Final resolution is blocked until that response exists. Admin or Accounting may Confirm Correct after the first response, while only Admin may Void and Replace after the second response using the branch-confirmed receipt number.
 
-`GET /api/dashboard` returns live role-scoped summary metrics for sales, open orders, low/out stock, Accounting queue counts, and notification preview. `GET /api/reports` returns live read-only Sales, Accounting/Reconciliation, Orders, and Admin-only Inventory summaries; `?format=pdf` returns a PDF-download response for the same authorized data.
+`GET /api/dashboard` returns live location-scoped summary metrics for sales, open orders, low/out stock, Accounting queue counts, and notification preview. `GET /api/reports` returns live read-only Sales, Accounting/Reconciliation, Orders, and Inventory summaries, all filtered to assigned locations unless the actor has `locations:all`; `?format=pdf` returns the same authorized data.
 
-`GET /api/stock-transfers` accepts `page` and `pageSize` (1-100) and returns `{ data, meta }`; `transferId` narrows an authorized notification deep link to one transfer. Stock-transfer actions are `finalize`, `dispatch`, `confirm-receipt`, `report-discrepancy`, `investigate`, and `resolve`. They require the current transfer `version`, lock the transfer row, enforce state transitions, and use serializable transactions. Stock Staff normally creates/finalizes/dispatches SR-to-active-branch documents and investigates discrepancies; Admin may perform those same source-side actions as operational cover. Branch Staff remains destination-scoped for receipt/discrepancy, and Admin performs final discrepancy resolution. Accounting is denied. Transfer responses include `timeline` and `movements` audit arrays only when the caller has `stock-transfers:audit:view`; the built-in Admin and Stock Staff roles have that grant. Other roles receive the operational transfer fields without audit history. Only one draft may exist per destination; duplicate draft creation returns `409 DUPLICATE_DRAFT`.
+`GET /api/stock-transfers` accepts `page` and `pageSize` (1-100) and returns `{ data, meta }`; `transferId` narrows an authorized notification deep link to one transfer. Transfer records use explicit source-or-destination location authorization: an actor assigned to active `SR` may view and manage outbound transfer records for every active destination when the matching action capability is granted, while destination-side actors see only transfers sent to their assigned destinations. Source-side transfer reach does not grant inventory, sales, orders, reports, or other branch data. Stock-transfer actions are `finalize`, `dispatch`, `confirm-receipt`, `report-discrepancy`, `investigate`, and `resolve`. They require the current transfer `version`, lock the transfer row, enforce state transitions, and use serializable transactions. Stock Staff normally creates/finalizes/dispatches SR-to-active-branch documents and investigates discrepancies; Admin may perform those same source-side actions as operational cover. Branch Staff remains destination-scoped for receipt/discrepancy, and Admin performs final discrepancy resolution. Accounting is denied. Transfer responses include `timeline` and `movements` audit arrays only when the caller has `stock-transfers:audit:view`; the built-in Admin and Stock Staff roles have that grant. Other roles receive the operational transfer fields without audit history. Only one draft may exist per destination; duplicate draft creation returns `409 DUPLICATE_DRAFT`.
 
 Stock-transfer transitions create persisted per-user notifications in the same database transaction as the triggering workflow update. `FOR_DISPATCH` alerts Stock Staff assigned to `SR`, `IN_TRANSIT` alerts Branch Staff assigned to the destination, exact `RECEIVED` alerts Stock Staff, `DISCREPANCY_REPORTED` alerts Stock Staff, `UNDER_REVIEW` alerts Admin, `RESOLVED` alerts Admin plus destination Branch Staff, and replacement drafts created from resolved shortages alert Stock Staff.
 
@@ -204,9 +204,9 @@ Balance timestamps are ISO 8601 strings.
 
 The response `summary` contains user-facing totals for the active authorized location scope: `totalProducts`, `totalUnits`, `needsRestock`, and role-scoped `incomingItems`. This is the total quantity still in transit, not a document count and not sellable stock. For Branch Staff it includes only transfers destined for the persisted branch; Admin sees the selected location scope and Stock Staff sees items in transit to branches.
 
-## User management (owner Admin only)
+## User management
 
-User routes require their exact owner-only `users:view`, `users:create`, `users:update`, `users:set-status`, or `users:reset-password` capability. Every failure uses the stable envelope `{ "error": { "code", "message" } }` with statuses `401`, `403`, `404`, `409`, or `400`.
+User routes require their exact `users:view`, `users:create`, `users:update`, `users:set-status`, or `users:reset-password` capability. List filters are ANDed with effective location access, summary counts use the same actor scope, and inaccessible or `none` filters fail closed for restricted managers. User-form location and role options expose only grants the actor can assign. Delegated managers cannot change their own role/locations/status/password or assign a role whose capabilities or all-location reach exceed theirs. Every failure uses the stable envelope `{ "error": { "code", "message" } }`.
 
 ### `GET /api/users`
 
@@ -228,13 +228,11 @@ type UserListResponseDto = {
     id: string;
     name: string;
     email: string;
-    role: "ADMIN" | "STOCK_STAFF" | "BRANCH_STAFF" | "ACCOUNTING_STAFF";
     roleDefinitionId: string;
     roleName: string;
-    roleScope: "OWNER" | "BRANCH" | "STOCK_ROOM" | "BUSINESS_WIDE";
     status: "ACTIVE" | "INACTIVE";
     isOwner: boolean;
-    location: { id: string; code: string; name: string; type: "WAREHOUSE" | "BRANCH" } | null;
+    locations: Array<{ id: string; code: string; name: string; type: "WAREHOUSE" | "BRANCH" }>;
     credentialSetupRequired: boolean;
     createdAt: string;
     updatedAt: string;
@@ -255,21 +253,17 @@ The immutable owner Admin row appears in data with `isOwner: true`; summary coun
 
 ### `POST /api/users`
 
-Body contains `roleId`, `name`, `email`, `temporaryPassword`, and optional `locationId`. The selected role must be non-owner:
-
-- `STOCK_ROOM` resolves server-side to active `SR`.
-- `BRANCH` requires `locationId` for an active branch.
-- `BUSINESS_WIDE` persists no location.
+Body contains `roleId`, `name`, `email`, `temporaryPassword`, and `locationIds`. Non-owner roles without `locations:all` require at least one active operational location. Roles with `locations:all` accept an empty array.
 
 Duplicate emails return `409 EMAIL_IN_USE` with exactly one user/account left behind. The guarded internal Better Auth primitive first creates an inactive staging credential; the lifecycle service then re-resolves and locks the current role/location assignment, activates the user, arms `credentialSetupRequired`, and returns the safe DTO. Failed finalization removes the staging row when possible, and any cleanup-failure residue remains inactive. The response never contains the temporary password.
 
 ### `PATCH /api/users/:userId`
 
-Accepts optional `name`, `email`, `roleId`, and `locationId`. The service derives and writes the compatibility enum from RoleScope and computes the full role/location assignment inside one transaction after a `FOR UPDATE` row lock. Changing role or location deletes all target sessions in that transaction.
+Accepts optional `name`, `email`, `roleId`, and `locationIds`. Supplying `locationIds` replaces assignments atomically after a `FOR UPDATE` row lock; access changes delete all target sessions in the same transaction. Every delegated edit, status change, and password reset locks and re-reads the target user, share-locks the target's current role, and requires both the target's complete active operational location set and current effective capabilities to be subsets of the actor's authority. Owner bypasses these ceilings. Any target whose role grants `locations:all` requires an owner or another all-location manager. User DTOs therefore never expose assignments outside the caller's authority.
 
-## Role maintenance (owner Admin only)
+## Role maintenance
 
-`GET /api/roles` lists roles with assigned-user counts. `POST /api/roles` creates only `BRANCH`, `STOCK_ROOM`, or `BUSINESS_WIDE` roles using non-administration catalog permissions; owner-only permissions are rejected server-side. Names are case-insensitively unique. `GET /api/roles/:roleId` returns one role. `PATCH /api/roles/:roleId` requires `version`; stale writes return `409 ROLE_VERSION_CONFLICT`, assignment and scope edits serialize on the role row, scope changes are blocked while users are assigned, and permission changes transactionally revoke assigned users' sessions. The OWNER Admin role is full-access, nonassignable, and immutable. No role delete/deactivate endpoint exists.
+Role DTOs and create/edit bodies contain no operational scope. `POST` accepts name, description, and permissions. Owner may grant any catalog capability. A delegated role manager may update a role only when both its current permissions and requested permissions are subsets of the manager's effective capabilities, and cannot edit their own assigned role. `PATCH` additionally requires `version`; stale writes return `409 ROLE_VERSION_CONFLICT`. Permission changes revoke assigned sessions. Removing `locations:all` returns `409 LOCATION_ASSIGNMENT_REQUIRED` if an assigned user has no valid explicit location. The `isOwner` role is immutable and nonassignable. No role delete/deactivate endpoint exists.
 
 ### `POST /api/users/:userId/status`
 

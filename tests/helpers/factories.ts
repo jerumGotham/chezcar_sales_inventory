@@ -38,22 +38,26 @@ export type UserFixtureInput = {
 const ROLE_DEFINITION_BY_ROLE = {
   ADMIN: {
     id: "role-admin",
-    scope: "OWNER",
+    isOwner: true,
+    hasAllLocations: true,
     permissions: CAPABILITY_IDS,
   },
   STOCK_STAFF: {
     id: "role-stock-staff",
-    scope: "STOCK_ROOM",
+    isOwner: false,
+    hasAllLocations: false,
     permissions: ["dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push", "customers:view", "customer-orders:view", "sales:view", "products:view", "inventory:view", "inventory-availability:view", "inventory-movements:view", "stock-receipts:view", "inventory-receiving:create", "stock-transfers:view", "stock-transfers:audit:view", "stock-transfers:create", "stock-transfers:update", "stock-transfers:delete", "stock-transfers:finalize", "stock-transfers:dispatch", "stock-transfers:investigate"],
   },
   BRANCH_STAFF: {
     id: "role-branch-staff",
-    scope: "BRANCH",
+    isOwner: false,
+    hasAllLocations: false,
     permissions: ["dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push", "customers:view", "customers:create", "customers:update", "customers:deactivate", "customer-orders:view", "customer-orders:create", "customer-orders:reserve", "customer-orders:record-payment", "customer-orders:release", "customer-orders:cancel", "sales:view", "sales:post", "sales:verify:view", "sales:mismatch:respond", "sales:evidence:view", "sales:evidence:upload", "inventory:view", "inventory-availability:view", "stock-transfers:view", "stock-transfers:receive", "stock-transfers:report-discrepancy", "offline-sales:snapshot", "offline-sales:sync"],
   },
   ACCOUNTING_STAFF: {
     id: "role-accounting-staff",
-    scope: "BUSINESS_WIDE",
+    isOwner: false,
+    hasAllLocations: true,
     permissions: ["dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push", "customers:view", "customer-orders:view", "sales:view", "sales:verify", "sales:verify:view", "sales:resolve", "sales:evidence:view", "sales:evidence:upload", "reports:view", "reports:export"],
   },
 } as const;
@@ -200,6 +204,9 @@ export async function createUserFixture(
       roleDefinitionId: ROLE_DEFINITION_BY_ROLE[input.role].id,
       status,
       locationId: input.locationId,
+      locationAssignments: input.locationId
+        ? { create: { locationId: input.locationId } }
+        : undefined,
     },
     update: {
       name,
@@ -207,6 +214,10 @@ export async function createUserFixture(
       roleDefinitionId: ROLE_DEFINITION_BY_ROLE[input.role].id,
       status,
       locationId: input.locationId,
+      locationAssignments: {
+        deleteMany: {},
+        ...(input.locationId ? { create: { locationId: input.locationId } } : {}),
+      },
     },
   });
 }
@@ -425,12 +436,11 @@ export function authContextFor(
   const accessRole = ROLE_DEFINITION_BY_ROLE[user.role];
   return {
     userId: user.id,
-    role: user.role,
     roleDefinitionId: user.roleDefinitionId,
-    roleScope: accessRole.scope,
-    capabilities: accessRole.permissions,
-    isOwner: accessRole.scope === "OWNER",
-    locationId: user.locationId,
-    location: location ? { id: location.id, code: location.code, type: location.type, isActive: location.isActive } : null,
+    capabilities: accessRole.hasAllLocations
+      ? [...accessRole.permissions, "locations:all"]
+      : accessRole.permissions,
+    isOwner: accessRole.isOwner,
+    locationIds: location ? [location.id] : [],
   };
 }

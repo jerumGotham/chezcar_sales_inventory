@@ -1,7 +1,5 @@
 import "server-only";
 
-import type { UserRole } from "@prisma/client";
-
 import {
   capabilitiesFor,
   evaluateAccess,
@@ -53,15 +51,19 @@ async function loadPersistedAccessContext(
     where: { id: session.user.id },
     select: {
       id: true,
-      role: true,
       status: true,
-      locationId: true,
       roleDefinitionId: true,
       accessRole: {
-        select: { scope: true, permissions: true },
+        select: { isOwner: true, permissions: true },
       },
-      location: {
-        select: { id: true, code: true, type: true, isActive: true },
+      locationAssignments: {
+        where: {
+          location: {
+            isActive: true,
+            OR: [{ type: "BRANCH" }, { code: "SR", type: "WAREHOUSE" }],
+          },
+        },
+        select: { locationId: true },
       },
     },
   });
@@ -72,13 +74,10 @@ async function loadPersistedAccessContext(
 
   const context: PersistedAccessContext = {
     userId: user.id,
-    role: user.role,
     roleDefinitionId: user.roleDefinitionId,
-    roleScope: user.accessRole.scope,
     capabilities: user.accessRole.permissions,
-    isOwner: user.accessRole.scope === "OWNER",
-    locationId: user.locationId,
-    location: user.location,
+    isOwner: user.accessRole.isOwner,
+    locationIds: user.locationAssignments.map((assignment) => assignment.locationId),
   };
 
   if (!validatePersistedAssignment(context)) {
@@ -102,18 +101,12 @@ export async function requireCapability(
   return context;
 }
 
-// Compatibility boundary for the inventory route until its named-capability
-// migration in Plan 01-14. All persisted assignment checks still apply.
-export async function requireUser(
+export async function requireAnyCapability(
   headers: Headers,
-  allowedRoles: readonly UserRole[],
+  capabilities: readonly Capability[],
 ): Promise<AuthContext> {
   const context = await loadPersistedAccessContext(headers);
-
-  if (!allowedRoles.includes(context.role)) {
-    throw new AuthorizationError("Insufficient permissions");
-  }
-
+  assertAnyCapability(context, capabilities);
   return context;
 }
 
