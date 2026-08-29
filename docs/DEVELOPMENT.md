@@ -30,7 +30,7 @@ This guide covers development of the Chezcar Sales & Inventory UI prototype. The
 
 Create an untracked `.env` from `.env.example`, start PostgreSQL, apply migrations, and seed the first Admin before using authenticated routes. `package.json` requires Node.js `>=20.9.0`; the latest clean verification used Node.js `20.20.2`.
 
-The framework baseline is Next.js `16.3.2`, React `19.2.8`, and Tailwind CSS `4.3.3`. Authentication, authorization, migrations, automated tests, GitHub Actions CI, and protected promotion of verified GHCR images to Coolify cover the implemented foundation, but automated browser coverage, recovery, monitoring, and several workflows remain incomplete.
+The framework baseline is Next.js `16.3.2`, React `19.2.8`, and Tailwind CSS `4.3.3`. Authentication, authorization, migrations, automated tests, GitHub Actions CI, and verified GHCR images for manual Coolify deployment cover the implemented foundation, but automated browser coverage, recovery, monitoring, and several workflows remain incomplete.
 
 ## Repository layout
 

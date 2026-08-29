@@ -153,7 +153,7 @@ Unimplemented draft order, sale, job, payment, and general adjustment models are
 ## Known risks
 
 1. Job orders, stock cards, and parts of the offline workflow remain non-durable prototypes.
-2. GitHub Actions runs the automated Vitest unit/integration suites and deployment-image build, publishes successful `main` images to immutable GHCR tags, and promotes only an approved image for Coolify; coverage tooling is absent.
+2. GitHub Actions runs the automated Vitest unit/integration suites and deployment-image build, then publishes successful `main` images to GHCR for manual Coolify deployment; coverage tooling is absent.
 3. The local Compose bind mount can contain machine-specific/corrupt PostgreSQL state; use logical backups and the disposable test target for migration verification.
 4. Product price is a current Decimal serialized as a number for legacy UI compatibility; canonical price history and money transport are unresolved.
 5. Inventory movements cover transfers, supplier receipts, sales, releases, and manual adjustments; damaged/return locations and stock cards remain incomplete.

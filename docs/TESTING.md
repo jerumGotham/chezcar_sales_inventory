@@ -239,4 +239,4 @@ When coverage is introduced, establish a measured baseline first and raise it in
 
 ## CI integration
 
-`.github/workflows/ci.yml` installs the locked dependency tree and runs Prisma generation, type checking, linting, unit tests, the serial disposable-PostgreSQL integration project, the production build, and the Coolify Docker image build. Successful pushes to `main` publish an immutable SHA image to GHCR. After protected-environment approval, `.github/workflows/coolify-cd.yml` promotes that SHA to `production` and triggers Coolify. Add the critical E2E subset after the application has stable authentication, database seeding, and server-backed workflows.
+`.github/workflows/ci.yml` installs the locked dependency tree and runs Prisma generation, type checking, linting, unit tests, the serial disposable-PostgreSQL integration project, the production build, and the Coolify Docker image build. Successful pushes to `main` publish immutable SHA and mutable `production` tags to GHCR for manual Coolify deployment. Add the critical E2E subset after the application has stable authentication, database seeding, and server-backed workflows.

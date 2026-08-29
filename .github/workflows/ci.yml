@@ -97,4 +97,6 @@ jobs:
           image_name="$(printf '%s' "${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')"
           printf '%s' "${GHCR_TOKEN}" | docker login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin
           docker tag "chezcar:${GITHUB_SHA}" "${image_name}:${GITHUB_SHA}"
+          docker tag "chezcar:${GITHUB_SHA}" "${image_name}:production"
           docker push "${image_name}:${GITHUB_SHA}"
+          docker push "${image_name}:production"

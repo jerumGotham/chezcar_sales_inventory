@@ -68,7 +68,7 @@ The npm scripts in `package.json` are:
 
 `package-lock.json` is present, so npm is the repository's locked package manager.
 
-GitHub Actions builds the Coolify runtime from the root `Dockerfile` and publishes the verified image to GHCR. Deployment variables, registry access, persistent storage, GitHub environment secrets, and the manual production migration sequence are documented in `docs/DEPLOYMENT.md`.
+GitHub Actions builds the Coolify runtime from the root `Dockerfile` and publishes the verified image to GHCR. Deployment variables, registry access, persistent storage, and the manual Coolify release sequence are documented in `docs/DEPLOYMENT.md`.
 
 ### Vitest and workbook tooling
 
