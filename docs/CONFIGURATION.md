@@ -60,12 +60,15 @@ The npm scripts in `package.json` are:
 | `npm run data:generate -- --profile <path> --resolutions <path> --fixture-out <path> --mapping-out <path> [--check]` | `node scripts/data-onboarding/generate-seed.mjs` | Generate the byte-stable canonical fixture and source map from reviewed profile plus owner resolutions. `--check` refuses any byte-stale committed output. Requires complete one-to-one resolution coverage for the current workbook hash. |
 | `npm run prisma:generate` | `prisma generate` | Regenerate Prisma Client from the checked-in schema. |
 | `npm run db:migrate` | `prisma migrate dev` | Create/apply development migrations. Production uses `prisma migrate deploy`. |
+| `npm run db:migrate:deploy` | `prisma migrate deploy` | Apply checked-in migrations in a controlled deployment task against a backed-up target. |
 | `npm run db:seed` | `prisma db seed` | Transactionally load the approved canonical opening catalog and environment-supplied owner Admin on an explicitly allowed isolated target. |
 | `npm run db:catalog:reload` | `node prisma/seed.mjs --catalog-only` | Transactionally replace canonical products/opening balances and upsert the six import locations while preserving auth and additional Branch Maintenance rows; uses the same positive reset gates. |
 | `npm run db:data:reset` | `node --env-file=.env prisma/reset-operational-data.mjs` | Transactionally delete operational data while preserving users/auth, roles, products, and required locations; requires explicit opt-in and an exact approved isolated database identity. |
 | `npm run verify:phase-01 -- [--validate-evidence]` | `node scripts/verify-phase-01.mjs` | Phase 1 evidence gate: asserts the disposable test target and seed/reset environment, then runs fresh migration deploy, seed, two equivalent catalog reloads, full unit/integration suites, typecheck, and build; captures lint's expected failure baseline separately and writes/validates `docs/verification/phase-01-evidence.md`. |
 
 `package-lock.json` is present, so npm is the repository's locked package manager.
+
+GitHub Actions builds the Coolify runtime from the root `Dockerfile` and publishes the verified image to GHCR. Deployment variables, registry access, persistent storage, GitHub environment secrets, and the manual production migration sequence are documented in `docs/DEPLOYMENT.md`.
 
 ### Vitest and workbook tooling
 
@@ -196,6 +199,6 @@ The following configuration is absent from the repository:
 
 - Startup-time environment validation or typed environment parsing.
 - Environment-specific configuration for development, test, staging, or production.
-- Production database, deployment, monitoring, and external-service settings.
+- Concrete production database credentials, monitoring, and external-service values. The deployment variable contract is documented, but values remain deployment-managed.
 
 Do not infer production values from `docker-compose.yml`; it is local PostgreSQL configuration only.

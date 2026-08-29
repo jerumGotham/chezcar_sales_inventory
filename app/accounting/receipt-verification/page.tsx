@@ -849,7 +849,7 @@ function ReceiptVerificationContent() {
                         <td className="px-3 py-4 text-right">
                           <Button
                             size="sm"
-                            variant="outline"
+                            variant="view"
                             onClick={(event) => {
                               event.stopPropagation();
                               selectSale(sale);
@@ -1047,6 +1047,7 @@ function ReceiptVerificationContent() {
                         />
                       </div>
                       <Button
+                        variant="workflow"
                         onClick={() => branchResponseMutation.mutate()}
                         disabled={
                           branchResponseMutation.isPending ||
@@ -1211,7 +1212,7 @@ function ReceiptVerificationContent() {
                               />
                               <Button
                                 type="button"
-                                variant="ghost"
+                                variant="destructive"
                                 size="icon"
                                 aria-label={`Remove line ${index + 1}`}
                                 onClick={() =>
@@ -1253,11 +1254,11 @@ function ReceiptVerificationContent() {
                       selectedSale.reviewStatus === "UNVERIFIED" && (
                       <div className="flex flex-wrap gap-2">
                         <Button
+                          variant="workflow"
                           onClick={() => reviewMutation.mutate("VERIFIED")}
                           disabled={
                             reviewMutation.isPending || Boolean(comparisonError) || differences.length > 0
                           }
-                          className="bg-emerald-600 hover:bg-emerald-700"
                         >
                           <CheckCircle2 className="mr-2 h-4 w-4" />
                           Confirm correct
@@ -1329,7 +1330,7 @@ function ReceiptVerificationContent() {
                         />
                         <Button
                           type="button"
-                          variant="outline"
+                          variant="destructive"
                           size="sm"
                           onClick={clearSelectedPhoto}
                         >
@@ -1346,7 +1347,7 @@ function ReceiptVerificationContent() {
                     {canReview &&
                       selectedSale.reviewStatus === "UNVERIFIED" && (
                       <Button
-                        variant="outline"
+                        variant="warning"
                         onClick={() => {
                           if (!notes.trim()) {
                             setFormError(
@@ -1357,7 +1358,6 @@ function ReceiptVerificationContent() {
                           reviewMutation.mutate("MISMATCH_REPORTED");
                         }}
                         disabled={reviewMutation.isPending || Boolean(comparisonError)}
-                        className="border-rose-200 text-rose-700 hover:bg-rose-50"
                       >
                         <AlertTriangle className="mr-2 h-4 w-4" />
                         Report mismatch
@@ -1391,7 +1391,7 @@ function ReceiptVerificationContent() {
                       {selectedSale.branchResponse ===
                         "ORIGINAL_ENCODING_CORRECT" && canResolve && (
                         <Button
-                          variant="outline"
+                          variant="workflow"
                           onClick={() =>
                             resolveMutation.mutate("CONFIRMED_CORRECT")
                           }
@@ -1400,7 +1400,6 @@ function ReceiptVerificationContent() {
                             !resolutionNote.trim() ||
                             Boolean(comparisonError)
                           }
-                          className="border-sky-200 text-sky-700"
                         >
                           Confirm original encoding
                         </Button>
@@ -1408,6 +1407,7 @@ function ReceiptVerificationContent() {
                       {selectedSale.branchResponse ===
                         "RECEIPT_CORRECTION_NEEDED" && canVoidReplace && (
                         <Button
+                          variant="destructive"
                           onClick={() =>
                             resolveMutation.mutate("VOIDED_REPLACED")
                           }
@@ -1416,7 +1416,6 @@ function ReceiptVerificationContent() {
                             !resolutionNote.trim() ||
                             Boolean(comparisonError)
                           }
-                          className="bg-red-600 text-white hover:bg-red-700"
                         >
                           <Upload className="mr-2 h-4 w-4" />
                           Void and replace

@@ -7,7 +7,7 @@ import { ArrowLeft, CheckCircle2, Loader2, PackageCheck } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -83,7 +83,7 @@ export default function ReleaseCustomerOrderPage() {
     <PageShell
       title="Release Customer Order"
       subtitle="Post final receipt, deduct reserved stock, and complete the customer order."
-      actions={<Link href={`/customer-orders/${orderId}`}><Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" />Back to Order</Button></Link>}
+      actions={<Link href={`/customer-orders/${orderId}`} className={buttonVariants({ variant: "outline" })}><ArrowLeft className="mr-2 h-4 w-4" />Back to Order</Link>}
     >
       {isLoading ? <div className="flex items-center gap-2 rounded-xl border p-6 text-slate-500"><Loader2 className="h-4 w-4 animate-spin" />Loading order...</div> : null}
       {error ? <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{(error as Error).message}</div> : null}
@@ -128,7 +128,7 @@ export default function ReleaseCustomerOrderPage() {
                 <div className="space-y-2"><Label htmlFor="finalReceiptNumber">Final Receipt Number</Label><Input id="finalReceiptNumber" name="finalReceiptNumber" placeholder="Handwritten receipt number" /></div>
                 <div className="space-y-2"><Label htmlFor="paymentMethod">Payment Method</Label><select id="paymentMethod" name="paymentMethod" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="CASH">Cash</option><option value="GCASH">GCash</option><option value="MAYA">Maya</option><option value="BANK_TRANSFER">Bank Transfer</option><option value="CREDIT_CARD">Credit Card</option><option value="SPLIT">Split</option></select></div>
                 <div className="space-y-2"><Label htmlFor="notes">Release Notes</Label><Input id="notes" name="notes" placeholder="Released by, remarks, etc." /></div>
-                <Button type="submit" className="w-full bg-emerald-600 text-white hover:bg-emerald-700" disabled={releaseMutation.isPending}>{releaseMutation.isPending ? "Releasing..." : "Confirm Release"}</Button>
+                <Button type="submit" variant="workflow" className="w-full" disabled={releaseMutation.isPending}>{releaseMutation.isPending ? "Releasing..." : "Confirm Release"}</Button>
               </form> : <p className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">This order cannot be released in its current state or with your capabilities.</p>}
             </CardContent>
           </Card>

@@ -10,7 +10,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Trash2, UserRound, Package2 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -234,13 +234,11 @@ export default function CreateCustomerOrderPage() {
       subtitle="Create a reservation or special order with multiple products."
       actions={
         <div className="flex gap-2">
-          <Link href={"/customer-orders" as Route}>
-            <Button variant="outline">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back
-            </Button>
+          <Link href={"/customer-orders" as Route} className={buttonVariants({ variant: "outline" })}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back
           </Link>
-            {canCreate ? <Button className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => { setErrorMessage(""); saveMutation.mutate(); }} disabled={saveMutation.isPending || optionsQuery.isLoading}>
+            {canCreate ? <Button onClick={() => { setErrorMessage(""); saveMutation.mutate(); }} disabled={saveMutation.isPending || optionsQuery.isLoading}>
              {saveMutation.isPending ? "Saving..." : "Save Order"}
            </Button> : null}
         </div>
@@ -375,9 +373,8 @@ export default function CreateCustomerOrderPage() {
                         {items.length > 1 && (
                           <Button
                             type="button"
-                            variant="ghost"
+                            variant="destructive"
                             size="sm"
-                            className="text-rose-600 hover:text-rose-700"
                             onClick={() => handleRemoveItem(index)}
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
@@ -475,7 +472,7 @@ export default function CreateCustomerOrderPage() {
                   <span>{formatPeso(balance)}</span>
                 </div>
 
-                  {canCreate ? <Button className="w-full bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => { setErrorMessage(""); saveMutation.mutate(); }} disabled={saveMutation.isPending || optionsQuery.isLoading}>
+                  {canCreate ? <Button className="w-full" onClick={() => { setErrorMessage(""); saveMutation.mutate(); }} disabled={saveMutation.isPending || optionsQuery.isLoading}>
                    {saveMutation.isPending ? "Saving..." : "Save Order"}
                  </Button> : null}
               </div>

@@ -8,7 +8,7 @@ import { ArrowLeft, Loader2, PackageCheck } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
@@ -112,10 +112,10 @@ export default function CustomerOrderDetailsPage() {
       subtitle="Review persisted order details, reserved items, payment status, and release readiness."
       actions={
         <div className="flex flex-wrap gap-2">
-          <Link href="/customer-orders"><Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" />Back</Button></Link>
-          {order && actions?.canReserve ? <Button onClick={() => reserveMutation.mutate()} disabled={reserveMutation.isPending}>{reserveMutation.isPending ? "Reserving..." : "Reserve Stock"}</Button> : null}
-          {order && actions?.canRelease ? <Link href={`/customer-orders/${order.id}/release`}><Button className="bg-emerald-600 text-white hover:bg-emerald-700">Release Order</Button></Link> : null}
-          {order && actions?.canCancel ? <Button variant="outline" className="border-red-200 text-red-700 hover:bg-red-50" onClick={() => setIsCancelOpen(true)}>Cancel Order</Button> : null}
+          <Link href="/customer-orders" className={buttonVariants({ variant: "outline" })}><ArrowLeft className="mr-2 h-4 w-4" />Back</Link>
+          {order && actions?.canReserve ? <Button variant="workflow" onClick={() => reserveMutation.mutate()} disabled={reserveMutation.isPending}>{reserveMutation.isPending ? "Reserving..." : "Reserve Stock"}</Button> : null}
+          {order && actions?.canRelease ? <Link href={`/customer-orders/${order.id}/release`} className={buttonVariants({ variant: "workflow" })}>Release Order</Link> : null}
+          {order && actions?.canCancel ? <Button variant="destructive" onClick={() => setIsCancelOpen(true)}>Cancel Order</Button> : null}
         </div>
       }
     >

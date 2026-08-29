@@ -45,6 +45,7 @@ The complete list and Role Maintenance labels are generated from `CAPABILITY_CAT
 | Method | Path | Data source | Authorization |
 | --- | --- | --- | --- |
 | `GET`, `POST` | `/api/auth/[...all]` | Better Auth + PostgreSQL | Endpoint-specific; public sign-up disabled; generic admin operations unroutable |
+| `GET` | `/api/health` | PostgreSQL readiness query | Public, data-free `200`/`503`; intended for Coolify health checks |
 | `GET` | `/api/dashboard` | Prisma sales/orders/inventory/accounting plus persisted notifications | `dashboard:view` |
 | `GET`, `PATCH` | `/api/notifications` | Prisma Notification inbox | `notifications:view` / `notifications:mark-read` |
 | `GET` | `/api/notifications/stream` | Prisma Notification catch-up + PostgreSQL `LISTEN/NOTIFY` wake-ups | `notifications:view`; authenticated server-sent events |

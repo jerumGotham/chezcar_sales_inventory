@@ -10,7 +10,7 @@ Current gaps are intentional and material:
 - Better Auth email/password sessions, active-account checks, persisted RoleDefinition capability grants, and RoleScope/location authorization are implemented. Public sign-up is disabled; `UserRole` remains only a synchronized operational-scope compatibility field.
 - Products, Inventory and Availability, customers/orders/sales/accounting, stock receiving/transfers, notifications, users, roles, and branches use PostgreSQL through Prisma. Job Orders and some supporting panels remain mock/local behavior.
 - Checked-in additive migrations and an environment-driven development seed exist. The seed provisions reference catalog data, deterministic built-in roles, and the first Admin without committed credentials.
-- Vitest unit and serial disposable-PostgreSQL integration suites exist. Coverage, browser tests, and CI do not.
+- Vitest unit and serial disposable-PostgreSQL integration suites run locally and in GitHub Actions CI. Coverage and automated browser tests do not exist.
 - A current Node.js 20 verification run passes `npm run build`, `npm run typecheck`, and both Vitest projects.
 - `npm run lint` passes with existing warnings; report the exact current warning count rather than calling the repository warning-free.
 - `npm audit --omit=dev` reports zero production dependency findings; the full development tree currently reports one high and one low transitive tooling finding.
@@ -63,10 +63,12 @@ npm test               # Vitest Node unit project
 npm run test:integration # serial disposable-PostgreSQL integration project
 npm run prisma:generate
 npm run db:migrate     # development migration; requires DATABASE_URL
+npm run db:migrate:deploy # deployment migration; requires a reviewed, backed-up target
 npm run db:seed        # requires DATABASE_URL and SEED_ADMIN_* values
 npm run db:data:reset  # guarded isolated reset; preserves users/auth, products, locations
 docker compose up -d postgres
 docker compose stop postgres
+docker build -t chezcar .
 ```
 
 Never report a command as passing unless the current run completes successfully; record failures, timeouts, warnings, and skipped checks explicitly. Integration tests own the fixed disposable container `chezcar_test_postgres_01_13` on port `55435` and must not overlap another run.

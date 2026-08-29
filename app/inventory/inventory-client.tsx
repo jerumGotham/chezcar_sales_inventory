@@ -21,7 +21,7 @@ import { LocationScopeControl } from "@/components/location-scope-control";
 import { PageShell } from "@/components/page-shell";
 import { useCan } from "@/components/shell-access-context";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -578,11 +578,11 @@ export function InventoryClient({
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              {canReceiveSupplierStock && <Link href="/inventory/receive"><Button className="bg-emerald-600 text-white hover:bg-emerald-700">Receive from Supplier</Button></Link>}
-              {canAdjustStock && <Button className="bg-amber-600 text-white hover:bg-amber-700" onClick={openAdjustModal}>Adjust Stock</Button>}
-              {canViewMovements && <Button variant="outline" onClick={() => setIsStockCardOpen(true)}>Stock Movement</Button>}
-              {canViewAvailability && <Button variant="outline" onClick={() => setIsAvailabilityOpen(true)}>Inventory Availability</Button>}
-              {canViewStockTransfers && <Link href="/stock-transfers"><Button variant="outline">Open Stock Transfers</Button></Link>}
+              {canReceiveSupplierStock && <Link href="/inventory/receive" className={buttonVariants()}>Receive from Supplier</Link>}
+              {canAdjustStock && <Button variant="warning" onClick={openAdjustModal}>Adjust Stock</Button>}
+              {canViewMovements && <Button variant="view" onClick={() => setIsStockCardOpen(true)}>Stock Movement</Button>}
+              {canViewAvailability && <Button variant="view" onClick={() => setIsAvailabilityOpen(true)}>Inventory Availability</Button>}
+              {canViewStockTransfers && <Link href="/stock-transfers" className={buttonVariants({ variant: "view" })}>Open Stock Transfers</Link>}
             </div>
           </CardContent>
         </Card>
@@ -638,7 +638,7 @@ export function InventoryClient({
 
             <div className="flex gap-2">
               <Button
-                className="flex-1 bg-emerald-600 text-white hover:bg-emerald-700"
+                className="flex-1"
                 onClick={handleApplyFilters}
               >
                 Apply
@@ -805,7 +805,7 @@ export function InventoryClient({
                             <td className="px-5 py-4">
                                <div className="flex flex-wrap gap-2">
                                  <Button
-                                   variant="outline"
+                                   variant="view"
                                    size="sm"
                                    onClick={() => toggleExpanded(group.itemCode)}
                                  >
@@ -822,7 +822,7 @@ export function InventoryClient({
                                    )}
                                  </Button>
                                   {canUpdateCost && group.locations[0] && (
-                                   <Button variant="outline" size="sm" onClick={() => openCostModal(group.locations[0])}>
+                                   <Button variant="edit" size="sm" onClick={() => openCostModal(group.locations[0])}>
                                      Edit Cost
                                    </Button>
                                  )}
@@ -907,7 +907,7 @@ export function InventoryClient({
                                             {canAdjustStock && (
                                               <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
                                                 <Button
-                                                  variant="outline"
+                                                  variant="warning"
                                                   size="sm"
                                                   onClick={() => openQuickAdjustModal(item)}
                                                 >
@@ -1061,7 +1061,7 @@ export function InventoryClient({
               Cancel
             </Button>
             <Button
-              className="bg-amber-600 text-white hover:bg-amber-700"
+              variant="warning"
               onClick={submitAdjustment}
                disabled={correctionMutation.isPending || !adjustProduct || !adjustReason.trim() || Number(adjustQuantity || 0) <= 0}
             >
@@ -1167,7 +1167,7 @@ export function InventoryClient({
               Cancel
             </Button>
             <Button
-              className="bg-amber-600 text-white hover:bg-amber-700"
+              variant="warning"
               onClick={submitQuickAdjustment}
                disabled={correctionMutation.isPending || !quickAdjustReason.trim() || Number(quickAdjustQuantity || 0) <= 0}
             >
@@ -1232,6 +1232,7 @@ export function InventoryClient({
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCostOpen(false)}>Cancel</Button>
             <Button
+              variant="edit"
               onClick={() => costMutation.mutate()}
               disabled={costMutation.isPending || !costBalance || Number(newUnitCost) <= 0 || !costReason.trim()}
             >

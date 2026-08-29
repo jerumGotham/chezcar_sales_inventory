@@ -511,6 +511,8 @@ export function StockTransfersClient({
             <span>{message}</span>
           </div>
           <button
+            type="button"
+            aria-label="Dismiss notification"
             onClick={() => setMessage("")}
             className="ml-3 shrink-0 rounded p-0.5 opacity-60 hover:opacity-100"
           >
@@ -594,7 +596,7 @@ export function StockTransfersClient({
                   }}
                   size="icon"
                   type="button"
-                  variant="outline"
+                  variant="destructive"
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -703,7 +705,7 @@ export function StockTransfersClient({
                       }
                       size="icon"
                       type="button"
-                      variant="outline"
+                      variant="destructive"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -722,7 +724,6 @@ export function StockTransfersClient({
                     Add product
                   </Button>
                   <Button
-                    className="bg-emerald-600 text-white hover:bg-emerald-700"
                     disabled={updateDraftMutation.isPending}
                     onClick={() => {
                       const errs: string[] = [];
@@ -787,8 +788,7 @@ export function StockTransfersClient({
               <div className="flex gap-2">
                 {canFinalize && (
                   <Button
-                    variant="outline"
-                    className="border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800"
+                    variant="workflow"
                     disabled={mutation.isPending}
                     onClick={() => act("finalize", {})}
                   >
@@ -797,8 +797,7 @@ export function StockTransfersClient({
                 )}
                 {canDelete && (
                   <Button
-                    variant="outline"
-                    className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                    variant="destructive"
                     disabled={deleteDraftMutation.isPending}
                     onClick={() =>
                       deleteDraftMutation.mutate({ transferId: selected.id })
@@ -914,7 +913,7 @@ export function StockTransfersClient({
                   <b>Resolution notes:</b> {selected.resolution.notes}
                 </p>
                 {canCreate && shortageDraftLines.length > 0 && (
-                  <Button variant="outline" onClick={startReplacementDraft}>
+                  <Button onClick={startReplacementDraft}>
                     Create replacement draft for shortage
                   </Button>
                 )}
@@ -926,6 +925,7 @@ export function StockTransfersClient({
               <div className="flex items-center gap-3">
                 {canDispatch && (
                   <Button
+                    variant="workflow"
                     disabled={mutation.isPending}
                     onClick={() => act("dispatch", {})}
                   >
@@ -934,8 +934,7 @@ export function StockTransfersClient({
                 )}
                 {canDelete && (
                   <Button
-                    variant="outline"
-                    className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                    variant="destructive"
                     disabled={deleteDraftMutation.isPending}
                     onClick={() =>
                       deleteDraftMutation.mutate({ transferId: selected.id })
@@ -1054,6 +1053,7 @@ export function StockTransfersClient({
                 <div className="flex flex-wrap gap-2">
                   {canReceive && (
                     <Button
+                      variant="workflow"
                       disabled={mutation.isPending || hasDiscrepancy}
                       onClick={() => act("confirm-receipt", {})}
                     >
@@ -1062,7 +1062,7 @@ export function StockTransfersClient({
                   )}
                   {canReportDiscrepancy && (
                     <Button
-                      variant="outline"
+                      variant="warning"
                       disabled={mutation.isPending || !hasDiscrepancy}
                       onClick={() => {
                         act("report-discrepancy", {
@@ -1107,6 +1107,7 @@ export function StockTransfersClient({
             {canInvestigate &&
               selected.status === "DISCREPANCY_REPORTED" && (
                 <Button
+                  variant="workflow"
                   disabled={!notes.trim() || mutation.isPending}
                   onClick={() => act("investigate", { findings: notes })}
                 >
@@ -1200,6 +1201,7 @@ export function StockTransfersClient({
                     />
                   </div>
                   <Button
+                    variant="workflow"
                     disabled={!notes.trim() || mutation.isPending}
                     onClick={() =>
                       act("resolve", { notes, lines: resolutionLines })
@@ -1336,7 +1338,7 @@ export function StockTransfersClient({
                         <div className="flex gap-2">
                           <Button
                             size="sm"
-                            variant="outline"
+                            variant="view"
                             onClick={() => selectTransfer(transfer)}
                           >
                             {selected?.id === transfer.id
@@ -1346,8 +1348,8 @@ export function StockTransfersClient({
                           {transfer.status === "DRAFT" && canDelete && (
                               <Button
                                 size="sm"
-                                variant="outline"
-                                className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                variant="destructive"
+                                aria-label={`Delete transfer ${transfer.reference}`}
                                 disabled={deleteDraftMutation.isPending}
                                 onClick={() =>
                                   deleteDraftMutation.mutate({

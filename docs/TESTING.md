@@ -3,17 +3,17 @@
 
 ## Current status
 
-Vitest `4.1.11` is configured with Node unit and serial integration projects. The unit project covers the workbook profiler, canonicalizer, fixture generator, catalog/operational-reset gates, access policy, shell DTOs, proxy denial, branch/role routes, notification cursor/wake-up helpers, and the disposable-database/request helpers. The serial integration project covers migration application, seed/reload/reset determinism, persisted authorization factories, product-image storage/routes, inventory scope and availability, the Better Auth admin surface, user/role/branch maintenance, session revocation, and first-login credential setup over a fixed-identity disposable PostgreSQL 17 container. No DOM testing library, browser runner, coverage tool, or CI workflow is checked in. Browser coverage remains a gap.
+Vitest `4.1.11` is configured with Node unit and serial integration projects. The unit project covers the workbook profiler, canonicalizer, fixture generator, catalog/operational-reset gates, access policy, shell DTOs, proxy denial, branch/role routes, health readiness, notification cursor/wake-up helpers, and the disposable-database/request helpers. The serial integration project covers migration application, seed/reload/reset determinism, persisted authorization factories, product-image storage/routes, inventory scope and availability, the Better Auth admin surface, user/role/branch maintenance, session revocation, and first-login credential setup over a fixed-identity disposable PostgreSQL 17 container. GitHub Actions runs lint, type-check, both Vitest projects, the production build, and the Coolify Docker build, then publishes successful `main` images to immutable GHCR tags. No DOM testing library, browser runner, coverage tool, or automated end-to-end suite is checked in.
 
 | Capability | Current state |
 | --- | --- |
-| Unit tests | Vitest Node project; 22 suite files currently checked in |
+| Unit tests | Vitest Node project; 26 suite files currently checked in |
 | Component tests | Not configured |
 | Route-handler tests | Unit-project direct-handler authorization suites (`tests/routes/authorization.test.ts`, `proxy.test.ts`); no DOM/browser runner |
-| Database integration tests | Serial Vitest project with fixed-identity disposable PostgreSQL 17 harness; 18 integration suite files currently checked in |
+| Database integration tests | Serial Vitest project with fixed-identity disposable PostgreSQL 17 harness; 19 integration suite files currently checked in |
 | End-to-end tests | Not configured |
 | Coverage reporting or thresholds | Not configured |
-| CI test execution | Not configured; `.github/workflows/` is absent |
+| CI test execution | `.github/workflows/ci.yml` runs on pull requests and pushes to `main` |
 | Phase evidence gate | `npm run verify:phase-01 -- --validate-evidence` runs fresh migration/seed/double-reload plus all suites on the disposable target |
 
 `npm run test` runs the unit project once. `npm run test:integration` starts its own disposable PostgreSQL container with a tmpfs data directory (never a bind mount) and must not overlap another instance of the same container name/port.
@@ -142,7 +142,7 @@ The existing pure functions in `lib/dashboard-data.ts` are suitable first unit-t
 
 ## Incremental test strategy
 
-Add automation in layers. The Node unit project and the serial integration project over disposable PostgreSQL are configured today; DOM, browser, coverage, and CI commands below remain future work.
+Add automation in layers. The Node unit project, serial integration project over disposable PostgreSQL, and GitHub Actions CI are configured today; DOM, browser, and coverage commands below remain future work.
 
 ### 1. Pure functions and React components
 
@@ -239,6 +239,4 @@ When coverage is introduced, establish a measured baseline first and raise it in
 
 ## CI integration
 
-No GitHub Actions or other CI configuration is present, so tests, type checking, linting, and builds do not run automatically on pushes or pull requests.
-
-Once the local commands are reliable, add a pull-request workflow that installs dependencies with `npm ci` and runs type checking, linting, unit/component tests, and a production build. Run Prisma integration tests in a separate job with an isolated PostgreSQL service. Add the critical E2E subset after the application has stable authentication, database seeding, and server-backed workflows.
+`.github/workflows/ci.yml` installs the locked dependency tree and runs Prisma generation, type checking, linting, unit tests, the serial disposable-PostgreSQL integration project, the production build, and the Coolify Docker image build. Successful pushes to `main` publish an immutable SHA image to GHCR. After protected-environment approval, `.github/workflows/coolify-cd.yml` promotes that SHA to `production` and triggers Coolify. Add the critical E2E subset after the application has stable authentication, database seeding, and server-backed workflows.

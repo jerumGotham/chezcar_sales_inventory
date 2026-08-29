@@ -15,7 +15,7 @@ import {
 
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -430,10 +430,8 @@ export default function JobOrdersPage() {
         subtitle="Manage installation and service transactions with optional items, service details, notes, and fast completion."
         actions={
           <>
-            <Link href="/job-orders/create">
-              <Button className="bg-emerald-600 text-white hover:bg-emerald-700">
-                Create Job Order
-              </Button>
+            <Link href="/job-orders/create" className={buttonVariants()}>
+              Create Job Order
             </Link>
             {/* <Button variant="outline">Assign Parts</Button> */}
           </>
@@ -520,7 +518,7 @@ export default function JobOrdersPage() {
             </div>
 
             <Button
-              className="w-full bg-emerald-600 text-white hover:bg-emerald-700"
+              className="w-full"
               onClick={handleApplyFilters}
             >
               Apply Filters
@@ -646,8 +644,7 @@ export default function JobOrdersPage() {
                           <div className="flex flex-wrap gap-2">
                             <Button
                               size="sm"
-                              variant="outline"
-                              className="border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 hover:text-sky-800"
+                              variant="view"
                               onClick={() => {
                                 setSelectedJobOrder(job);
                                 setIsViewOpen(true);
@@ -657,21 +654,17 @@ export default function JobOrdersPage() {
                               View
                             </Button>
 
-                            <Link href={`/job-orders/${job.id}/edit` as const}>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
-                              >
-                                Edit
-                              </Button>
+                            <Link
+                              href={`/job-orders/${job.id}/edit` as const}
+                              className={buttonVariants({ variant: "edit", size: "sm" })}
+                            >
+                              Edit
                             </Link>
 
                             <div className="flex flex-wrap gap-2">
                               <Button
                                 size="sm"
-                                variant="outline"
-                                className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
+                                variant="destructive"
                               >
                                 Delete
                               </Button>
@@ -680,8 +673,7 @@ export default function JobOrdersPage() {
                             {job.status !== "Completed" && (
                               <Button
                                 size="sm"
-                                variant="outline"
-                                className="border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 hover:text-violet-800"
+                                variant="workflow"
                                 onClick={() => handleQuickComplete(job)}
                               >
                                 <CheckCircle2 className="mr-2 h-4 w-4" />
@@ -910,7 +902,7 @@ export default function JobOrdersPage() {
 
             {selectedJobOrder && (
               <Link href={`/job-orders/${selectedJobOrder.id}/edit` as const}>
-                <Button className="bg-emerald-600 text-white hover:bg-emerald-700">
+                <Button>
                   Update Job Order
                 </Button>
               </Link>

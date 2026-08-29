@@ -6,7 +6,7 @@ import { AlertTriangle, ArrowLeftRight, Bell, ClipboardList, Loader2, Package, R
 
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
@@ -160,7 +160,7 @@ export default function DashboardPage() {
                     <h2 className="text-base font-semibold">Low / Out Stock</h2>
                    <p className="text-sm text-slate-500">{summary.outOfStockCount} out of stock, {summary.lowStockCount} at or below reorder level.</p>
                   </div>
-                  <Link href="/inventory"><Button variant="outline" size="sm">Inventory</Button></Link>
+                  <Link href="/inventory" className={buttonVariants({ variant: "view", size: "sm" })}>Inventory</Link>
                 </div>
                 <div className="mt-4 space-y-3">
                   {summary.lowStock.length === 0 ? <p className="text-sm text-slate-500">No low-stock rows in scope.</p> : summary.lowStock.map((item) => (
@@ -183,7 +183,7 @@ export default function DashboardPage() {
                     <h2 className="text-base font-semibold">Notifications</h2>
                     <p className="text-sm text-slate-500">Unread operational alerts for your user.</p>
                   </div>
-                  <Link href="/notifications"><Button variant="outline" size="sm"><Bell className="mr-2 h-4 w-4" />Open</Button></Link>
+                  <Link href="/notifications" className={buttonVariants({ variant: "view", size: "sm" })}><Bell className="mr-2 h-4 w-4" />Open</Link>
                 </div>
                 <div className="mt-4 space-y-3">
                   {data.notifications.length === 0 ? <p className="text-sm text-slate-500">No notifications.</p> : data.notifications.map((notice) => (

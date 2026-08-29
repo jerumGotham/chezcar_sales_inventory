@@ -48,7 +48,7 @@ export default function SettingsPage() {
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold">Company Details</h3>
                 <Button
-                  variant="outline"
+                  variant={isEditingCompany ? "outline" : "edit"}
                   onClick={() => setIsEditingCompany(!isEditingCompany)}
                 >
                   {isEditingCompany ? "Cancel" : "Edit"}

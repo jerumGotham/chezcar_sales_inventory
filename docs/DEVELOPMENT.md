@@ -30,7 +30,7 @@ This guide covers development of the Chezcar Sales & Inventory UI prototype. The
 
 Create an untracked `.env` from `.env.example`, start PostgreSQL, apply migrations, and seed the first Admin before using authenticated routes. `package.json` requires Node.js `>=20.9.0`; the latest clean verification used Node.js `20.20.2`.
 
-The framework baseline is Next.js `16.3.2`, React `19.2.8`, and Tailwind CSS `4.3.3`. Authentication, authorization, migrations, and automated tests cover the implemented foundation, but browser coverage, CI, deployment, recovery, monitoring, and several workflows remain incomplete.
+The framework baseline is Next.js `16.3.2`, React `19.2.8`, and Tailwind CSS `4.3.3`. Authentication, authorization, migrations, automated tests, GitHub Actions CI, and protected promotion of verified GHCR images to Coolify cover the implemented foundation, but automated browser coverage, recovery, monitoring, and several workflows remain incomplete.
 
 ## Repository layout
 
@@ -103,6 +103,7 @@ export function ExampleContent() {
 - Import primitives from their direct module paths. `components/ui.tsx` re-exports only a subset and is not the canonical complete barrel.
 - Compose conditional classes with `cn()` from `lib/utils.ts`; it combines `clsx` and `tailwind-merge`.
 - Use `buttonVariants()` when a `Link` must look like a button, as in the sidebar.
+- Keep business buttons on the shared semantic variants: default for create/save/apply, `view` for reads/navigation, `edit` for edits, `warning` for risky non-destructive actions, `workflow` for state transitions, and `destructive` for delete/deactivate/cancel/void. Keep `className` for layout rather than action colors.
 - Use Lucide icons, matching `components.json`, and include accessible labels for icon-only controls.
 - Extend an existing primitive when behavior is broadly reusable. Keep feature-specific compositions near their route until more than one feature needs them.
 
@@ -187,7 +188,7 @@ Until tooling is established:
 
 ## Current verification gaps
 
-- Unit and serial PostgreSQL integration tests exist, but no DOM/browser suite, coverage threshold, or CI workflow is present.
+- Unit and serial PostgreSQL integration tests run in CI, but no DOM/browser suite or coverage threshold is present.
 - No formatting check is present; lint passes with existing warnings.
 - Re-run unit, integration, type-check, lint, and build commands for each relevant change rather than treating an earlier local run as CI evidence.
 - Manual UI use validates only the routes exercised by that workflow; direct route and service tests remain necessary.
@@ -202,7 +203,7 @@ The checked-out default development branch is `main`. No branch naming conventio
 
 ## Pull request process
 
-Because no repository-specific PR checklist or CI gate is checked in, contributors should provide the verification context reviewers cannot obtain automatically:
+CI provides the command-level gate, while contributors provide the behavioral context reviewers cannot obtain automatically:
 
 - Keep the branch and pull request focused on one behavior or refactor.
 - Explain whether the change preserves mock behavior or introduces real server/persistence behavior.

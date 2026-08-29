@@ -153,7 +153,7 @@ export function SignInForm({ callbackUrl }: { callbackUrl: string }) {
             </p>
           )}
           <Button
-            className="w-full bg-emerald-600 text-white hover:bg-emerald-700"
+            className="w-full"
             disabled={isSubmitting}
             type="submit"
           >

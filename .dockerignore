@@ -1,0 +1,12 @@
+.git
+.github
+.next
+.playwright-mcp
+coverage
+data
+docs
+node_modules
+npm-debug.log*
+.env
+.env.*
+!.env.example

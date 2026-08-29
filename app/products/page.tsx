@@ -411,7 +411,6 @@ export default function ProductsPage() {
         actions={
           canCreate ? (
             <Button
-              className="bg-emerald-600 text-white hover:bg-emerald-700"
               onClick={() => openProductDialog()}
             >
               Add Product
@@ -555,7 +554,6 @@ export default function ProductsPage() {
 
             <div className="flex flex-wrap gap-2 md:col-span-2 xl:col-span-6 xl:justify-end">
               <Button
-                className="bg-emerald-600 text-white hover:bg-emerald-700"
                 onClick={handleApplyFilters}
               >
                 Apply Filters
@@ -705,8 +703,7 @@ export default function ProductsPage() {
                             {(canUpdate || canUpdateImage) && <div className="flex flex-wrap gap-2">
                               <Button
                                 size="sm"
-                                variant="outline"
-                                className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
+                                variant="edit"
                                 onClick={() => openProductDialog(product)}
                               >
                                 {canUpdate ? "Edit" : "Manage Image"}
@@ -716,8 +713,7 @@ export default function ProductsPage() {
                             {canDelete && <div className="flex flex-wrap gap-2">
                               <Button
                                 size="sm"
-                                variant="outline"
-                                className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
+                                variant="destructive"
                                 disabled={!product.canDelete || deleteMutation.isPending}
                                 onClick={() => deleteMutation.mutate(product.id)}
                                 title={product.canDelete ? "Delete unused product" : "Products with balances or history cannot be deleted"}
@@ -828,8 +824,7 @@ export default function ProductsPage() {
                   <Button
                     type="button"
                     size="sm"
-                    variant="outline"
-                    className="border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                    variant="destructive"
                     onClick={() => {
                       replaceImageFile(null);
                       setRemoveImage(true);
@@ -969,7 +964,6 @@ export default function ProductsPage() {
             </Button>
 
             <Button
-              className="bg-emerald-600 text-white hover:bg-emerald-700"
               disabled={
                 saveMutation.isPending ||
                 (Boolean(selectedProduct) && !canUpdate && !imageFile && !removeImage)

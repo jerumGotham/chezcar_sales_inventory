@@ -23,7 +23,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -412,7 +412,6 @@ function AddCustomerDialog({
             Cancel
           </Button>
           <Button
-            className="bg-emerald-600 text-white hover:bg-emerald-700"
             onClick={onSubmit}
           >
             Create Customer
@@ -777,7 +776,7 @@ function PosTab() {
           </div>
           <Button
             type="button"
-            variant="outline"
+            variant="workflow"
             size="sm"
             onClick={() => void syncOfflineQueue()}
             disabled={!isOnline || isOfflineSyncing || offlineSaleCount === 0}
@@ -791,10 +790,8 @@ function PosTab() {
         <div className="mb-6 flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800 sm:flex-row sm:items-center sm:justify-between">
           <p role="status" className="text-sm font-medium">{successMessage}</p>
           <div className="flex items-center gap-2">
-            <Link href="/customer-orders?view=sales">
-              <Button size="sm" variant="outline" className="border-emerald-300 bg-white text-emerald-800 hover:bg-emerald-100">
-                View Customer Orders
-              </Button>
+            <Link href="/customer-orders?view=sales" className={buttonVariants({ variant: "view", size: "sm" })}>
+              View Customer Orders
             </Link>
             <Button size="sm" variant="ghost" onClick={() => setSuccessMessage("")}>Dismiss</Button>
           </div>
@@ -1063,10 +1060,11 @@ function PosTab() {
 
                       <Button
                         size="icon"
-                        variant="ghost"
+                        variant="destructive"
+                        aria-label={`Remove ${item.name} from sale`}
                         onClick={() => removeItem(item.sku)}
                       >
-                        <Trash2 className="size-4 text-rose-500" />
+                        <Trash2 className="size-4" />
                       </Button>
                     </div>
 
@@ -1075,6 +1073,7 @@ function PosTab() {
                         <Button
                           size="icon"
                           variant="outline"
+                          aria-label={`Decrease quantity of ${item.name}`}
                           onClick={() => updateQty(item.sku, "decrease")}
                         >
                           <Minus className="size-4" />
@@ -1087,6 +1086,7 @@ function PosTab() {
                         <Button
                           size="icon"
                           variant="outline"
+                          aria-label={`Increase quantity of ${item.name}`}
                           onClick={() => updateQty(item.sku, "increase")}
                         >
                           <Plus className="size-4" />
@@ -1348,7 +1348,6 @@ function CustomerOrderTab() {
                     <Label>Customer</Label>
                     <Button
                       type="button"
-                      variant="outline"
                       size="sm"
                       onClick={() => {
                         resetCustomerForm();
@@ -1451,9 +1450,8 @@ function CustomerOrderTab() {
                         {items.length > 1 && (
                           <Button
                             type="button"
-                            variant="ghost"
+                            variant="destructive"
                             size="sm"
-                            className="text-rose-600 hover:text-rose-700"
                             onClick={() => handleRemoveItem(index)}
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
@@ -1552,7 +1550,7 @@ function CustomerOrderTab() {
 
                 <div className="grid gap-3">
                   <Button
-                    className="w-full bg-emerald-600 text-white hover:bg-emerald-700"
+                    className="w-full"
                     onClick={handleSaveOrder}
                   >
                     Save Order
@@ -1785,7 +1783,6 @@ function JobOrderTab() {
                   <Label>Customer</Label>
                   <Button
                     type="button"
-                    variant="outline"
                     size="sm"
                     onClick={() => {
                       resetCustomerForm();
@@ -1917,9 +1914,8 @@ function JobOrderTab() {
 
                           <Button
                             type="button"
-                            variant="ghost"
+                            variant="destructive"
                             size="sm"
-                            className="text-rose-600 hover:text-rose-700"
                             onClick={() => handleRemoveItem(index)}
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
@@ -2036,7 +2032,7 @@ function JobOrderTab() {
 
               <div className="grid gap-3">
                 <Button
-                  className="w-full bg-emerald-600 text-white hover:bg-emerald-700"
+                  className="w-full"
                   onClick={handleSave}
                 >
                   Save Job Order
@@ -2074,9 +2070,7 @@ export default function SalesPage() {
       title="Customer Sales"
       subtitle="Post walk-in sales for the selected branch and customer."
       actions={
-        <Link href="/customer-orders">
-          <Button variant="outline">Customer Orders</Button>
-        </Link>
+        <Link href="/customer-orders" className={buttonVariants({ variant: "outline" })}>Customer Orders</Link>
       }
     >
       <PosTab />

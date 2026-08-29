@@ -153,13 +153,13 @@ Unimplemented draft order, sale, job, payment, and general adjustment models are
 ## Known risks
 
 1. Job orders, stock cards, and parts of the offline workflow remain non-durable prototypes.
-2. Automated Vitest unit and integration suites now cover the implemented foundation, but no CI workflow runs them; coverage tooling is absent.
+2. GitHub Actions runs the automated Vitest unit/integration suites and deployment-image build, publishes successful `main` images to immutable GHCR tags, and promotes only an approved image for Coolify; coverage tooling is absent.
 3. The local Compose bind mount can contain machine-specific/corrupt PostgreSQL state; use logical backups and the disposable test target for migration verification.
 4. Product price is a current Decimal serialized as a number for legacy UI compatibility; canonical price history and money transport are unresolved.
 5. Inventory movements cover transfers, supplier receipts, sales, releases, and manual adjustments; damaged/return locations and stock cards remain incomplete.
 6. Sidebar visibility is capability-aware for implemented pages, but visibility remains presentation feedback only; server endpoints are the security boundary.
 7. Remaining Job Order and supporting page-local fixtures still disagree with canonical records.
-8. No rate limiting, password-reset delivery channel, startup environment validation, monitoring, or deployment procedure exists.
+8. No rate limiting, password-reset delivery channel, startup environment validation, or monitoring exists; deployment is documented but backup/restore remains operator-controlled and unverified.
 9. Lint passes with existing warnings; unit/integration tests, type-check, and build also pass locally.
 10. Existing Recharts components emit zero-size warnings during prerender.
 

@@ -142,11 +142,11 @@ Do not delete or replace a developer's existing data directory without confirmin
 
 ## Current gaps
 
-- No CI database service; disposable PostgreSQL migration and seed integration tests run locally through `tests/helpers/database.ts`.
+- GitHub Actions runs disposable PostgreSQL migration and seed integration tests through `tests/helpers/database.ts`; the fixed container and port keep that project serial within each runner.
 - No ProductPriceVersion, sales, payments, or separate manual inventory-adjustment header table; manual corrections are currently audited as `InventoryMovement` rows.
 - Offline transfer capture/sync, discrepancy photo upload, and damaged/return locations are deferred; this slice accepts structured notes/reasons only.
 - No startup-time typed environment validation.
 - No case-insensitive normalized email/item-code database strategy beyond current unique fields.
-- No production backup, restore, monitoring, or deployment migration procedure.
+- The Coolify deployment migration sequence is documented, but production backup/restore and migration recovery are not automated or verified.
 
 Future database work should add one canonical workflow at a time and preserve the current authorization/repository boundary.

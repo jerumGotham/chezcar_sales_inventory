@@ -6,7 +6,7 @@ import { FileText, Loader2 } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import { useCan } from "@/components/shell-access-context";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
 type ReportsResponse = {
@@ -42,10 +42,8 @@ export default function ReportsPage() {
       ) : (
         <div className="space-y-6">
           {canExport && <div className="flex justify-end">
-            <a href="/api/reports?format=pdf">
-              <Button className="bg-emerald-600 text-white hover:bg-emerald-700">
-                <FileText className="mr-2 h-4 w-4" />Export PDF
-              </Button>
+            <a href="/api/reports?format=pdf" className={buttonVariants()}>
+              <FileText className="mr-2 h-4 w-4" />Export PDF
             </a>
           </div>}
 

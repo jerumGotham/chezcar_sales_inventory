@@ -414,7 +414,8 @@ export function CredentialSetupDialog({
             {/* Footer order per UI-SPEC: context-specific secondary, then primary. */}
             <Button
               type="submit"
-              className="w-full bg-emerald-600 text-white hover:bg-emerald-700"
+              variant="edit"
+              className="w-full"
               disabled={isBusy}
             >
               {pendingAction === "change" && (

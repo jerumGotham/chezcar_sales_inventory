@@ -129,7 +129,7 @@ export default function NotificationsPage() {
       subtitle="Review operational alerts and open their related transactions."
       actions={
         canMarkRead ? <Button
-          variant="outline"
+          variant="workflow"
           onClick={() => markAllReadMutation.mutate()}
           disabled={
             markAllReadMutation.isPending ||
@@ -213,7 +213,7 @@ export default function NotificationsPage() {
                         <td className="px-4 py-3 text-right">
                           {(destination || (canMarkRead && !notification.read)) && <Button
                             size="sm"
-                            variant={destination ? "outline" : "ghost"}
+                            variant={destination ? "view" : "workflow"}
                             disabled={openMutation.isPending || (!destination && notification.read)}
                             onClick={() =>
                               openMutation.mutate({ notification, destination })

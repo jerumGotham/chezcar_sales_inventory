@@ -123,7 +123,7 @@ export function OfflineDevicesClient({
             {message ? <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</p> : null}
 
             {canActivate ? (
-              <Button type="button" onClick={() => void activate()} disabled={isSubmitting || !deviceId || !locationId} className="w-full">
+              <Button type="button" variant="workflow" onClick={() => void activate()} disabled={isSubmitting || !deviceId || !locationId} className="w-full">
                 {isSubmitting ? <><Loader2 className="mr-2 size-4 animate-spin" />Activating...</> : "Activate device"}
               </Button>
             ) : null}

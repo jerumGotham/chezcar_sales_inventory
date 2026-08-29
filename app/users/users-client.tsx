@@ -349,7 +349,7 @@ function MutationAlert({
       <p className="text-destructive break-words text-sm">{message}</p>
       <Button
         type="button"
-        variant="destructive"
+        variant="outline"
         size="sm"
         className="w-full"
         disabled={disabled}
@@ -996,6 +996,7 @@ function ResetPasswordDialog({
           <DialogFooter className="flex-col gap-2 sm:flex-col sm:justify-start">
             <Button
               type="submit"
+              variant="edit"
               className="w-full"
               disabled={isBusy}
             >
@@ -1520,7 +1521,7 @@ export function UsersClient({
                             {canUpdate && (
                               <Button
                                 size="sm"
-                                variant="outline"
+                                variant="edit"
                                 onClick={() => setDialog({ kind: "edit", user })}
                               >
                                 Edit User
@@ -1529,7 +1530,7 @@ export function UsersClient({
                             {canResetPassword && (
                               <Button
                                 size="sm"
-                                variant="outline"
+                                variant="edit"
                                 onClick={() => setDialog({ kind: "reset", user })}
                               >
                                 Reset Password
@@ -1553,7 +1554,7 @@ export function UsersClient({
                               ) : (
                                 <Button
                                   size="sm"
-                                  variant="outline"
+                                  variant="workflow"
                                   onClick={() =>
                                     setDialog({
                                       kind: "status",

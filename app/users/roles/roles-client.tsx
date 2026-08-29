@@ -391,7 +391,7 @@ export function RolesClient({
                           ) : canUpdate ? (
                             <Button
                               size="sm"
-                              variant="outline"
+                              variant="edit"
                               onClick={() => setEditor({ mode: "edit", role })}
                             >
                               <Pencil className="mr-2 size-4" /> Edit

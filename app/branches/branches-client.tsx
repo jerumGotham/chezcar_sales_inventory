@@ -183,7 +183,7 @@ export function BranchesClient({
                     <TableCell className="font-medium">{branch.name}</TableCell>
                     <TableCell>{[branch.address, branch.city].filter(Boolean).join(", ") || "-"}</TableCell>
                     <TableCell>{branch.contactNumber || branch.email || "-"}</TableCell>
-                    <TableCell className="text-right">{canUpdate ? <Button variant="ghost" size="sm" onClick={() => openEdit(branch)}><Pencil className="mr-2 h-4 w-4" /> Edit</Button> : <span className="text-muted-foreground">—</span>}</TableCell>
+                    <TableCell className="text-right">{canUpdate ? <Button variant="edit" size="sm" onClick={() => openEdit(branch)}><Pencil className="mr-2 h-4 w-4" /> Edit</Button> : <span className="text-muted-foreground">—</span>}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

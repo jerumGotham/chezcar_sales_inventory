@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/dialog";
 
 import { PageShell } from "@/components/page-shell";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -507,10 +507,8 @@ export default function CustomerOrdersPage() {
       subtitle="Handle reservations, special orders, downpayments, and release status."
       actions={
         <>
-          {hasCapability(capabilities, "customer-orders:create") ? <Link href="/customer-orders/create">
-            <Button className="bg-emerald-600 text-white hover:bg-emerald-700">
-              Create Order
-            </Button>
+          {hasCapability(capabilities, "customer-orders:create") ? <Link href="/customer-orders/create" className={buttonVariants()}>
+            Create Order
           </Link> : null}
           {/* <Button variant="outline">Export</Button> */}
         </>
@@ -670,7 +668,7 @@ export default function CustomerOrdersPage() {
 
           <div className="flex gap-2">
             <Button
-              className="flex-1 bg-emerald-600 text-white hover:bg-emerald-700"
+              className="flex-1"
               onClick={handleApplyFilters}
             >
               Apply Filters
@@ -814,18 +812,18 @@ export default function CustomerOrdersPage() {
                       </td>
                       <td className="px-5 py-4">
                         <div className="flex flex-wrap gap-2">
-                          <Link href={`/customer-orders/${order.id}` as Route}>
-                            <Button size="sm" variant="outline">
-                              View / Edit
-                            </Button>
+                          <Link
+                            href={`/customer-orders/${order.id}` as Route}
+                            className={buttonVariants({ variant: "view", size: "sm" })}
+                          >
+                            View / Edit
                           </Link>
                         </div>
 
                         <div className="flex flex-wrap gap-2">
                            {actions.canCancel ? <Button
                              size="sm"
-                             variant="outline"
-                             className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
+                             variant="destructive"
                              onClick={() => {
                                setSelectedOrder(order);
                                setCancellationNote("");
@@ -836,10 +834,8 @@ export default function CustomerOrdersPage() {
                            </Button> : null}
 
                            {actions.canRecordPayment ? <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
-                            onClick={() => {
+                             size="sm"
+                             onClick={() => {
                               setSelectedOrder(order);
                               setPaymentAmount("");
                               setPaymentReference("");
@@ -851,7 +847,7 @@ export default function CustomerOrdersPage() {
 
                            {actions.canReserve ? <Button
                              size="sm"
-                             variant="secondary"
+                             variant="workflow"
                              onClick={() => reserveMutation.mutate(order)}
                              disabled={reserveMutation.isPending}
                            >
@@ -863,10 +859,9 @@ export default function CustomerOrdersPage() {
                               href={
                                 `/customer-orders/${order.id}/release` as Route
                               }
+                              className={buttonVariants({ variant: "workflow", size: "sm" })}
                             >
-                              <Button size="sm" variant="secondary">
-                                Release
-                              </Button>
+                              Release
                             </Link>
                           )}
                         </div>
@@ -1035,7 +1030,6 @@ export default function CustomerOrdersPage() {
             </Button>
 
             <Button
-              className="bg-emerald-600 text-white hover:bg-emerald-700"
               onClick={() => paymentMutation.mutate()}
               disabled={
                 paymentMutation.isPending ||

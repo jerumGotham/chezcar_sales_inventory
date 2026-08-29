@@ -217,7 +217,6 @@ export default function CreateJobOrderPage() {
             Cancel
           </Button>
           <Button
-            className="bg-emerald-600 text-white hover:bg-emerald-700"
             onClick={handleSave}
           >
             Save Job Order
@@ -349,9 +348,8 @@ export default function CreateJobOrderPage() {
 
                           <Button
                             type="button"
-                            variant="ghost"
+                            variant="destructive"
                             size="sm"
-                            className="text-rose-600 hover:text-rose-700"
                             onClick={() => handleRemoveItem(index)}
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
@@ -445,7 +443,7 @@ export default function CreateJobOrderPage() {
               </div>
 
               <Button
-                className="w-full bg-emerald-600 text-white hover:bg-emerald-700"
+                className="w-full"
                 onClick={handleSave}
               >
                 Save Job Order
