@@ -3,6 +3,7 @@ import "server-only";
 import type { LocationType, RoleScope, UserRole } from "@prisma/client";
 
 import { CAPABILITY_IDS, type CapabilityId } from "../../contracts/roles";
+import { effectiveCapabilities, hasCapability } from "../../permissions";
 
 export type AccessResource =
   | "dashboard"
@@ -39,19 +40,27 @@ export type PersistedAccessContext = {
 export const CAPABILITIES = {
   dashboardView: "dashboard:view",
   customersView: "customers:view",
+  customersCreate: "customers:create",
+  customersUpdate: "customers:update",
+  customersDeactivate: "customers:deactivate",
   customerOrdersView: "customer-orders:view",
+  customerOrdersCreate: "customer-orders:create",
+  salesView: "sales:view",
   salesPost: "sales:post",
   salesVerifyView: "sales:verify:view",
   salesVerify: "sales:verify",
   salesResolve: "sales:resolve",
   salesMismatchRespond: "sales:mismatch:respond",
   productsView: "products:view",
+  productsCreate: "products:create",
+  productsUpdate: "products:update",
+  productsDelete: "products:delete",
   inventoryView: "inventory:view",
   inventoryReceivingCreate: "inventory-receiving:create",
   reportsView: "reports:view",
-  usersManage: "users:manage",
-  branchesManage: "branches:manage",
-  rolesManage: "roles:manage",
+  usersView: "users:view",
+  branchesView: "branches:view",
+  rolesView: "roles:view",
   stockTransfersView: "stock-transfers:view",
 } as const satisfies Record<string, Capability>;
 
@@ -103,7 +112,10 @@ export function evaluateAccess(
     return false;
   }
 
-  return context.isOwner || context.capabilities.includes(capability);
+  const granted = context.capabilities.filter((item): item is CapabilityId =>
+    CAPABILITY_IDS.includes(item as CapabilityId),
+  );
+  return context.isOwner || hasCapability(granted, capability);
 }
 
 export function capabilitiesFor(
@@ -114,6 +126,9 @@ export function capabilitiesFor(
   }
 
   if (context.isOwner) return CAPABILITY_IDS;
-  const granted = new Set(context.capabilities);
-  return CAPABILITY_IDS.filter((capability) => granted.has(capability));
+  const granted = context.capabilities.filter((item): item is CapabilityId =>
+    CAPABILITY_IDS.includes(item as CapabilityId),
+  );
+  const effective = new Set(effectiveCapabilities(granted));
+  return CAPABILITY_IDS.filter((capability) => effective.has(capability));
 }

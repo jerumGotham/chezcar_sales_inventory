@@ -46,10 +46,12 @@ Implement production-safe product master-data management for Admin while keeping
 
 | Actor | Product access |
 | --- | --- |
-| Admin | Create, edit, deactivate, reactivate, delete, view all. |
+| Admin | Receives every product capability by default. |
 | Stock Staff | View active and inactive products. No mutation. |
 | Branch Staff | Product visibility only through assigned-branch inventory/order/sale flows. No master-data mutation. |
 | Accounting Staff | Product visibility only through sales/order reconciliation. No master-data mutation. |
+
+Custom non-owner roles may receive `products:view`, `products:create`, `products:update`, `products:delete`, and `products:image:update` independently. An action grant implies product-list visibility but does not grant another action. Product mutations remain subject to the validation and history safeguards below.
 
 ## List Filters
 
@@ -69,7 +71,7 @@ Implement production-safe product master-data management for Admin while keeping
 
 ## Acceptance Criteria
 
-1. Non-Admin users cannot create/edit/deactivate/reactivate/delete products through UI or API.
+1. Users can perform only the product actions explicitly granted to their persisted role; missing actions are hidden and direct API requests return `403`.
 2. Active product save fails without price greater than zero.
 3. Reactivation fails without price greater than zero.
 4. Duplicate item code is rejected.

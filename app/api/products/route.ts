@@ -62,7 +62,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const actor = await requireCapability(request.headers, "products:view");
+    const actor = await requireCapability(request.headers, "products:create");
     const input = productMutationSchema.parse(await request.json());
     return Response.json({ data: await createProduct(actor, input) }, { status: 201 });
   } catch (error) {

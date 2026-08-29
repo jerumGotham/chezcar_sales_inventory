@@ -4,7 +4,10 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { AuthContext } from "@/lib/server/authorization";
+import {
+  assertCapability,
+  type AuthContext,
+} from "@/lib/server/authorization";
 import { prisma } from "@/lib/server/prisma";
 
 const MAX_PRODUCT_IMAGE_BYTES = 6 * 1024 * 1024;
@@ -25,17 +28,19 @@ export class ProductImageError extends Error {
   }
 }
 
+function assertImageUpdate(actor: AuthContext) {
+  try {
+    assertCapability(actor, "products:image:update");
+  } catch {
+    throw new ProductImageError("FORBIDDEN", "Insufficient permissions", 403);
+  }
+}
+
 function storageRoot() {
   return path.resolve(
     /*turbopackIgnore: true*/ process.env.PRODUCT_IMAGE_STORAGE_PATH ??
       path.join(process.cwd(), "data", "product-images"),
   );
-}
-
-function assertAdmin(actor: AuthContext) {
-  if (actor.role !== "ADMIN") {
-    throw new ProductImageError("FORBIDDEN", "Admin access required", 403);
-  }
 }
 
 function isProductImageKey(key: string) {
@@ -110,7 +115,7 @@ export async function uploadProductImage(
   productId: string,
   file: Blob,
 ) {
-  assertAdmin(actor);
+  assertImageUpdate(actor);
   const current = await prisma.product.findUnique({
     where: { id: productId },
     select: { id: true, imageKey: true },
@@ -145,7 +150,7 @@ export async function uploadProductImage(
 }
 
 export async function removeProductImage(actor: AuthContext, productId: string) {
-  assertAdmin(actor);
+  assertImageUpdate(actor);
   const current = await prisma.product.findUnique({
     where: { id: productId },
     select: { imageKey: true },

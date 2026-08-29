@@ -14,9 +14,9 @@ export default async function UsersPage() {
     redirect("/sign-in");
   }
 
-  // `users:manage` is held by the owner Admin only; every other role fails
+  // Administration capabilities are held by the owner Admin only; every other role fails
   // closed before any protected data or client code can render.
-  if (!access.identity.isOwner || !access.capabilities.includes("users:manage")) {
+  if (!access.identity.isOwner || !access.capabilities.includes("users:view")) {
     redirect("/access-denied");
   }
 
@@ -25,5 +25,11 @@ export default async function UsersPage() {
     listAssignableRoleDefinitions(),
   ]);
 
-  return <UsersClient locations={orderedLocations} roles={roles} />;
+  return (
+    <UsersClient
+      capabilities={access.capabilities}
+      locations={orderedLocations}
+      roles={roles}
+    />
+  );
 }

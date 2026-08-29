@@ -1,4 +1,5 @@
-import type { ShellRole } from "@/lib/contracts/access";
+import type { CapabilityId } from "./contracts/roles";
+import { hasCapability } from "./permissions";
 
 export type CustomerOrderStatusCode =
   | "RESERVED"
@@ -8,24 +9,20 @@ export type CustomerOrderStatusCode =
   | "CANCELLED";
 
 type CustomerOrderActionInput = {
-  role: ShellRole | null;
+  capabilities: readonly CapabilityId[];
   statusCode: CustomerOrderStatusCode;
   downpayment: number;
   balance: number;
 };
 
-export function canManageCustomerOrders(role: ShellRole | null) {
-  return role === "ADMIN" || role === "BRANCH_STAFF";
-}
-
-export function getCustomerOrderActions({ role, statusCode, downpayment, balance }: CustomerOrderActionInput) {
-  const canManage = canManageCustomerOrders(role);
+export function getCustomerOrderActions({ capabilities, statusCode, downpayment, balance }: CustomerOrderActionInput) {
   const isOpen = statusCode !== "COMPLETED" && statusCode !== "CANCELLED";
+  const canCancel = hasCapability(capabilities, "customer-orders:cancel");
 
   return {
-    canReserve: canManage && statusCode === "WAITING_STOCK",
-    canRelease: canManage && (statusCode === "RESERVED" || statusCode === "READY_FOR_RELEASE"),
-    canCancel: canManage && isOpen && (downpayment <= 0 || role === "ADMIN"),
-    canRecordPayment: canManage && isOpen && balance > 0,
+    canReserve: hasCapability(capabilities, "customer-orders:reserve") && statusCode === "WAITING_STOCK",
+    canRelease: hasCapability(capabilities, "customer-orders:release") && (statusCode === "RESERVED" || statusCode === "READY_FOR_RELEASE"),
+    canCancel: canCancel && (downpayment <= 0 || hasCapability(capabilities, "customer-orders:cancel-paid")) && isOpen,
+    canRecordPayment: hasCapability(capabilities, "customer-orders:record-payment") && isOpen && balance > 0,
   };
 }

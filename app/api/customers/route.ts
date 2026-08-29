@@ -22,7 +22,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const actor = await requireCapability(request.headers, "customers:view");
+    const actor = await requireCapability(request.headers, "customers:create");
     const input = customerMutationSchema.parse(await request.json());
     return Response.json({ data: await createCustomer(actor, input) });
   } catch (error) {

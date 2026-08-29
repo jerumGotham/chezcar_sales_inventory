@@ -53,7 +53,11 @@ import {
   type UpdateUserRequest,
   type UserStatusDto,
 } from "@/lib/contracts/users";
-import type { AssignableRoleDto, RoleScopeDto } from "@/lib/contracts/roles";
+import type {
+  AssignableRoleDto,
+  CapabilityId,
+  RoleScopeDto,
+} from "@/lib/contracts/roles";
 
 /**
  * Admin User Management client (UI-SPEC surface 3/4/5).
@@ -1124,13 +1128,20 @@ function StatusDialog({
 // --- Main page client ---------------------------------------------------------
 
 export function UsersClient({
+  capabilities,
   locations,
   roles,
 }: {
+  capabilities: ReadonlyArray<CapabilityId>;
   locations: ReadonlyArray<UsersLocationOption>;
   roles: ReadonlyArray<AssignableRoleDto>;
 }) {
   const queryClient = useQueryClient();
+  const canCreate = capabilities.includes("users:create");
+  const canUpdate = capabilities.includes("users:update");
+  const canSetStatus = capabilities.includes("users:set-status");
+  const canResetPassword = capabilities.includes("users:reset-password");
+  const hasUserActions = canUpdate || canSetStatus || canResetPassword;
 
   const [banner, setBanner] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogState>({ kind: "none" });
@@ -1273,9 +1284,15 @@ export function UsersClient({
 
   return (
     <>
-      <PageShell title={PAGE_TITLE} subtitle={PAGE_SUBTITLE} actions={
-        <Button onClick={() => setDialog({ kind: "create" })}>Create User</Button>
-      }>
+      <PageShell
+        title={PAGE_TITLE}
+        subtitle={PAGE_SUBTITLE}
+        actions={
+          canCreate ? (
+            <Button onClick={() => setDialog({ kind: "create" })}>Create User</Button>
+          ) : undefined
+        }
+      >
         {banner && (
           <div
             role="status"
@@ -1445,11 +1462,11 @@ export function UsersClient({
                           <Button variant="outline" onClick={resetFilters}>
                             Reset Filters
                           </Button>
-                        ) : (
+                        ) : canCreate ? (
                           <Button onClick={() => setDialog({ kind: "create" })}>
                             Create User
                           </Button>
-                        )}
+                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -1487,58 +1504,67 @@ export function UsersClient({
                         {formatLastSignIn(user.lastSignInAt)}
                       </TableCell>
                       <TableCell>
-                        {user.isOwner ? (
+                        {user.isOwner || !hasUserActions ? (
                           <span
                             className="text-muted-foreground text-sm"
-                            aria-label="The owner Admin account has no mutation actions"
+                            aria-label={
+                              user.isOwner
+                                ? "The owner Admin account has no mutation actions"
+                                : "No permitted user actions"
+                            }
                           >
                             —
                           </span>
                         ) : (
                           <div className="flex flex-wrap gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setDialog({ kind: "edit", user })}
-                            >
-                              Edit User
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setDialog({ kind: "reset", user })}
-                            >
-                              Reset Password
-                            </Button>
-                            {user.status === "ACTIVE" ? (
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() =>
-                                  setDialog({
-                                    kind: "status",
-                                    mode: "deactivate",
-                                    user,
-                                  })
-                                }
-                              >
-                                Deactivate User
-                              </Button>
-                            ) : (
+                            {canUpdate && (
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() =>
-                                  setDialog({
-                                    kind: "status",
-                                    mode: "reactivate",
-                                    user,
-                                  })
-                                }
+                                onClick={() => setDialog({ kind: "edit", user })}
                               >
-                                Reactivate User
+                                Edit User
                               </Button>
                             )}
+                            {canResetPassword && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setDialog({ kind: "reset", user })}
+                              >
+                                Reset Password
+                              </Button>
+                            )}
+                            {canSetStatus &&
+                              (user.status === "ACTIVE" ? (
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() =>
+                                    setDialog({
+                                      kind: "status",
+                                      mode: "deactivate",
+                                      user,
+                                    })
+                                  }
+                                >
+                                  Deactivate User
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() =>
+                                    setDialog({
+                                      kind: "status",
+                                      mode: "reactivate",
+                                      user,
+                                    })
+                                  }
+                                >
+                                  Reactivate User
+                                </Button>
+                              ))}
                           </div>
                         )}
                       </TableCell>
@@ -1585,7 +1611,7 @@ export function UsersClient({
         </Card>
       </PageShell>
 
-      {dialog.kind === "create" && (
+      {canCreate && dialog.kind === "create" && (
         <UserFormDialog
           mode="create"
           locations={locations}
@@ -1595,7 +1621,7 @@ export function UsersClient({
         />
       )}
 
-      {dialog.kind === "edit" && (
+      {canUpdate && dialog.kind === "edit" && (
         <UserFormDialog
           mode="edit"
           user={dialog.user}
@@ -1606,7 +1632,7 @@ export function UsersClient({
         />
       )}
 
-      {dialog.kind === "reset" && (
+      {canResetPassword && dialog.kind === "reset" && (
         <ResetPasswordDialog
           user={dialog.user}
           onCompleted={(message) => void handleMutationSuccess(message)}
@@ -1614,7 +1640,7 @@ export function UsersClient({
         />
       )}
 
-      {dialog.kind === "status" && (
+      {canSetStatus && dialog.kind === "status" && (
         <StatusDialog
           mode={dialog.mode}
           user={dialog.user}

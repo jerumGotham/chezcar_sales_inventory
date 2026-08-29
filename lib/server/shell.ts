@@ -12,6 +12,7 @@ import { menus } from "../menu";
 import { auth } from "./auth";
 import {
   capabilitiesFor,
+  type Capability,
   type PersistedAccessContext,
   validatePersistedAssignment,
 } from "./policy/access";
@@ -191,7 +192,9 @@ export async function loadShellAccess(headers: Headers): Promise<ShellAccessDto>
   const menu: ShellMenuEntryDto[] = menus
     .filter(
       (item) =>
-        permittedCapabilities.has(item.capability) &&
+        (Array.isArray(item.capability)
+          ? item.capability.some((capability) => permittedCapabilities.has(capability))
+          : permittedCapabilities.has(item.capability as Capability)) &&
         (!("ownerOnly" in item) || !item.ownerOnly || context.isOwner),
     )
     .map(({ label, href, iconId }) => ({ label, href, icon: iconId }));

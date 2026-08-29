@@ -28,4 +28,4 @@ export async function GET(request: Request) {
     return errorResponse(error);
   }
 }
-export async function POST(request: Request) { try { const actor = await requireCapability(request.headers, "stock-transfers:view"); return Response.json({ data: await createTransfer(actor, createTransferSchema.parse(await request.json())) }, { status: 201 }); } catch (error) { return errorResponse(error); } }
+export async function POST(request: Request) { try { const actor = await requireCapability(request.headers, "stock-transfers:create"); return Response.json({ data: await createTransfer(actor, createTransferSchema.parse(await request.json())) }, { status: 201 }); } catch (error) { return errorResponse(error); } }

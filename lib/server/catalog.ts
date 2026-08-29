@@ -11,7 +11,11 @@ import type {
   InventoryStatus,
   ProductsApiResponse,
 } from "@/lib/catalog";
-import { AuthorizationError, type AuthContext } from "@/lib/server/authorization";
+import {
+  assertCapability,
+  AuthorizationError,
+  type AuthContext,
+} from "@/lib/server/authorization";
 import {
   evaluateAccess,
   type PersistedAccessContext,
@@ -111,7 +115,7 @@ export function parseInventoryListQuery(
   const keys = [...new Set(searchParams.keys())].sort();
 
   for (const key of keys) {
-    if (key === "location" && context.role !== "ADMIN") {
+    if (key === "location" && !context.isOwner) {
       input.location = "all";
       continue;
     }
@@ -133,7 +137,7 @@ export function parseInventoryMovementsQuery(
   const keys = [...new Set(searchParams.keys())].sort();
 
   for (const key of keys) {
-    if (key === "location" && context.role !== "ADMIN") {
+    if (key === "location" && !context.isOwner) {
       input.location = "all";
       continue;
     }
@@ -157,7 +161,7 @@ export async function resolveLocationScope(
     throw new AuthorizationError("Invalid persisted inventory scope");
   }
 
-  if (context.role === "BRANCH_STAFF" || context.role === "STOCK_STAFF") {
+  if (context.roleScope === "BRANCH" || context.roleScope === "STOCK_ROOM") {
     return { kind: "location", locationId: context.locationId as string };
   }
 
@@ -277,15 +281,15 @@ export async function listProducts(
   };
 }
 
-function assertAdmin(actor: AuthContext) {
-  if (actor.role !== "ADMIN") {
-    throw new ProductMutationError("FORBIDDEN", "Admin access required", 403);
-  }
-}
-
-function assertInventoryAdmin(actor: AuthContext) {
-  if (actor.role !== "ADMIN") {
-    throw new InventoryMutationError("FORBIDDEN", "Admin access required", 403);
+function assertInventoryMutationScope(actor: AuthContext, locationId: string) {
+  if (actor.isOwner) return;
+  if (
+    !actor.locationId ||
+    actor.locationId !== locationId ||
+    actor.location?.id !== actor.locationId ||
+    !actor.location.isActive
+  ) {
+    throw new InventoryMutationError("FORBIDDEN", "Inventory balance is outside your assigned location", 403);
   }
 }
 
@@ -318,7 +322,7 @@ async function productUsage(productId: string) {
 }
 
 export async function createProduct(actor: AuthContext, input: z.infer<typeof productMutationSchema>) {
-  assertAdmin(actor);
+  assertCapability(actor, "products:create");
   const data = normalizeProductInput(input);
 
   try {
@@ -334,7 +338,7 @@ export async function createProduct(actor: AuthContext, input: z.infer<typeof pr
 }
 
 export async function updateProduct(actor: AuthContext, productId: string, input: z.infer<typeof productMutationSchema>) {
-  assertAdmin(actor);
+  assertCapability(actor, "products:update");
   const existing = await prisma.product.findUnique({ where: { id: productId } });
   if (!existing) throw new ProductMutationError("NOT_FOUND", "Product not found", 404);
   const data = normalizeProductInput(input);
@@ -363,7 +367,7 @@ export async function updateProduct(actor: AuthContext, productId: string, input
 }
 
 export async function deleteProduct(actor: AuthContext, productId: string) {
-  assertAdmin(actor);
+  assertCapability(actor, "products:delete");
   const existing = await prisma.product.findUnique({
     where: { id: productId },
     select: { imageKey: true },
@@ -405,6 +409,7 @@ export async function listInventory(
   query: InventoryListQuery,
   context: PersistedAccessContext,
 ): Promise<InventoryApiResponse> {
+  assertCapability(context, "inventory:view");
   const scope = await resolveLocationScope(context, query.location);
   const scopeLocationId =
     scope.kind === "location" ? scope.locationId : undefined;
@@ -443,7 +448,7 @@ export async function listInventory(
         transfer: {
           status: "IN_TRANSIT",
           destinationId:
-            context.role === "BRANCH_STAFF"
+            context.roleScope === "BRANCH"
               ? (context.locationId as string)
               : scopeLocationId,
         },
@@ -496,7 +501,7 @@ export async function listInventory(
       needsRestock,
       incomingItems: incomingItems._sum.inTransitQuantity ?? 0,
       incomingItemsLabel:
-        context.role === "STOCK_STAFF"
+        context.roleScope === "STOCK_ROOM"
           ? "Items in transit to branches"
           : "Incoming items",
     },
@@ -507,6 +512,7 @@ export async function listInventoryMovements(
   query: InventoryMovementsQuery,
   context: PersistedAccessContext,
 ): Promise<InventoryMovementsApiResponse> {
+  assertCapability(context, "inventory-movements:view");
   const scope = await resolveLocationScope(context, query.location);
   const where: Prisma.InventoryMovementWhereInput = {
     locationId: scope.kind === "location" ? scope.locationId : undefined,
@@ -594,7 +600,7 @@ export async function correctInventoryBalance(
   balanceId: string,
   input: z.infer<typeof inventoryCorrectionSchema>,
 ) {
-  assertInventoryAdmin(actor);
+  assertCapability(actor, "inventory:adjust");
   const delta = input.type === "increase" ? input.quantity : -input.quantity;
 
   return prisma.$transaction(async (tx) => {
@@ -609,6 +615,7 @@ export async function correctInventoryBalance(
     if (!balance) {
       throw new InventoryMutationError("NOT_FOUND", "Inventory balance not found", 404);
     }
+    assertInventoryMutationScope(actor, balance.locationId);
 
     const previousAvailable = balance.onHand - balance.reserved;
     const nextOnHand = balance.onHand + delta;
@@ -667,8 +674,7 @@ export async function updateInventoryUnitCost(
   balanceId: string,
   input: z.infer<typeof inventoryUnitCostSchema>,
 ) {
-  assertInventoryAdmin(actor);
-
+  assertCapability(actor, "inventory:cost:update");
   const updated = await prisma.$transaction(async (tx) => {
     const balance = await tx.inventoryBalance.findUnique({
       where: { id: balanceId },
@@ -677,6 +683,7 @@ export async function updateInventoryUnitCost(
     if (!balance) {
       throw new InventoryMutationError("NOT_FOUND", "Inventory balance not found", 404);
     }
+    assertInventoryMutationScope(actor, balance.locationId);
 
     const result = await tx.inventoryBalance.update({
       where: { id: balanceId },

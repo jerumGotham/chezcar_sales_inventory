@@ -8,8 +8,8 @@ import { RolesClient } from "./roles-client";
 export default async function RolesPage() {
   const access = await loadShellAccess(await headers());
   if (!access.authenticated) redirect("/sign-in");
-  if (!access.identity.isOwner || !access.capabilities.includes("roles:manage")) {
+  if (!access.identity.isOwner || !access.capabilities.includes("roles:view")) {
     redirect("/access-denied");
   }
-  return <RolesClient />;
+  return <RolesClient capabilities={access.capabilities} />;
 }

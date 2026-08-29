@@ -8,7 +8,7 @@ import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, BellRing, ChevronDown, LogOut, MapPin, Moon, Sun, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useShellAccess } from "@/components/shell-access-context";
+import { useCan, useShellAccess } from "@/components/shell-access-context";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth-client";
 import { notificationDestination } from "@/lib/notification-links";
@@ -62,6 +62,9 @@ export function AppHeader({
 }) {
   const router = useRouter();
   const access = useShellAccess();
+  const canViewNotifications = useCan("notifications:view");
+  const canMarkNotificationsRead = useCan("notifications:mark-read");
+  const canManagePushNotifications = useCan("notifications:push");
   const queryClient = useQueryClient();
   const identityEmail = access.authenticated ? access.identity.email : null;
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -75,13 +78,14 @@ export function AppHeader({
   const notificationsQuery = useQuery({
     queryKey: ["notifications"],
     queryFn: fetchHeaderNotifications,
-    enabled: access.authenticated,
+    enabled: canViewNotifications,
     refetchInterval: 30_000,
     refetchOnWindowFocus: true,
   });
   const unreadCount = notificationsQuery.data?.filter((notification) => !notification.read).length ?? 0;
 
   const enablePushNotifications = async () => {
+    if (!canManagePushNotifications) return;
     if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
       setPushState("unsupported");
       return;
@@ -119,7 +123,7 @@ export function AppHeader({
   };
 
   useEffect(() => {
-    if (!access.authenticated || !("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return;
+    if (!canManagePushNotifications || !("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return;
 
     let cancelled = false;
     void fetchPushPublicKey().then(async (publicKey) => {
@@ -140,10 +144,10 @@ export function AppHeader({
     return () => {
       cancelled = true;
     };
-  }, [access.authenticated]);
+  }, [canManagePushNotifications]);
 
   useEffect(() => {
-    if (!access.authenticated || !identityEmail || typeof EventSource === "undefined") return;
+    if (!canViewNotifications || !identityEmail || typeof EventSource === "undefined") return;
 
     const cursorKey = `chezcar-notification-cursor:${identityEmail}`;
     const cursor = window.localStorage.getItem(cursorKey) ?? "0";
@@ -177,7 +181,7 @@ export function AppHeader({
       events.removeEventListener("error", handleError);
       events.close();
     };
-  }, [access.authenticated, identityEmail, queryClient]);
+  }, [canViewNotifications, identityEmail, queryClient]);
 
   useEffect(() => {
     const notifications = notificationsQuery.data;
@@ -246,16 +250,18 @@ export function AppHeader({
   const openToastNotification = async () => {
     if (!toast) return;
     try {
-      if (!toast.read) await markHeaderNotificationRead(toast.id);
-      queryClient.setQueryData<HeaderNotification[]>(
-        ["notifications"],
-        (current = []) =>
-          current.map((notification) =>
-            notification.id === toast.id
-              ? { ...notification, read: true }
-              : notification,
-          ),
-      );
+      if (canMarkNotificationsRead && !toast.read) await markHeaderNotificationRead(toast.id);
+      if (canMarkNotificationsRead) {
+        queryClient.setQueryData<HeaderNotification[]>(
+          ["notifications"],
+          (current = []) =>
+            current.map((notification) =>
+              notification.id === toast.id
+                ? { ...notification, read: true }
+                : notification,
+            ),
+        );
+      }
       const destination = notificationDestination(toast) ?? "/notifications";
       setToastError("");
       setToast(null);
@@ -293,7 +299,7 @@ export function AppHeader({
           </div>
         ) : null}
 
-        {access.authenticated ? (
+        {canManagePushNotifications ? (
           <Button
             type="button"
             variant="outline"
@@ -316,7 +322,7 @@ export function AppHeader({
           </Button>
         ) : null}
 
-        {access.authenticated ? (
+        {canViewNotifications ? (
           <Link
             href="/notifications"
             className="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
@@ -416,7 +422,7 @@ export function AppHeader({
           </div>
         ) : null}
       </div>
-      {toast ? (
+      {canViewNotifications && toast ? (
         <div className="fixed right-4 top-4 z-50 w-[min(24rem,calc(100vw-2rem))] rounded-2xl border border-brand-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900" role="status" aria-live="polite">
           <div className="flex items-start gap-3">
             <button

@@ -11,7 +11,7 @@ import {
 
 export async function GET(request: Request) {
   try {
-    const user = await requireCapability(request.headers, "inventory:view");
+    const user = await requireCapability(request.headers, "inventory-movements:view");
     const query = parseInventoryMovementsQuery(new URL(request.url).searchParams, user);
 
     return Response.json(await listInventoryMovements(query, user));

@@ -3,6 +3,8 @@
 import { createContext, type ReactNode, useContext } from "react";
 
 import type { ShellAccessDto } from "@/lib/contracts/access";
+import type { CapabilityId } from "@/lib/contracts/roles";
+import { hasCapability } from "@/lib/permissions";
 
 const ShellAccessContext = createContext<ShellAccessDto | null>(null);
 
@@ -28,4 +30,9 @@ export function useShellAccess(): ShellAccessDto {
   }
 
   return access;
+}
+
+export function useCan(required: CapabilityId): boolean {
+  const access = useShellAccess();
+  return access.authenticated && hasCapability(access.capabilities, required);
 }

@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowUpRight, CheckCircle2, Info } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
+import { useCan } from "@/components/shell-access-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -69,12 +70,15 @@ function TypeIcon({ type }: { type: Notification["type"] }) {
 }
 
 export default function NotificationsPage() {
+  const canViewNotifications = useCan("notifications:view");
+  const canMarkRead = useCan("notifications:mark-read");
   const router = useRouter();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("all");
   const notificationsQuery = useQuery({
     queryKey: ["notifications"],
     queryFn: fetchNotifications,
+    enabled: canViewNotifications,
     refetchInterval: 30_000,
     refetchOnWindowFocus: true,
   });
@@ -86,7 +90,7 @@ export default function NotificationsPage() {
       notification: Notification;
       destination: string | null;
     }) => {
-      if (!notification.read) await markNotificationRead(notification.id);
+      if (canMarkRead && !notification.read) await markNotificationRead(notification.id);
       return destination;
     },
     onSuccess: (destination) => {
@@ -95,7 +99,10 @@ export default function NotificationsPage() {
     },
   });
   const markAllReadMutation = useMutation({
-    mutationFn: markNotificationsRead,
+    mutationFn: () => {
+      if (!canMarkRead) throw new Error("You do not have permission to mark notifications as read.");
+      return markNotificationsRead();
+    },
     onSuccess: (notifications) =>
       queryClient.setQueryData(["notifications"], notifications),
   });
@@ -121,7 +128,7 @@ export default function NotificationsPage() {
       title="Notifications"
       subtitle="Review operational alerts and open their related transactions."
       actions={
-        <Button
+        canMarkRead ? <Button
           variant="outline"
           onClick={() => markAllReadMutation.mutate()}
           disabled={
@@ -130,7 +137,7 @@ export default function NotificationsPage() {
           }
         >
           Mark all as read
-        </Button>
+        </Button> : null
       }
     >
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -204,7 +211,7 @@ export default function NotificationsPage() {
                           </Badge>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <Button
+                          {(destination || (canMarkRead && !notification.read)) && <Button
                             size="sm"
                             variant={destination ? "outline" : "ghost"}
                             disabled={openMutation.isPending || (!destination && notification.read)}
@@ -219,7 +226,7 @@ export default function NotificationsPage() {
                             ) : (
                               "Mark read"
                             )}
-                          </Button>
+                          </Button>}
                         </td>
                       </tr>
                     );

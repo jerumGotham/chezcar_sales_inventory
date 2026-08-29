@@ -3,9 +3,12 @@ import { getReportsSummary } from "../../../lib/server/services/customer-sales";
 
 export async function GET(request: Request) {
   try {
-    const actor = await requireCapability(request.headers, "reports:view");
-    const summary = await getReportsSummary(actor);
     const format = new URL(request.url).searchParams.get("format");
+    const actor = await requireCapability(
+      request.headers,
+      format === "pdf" ? "reports:export" : "reports:view",
+    );
+    const summary = await getReportsSummary(actor);
 
     if (format === "pdf") {
       const body = [

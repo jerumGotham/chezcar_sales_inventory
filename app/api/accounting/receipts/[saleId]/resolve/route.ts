@@ -1,6 +1,11 @@
 import { ZodError } from "zod";
 
-import { authorizationErrorResponse, requireCapability } from "@/lib/server/authorization";
+import {
+  assertAnyCapability,
+  assertCapability,
+  authorizationErrorResponse,
+  requireActiveUser,
+} from "@/lib/server/authorization";
 import { accountingResolutionSchema, CustomerSalesError, resolveSale } from "@/lib/server/services/customer-sales";
 
 type Context = { params: Promise<{ saleId: string }> };
@@ -13,9 +18,18 @@ function errorResponse(error: unknown) {
 
 export async function POST(request: Request, context: Context) {
   try {
-    const actor = await requireCapability(request.headers, "sales:resolve");
+    const actor = await requireActiveUser(request.headers);
+    assertAnyCapability(actor, ["sales:resolve", "sales:void-replace"]);
+    const rawInput: unknown = await request.json();
+    if (rawInput && typeof rawInput === "object" && "action" in rawInput) {
+      const action = rawInput.action;
+      if (action === "VOIDED_REPLACED" || action === "CONFIRMED_CORRECT") {
+        assertCapability(actor, action === "VOIDED_REPLACED" ? "sales:void-replace" : "sales:resolve");
+      }
+    }
+    const input = accountingResolutionSchema.parse(rawInput);
     const { saleId } = await context.params;
-    return Response.json({ data: await resolveSale(actor, saleId, accountingResolutionSchema.parse(await request.json())) });
+    return Response.json({ data: await resolveSale(actor, saleId, input) });
   } catch (error) {
     return errorResponse(error);
   }

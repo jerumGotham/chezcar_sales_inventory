@@ -48,7 +48,7 @@ describe("branch maintenance routes", () => {
     expect(response.status).toBe(200);
     expect(mocks.requireCapability).toHaveBeenCalledWith(
       expect.any(Headers),
-      "branches:manage",
+      "branches:view",
     );
     expect(mocks.listBranches).toHaveBeenCalledOnce();
   });

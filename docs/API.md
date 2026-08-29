@@ -29,25 +29,16 @@ Protected application endpoints resolve the Better Auth session, reload the pers
 
 ## Capability matrix
 
-Authorization uses the compile-time catalog in `lib/contracts/roles.ts`, evaluated against the reloaded User, RoleDefinition, and Location. This table is the seeded built-in grant set; custom roles may hold any non-administration catalog subset within their scope. `users:manage`, `branches:manage`, and `roles:manage` are reserved for the owner Admin:
+Authorization uses the compile-time catalog in `lib/contracts/roles.ts`, evaluated against the reloaded User, RoleDefinition, and Location. Permissions are action-specific. Each module has a view grant and independent create/update/delete or workflow grants. An action grant implies only the views needed to perform it; a view grant never authorizes a mutation, and one mutation grant never authorizes a sibling action. For example, `products:create` makes Products visible and permits `POST /api/products`, but it does not permit `PATCH` or `DELETE`.
 
-| Capability | ADMIN | STOCK_STAFF | BRANCH_STAFF | ACCOUNTING_STAFF |
-| --- | --- | --- | --- | --- |
-| `dashboard:view` | ✔ | ✔ | ✔ | ✔ |
-| `customers:view` | ✔ | ✔ | ✔ | ✔ |
-| `customer-orders:view` | ✔ | ✔ | ✔ | ✔ |
-| `sales:post` | ✔ | ✘ | ✔ | ✘ |
-| `sales:verify:view` | ✔ | ✘ | ✘ | ✔ |
-| `sales:verify` | ✘ | ✘ | ✘ | ✔ |
-| `sales:resolve` | ✔ | ✘ | ✘ | ✔ |
-| `products:view` | ✔ | ✔ | ✘ | ✘ |
-| `inventory:view` | ✔ | ✔ | ✔ | ✘ |
-| `inventory-receiving:create` | ✔ | ✔ (active `SR` only) | ✘ | ✘ |
-| `users:manage` | ✔ (owner only) | ✘ | ✘ | ✘ |
-| `branches:manage` | ✔ (owner only) | ✘ | ✘ | ✘ |
-| `roles:manage` | ✔ (owner only) | ✘ | ✘ | ✘ |
+| Seeded role | Main action grants |
+| --- | --- |
+| Owner Admin | Full current capability catalog, including owner-only users/roles/branches/offline-device administration |
+| Stock Staff | Product and SR inventory views, supplier receiving, transfer create/edit/delete/finalize/dispatch/investigate; no final transfer resolution |
+| Branch Staff | Customer CRUD, customer-order create/reserve/payment/release/unpaid cancel, direct sales, mismatch response/evidence, assigned-branch transfer receipt/discrepancy |
+| Accounting Staff | Business-wide sales/receipt views, review, confirm-correct resolution, evidence, and report export; no stock-changing void-and-replace |
 
-A persisted assignment that contradicts RoleScope fails closed: `BRANCH` requires one active branch, `STOCK_ROOM` requires active `SR`, and `BUSINESS_WIDE`/`OWNER` require no location. `User.role` remains a synchronized operational-scope discriminator, not the capability authority.
+The complete list and Role Maintenance labels are generated from `CAPABILITY_CATALOG`. Owner-only user, role, branch, and offline-device capabilities cannot be assigned to non-owner roles. Role Maintenance offers only capabilities supported by the selected operational scope, and the API rejects incompatible scope/capability combinations. A persisted assignment that contradicts RoleScope fails closed: `BRANCH` requires one active branch, `STOCK_ROOM` requires active `SR`, and `BUSINESS_WIDE`/`OWNER` require no location. RoleScope also constrains resources after capability authorization. `User.role` remains a synchronized operational-scope discriminator, not the capability authority.
 
 ## Endpoints
 
@@ -55,46 +46,46 @@ A persisted assignment that contradicts RoleScope fails closed: `BRANCH` require
 | --- | --- | --- | --- |
 | `GET`, `POST` | `/api/auth/[...all]` | Better Auth + PostgreSQL | Endpoint-specific; public sign-up disabled; generic admin operations unroutable |
 | `GET` | `/api/dashboard` | Prisma sales/orders/inventory/accounting plus persisted notifications | `dashboard:view` |
-| `GET`, `PATCH` | `/api/notifications` | Prisma Notification inbox | `dashboard:view`; optional `?after=<cursor>` returns catch-up rows |
-| `GET` | `/api/notifications/stream` | Prisma Notification catch-up + PostgreSQL `LISTEN/NOTIFY` wake-ups | `dashboard:view`; authenticated server-sent events |
-| `GET` | `/api/notifications/push-public-key` | Environment VAPID public key | `dashboard:view` |
-| `POST`, `DELETE` | `/api/notifications/push-subscription` | Prisma PushSubscription | `dashboard:view`; current user only |
-| `POST` | `/api/notifications/:notificationId/read` | Prisma Notification read timestamp | `dashboard:view` |
-| `POST` | `/api/offline/activations` | Prisma OfflineDeviceActivation | `users:manage`; Admin activates one current branch device |
-| `GET` | `/api/offline/snapshot?deviceId=<id>` | Prisma InventoryBalance/Product | `sales:post`; Branch Staff assigned branch only |
-| `POST` | `/api/offline/sync` | Prisma OfflineSyncOperation/OfflineSaleSubmission/Sale | `sales:post`; Branch Staff assigned branch only |
-| `GET`, `POST` | `/api/customers` | Prisma Customer | `customers:view`; Accounting/Stock mutation denied by service policy |
-| `GET`, `PATCH`, `DELETE` | `/api/customers/:id` | Prisma Customer, sales, and customer orders | `customers:view`; delete deactivates the customer |
-| `GET` | `/api/customer-orders/options?locationId=<branchId>&includeUnavailable=<boolean>` | Active customers and branch products | `customer-orders:view` plus Branch/Admin role policy; Admin supplies a branch, Branch Staff scope is persisted; unavailable products are opt-in |
-| `GET`, `POST` | `/api/customer-orders` | Prisma CustomerOrder/Customer/InventoryBalance | `customer-orders:view` plus Branch/Admin mutation policy |
+| `GET`, `PATCH` | `/api/notifications` | Prisma Notification inbox | `notifications:view` / `notifications:mark-read` |
+| `GET` | `/api/notifications/stream` | Prisma Notification catch-up + PostgreSQL `LISTEN/NOTIFY` wake-ups | `notifications:view`; authenticated server-sent events |
+| `GET` | `/api/notifications/push-public-key` | Environment VAPID public key | `notifications:push` |
+| `POST`, `DELETE` | `/api/notifications/push-subscription` | Prisma PushSubscription | `notifications:push`; current user only |
+| `POST` | `/api/notifications/:notificationId/read` | Prisma Notification read timestamp | `notifications:mark-read` |
+| `POST` | `/api/offline/activations` | Prisma OfflineDeviceActivation | `offline-sales:activate-device`; owner Admin only |
+| `GET` | `/api/offline/snapshot?deviceId=<id>` | Prisma InventoryBalance/Product | `offline-sales:snapshot`; assigned Branch scope only |
+| `POST` | `/api/offline/sync` | Prisma OfflineSyncOperation/OfflineSaleSubmission/Sale | `offline-sales:sync`; assigned Branch scope only |
+| `GET`, `POST` | `/api/customers` | Prisma Customer | `customers:view` / `customers:create` |
+| `GET`, `PATCH`, `DELETE` | `/api/customers/:id` | Prisma Customer, sales, and customer orders | `customers:view` / `customers:update` / `customers:deactivate` |
+| `GET` | `/api/customer-orders/options?locationId=<branchId>&includeUnavailable=<boolean>` | Active customers and branch products | `customer-orders:create` plus operational scope |
+| `GET`, `POST` | `/api/customer-orders` | Prisma CustomerOrder/Customer/InventoryBalance | `customer-orders:view` / `customer-orders:create` |
 | `GET` | `/api/customer-orders/:orderId` | Single persisted customer order with lines and release/payment summary | `customer-orders:view`; Branch Staff restricted to assigned branch |
-| `POST` | `/api/customer-orders/:orderId/:action` | Prisma CustomerOrder/Sale/InventoryMovement | `customer-orders:view`; Branch/Admin action policy; actions `reserve`, `payment`, `release`, `cancel` |
-| `GET`, `POST` | `/api/sales` | Prisma Sale/SaleLine/InventoryMovement | `customer-orders:view`; Branch/Admin direct sale policy |
+| `POST` | `/api/customer-orders/:orderId/:action` | Prisma CustomerOrder/Sale/InventoryMovement | Exact `customer-orders:reserve`, `:record-payment`, `:release`, or `:cancel`; paid cancellation also requires owner-only `:cancel-paid` |
+| `GET`, `POST` | `/api/sales` | Prisma Sale/SaleLine/InventoryMovement | `sales:view` / `sales:post` plus operational scope |
 | `GET` | `/api/accounting/receipts?page=1&pageSize=10&reviewStatus=all&saleStatus=POSTED` | Prisma Sale/SaleLine/SaleAccountingReview/Location | `sales:verify:view`; server-side filters and pagination |
 | `POST` | `/api/accounting/receipts/:saleId/review` | Prisma SaleAccountingReview/Notification | `sales:verify`; Accounting Staff only |
-| `POST` | `/api/accounting/receipts/:saleId/resolve` | Prisma Sale/SaleLine/SaleAccountingReview/InventoryMovement/Notification | `sales:resolve`; Admin or Accounting Staff |
-| `POST`, `GET` | `/api/accounting/receipts/:saleId/photo` | Coolify persistent receipt-evidence storage | `sales:verify:view`; Admin/Accounting reviewers and assigned Branch mismatch reviewers may read evidence |
-| `GET` | `/api/reports` | Prisma sales/orders/accounting/inventory summaries | `reports:view` |
-| `GET`, `POST` | `/api/products` | Prisma Product/InventoryBalance | `GET`: `products:view`; `POST`: Admin role |
-| `PATCH`, `DELETE` | `/api/products/:productId` | Prisma Product | Admin role |
-| `GET`, `POST`, `DELETE` | `/api/products/:productId/image` | Prisma Product + private persistent image storage | `GET`: `products:view`; `POST`/`DELETE`: Admin role |
+| `POST` | `/api/accounting/receipts/:saleId/resolve` | Prisma Sale/SaleLine/SaleAccountingReview/InventoryMovement/Notification | `sales:resolve` for confirm-correct; owner-only `sales:void-replace` for stock-changing replacement |
+| `POST`, `GET` | `/api/accounting/receipts/:saleId/photo` | Coolify persistent receipt-evidence storage | `sales:evidence:upload` / `sales:evidence:view`; Branch scope is enforced by sale location |
+| `GET` | `/api/reports` | Prisma sales/orders/accounting/inventory summaries | `reports:view`; PDF additionally requires `reports:export` |
+| `GET`, `POST` | `/api/products` | Prisma Product/InventoryBalance | `products:view` / `products:create` |
+| `PATCH`, `DELETE` | `/api/products/:productId` | Prisma Product | `products:update` / `products:delete` |
+| `GET`, `POST`, `DELETE` | `/api/products/:productId/image` | Prisma Product + private persistent image storage | `products:view` / `products:image:update` |
 | `GET` | `/api/inventory` | Prisma Product/InventoryBalance/Location | `inventory:view` |
-| `GET` | `/api/inventory/availability` | Prisma Product/InventoryBalance/Location | `inventory:view`; active locations only |
-| `PATCH` | `/api/inventory/:balanceId` | Prisma Product/InventoryBalance | Admin role; reorder-level updates write the shared Product setting, while unit-cost updates remain balance-scoped |
-| `POST` | `/api/inventory/:balanceId/adjustment` | Prisma InventoryBalance/InventoryMovement/Notification | Admin role; quantity-only correction |
-| `GET` | `/api/inventory/movements` | Prisma InventoryMovement | `inventory:view` |
-| `GET`, `POST` | `/api/stock-transfers?page=1&pageSize=10` | Prisma transfer ledger | `stock-transfers:view` plus role action policy; server-paginated list |
-| `POST` | `/api/stock-transfers/:id/:action` | Prisma transfer/inventory transaction | `stock-transfers:view` plus role/location/state policy |
+| `GET` | `/api/inventory/availability` | Prisma Product/InventoryBalance/Location | `inventory-availability:view`; active scoped locations only |
+| `PATCH` | `/api/inventory/:balanceId` | Prisma Product/InventoryBalance | `inventory:cost:update`; non-owner actors remain location-scoped |
+| `POST` | `/api/inventory/:balanceId/adjustment` | Prisma InventoryBalance/InventoryMovement/Notification | `inventory:adjust`; non-owner actors remain location-scoped |
+| `GET` | `/api/inventory/movements` | Prisma InventoryMovement | `inventory-movements:view` |
+| `GET`, `POST` | `/api/stock-transfers?page=1&pageSize=10` | Prisma transfer ledger | `stock-transfers:view` / `stock-transfers:create`; server-paginated list |
+| `POST` | `/api/stock-transfers/:id/:action` | Prisma transfer/inventory transaction | Matching `stock-transfers:update/delete/finalize/dispatch/receive/report-discrepancy/investigate/resolve` plus scope/state policy |
 | `POST` | `/api/accounting/receipts/:saleId/branch-response` | Prisma Accounting review | Assigned Branch Staff for an unresolved own-branch mismatch |
-| `GET`, `POST` | `/api/stock-receipts` | Prisma supplier-receipt/inventory transaction | `GET`: inventory monitor policy; `POST`: `inventory-receiving:create`; Admin/Stock Staff only, destination fixed to `SR` |
-| `GET`, `POST` | `/api/users` | Prisma User (+Location) | `users:manage` |
-| `GET`, `POST` | `/api/roles` | Prisma RoleDefinition | `roles:manage`; owner Admin only |
-| `GET`, `PATCH` | `/api/roles/:roleId` | Prisma RoleDefinition | `roles:manage`; owner Admin only; no delete/deactivate route |
-| `GET`, `POST` | `/api/branches` | Prisma Location (`BRANCH`) | `branches:manage`; owner Admin only |
-| `PATCH` | `/api/branches/:branchId` | Prisma Location (`BRANCH`) | `branches:manage`; owner Admin only; code is immutable; no deactivate/delete route |
-| `PATCH` | `/api/users/:userId` | Prisma User | `users:manage` |
-| `POST` | `/api/users/:userId/status` | Prisma User | `users:manage` |
-| `POST` | `/api/users/:userId/password` | Better Auth internal + Prisma User | `users:manage` |
+| `GET`, `POST` | `/api/stock-receipts` | Prisma supplier-receipt/inventory transaction | `stock-receipts:view` / `inventory-receiving:create`; OWNER/STOCK_ROOM scope, destination fixed to `SR` |
+| `GET`, `POST` | `/api/users` | Prisma User (+Location) | `users:view` / `users:create`; owner only |
+| `GET`, `POST` | `/api/roles` | Prisma RoleDefinition | `roles:view` / `roles:create`; owner only |
+| `GET`, `PATCH` | `/api/roles/:roleId` | Prisma RoleDefinition | `roles:view` / `roles:update`; owner only; no delete/deactivate route |
+| `GET`, `POST` | `/api/branches` | Prisma Location (`BRANCH`) | `branches:view` / `branches:create`; owner only |
+| `PATCH` | `/api/branches/:branchId` | Prisma Location (`BRANCH`) | `branches:update`; owner only; code immutable |
+| `PATCH` | `/api/users/:userId` | Prisma User | `users:update`; owner only |
+| `POST` | `/api/users/:userId/status` | Prisma User | `users:set-status`; owner only |
+| `POST` | `/api/users/:userId/password` | Better Auth internal + Prisma User | `users:reset-password`; owner only |
 | `GET`, `POST` | `/api/credential-setup` | Better Auth + Prisma User | Any authenticated active role |
 
 ## Customer orders, sales, and Accounting
@@ -113,7 +104,7 @@ A persisted assignment that contradicts RoleScope fails closed: `BRANCH` require
 
 `GET /api/dashboard` returns live role-scoped summary metrics for sales, open orders, low/out stock, Accounting queue counts, and notification preview. `GET /api/reports` returns live read-only Sales, Accounting/Reconciliation, Orders, and Admin-only Inventory summaries; `?format=pdf` returns a PDF-download response for the same authorized data.
 
-`GET /api/stock-transfers` accepts `page` and `pageSize` (1-100) and returns `{ data, meta }`; `transferId` narrows an authorized notification deep link to one transfer. Stock-transfer actions are `finalize`, `dispatch`, `confirm-receipt`, `report-discrepancy`, `investigate`, and `resolve`. They require the current transfer `version`, lock the transfer row, enforce state transitions, and use serializable transactions. Stock Staff normally creates/finalizes/dispatches SR-to-active-branch documents and investigates discrepancies; Admin may perform those same source-side actions as operational cover. Branch Staff remains destination-scoped for receipt/discrepancy, and Admin performs final discrepancy resolution. Accounting is denied. Admin transfer responses include `timeline` and `movements` audit arrays for the selected transfer; other roles receive the operational transfer fields without the Admin-only audit view. Only one draft may exist per destination; duplicate draft creation returns `409 DUPLICATE_DRAFT`.
+`GET /api/stock-transfers` accepts `page` and `pageSize` (1-100) and returns `{ data, meta }`; `transferId` narrows an authorized notification deep link to one transfer. Stock-transfer actions are `finalize`, `dispatch`, `confirm-receipt`, `report-discrepancy`, `investigate`, and `resolve`. They require the current transfer `version`, lock the transfer row, enforce state transitions, and use serializable transactions. Stock Staff normally creates/finalizes/dispatches SR-to-active-branch documents and investigates discrepancies; Admin may perform those same source-side actions as operational cover. Branch Staff remains destination-scoped for receipt/discrepancy, and Admin performs final discrepancy resolution. Accounting is denied. Transfer responses include `timeline` and `movements` audit arrays only when the caller has `stock-transfers:audit:view`; the built-in Admin and Stock Staff roles have that grant. Other roles receive the operational transfer fields without audit history. Only one draft may exist per destination; duplicate draft creation returns `409 DUPLICATE_DRAFT`.
 
 Stock-transfer transitions create persisted per-user notifications in the same database transaction as the triggering workflow update. `FOR_DISPATCH` alerts Stock Staff assigned to `SR`, `IN_TRANSIT` alerts Branch Staff assigned to the destination, exact `RECEIVED` alerts Stock Staff, `DISCREPANCY_REPORTED` alerts Stock Staff, `UNDER_REVIEW` alerts Admin, `RESOLVED` alerts Admin plus destination Branch Staff, and replacement drafts created from resolved shortages alert Stock Staff.
 
@@ -214,7 +205,7 @@ The response `summary` contains user-facing totals for the active authorized loc
 
 ## User management (owner Admin only)
 
-All four routes require the `users:manage` capability, which only the owner Admin holds. Every failure uses the stable envelope `{ "error": { "code", "message" } }` with statuses `401`, `403`, `404`, `409`, or `400`.
+User routes require their exact owner-only `users:view`, `users:create`, `users:update`, `users:set-status`, or `users:reset-password` capability. Every failure uses the stable envelope `{ "error": { "code", "message" } }` with statuses `401`, `403`, `404`, `409`, or `400`.
 
 ### `GET /api/users`
 

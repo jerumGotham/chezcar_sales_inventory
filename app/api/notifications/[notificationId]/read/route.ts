@@ -10,7 +10,7 @@ type Context = { params: Promise<{ notificationId: string }> };
 
 export async function POST(request: Request, context: Context) {
   try {
-    const actor = await requireCapability(request.headers, "dashboard:view");
+    const actor = await requireCapability(request.headers, "notifications:mark-read");
     const { notificationId } = await context.params;
     return NextResponse.json({ data: await markNotificationRead(actor, notificationId) });
   } catch (error) {

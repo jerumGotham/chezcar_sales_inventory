@@ -11,7 +11,7 @@ function errorResponse(error: unknown) {
 
 export async function POST(request: Request) {
   try {
-    const actor = await requireCapability(request.headers, "users:manage");
+    const actor = await requireCapability(request.headers, "offline-sales:activate-device");
     return Response.json({ data: await activateOfflineDevice(actor, await request.json()) });
   } catch (error) {
     return errorResponse(error);

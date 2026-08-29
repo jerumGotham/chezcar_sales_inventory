@@ -3,7 +3,10 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 
 import type { CreateStockReceiptInput } from "@/lib/contracts/stock-receipts";
-import type { AuthContext } from "@/lib/server/authorization";
+import {
+  assertCapability,
+  type AuthContext,
+} from "@/lib/server/authorization";
 import { prisma } from "@/lib/server/prisma";
 
 export class StockReceiptError extends Error {
@@ -13,18 +16,18 @@ export class StockReceiptError extends Error {
 }
 
 function assertStockRoomReceivingActor(actor: AuthContext) {
-  if (actor.role === "ADMIN") {
+  if (actor.isOwner) {
     return;
   }
   if (
-    actor.role !== "STOCK_STAFF" ||
+    actor.roleScope !== "STOCK_ROOM" ||
     actor.locationId === null ||
     actor.location?.id !== actor.locationId ||
     actor.location.code !== "SR" ||
     actor.location.type !== "WAREHOUSE" ||
     !actor.location.isActive
   ) {
-    throw new StockReceiptError("FORBIDDEN", "Only Admin or Stock Staff assigned to Stock Room may post supplier receipts", 403);
+    throw new StockReceiptError("FORBIDDEN", "Owner or active Stock Room scope is required", 403);
   }
 }
 
@@ -49,9 +52,8 @@ function serializeReceipt(receipt: {
 }
 
 export async function listStockReceipts(actor: AuthContext) {
-  if (actor.role !== "STOCK_STAFF" && actor.role !== "ADMIN") {
-    throw new StockReceiptError("FORBIDDEN", "Supplier receipts are restricted to Stock Staff and Admin", 403);
-  }
+  assertCapability(actor, "stock-receipts:view");
+  assertStockRoomReceivingActor(actor);
 
   const receipts = await prisma.stockReceipt.findMany({
     orderBy: { receivedAt: "desc" },
@@ -64,6 +66,7 @@ export async function listStockReceipts(actor: AuthContext) {
 }
 
 export async function createStockReceipt(actor: AuthContext, input: CreateStockReceiptInput) {
+  assertCapability(actor, "inventory-receiving:create");
   assertStockRoomReceivingActor(actor);
   const productIds = input.lines.map((line) => line.productId);
   if (new Set(productIds).size !== productIds.length) {
@@ -73,7 +76,7 @@ export async function createStockReceipt(actor: AuthContext, input: CreateStockR
   try {
     return await prisma.$transaction(async (tx) => {
       const stockRoom = await tx.location.findFirst({
-        where: actor.role === "ADMIN"
+        where: actor.isOwner
           ? { code: "SR", type: "WAREHOUSE", isActive: true }
           : { id: actor.locationId!, code: "SR", type: "WAREHOUSE", isActive: true },
         select: { id: true, code: true, name: true },

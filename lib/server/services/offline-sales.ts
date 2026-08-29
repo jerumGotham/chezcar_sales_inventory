@@ -3,10 +3,13 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
-import type { AuthContext } from "@/lib/server/authorization";
+import {
+  assertCapability,
+  type AuthContext,
+} from "@/lib/server/authorization";
 import { prisma } from "@/lib/server/prisma";
 import { findActiveBranch } from "@/lib/server/locations";
-import { createDirectSale, CustomerSalesError, directSaleSchema } from "@/lib/server/services/customer-sales";
+import { createOfflineDirectSale, CustomerSalesError, directSaleSchema } from "@/lib/server/services/customer-sales";
 
 const activationSchema = z.object({
   locationId: z.string().min(1),
@@ -27,8 +30,8 @@ export class OfflineSalesError extends Error {
 }
 
 function assertBranchActor(actor: AuthContext) {
-  if (actor.role !== "BRANCH_STAFF" || !actor.locationId || actor.location?.id !== actor.locationId || actor.location.type !== "BRANCH" || !actor.location.isActive) {
-    throw new OfflineSalesError("FORBIDDEN", "Branch Staff with an active branch assignment is required", 403);
+  if (actor.roleScope !== "BRANCH" || !actor.locationId || actor.location?.id !== actor.locationId || actor.location.type !== "BRANCH" || !actor.location.isActive) {
+    throw new OfflineSalesError("FORBIDDEN", "Active Branch scope is required", 403);
   }
   return actor.locationId;
 }
@@ -38,7 +41,8 @@ function requestHash(input: unknown) {
 }
 
 export async function activateOfflineDevice(actor: AuthContext, rawInput: unknown) {
-  if (actor.role !== "ADMIN") throw new OfflineSalesError("FORBIDDEN", "Admin access required", 403);
+  assertCapability(actor, "offline-sales:activate-device");
+  if (!actor.isOwner) throw new OfflineSalesError("FORBIDDEN", "Owner access required", 403);
   const input = activationSchema.parse(rawInput);
   const location = await findActiveBranch(input.locationId);
   if (!location) throw new OfflineSalesError("INVALID_LOCATION", "Select an active branch", 400);
@@ -62,6 +66,7 @@ export async function activateOfflineDevice(actor: AuthContext, rawInput: unknow
 }
 
 export async function getOfflineSnapshot(actor: AuthContext, rawInput: unknown) {
+  assertCapability(actor, "offline-sales:snapshot");
   const locationId = assertBranchActor(actor);
   const input = snapshotQuerySchema.parse(rawInput);
   const activation = await authorizeDevice(input.deviceId, locationId, true);
@@ -89,6 +94,7 @@ export async function getOfflineSnapshot(actor: AuthContext, rawInput: unknown) 
 }
 
 export async function syncOfflineSale(actor: AuthContext, rawInput: unknown) {
+  assertCapability(actor, "offline-sales:sync");
   const locationId = assertBranchActor(actor);
   const input = syncSchema.parse(rawInput);
   await authorizeDevice(input.deviceId, locationId, false);
@@ -115,7 +121,7 @@ export async function syncOfflineSale(actor: AuthContext, rawInput: unknown) {
   }
 
   try {
-    const sale = await createDirectSale(actor, { ...parsedSale.data, locationId });
+    const sale = await createOfflineDirectSale(actor, { ...parsedSale.data, locationId });
     return updateOfflineResult(operation.id, submission.id, "ACCEPTED", null, sale);
   } catch (error) {
     const status = error instanceof CustomerSalesError && error.status === 409 ? "NEEDS_REVIEW" : "REJECTED";

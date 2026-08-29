@@ -14,19 +14,31 @@ const PAGE_CAPABILITIES = {
   customers: CAPABILITIES.customersView,
   pos: CAPABILITIES.salesPost,
   accounting: CAPABILITIES.salesVerifyView,
-  "customer-orders": CAPABILITIES.customerOrdersView,
+  "customer-orders": [CAPABILITIES.customerOrdersView, CAPABILITIES.salesView],
   products: CAPABILITIES.productsView,
   inventory: CAPABILITIES.inventoryView,
   reports: CAPABILITIES.reportsView,
-  users: CAPABILITIES.usersManage,
-  branches: CAPABILITIES.branchesManage,
-  offline: CAPABILITIES.usersManage,
+  users: CAPABILITIES.usersView,
+  branches: CAPABILITIES.branchesView,
+  offline: "offline-sales:activate-device",
   "stock-transfers": CAPABILITIES.stockTransfersView,
-} as const satisfies Record<string, Capability>;
+} as const satisfies Record<string, Capability | readonly Capability[]>;
 
-function pageCapability(pathname: string): Capability | null {
+function pageCapability(pathname: string): Capability | readonly Capability[] | null {
   if (pathname === "/users/roles" || pathname.startsWith("/users/roles/")) {
-    return CAPABILITIES.rolesManage;
+    return CAPABILITIES.rolesView;
+  }
+  if (pathname === "/customer-orders" || pathname === "/customer-orders/") {
+    return [CAPABILITIES.customerOrdersView, CAPABILITIES.salesView];
+  }
+  if (pathname === "/customer-orders/create") {
+    return CAPABILITIES.customerOrdersCreate;
+  }
+  if (/^\/customer-orders\/[^/]+\/release\/?$/.test(pathname)) {
+    return "customer-orders:release";
+  }
+  if (pathname.startsWith("/customer-orders/")) {
+    return CAPABILITIES.customerOrdersView;
   }
   const rootSegment = pathname.split("/")[1];
   return PAGE_CAPABILITIES[rootSegment as keyof typeof PAGE_CAPABILITIES] ?? null;
@@ -91,7 +103,9 @@ export async function proxy(request: NextRequest) {
     };
 
     if (
-      !evaluateAccess(context, capability) ||
+      !(Array.isArray(capability)
+        ? capability.some((item) => evaluateAccess(context, item))
+        : evaluateAccess(context, capability as Capability)) ||
       (isOwnerOnlyPage(request.nextUrl.pathname) && !context.isOwner)
     ) {
       return NextResponse.redirect(new URL("/access-denied", request.url));

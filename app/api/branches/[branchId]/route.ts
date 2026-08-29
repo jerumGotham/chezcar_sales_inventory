@@ -9,7 +9,7 @@ type BranchRouteContext = { params: Promise<{ branchId: string }> };
 
 export async function PATCH(request: Request, context: BranchRouteContext) {
   try {
-    const actor = await requireCapability(request.headers, "branches:manage");
+    const actor = await requireCapability(request.headers, "branches:update");
     if (!actor.isOwner) throw new AuthorizationError("Insufficient permissions");
     const { branchId } = await context.params;
     const input = updateBranchSchema.parse(await request.json());

@@ -10,7 +10,7 @@ type UserRouteContext = { params: Promise<{ userId: string }> };
 export async function POST(request: Request, context: UserRouteContext) {
   try {
     const { userId } = await context.params;
-    const actor = await requireOwnerAdmin(request.headers);
+    const actor = await requireOwnerAdmin(request.headers, "users:reset-password");
     const input = resetUserPasswordRequestSchema.parse(await request.json());
 
     // The submitted temporary password is never echoed back in any response.

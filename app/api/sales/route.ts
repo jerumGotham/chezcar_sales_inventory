@@ -11,7 +11,7 @@ function errorResponse(error: unknown) {
 
 export async function GET(request: Request) {
   try {
-    const actor = await requireCapability(request.headers, "customer-orders:view");
+    const actor = await requireCapability(request.headers, "sales:view");
     return Response.json({ data: await listSales(actor) });
   } catch (error) {
     return errorResponse(error);

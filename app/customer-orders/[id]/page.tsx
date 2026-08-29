@@ -57,7 +57,7 @@ export default function CustomerOrderDetailsPage() {
   const params = useParams<{ id: string }>();
   const queryClient = useQueryClient();
   const access = useShellAccess();
-  const role = access.authenticated ? access.identity.role : null;
+  const capabilities = access.authenticated ? access.capabilities : [];
   const orderId = params.id;
   const [isCancelOpen, setIsCancelOpen] = useState(false);
   const [cancellationNote, setCancellationNote] = useState("");
@@ -104,7 +104,7 @@ export default function CustomerOrderDetailsPage() {
       ]);
     },
   });
-  const actions = order ? getCustomerOrderActions({ role, statusCode: order.statusCode, downpayment: order.downpayment, balance: order.balance }) : null;
+  const actions = order ? getCustomerOrderActions({ capabilities, statusCode: order.statusCode, downpayment: order.downpayment, balance: order.balance }) : null;
 
   return (
     <PageShell

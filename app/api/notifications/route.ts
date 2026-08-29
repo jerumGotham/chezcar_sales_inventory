@@ -15,7 +15,7 @@ function parseAfterCursor(request: Request) {
 
 export async function GET(request: Request) {
   try {
-    const actor = await requireCapability(request.headers, "dashboard:view");
+    const actor = await requireCapability(request.headers, "notifications:view");
     const after = parseAfterCursor(request);
     return NextResponse.json({
       data: after === null ? await listNotifications(actor) : await listNotificationsAfter(actor, after),
@@ -27,7 +27,7 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const actor = await requireCapability(request.headers, "dashboard:view");
+    const actor = await requireCapability(request.headers, "notifications:mark-read");
     return NextResponse.json({ data: await markAllNotificationsRead(actor) });
   } catch (error) {
     return authorizationErrorResponse(error);

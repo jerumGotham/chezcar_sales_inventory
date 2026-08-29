@@ -2,7 +2,6 @@ import "server-only";
 
 import type { UserRole } from "@prisma/client";
 
-import { auth } from "@/lib/server/auth";
 import {
   capabilitiesFor,
   evaluateAccess,
@@ -10,16 +9,40 @@ import {
   type PersistedAccessContext,
   validatePersistedAssignment,
 } from "./policy/access";
-import { prisma } from "@/lib/server/prisma";
 
 export type AuthContext = PersistedAccessContext;
 
 export class AuthenticationError extends Error {}
-export class AuthorizationError extends Error {}
+export class AuthorizationError extends Error {
+  readonly code = "FORBIDDEN";
+  readonly status = 403;
+}
+
+export function assertCapability(
+  context: AuthContext,
+  capability: Capability,
+): void {
+  if (!evaluateAccess(context, capability)) {
+    throw new AuthorizationError("Insufficient permissions");
+  }
+}
+
+export function assertAnyCapability(
+  context: AuthContext,
+  capabilities: readonly Capability[],
+): void {
+  if (!capabilities.some((capability) => evaluateAccess(context, capability))) {
+    throw new AuthorizationError("Insufficient permissions");
+  }
+}
 
 async function loadPersistedAccessContext(
   headers: Headers,
 ): Promise<PersistedAccessContext> {
+  const [{ auth }, { prisma }] = await Promise.all([
+    import("@/lib/server/auth"),
+    import("@/lib/server/prisma"),
+  ]);
   const session = await auth.api.getSession({ headers });
 
   if (!session) {
@@ -74,10 +97,7 @@ export async function requireCapability(
   capability: Capability,
 ): Promise<AuthContext> {
   const context = await loadPersistedAccessContext(headers);
-
-  if (!evaluateAccess(context, capability)) {
-    throw new AuthorizationError("Insufficient permissions");
-  }
+  assertCapability(context, capability);
 
   return context;
 }

@@ -19,6 +19,7 @@ import {
 
 import { LocationScopeControl } from "@/components/location-scope-control";
 import { PageShell } from "@/components/page-shell";
+import { useCan } from "@/components/shell-access-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -88,8 +89,12 @@ export function InventoryClient({
 }: InventoryClientProps) {
   const queryClient = useQueryClient();
   const isAdmin = role === "ADMIN";
-  const isStockStaff = role === "STOCK_STAFF";
-  const canReceiveSupplierStock = isAdmin || isStockStaff;
+  const canReceiveSupplierStock = useCan("inventory-receiving:create");
+  const canAdjustStock = useCan("inventory:adjust");
+  const canUpdateCost = useCan("inventory:cost:update");
+  const canViewMovements = useCan("inventory-movements:view");
+  const canViewAvailability = useCan("inventory-availability:view");
+  const canViewStockTransfers = useCan("stock-transfers:view");
 
   // Applied location starts from the server-derived scope DTO and can never
   // exceed it: only Admin may request anything besides All locations.
@@ -239,7 +244,7 @@ export function InventoryClient({
         type: stockCardMovementTypeFilter.value,
         reference: stockCardReference,
       }),
-    enabled: isStockCardOpen,
+    enabled: canViewMovements && isStockCardOpen,
   });
 
   const {
@@ -263,7 +268,7 @@ export function InventoryClient({
         location: availabilityLocationFilter.value,
         status: availabilityStatusFilter.value,
       }),
-    enabled: isAvailabilityOpen,
+    enabled: canViewAvailability && isAvailabilityOpen,
     placeholderData: (previousData) => previousData,
   });
 
@@ -279,7 +284,10 @@ export function InventoryClient({
        reference?: string;
       reason: string;
       remarks?: string;
-    }) => correctInventory(payload.balanceId, payload),
+    }) => {
+      if (!canAdjustStock) throw new Error("You do not have permission to adjust stock.");
+      return correctInventory(payload.balanceId, payload);
+    },
     onSuccess: () => {
       refreshInventory();
       setIsAdjustOpen(false);
@@ -443,7 +451,7 @@ export function InventoryClient({
   }
 
   const submitQuickAdjustment = () => {
-    if (!selectedItem || !quickAdjustType) return;
+    if (!canAdjustStock || !selectedItem || !quickAdjustType) return;
     correctionMutation.mutate({
       balanceId: selectedItem.id,
       type: quickAdjustType.value === "decrease" ? "decrease" : "increase",
@@ -455,7 +463,7 @@ export function InventoryClient({
   };
 
   const submitAdjustment = () => {
-    if (!adjustProduct || !adjustType) return;
+    if (!canAdjustStock || !adjustProduct || !adjustType) return;
     correctionMutation.mutate({
       balanceId: adjustProduct.value,
       type: adjustType.value === "decrease" ? "decrease" : "increase",
@@ -478,6 +486,7 @@ export function InventoryClient({
 
   const costMutation = useMutation({
     mutationFn: () => {
+      if (!canUpdateCost) throw new Error("You do not have permission to edit inventory cost.");
       if (!costBalance) throw new Error("Select an inventory balance first.");
       return updateInventoryUnitCost(costBalance.id, {
         unitCost: Number(newUnitCost),
@@ -570,10 +579,10 @@ export function InventoryClient({
             </div>
             <div className="flex flex-wrap gap-2">
               {canReceiveSupplierStock && <Link href="/inventory/receive"><Button className="bg-emerald-600 text-white hover:bg-emerald-700">Receive from Supplier</Button></Link>}
-              {isAdmin && <Button className="bg-amber-600 text-white hover:bg-amber-700" onClick={openAdjustModal}>Adjust Stock</Button>}
-              <Button variant="outline" onClick={() => setIsStockCardOpen(true)}>Stock Movement</Button>
-              <Button variant="outline" onClick={() => setIsAvailabilityOpen(true)}>Inventory Availability</Button>
-              <Link href="/stock-transfers"><Button variant="outline">{isStockStaff ? "Stock Transfers" : "Open Stock Transfers"}</Button></Link>
+              {canAdjustStock && <Button className="bg-amber-600 text-white hover:bg-amber-700" onClick={openAdjustModal}>Adjust Stock</Button>}
+              {canViewMovements && <Button variant="outline" onClick={() => setIsStockCardOpen(true)}>Stock Movement</Button>}
+              {canViewAvailability && <Button variant="outline" onClick={() => setIsAvailabilityOpen(true)}>Inventory Availability</Button>}
+              {canViewStockTransfers && <Link href="/stock-transfers"><Button variant="outline">Open Stock Transfers</Button></Link>}
             </div>
           </CardContent>
         </Card>
@@ -812,7 +821,7 @@ export function InventoryClient({
                                      </>
                                    )}
                                  </Button>
-                                 {isAdmin && group.locations[0] && (
+                                  {canUpdateCost && group.locations[0] && (
                                    <Button variant="outline" size="sm" onClick={() => openCostModal(group.locations[0])}>
                                      Edit Cost
                                    </Button>
@@ -895,7 +904,7 @@ export function InventoryClient({
                                                 </p>
                                               </div>
                                             </div>
-                                            {isAdmin && (
+                                            {canAdjustStock && (
                                               <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
                                                 <Button
                                                   variant="outline"

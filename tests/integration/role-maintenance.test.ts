@@ -57,7 +57,25 @@ describe("persisted role maintenance", () => {
           name: "Branch Administrator",
           description: "Must not receive owner maintenance access",
           scope: "BRANCH",
-          permissions: ["branches:manage"],
+          permissions: ["branches:update"],
+        }),
+      ).rejects.toMatchObject({ code: "OWNER_PERMISSION_ONLY", status: 400 });
+
+      await expect(
+        createRoleDefinition({
+          name: "Branch Transfer Dispatcher",
+          description: "Cannot perform Stock Room source actions",
+          scope: "BRANCH",
+          permissions: ["stock-transfers:dispatch"],
+        }),
+      ).rejects.toMatchObject({ code: "PERMISSION_SCOPE_MISMATCH", status: 400 });
+
+      await expect(
+        createRoleDefinition({
+          name: "Branch Financial Corrections",
+          description: "Must not receive owner correction access",
+          scope: "BRANCH",
+          permissions: ["customer-orders:cancel-paid", "sales:void-replace"],
         }),
       ).rejects.toMatchObject({ code: "OWNER_PERMISSION_ONLY", status: 400 });
 

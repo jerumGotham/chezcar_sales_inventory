@@ -3,7 +3,10 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { Prisma, type StockTransferStatus } from "@prisma/client";
 
-import type { AuthContext } from "@/lib/server/authorization";
+import {
+  assertCapability,
+  type AuthContext,
+} from "@/lib/server/authorization";
 import type {
   CreateTransferInput,
   DiscrepancyInput,
@@ -59,17 +62,40 @@ type TransferRecord = Prisma.StockTransferGetPayload<{
   include: typeof TRANSFER_INCLUDE;
 }>;
 
-function assertBranch(actor: AuthContext) {
-  if (actor.role !== "BRANCH_STAFF")
-    throw new TransferError("FORBIDDEN", "Branch Staff access required", 403);
+function assertDestinationActor(actor: AuthContext) {
+  if (
+    actor.roleScope !== "BRANCH" ||
+    !actor.locationId ||
+    actor.location?.id !== actor.locationId ||
+    actor.location.type !== "BRANCH" ||
+    !actor.location.isActive
+  ) {
+    throw new TransferError("FORBIDDEN", "Active Branch scope is required", 403);
+  }
 }
-function assertAdminOrStockStaff(actor: AuthContext) {
-  if (actor.role !== "ADMIN" && actor.role !== "STOCK_STAFF")
+function assertSourceActor(actor: AuthContext) {
+  if (actor.isOwner) return;
+  if (
+    actor.roleScope !== "STOCK_ROOM" ||
+    !actor.locationId ||
+    actor.location?.id !== actor.locationId ||
+    actor.location.code !== "SR" ||
+    actor.location.type !== "WAREHOUSE" ||
+    !actor.location.isActive
+  ) {
     throw new TransferError(
       "FORBIDDEN",
-      "Admin or Stock Staff access required",
+      "Owner or Stock Room scope is required",
       403,
     );
+  }
+}
+function assertOwner(actor: AuthContext) {
+  if (!actor.isOwner)
+    throw new TransferError("FORBIDDEN", "Owner access required", 403);
+}
+function canViewTransferAudit(actor: AuthContext) {
+  return actor.capabilities.includes("stock-transfers:audit:view");
 }
 function assertVersion(actual: number, expected: number) {
   if (actual !== expected)
@@ -215,10 +241,13 @@ export async function listTransfers(
     pageSize: 10,
   },
 ) {
+  assertCapability(actor, "stock-transfers:view");
+  if (actor.roleScope === "BRANCH") assertDestinationActor(actor);
+  else assertSourceActor(actor);
   const where: Prisma.StockTransferWhereInput = {
     id: query.transferId,
     destinationId:
-      actor.role === "BRANCH_STAFF"
+      actor.roleScope === "BRANCH"
         ? (actor.locationId as string)
         : undefined,
   };
@@ -234,7 +263,7 @@ export async function listTransfers(
   ]);
   return {
     data: transfers.map((transfer) =>
-      serializeTransfer(transfer, actor.role === "ADMIN"),
+      serializeTransfer(transfer, canViewTransferAudit(actor)),
     ),
     meta: {
       page: query.page,
@@ -249,7 +278,8 @@ export async function createTransfer(
   actor: AuthContext,
   input: CreateTransferInput,
 ) {
-  assertAdminOrStockStaff(actor);
+  assertCapability(actor, "stock-transfers:create");
+  assertSourceActor(actor);
   const productIds = input.lines.map((line) => line.productId);
   if (new Set(productIds).size !== productIds.length)
     throw new TransferError(
@@ -336,7 +366,7 @@ export async function createTransfer(
         );
       }
 
-      return serializeTransfer(transfer, actor.role === "ADMIN");
+      return serializeTransfer(transfer, canViewTransferAudit(actor));
     },
     { isolationLevel: "Serializable" },
   );
@@ -348,7 +378,8 @@ export async function updateDraftTransfer(
   version: number,
   lines: { productId: string; quantity: number }[],
 ) {
-  assertAdminOrStockStaff(actor);
+  assertCapability(actor, "stock-transfers:update");
+  assertSourceActor(actor);
   if (new Set(lines.map((l) => l.productId)).size !== lines.length)
     throw new TransferError(
       "INVALID_LINES",
@@ -377,14 +408,15 @@ export async function updateDraftTransfer(
         data: { version: { increment: 1 } },
         include: TRANSFER_INCLUDE,
       });
-      return serializeTransfer(updated, actor.role === "ADMIN");
+      return serializeTransfer(updated, canViewTransferAudit(actor));
     },
     { isolationLevel: "Serializable" },
   );
 }
 
 export async function deleteDraftTransfer(actor: AuthContext, id: string) {
-  assertAdminOrStockStaff(actor);
+  assertCapability(actor, "stock-transfers:delete");
+  assertSourceActor(actor);
   await prisma.$transaction(
     async (tx) => {
       const transfer = await tx.stockTransfer.findUnique({ where: { id } });
@@ -407,12 +439,13 @@ export async function finalizeTransfer(
   id: string,
   version: number,
 ) {
-  assertAdminOrStockStaff(actor);
+  assertCapability(actor, "stock-transfers:finalize");
+  assertSourceActor(actor);
   return prisma.$transaction(
     async (tx) => {
       const transfer = await lockTransfer(tx, id);
       if (transfer.status === "FOR_DISPATCH")
-        return serializeTransfer(transfer, actor.role === "ADMIN");
+        return serializeTransfer(transfer, canViewTransferAudit(actor));
       assertVersion(transfer.version, version);
       if (transfer.status !== "DRAFT")
         throw new TransferError(
@@ -439,7 +472,7 @@ export async function finalizeTransfer(
           type: "INFO",
         },
       );
-      return serializeTransfer(updated, actor.role === "ADMIN");
+      return serializeTransfer(updated, canViewTransferAudit(actor));
     },
     { isolationLevel: "Serializable" },
   );
@@ -450,12 +483,13 @@ export async function dispatchTransfer(
   id: string,
   version: number,
 ) {
-  assertAdminOrStockStaff(actor);
+  assertCapability(actor, "stock-transfers:dispatch");
+  assertSourceActor(actor);
   return prisma.$transaction(
     async (tx) => {
       const transfer = await lockTransfer(tx, id);
       if (transfer.status === "IN_TRANSIT")
-        return serializeTransfer(transfer, actor.role === "ADMIN");
+        return serializeTransfer(transfer, canViewTransferAudit(actor));
       assertVersion(transfer.version, version);
       if (transfer.status !== "FOR_DISPATCH")
         throw new TransferError(
@@ -508,7 +542,7 @@ export async function dispatchTransfer(
           type: "INFO",
         },
       );
-      return serializeTransfer(updated, actor.role === "ADMIN");
+      return serializeTransfer(updated, canViewTransferAudit(actor));
     },
     { isolationLevel: "Serializable" },
   );
@@ -519,13 +553,14 @@ export async function confirmReceipt(
   id: string,
   version: number,
 ) {
-  assertBranch(actor);
+  assertCapability(actor, "stock-transfers:receive");
+  assertDestinationActor(actor);
   return prisma.$transaction(
     async (tx) => {
       const transfer = await lockTransfer(tx, id);
       ensureBranchScope(actor, transfer.destinationId);
       if (transfer.status === "RECEIVED")
-        return serializeTransfer(transfer, actor.role === "ADMIN");
+        return serializeTransfer(transfer, canViewTransferAudit(actor));
       assertVersion(transfer.version, version);
       if (transfer.status !== "IN_TRANSIT")
         throw new TransferError(
@@ -574,7 +609,7 @@ export async function confirmReceipt(
           type: "SUCCESS",
         },
       );
-      return serializeTransfer(updated, actor.role === "ADMIN");
+      return serializeTransfer(updated, canViewTransferAudit(actor));
     },
     { isolationLevel: "Serializable" },
   );
@@ -585,13 +620,14 @@ export async function reportDiscrepancy(
   id: string,
   input: DiscrepancyInput,
 ) {
-  assertBranch(actor);
+  assertCapability(actor, "stock-transfers:report-discrepancy");
+  assertDestinationActor(actor);
   return prisma.$transaction(
     async (tx) => {
       const transfer = await lockTransfer(tx, id);
       ensureBranchScope(actor, transfer.destinationId);
       if (transfer.status === "DISCREPANCY_REPORTED")
-        return serializeTransfer(transfer, actor.role === "ADMIN");
+        return serializeTransfer(transfer, canViewTransferAudit(actor));
       assertVersion(transfer.version, input.version);
       if (transfer.status !== "IN_TRANSIT")
         throw new TransferError(
@@ -663,7 +699,7 @@ export async function reportDiscrepancy(
           type: "WARNING",
         },
       );
-      return serializeTransfer(updated, actor.role === "ADMIN");
+      return serializeTransfer(updated, canViewTransferAudit(actor));
     },
     { isolationLevel: "Serializable" },
   );
@@ -674,12 +710,13 @@ export async function submitInvestigation(
   id: string,
   input: InvestigationInput,
 ) {
-  assertAdminOrStockStaff(actor);
+  assertCapability(actor, "stock-transfers:investigate");
+  assertSourceActor(actor);
   return prisma.$transaction(
     async (tx) => {
       const transfer = await lockTransfer(tx, id);
       if (transfer.status === "UNDER_REVIEW")
-        return serializeTransfer(transfer, actor.role === "ADMIN");
+        return serializeTransfer(transfer, canViewTransferAudit(actor));
       assertVersion(transfer.version, input.version);
       if (transfer.status !== "DISCREPANCY_REPORTED")
         throw new TransferError(
@@ -703,7 +740,7 @@ export async function submitInvestigation(
         description: `${updated.reference} has Stock Staff investigation and needs final Admin resolution.`,
         type: "WARNING",
       });
-      return serializeTransfer(updated, actor.role === "ADMIN");
+      return serializeTransfer(updated, canViewTransferAudit(actor));
     },
     { isolationLevel: "Serializable" },
   );
@@ -714,12 +751,13 @@ export async function resolveTransfer(
   id: string,
   input: ResolutionInput,
 ) {
-  assertAdminOrStockStaff(actor);
+  assertCapability(actor, "stock-transfers:resolve");
+  assertOwner(actor);
   return prisma.$transaction(
     async (tx) => {
       const transfer = await lockTransfer(tx, id);
       if (transfer.status === "RESOLVED")
-        return serializeTransfer(transfer, actor.role === "ADMIN");
+        return serializeTransfer(transfer, canViewTransferAudit(actor));
       assertVersion(transfer.version, input.version);
       if (transfer.status !== "UNDER_REVIEW")
         throw new TransferError(
@@ -851,10 +889,7 @@ export async function resolveTransfer(
           type: "SUCCESS",
         },
       );
-      return serializeTransfer(
-        updated,
-        actor.role === "ADMIN" || actor.role === "STOCK_STAFF",
-      );
+      return serializeTransfer(updated, canViewTransferAudit(actor));
     },
     { isolationLevel: "Serializable" },
   );

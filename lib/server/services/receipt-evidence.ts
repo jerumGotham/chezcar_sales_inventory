@@ -1,6 +1,6 @@
 import "server-only";
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
@@ -37,6 +37,11 @@ export async function readReceiptEvidence(key: string) {
   if (!isReceiptEvidenceKey(key)) throw new Error("Invalid receipt evidence key");
   const contentType = key.endsWith(".jpg") ? "image/jpeg" : key.endsWith(".png") ? "image/png" : "image/webp";
   return { contentType, body: await readFile(path.join(/*turbopackIgnore: true*/ storageRoot(), key)) };
+}
+
+export async function removeReceiptEvidence(key: string) {
+  if (!isReceiptEvidenceKey(key)) throw new Error("Invalid receipt evidence key");
+  await unlink(path.join(/*turbopackIgnore: true*/ storageRoot(), key));
 }
 
 export function isReceiptEvidenceKey(key: string) {

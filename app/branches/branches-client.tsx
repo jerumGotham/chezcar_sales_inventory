@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import type { BranchDto } from "@/lib/contracts/branches";
+import type { CapabilityId } from "@/lib/contracts/roles";
 
 type BranchForm = {
   code: string;
@@ -74,8 +75,14 @@ function formFor(branch: BranchDto): BranchForm {
   };
 }
 
-export function BranchesClient() {
+export function BranchesClient({
+  capabilities,
+}: {
+  capabilities: ReadonlyArray<CapabilityId>;
+}) {
   const queryClient = useQueryClient();
+  const canCreate = capabilities.includes("branches:create");
+  const canUpdate = capabilities.includes("branches:update");
   const [editing, setEditing] = useState<BranchDto | null>(null);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<BranchForm>(EMPTY_FORM);
@@ -140,7 +147,7 @@ export function BranchesClient() {
     <PageShell
       title="Branch Maintenance"
       subtitle="Add and maintain active sales branches. Branch codes are permanent."
-      actions={<Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" /> Add branch</Button>}
+      actions={canCreate ? <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" /> Add branch</Button> : undefined}
     >
       {banner ? (
         <div
@@ -176,7 +183,7 @@ export function BranchesClient() {
                     <TableCell className="font-medium">{branch.name}</TableCell>
                     <TableCell>{[branch.address, branch.city].filter(Boolean).join(", ") || "-"}</TableCell>
                     <TableCell>{branch.contactNumber || branch.email || "-"}</TableCell>
-                    <TableCell className="text-right"><Button variant="ghost" size="sm" onClick={() => openEdit(branch)}><Pencil className="mr-2 h-4 w-4" /> Edit</Button></TableCell>
+                    <TableCell className="text-right">{canUpdate ? <Button variant="ghost" size="sm" onClick={() => openEdit(branch)}><Pencil className="mr-2 h-4 w-4" /> Edit</Button> : <span className="text-muted-foreground">—</span>}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -185,7 +192,7 @@ export function BranchesClient() {
         </CardContent>
       </Card>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      {((editing && canUpdate) || (!editing && canCreate)) && <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
           <form onSubmit={submit}>
             <DialogHeader>
@@ -205,7 +212,7 @@ export function BranchesClient() {
             <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}{editing ? "Save changes" : "Add branch"}</Button></DialogFooter>
           </form>
         </DialogContent>
-      </Dialog>
+      </Dialog>}
     </PageShell>
   );
 }

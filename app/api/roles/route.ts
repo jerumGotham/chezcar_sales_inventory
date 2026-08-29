@@ -8,7 +8,7 @@ import {
 
 export async function GET(request: Request) {
   try {
-    await requireOwnerRoleManager(request.headers);
+    await requireOwnerRoleManager(request.headers, "roles:view");
     return Response.json({ data: await listRoleDefinitions() });
   } catch (error) {
     return rolesErrorResponse(error, "Unable to list roles");
@@ -17,7 +17,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    await requireOwnerRoleManager(request.headers);
+    await requireOwnerRoleManager(request.headers, "roles:create");
     const input = createRoleRequestSchema.parse(await request.json());
     return Response.json({ data: await createRoleDefinition(input) }, { status: 201 });
   } catch (error) {

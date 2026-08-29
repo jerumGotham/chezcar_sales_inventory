@@ -13,7 +13,7 @@ function errorResponse(error: unknown) {
 
 export async function GET(request: Request, context: Context) {
   try {
-    const actor = await requireCapability(request.headers, "customer-orders:view");
+    const actor = await requireCapability(request.headers, "sales:view");
     const { saleId } = await context.params;
     return Response.json({ data: await getSaleById(actor, saleId) });
   } catch (error) {

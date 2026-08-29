@@ -70,7 +70,9 @@ Unit project (`npm run test`):
 | `lib/server/services/catalog-reset.test.ts` | 01-06 | Positive reset gates; production/unknown/bind-mount refusal |
 | `lib/server/authorization.test.ts` | Authorization | Persisted role grants, scope assignment, owner full access, and capability guards |
 | `tests/routes/authorization.test.ts` | 01-07/01-14 | Direct-handler authorization order for dashboard/customers/orders/products/inventory |
-| `tests/routes/branches.test.ts` | Branch Maintenance | `branches:manage` authorization order, uppercase create input, and immutable PATCH code handling |
+| `lib/permissions.test.ts` | Granular authorization | Action-to-view implications and sibling-action isolation |
+| `lib/customer-order-actions.test.ts` | Customer Orders | Capability-specific action visibility across order states and paid cancellation |
+| `tests/routes/branches.test.ts` | Branch Maintenance | Exact view/create/update authorization order, uppercase create input, and immutable PATCH code handling |
 | `tests/routes/roles.test.ts` | Role Maintenance | Owner authorization order and create/update contract parsing |
 | `lib/server/shell.test.ts` | 01-08 | Four-role shell DTOs and scope feedback |
 | `proxy.test.ts` | 01-15 | Page session routing, capability denial, safe callbacks |
@@ -91,6 +93,7 @@ Integration project (`npm run test:integration`, serial over disposable PostgreS
 | `tests/integration/user-management.test.ts` | 01-09 | Owner-only user list/create/update semantics and error envelopes |
 | `tests/integration/branch-maintenance.test.ts` | Branch Maintenance slice | Persisted active-branch add/edit, uppercase unique immutable codes, and shared active-location sources |
 | `tests/integration/role-maintenance.test.ts` | Role Maintenance | Case-insensitive names, owner-only grant rejection, serialized scope assignment, optimistic conflict, immutable owner, and grant-change session revocation |
+| `tests/integration/granular-permissions.test.ts` | Granular authorization | Real persisted Product Add-only role gets implied view while direct edit/delete requests return `403` without mutation |
 | `tests/integration/session-revocation.test.ts` | 01-09 | Atomic access-change/session revocation, rollback, concurrency |
 | `tests/integration/credential-setup.test.ts` | 01-10 | Prompt arming/consumption, change/skip, other-session revocation |
 

@@ -45,7 +45,7 @@ export default function ReleaseCustomerOrderPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const access = useShellAccess();
-  const role = access.authenticated ? access.identity.role : null;
+  const capabilities = access.authenticated ? access.capabilities : [];
   const orderId = params.id;
   const { data: order, isLoading, error } = useQuery({ queryKey: ["customer-order", orderId], queryFn: () => fetchOrder(orderId), enabled: Boolean(orderId) });
   const releaseMutation = useMutation({
@@ -77,7 +77,7 @@ export default function ReleaseCustomerOrderPage() {
       router.push(`/customer-orders/${orderId}`);
     },
   });
-  const actions = order ? getCustomerOrderActions({ role, statusCode: order.statusCode, downpayment: order.downpayment, balance: order.balance }) : null;
+  const actions = order ? getCustomerOrderActions({ capabilities, statusCode: order.statusCode, downpayment: order.downpayment, balance: order.balance }) : null;
 
   return (
     <PageShell
@@ -129,7 +129,7 @@ export default function ReleaseCustomerOrderPage() {
                 <div className="space-y-2"><Label htmlFor="paymentMethod">Payment Method</Label><select id="paymentMethod" name="paymentMethod" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="CASH">Cash</option><option value="GCASH">GCash</option><option value="MAYA">Maya</option><option value="BANK_TRANSFER">Bank Transfer</option><option value="CREDIT_CARD">Credit Card</option><option value="SPLIT">Split</option></select></div>
                 <div className="space-y-2"><Label htmlFor="notes">Release Notes</Label><Input id="notes" name="notes" placeholder="Released by, remarks, etc." /></div>
                 <Button type="submit" className="w-full bg-emerald-600 text-white hover:bg-emerald-700" disabled={releaseMutation.isPending}>{releaseMutation.isPending ? "Releasing..." : "Confirm Release"}</Button>
-              </form> : <p className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">This order cannot be released in its current state or by your role.</p>}
+              </form> : <p className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">This order cannot be released in its current state or with your capabilities.</p>}
             </CardContent>
           </Card>
         </div>

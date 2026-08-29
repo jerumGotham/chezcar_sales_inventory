@@ -40,7 +40,7 @@ function errorResponse(error: unknown) {
 
 export async function PATCH(request: Request, context: Context) {
   try {
-    const actor = await requireCapability(request.headers, "inventory:view");
+    const actor = await requireCapability(request.headers, "inventory:cost:update");
     const { balanceId } = await context.params;
     const body = await request.json();
     const input = inventoryUnitCostSchema.parse(body);

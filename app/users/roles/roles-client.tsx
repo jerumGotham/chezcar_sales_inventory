@@ -30,6 +30,7 @@ import {
 import {
   ASSIGNABLE_ROLE_SCOPES,
   ASSIGNABLE_CAPABILITY_CATALOG,
+  capabilityIsAssignableToScope,
   createRole,
   listRoles,
   updateRole,
@@ -44,15 +45,6 @@ const SCOPE_LABELS = {
   STOCK_ROOM: "Stock Room",
   BUSINESS_WIDE: "Business-wide",
 } as const;
-
-const CAPABILITY_GROUPS = Array.from(
-  ASSIGNABLE_CAPABILITY_CATALOG.reduce((groups, capability) => {
-    const items = groups.get(capability.module) ?? [];
-    items.push(capability);
-    groups.set(capability.module, items);
-    return groups;
-  }, new Map<string, Array<(typeof ASSIGNABLE_CAPABILITY_CATALOG)[number]>>()),
-);
 
 type EditorState =
   | { mode: "create" }
@@ -75,10 +67,23 @@ function RoleEditor({
     existing && existing.scope !== "OWNER" ? existing.scope : "BRANCH",
   );
   const [permissions, setPermissions] = useState<CapabilityId[]>(
-    existing?.permissions ?? [],
+    (existing?.permissions ?? []).filter((permission) =>
+      capabilityIsAssignableToScope(permission, existing && existing.scope !== "OWNER" ? existing.scope : "BRANCH"),
+    ),
   );
   const [error, setError] = useState<string | null>(null);
   const scopeLocked = Boolean(existing?.assignedUserCount);
+  const assignableCapabilities = ASSIGNABLE_CAPABILITY_CATALOG.filter(
+    (capability) => capabilityIsAssignableToScope(capability.id, scope),
+  );
+  const capabilityGroups = Array.from(
+    assignableCapabilities.reduce((groups, capability) => {
+      const items = groups.get(capability.module) ?? [];
+      items.push(capability);
+      groups.set(capability.module, items);
+      return groups;
+    }, new Map<string, Array<(typeof ASSIGNABLE_CAPABILITY_CATALOG)[number]>>()),
+  );
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -150,7 +155,15 @@ function RoleEditor({
                   label: SCOPE_LABELS[value],
                 }))}
                 value={scope}
-                onValueChange={(value) => value && setScope(value)}
+                onValueChange={(value) => {
+                  if (!value) return;
+                  setScope(value);
+                  setPermissions((current) =>
+                    current.filter((permission) =>
+                      capabilityIsAssignableToScope(permission, value),
+                    ),
+                  );
+                }}
                 disabled={scopeLocked || mutation.isPending}
               >
                 <SelectTrigger id="role-scope" className="w-full">
@@ -187,7 +200,8 @@ function RoleEditor({
               <div>
                 <h3 className="font-semibold">Permissions</h3>
                 <p className="text-muted-foreground text-sm">
-                  {permissions.length} selected
+                  {permissions.length} selected. Action permissions automatically
+                  include the module view needed to use them.
                 </p>
               </div>
               <Button
@@ -197,20 +211,20 @@ function RoleEditor({
                 disabled={mutation.isPending}
                 onClick={() =>
                   setPermissions(
-                    permissions.length === ASSIGNABLE_CAPABILITY_CATALOG.length
+                    permissions.length === assignableCapabilities.length
                       ? []
-                      : ASSIGNABLE_CAPABILITY_CATALOG.map(
+                      : assignableCapabilities.map(
                           (capability) => capability.id,
                         ),
                   )
                 }
               >
-                {permissions.length === ASSIGNABLE_CAPABILITY_CATALOG.length
+                {permissions.length === assignableCapabilities.length
                   ? "Clear All"
                   : "Select All"}
               </Button>
             </div>
-            {CAPABILITY_GROUPS.map(([module, capabilities]) => (
+            {capabilityGroups.map(([module, capabilities]) => (
               <fieldset key={module} className="rounded-xl border p-4">
                 <legend className="px-1 text-sm font-semibold">{module}</legend>
                 <div className="grid gap-3 pt-2 md:grid-cols-2">
@@ -262,8 +276,14 @@ function RoleEditor({
   );
 }
 
-export function RolesClient() {
+export function RolesClient({
+  capabilities,
+}: {
+  capabilities: ReadonlyArray<CapabilityId>;
+}) {
   const queryClient = useQueryClient();
+  const canCreate = capabilities.includes("roles:create");
+  const canUpdate = capabilities.includes("roles:update");
   const [editor, setEditor] = useState<EditorState>(null);
   const [banner, setBanner] = useState<string | null>(null);
   const query = useQuery({ queryKey: ["roles"], queryFn: listRoles });
@@ -279,7 +299,7 @@ export function RolesClient() {
       <PageShell
         title="Role Maintenance"
         subtitle="Create and edit persisted access roles and capability grants."
-        actions={
+        actions={canCreate ? (
           <div className="flex flex-wrap gap-2">
             {/* <Link href="/users" className={buttonVariants({ variant: "outline" })}>
               <ArrowLeft className="mr-2 size-4" /> Back to Users
@@ -288,7 +308,7 @@ export function RolesClient() {
               Create Role
             </Button>
           </div>
-        }
+        ) : undefined}
       >
         {banner && (
           <div
@@ -368,7 +388,7 @@ export function RolesClient() {
                             <Badge variant="outline">
                               Immutable, full access
                             </Badge>
-                          ) : (
+                          ) : canUpdate ? (
                             <Button
                               size="sm"
                               variant="outline"
@@ -376,6 +396,8 @@ export function RolesClient() {
                             >
                               <Pencil className="mr-2 size-4" /> Edit
                             </Button>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">—</span>
                           )}
                         </td>
                       </tr>
@@ -387,7 +409,9 @@ export function RolesClient() {
           </CardContent>
         </Card>
       </PageShell>
-      {editor && (
+      {editor &&
+        ((editor.mode === "create" && canCreate) ||
+          (editor.mode === "edit" && canUpdate)) && (
         <RoleEditor
           state={editor}
           onClose={() => setEditor(null)}

@@ -11,7 +11,7 @@ function errorResponse(error: unknown) {
 
 export async function POST(request: Request) {
   try {
-    const actor = await requireCapability(request.headers, "sales:post");
+    const actor = await requireCapability(request.headers, "offline-sales:sync");
     return Response.json({ data: await syncOfflineSale(actor, await request.json()) });
   } catch (error) {
     return errorResponse(error);

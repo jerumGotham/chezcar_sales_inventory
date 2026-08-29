@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import type { CapabilityId } from "@/lib/contracts/roles";
 import { getOfflineDeviceId } from "@/lib/offline-sales-client";
 
 export type OfflineBranchOption = {
@@ -26,7 +27,14 @@ function formatExpiry(value: string) {
   return new Date(value).toLocaleString();
 }
 
-export function OfflineDevicesClient({ branches }: { branches: OfflineBranchOption[] }) {
+export function OfflineDevicesClient({
+  branches,
+  capabilities,
+}: {
+  branches: OfflineBranchOption[];
+  capabilities: ReadonlyArray<CapabilityId>;
+}) {
+  const canActivate = capabilities.includes("offline-sales:activate-device");
   const [deviceId, setDeviceId] = useState("");
   const [locationId, setLocationId] = useState(branches[0]?.id ?? "");
   const [label, setLabel] = useState("");
@@ -50,6 +58,7 @@ export function OfflineDevicesClient({ branches }: { branches: OfflineBranchOpti
   };
 
   const activate = async () => {
+    if (!canActivate) return;
     setError("");
     setMessage("");
     setActivation(undefined);
@@ -113,9 +122,11 @@ export function OfflineDevicesClient({ branches }: { branches: OfflineBranchOpti
             {error ? <p role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"><TriangleAlert className="mt-0.5 size-4 shrink-0" />{error}</p> : null}
             {message ? <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</p> : null}
 
-            <Button type="button" onClick={() => void activate()} disabled={isSubmitting || !deviceId || !locationId} className="w-full">
-              {isSubmitting ? <><Loader2 className="mr-2 size-4 animate-spin" />Activating...</> : "Activate device"}
-            </Button>
+            {canActivate ? (
+              <Button type="button" onClick={() => void activate()} disabled={isSubmitting || !deviceId || !locationId} className="w-full">
+                {isSubmitting ? <><Loader2 className="mr-2 size-4 animate-spin" />Activating...</> : "Activate device"}
+              </Button>
+            ) : null}
           </CardContent>
         </Card>
 

@@ -6,7 +6,7 @@ import { findActiveBranch, listActiveBranches } from "@/lib/server/locations";
 
 export async function GET(request: Request) {
   try {
-    const actor = await requireCapability(request.headers, "customer-orders:view");
+    const actor = await requireCapability(request.headers, "customer-orders:create");
     if (actor.role !== "ADMIN" && actor.role !== "BRANCH_STAFF") {
       return NextResponse.json({ error: { code: "FORBIDDEN", message: "Order entry options are available only to Admin and Branch Staff" } }, { status: 403 });
     }

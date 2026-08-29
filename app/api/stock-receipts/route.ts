@@ -22,7 +22,7 @@ function errorResponse(error: unknown) {
 
 export async function GET(request: Request) {
   try {
-    return Response.json({ data: await listStockReceipts(await requireCapability(request.headers, "inventory:view")) });
+    return Response.json({ data: await listStockReceipts(await requireCapability(request.headers, "stock-receipts:view")) });
   } catch (error) {
     return errorResponse(error);
   }

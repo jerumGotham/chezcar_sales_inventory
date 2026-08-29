@@ -10,7 +10,7 @@ type RoleRouteContext = { params: Promise<{ roleId: string }> };
 
 export async function GET(request: Request, context: RoleRouteContext) {
   try {
-    await requireOwnerRoleManager(request.headers);
+    await requireOwnerRoleManager(request.headers, "roles:view");
     const { roleId } = await context.params;
     return Response.json({ data: await getRoleDefinition(roleId) });
   } catch (error) {
@@ -20,7 +20,7 @@ export async function GET(request: Request, context: RoleRouteContext) {
 
 export async function PATCH(request: Request, context: RoleRouteContext) {
   try {
-    await requireOwnerRoleManager(request.headers);
+    await requireOwnerRoleManager(request.headers, "roles:update");
     const { roleId } = await context.params;
     const input = updateRoleRequestSchema.parse(await request.json());
     return Response.json({ data: await updateRoleDefinition(roleId, input) });

@@ -4,6 +4,9 @@ import { Prisma, type RoleScope } from "@prisma/client";
 import { z } from "zod";
 
 import type {
+  CapabilityId,
+} from "@/lib/contracts/roles";
+import type {
   CreateUserRequest,
   ManagedUserDto,
   UpdateUserRequest,
@@ -136,8 +139,9 @@ export function usersErrorResponse(
 
 export async function requireOwnerAdmin(
   headers: Headers,
+  capability: CapabilityId = "users:view",
 ): Promise<PersistedAccessContext> {
-  const context = await requireCapability(headers, "users:manage");
+  const context = await requireCapability(headers, capability);
   if (!context.isOwner) {
     throw new AuthorizationError("Insufficient permissions");
   }

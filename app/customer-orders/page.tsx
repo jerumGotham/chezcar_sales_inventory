@@ -33,7 +33,8 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useShellAccess } from "@/components/shell-access-context";
-import { canManageCustomerOrders, getCustomerOrderActions, type CustomerOrderStatusCode } from "@/lib/customer-order-actions";
+import { getCustomerOrderActions, type CustomerOrderStatusCode } from "@/lib/customer-order-actions";
+import { hasCapability } from "@/lib/permissions";
 
 type SelectOption = {
   value: string;
@@ -285,9 +286,13 @@ export default function CustomerOrdersPage() {
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const access = useShellAccess();
-  const role = access.authenticated ? access.identity.role : null;
+  const capabilities = access.authenticated ? access.capabilities : [];
+  const canViewOrders = hasCapability(capabilities, "customer-orders:view");
+  const canViewSales = hasCapability(capabilities, "sales:view");
   const [activeView, setActiveView] = useState<"orders" | "sales">(
-    searchParams.get("view") === "sales" ? "sales" : "orders",
+    (searchParams.get("view") === "sales" && canViewSales) || !canViewOrders
+      ? "sales"
+      : "orders",
   );
   const [orderNo, setOrderNo] = useState("");
   const [customer, setCustomer] = useState("");
@@ -338,13 +343,14 @@ export default function CustomerOrdersPage() {
         orderStatus: appliedOrderStatus,
         paymentStatus: appliedPaymentStatus,
       }),
+    enabled: canViewOrders,
     placeholderData: (previousData) => previousData,
   });
 
   const directSalesQuery = useQuery({
     queryKey: ["customer-direct-sales-list"],
     queryFn: fetchDirectSales,
-    enabled: activeView === "sales",
+    enabled: activeView === "sales" && canViewSales,
   });
   const paymentMutation = useMutation({
     mutationFn: async () => {
@@ -501,7 +507,7 @@ export default function CustomerOrdersPage() {
       subtitle="Handle reservations, special orders, downpayments, and release status."
       actions={
         <>
-          {canManageCustomerOrders(role) ? <Link href="/customer-orders/create">
+          {hasCapability(capabilities, "customer-orders:create") ? <Link href="/customer-orders/create">
             <Button className="bg-emerald-600 text-white hover:bg-emerald-700">
               Create Order
             </Button>
@@ -511,7 +517,7 @@ export default function CustomerOrdersPage() {
       }
     >
       <div className="mb-6 flex flex-wrap gap-2 rounded-xl border bg-slate-50 p-2">
-        <Button
+        {canViewOrders ? <Button
           variant={activeView === "orders" ? "default" : "ghost"}
           onClick={() => {
             setActiveView("orders");
@@ -519,8 +525,8 @@ export default function CustomerOrdersPage() {
           }}
         >
           Customer Orders
-        </Button>
-        <Button
+        </Button> : null}
+        {canViewSales ? <Button
           variant={activeView === "sales" ? "default" : "ghost"}
           onClick={() => {
             setActiveView("sales");
@@ -528,7 +534,7 @@ export default function CustomerOrdersPage() {
           }}
         >
           Direct Sales
-        </Button>
+        </Button> : null}
       </div>
 
       {activeView === "orders" ? (
@@ -761,7 +767,7 @@ export default function CustomerOrdersPage() {
                   </tr>
                 ) : (
                   rows.map((order) => {
-                    const actions = getCustomerOrderActions({ role, statusCode: order.statusCode, downpayment: order.downpayment, balance: order.balance });
+                    const actions = getCustomerOrderActions({ capabilities, statusCode: order.statusCode, downpayment: order.downpayment, balance: order.balance });
                     return (
                     <tr
                       key={order.id}

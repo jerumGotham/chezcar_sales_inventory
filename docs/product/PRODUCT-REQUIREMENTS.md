@@ -263,6 +263,7 @@ Offline mode keeps the same simple branch workflows available during temporary c
 - Accounts are individual; shared branch credentials are not allowed.
 - Four deterministic roles are seeded: Admin, Stock Staff, Branch Staff, and Accounting Staff. Admin may create additional non-owner roles.
 - Persisted role capability grants authorize non-owner actions; the compatibility `UserRole` value does not grant access.
+- View, create, update, delete, and workflow capabilities are independently assigned. An action capability implies the module view needed to use it but not sibling actions; matching controls are hidden and the server checks the exact action on every mutation.
 - A branch-scoped account requires one active branch.
 - A Stock Room-scoped account is fixed to `SR`; a business-wide account has no location assignment.
 - The single owner Admin role is immutable, nonassignable, and always has the full capability catalog.

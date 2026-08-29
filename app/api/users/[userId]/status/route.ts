@@ -6,7 +6,7 @@ type UserRouteContext = { params: Promise<{ userId: string }> };
 export async function POST(request: Request, context: UserRouteContext) {
   try {
     const { userId } = await context.params;
-    const actor = await requireOwnerAdmin(request.headers);
+    const actor = await requireOwnerAdmin(request.headers, "users:set-status");
     const input = userStatusRequestSchema.parse(await request.json());
 
     return Response.json({

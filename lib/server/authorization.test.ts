@@ -116,7 +116,7 @@ describe("fixed persisted access policy", () => {
   });
 
   it("gives the owner the complete catalog regardless of stored grants", () => {
-    expect(evaluateAccess(accessContext("ADMIN", null), "roles:manage")).toBe(true);
+    expect(evaluateAccess(accessContext("ADMIN", null), "roles:update")).toBe(true);
   });
 
   it("grants transfer visibility only to Admin, Stock Staff, and Branch Staff", () => {
@@ -164,7 +164,7 @@ describe("fixed persisted access policy", () => {
   });
 
   it.each([
-    ["ADMIN", null, "users:manage", true],
+    ["ADMIN", null, "users:update", true],
     ["STOCK_STAFF", stockRoom, "products:view", true],
     ["BRANCH_STAFF", branch, "inventory:view", true],
     ["ACCOUNTING_STAFF", null, "inventory:view", false],

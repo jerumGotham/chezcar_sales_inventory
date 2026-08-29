@@ -1,22 +1,65 @@
-import { authorizationErrorResponse, requireCapability } from "@/lib/server/authorization";
+import {
+  AuthorizationError,
+  authorizationErrorResponse,
+  requireCapability,
+  type AuthContext,
+} from "@/lib/server/authorization";
 import { prisma } from "@/lib/server/prisma";
 import { CustomerSalesError } from "@/lib/server/services/customer-sales";
-import { readReceiptEvidence, saveReceiptEvidence } from "@/lib/server/services/receipt-evidence";
+import {
+  readReceiptEvidence,
+  removeReceiptEvidence,
+  saveReceiptEvidence,
+} from "@/lib/server/services/receipt-evidence";
 
 type Context = { params: Promise<{ saleId: string }> };
 
+async function assertEvidenceScope(actor: AuthContext, saleId: string) {
+  const sale = await prisma.sale.findUnique({
+    where: { id: saleId },
+    select: { locationId: true },
+  });
+  if (!sale) throw new CustomerSalesError("NOT_FOUND", "Sale not found", 404);
+  if (actor.roleScope === "STOCK_ROOM") {
+    throw new AuthorizationError("Insufficient permissions");
+  }
+  if (actor.roleScope === "BRANCH" && sale.locationId !== actor.locationId) {
+    throw new AuthorizationError("Insufficient permissions");
+  }
+}
+
 export async function POST(request: Request, context: Context) {
   try {
-    // Accounting reviewers and Admin resolvers both attach receipt evidence.
-    await requireCapability(request.headers, "sales:verify:view");
+    const actor = await requireCapability(request.headers, "sales:evidence:upload");
     const { saleId } = await context.params;
-    const review = await prisma.saleAccountingReview.findUnique({ where: { saleId }, select: { id: true } });
+    await assertEvidenceScope(actor, saleId);
+    const review = await prisma.saleAccountingReview.findUnique({
+      where: { saleId },
+      select: { id: true, status: true, resolvedAt: true },
+    });
     if (!review) throw new CustomerSalesError("NOT_FOUND", "Accounting review not found", 404);
+    if (review.status === "VERIFIED" || review.resolvedAt) {
+      throw new CustomerSalesError("INVALID_STATE", "Receipt evidence cannot be changed after review", 409);
+    }
+    if (actor.roleScope === "BRANCH" && review.status !== "MISMATCH_REPORTED") {
+      throw new AuthorizationError("Insufficient permissions");
+    }
     const formData = await request.formData();
     const file = formData.get("photo");
     if (!(file instanceof File)) throw new CustomerSalesError("INVALID_INPUT", "Receipt photo is required", 400);
     const evidence = await saveReceiptEvidence(file);
-    await prisma.saleAccountingReview.update({ where: { id: review.id }, data: { receiptPhotoKey: evidence.key, receiptPhotoType: evidence.contentType } });
+    const updated = await prisma.saleAccountingReview.updateMany({
+      where: {
+        id: review.id,
+        status: actor.roleScope === "BRANCH" ? "MISMATCH_REPORTED" : { not: "VERIFIED" },
+        resolvedAt: null,
+      },
+      data: { receiptPhotoKey: evidence.key, receiptPhotoType: evidence.contentType },
+    });
+    if (updated.count !== 1) {
+      await removeReceiptEvidence(evidence.key);
+      throw new CustomerSalesError("INVALID_STATE", "Receipt evidence cannot be changed after review", 409);
+    }
     return Response.json({ data: evidence });
   } catch (error) {
     if (error instanceof CustomerSalesError) return Response.json({ error: { code: error.code, message: error.message } }, { status: error.status });
@@ -27,8 +70,9 @@ export async function POST(request: Request, context: Context) {
 
 export async function GET(request: Request, context: Context) {
   try {
-    await requireCapability(request.headers, "sales:verify:view");
+    const actor = await requireCapability(request.headers, "sales:evidence:view");
     const { saleId } = await context.params;
+    await assertEvidenceScope(actor, saleId);
     const review = await prisma.saleAccountingReview.findUnique({ where: { saleId }, select: { receiptPhotoKey: true } });
     if (!review?.receiptPhotoKey) return new Response("Not found", { status: 404 });
     const evidence = await readReceiptEvidence(review.receiptPhotoKey);

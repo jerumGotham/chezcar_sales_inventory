@@ -16,7 +16,7 @@ import {
   Upload,
 } from "lucide-react";
 
-import { useShellAccess } from "@/components/shell-access-context";
+import { useCan } from "@/components/shell-access-context";
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -288,7 +288,12 @@ export default function ReceiptVerificationPage() {
 }
 
 function ReceiptVerificationContent() {
-  const access = useShellAccess();
+  const canReview = useCan("sales:verify");
+  const canResolve = useCan("sales:resolve");
+  const canVoidReplace = useCan("sales:void-replace");
+  const canRespond = useCan("sales:mismatch:respond");
+  const canViewEvidence = useCan("sales:evidence:view");
+  const canUploadEvidence = useCan("sales:evidence:upload");
   const searchParams = useSearchParams();
   const linkedSaleId = searchParams.get("saleId") ?? "";
   const queryClient = useQueryClient();
@@ -334,8 +339,11 @@ function ReceiptVerificationContent() {
 
   const reviewMutation = useMutation({
     mutationFn: async (status: "VERIFIED" | "MISMATCH_REPORTED") => {
+      if (!canReview) throw new Error("You do not have permission to review receipts.");
       if (!selectedId) throw new Error("Select a receipt first.");
-      const nextPhotoKey = await uploadPhoto(selectedId, photoFile, photoKey);
+      const nextPhotoKey = canUploadEvidence
+        ? await uploadPhoto(selectedId, photoFile, photoKey)
+        : photoKey;
       const response = await fetch(
         `/api/accounting/receipts/${selectedId}/review`,
         {
@@ -377,6 +385,12 @@ function ReceiptVerificationContent() {
 
   const resolveMutation = useMutation({
     mutationFn: async (action: "CONFIRMED_CORRECT" | "VOIDED_REPLACED") => {
+      if (
+        (action === "CONFIRMED_CORRECT" && !canResolve) ||
+        (action === "VOIDED_REPLACED" && !canVoidReplace)
+      ) {
+        throw new Error("You do not have permission to resolve this receipt mismatch.");
+      }
       if (!selectedId) throw new Error("Select a receipt first.");
       if (!resolutionNote.trim())
         throw new Error("Resolution note is required.");
@@ -388,7 +402,9 @@ function ReceiptVerificationContent() {
           "Enter the new replacement receipt number before voiding the original sale.",
         );
       }
-      const nextPhotoKey = await uploadPhoto(selectedId, photoFile, photoKey);
+      const nextPhotoKey = canUploadEvidence
+        ? await uploadPhoto(selectedId, photoFile, photoKey)
+        : photoKey;
       const response = await fetch(
         `/api/accounting/receipts/${selectedId}/resolve`,
         {
@@ -425,6 +441,7 @@ function ReceiptVerificationContent() {
 
   const branchResponseMutation = useMutation({
     mutationFn: async () => {
+      if (!canRespond) throw new Error("You do not have permission to respond to receipt mismatches.");
       if (!selectedId) throw new Error("Select a receipt first.");
       const response = await fetch(
         `/api/accounting/receipts/${selectedId}/branch-response`,
@@ -460,14 +477,6 @@ function ReceiptVerificationContent() {
   });
 
   const selectedSale = sales.find((sale) => sale.id === selectedId) ?? null;
-  const isAdmin = access.identity?.role === "ADMIN";
-  const canReview =
-    isAdmin || access.identity?.role === "ACCOUNTING_STAFF";
-  const canResolve =
-    access.identity?.role === "ACCOUNTING_STAFF" ||
-    isAdmin;
-  const canRespond = access.identity?.role === "BRANCH_STAFF";
-
   const [comparison, setComparison] = useState<ComparisonDraft>({
     receiptBooklet: "",
     receiptNumber: "",
@@ -625,7 +634,7 @@ function ReceiptVerificationContent() {
     selectedSale &&
     selectedSale.status === "POSTED" &&
     ((canReview && selectedSale.reviewStatus === "UNVERIFIED") ||
-      (isAdmin &&
+      (canVoidReplace &&
         selectedSale.reviewStatus === "MISMATCH_REPORTED" &&
         selectedSale.branchResponse === "RECEIPT_CORRECTION_NEEDED")),
   );
@@ -1052,7 +1061,7 @@ function ReceiptVerificationContent() {
                       </Button>
                     </div>
                   )}
-                {selectedSale.receiptPhotoUrl && !photoPreview && (
+                {canViewEvidence && selectedSale.receiptPhotoUrl && !photoPreview && (
                   <Image
                     src={selectedSale.receiptPhotoUrl}
                     alt="Attached manual receipt"
@@ -1291,7 +1300,7 @@ function ReceiptVerificationContent() {
                         </div>
                       </>
                     )}
-                    <div className="grid gap-2">
+                    {canUploadEvidence && <div className="grid gap-2">
                       <Label htmlFor="receipt-photo">
                         Receipt photo (optional)
                       </Label>
@@ -1307,8 +1316,8 @@ function ReceiptVerificationContent() {
                         Optional even for Receipt Not Found. Upload only if you
                         have supporting evidence.
                       </p>
-                    </div>
-                    {photoPreview && (
+                    </div>}
+                    {canUploadEvidence && photoPreview && (
                       <div className="space-y-2">
                         <Image
                           src={photoPreview}
@@ -1328,7 +1337,7 @@ function ReceiptVerificationContent() {
                         </Button>
                       </div>
                     )}
-                    {selectedSale.receiptPhotoUrl && !photoPreview && (
+                    {canUploadEvidence && canViewEvidence && selectedSale.receiptPhotoUrl && !photoPreview && (
                       <p className="text-xs text-slate-500">
                         A receipt image is already attached. Choose a new file
                         above to replace it.
@@ -1356,7 +1365,7 @@ function ReceiptVerificationContent() {
                     )}
                   </div>
                 ) : null}
-                {canResolve &&
+                {(canResolve || canVoidReplace) &&
                   selectedSale.reviewStatus === "MISMATCH_REPORTED" &&
                   !selectedSale.branchResponse && (
                     <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
@@ -1364,7 +1373,7 @@ function ReceiptVerificationContent() {
                       double-check response.
                     </div>
                   )}
-                {canResolve &&
+                {(canResolve || canVoidReplace) &&
                   selectedSale.reviewStatus === "MISMATCH_REPORTED" &&
                   selectedSale.branchResponse && (
                     <div className="space-y-4 border-t pt-4">
@@ -1380,7 +1389,7 @@ function ReceiptVerificationContent() {
                         />
                       </div>
                       {selectedSale.branchResponse ===
-                        "ORIGINAL_ENCODING_CORRECT" && (
+                        "ORIGINAL_ENCODING_CORRECT" && canResolve && (
                         <Button
                           variant="outline"
                           onClick={() =>
@@ -1397,7 +1406,7 @@ function ReceiptVerificationContent() {
                         </Button>
                       )}
                       {selectedSale.branchResponse ===
-                        "RECEIPT_CORRECTION_NEEDED" && isAdmin && (
+                        "RECEIPT_CORRECTION_NEEDED" && canVoidReplace && (
                         <Button
                           onClick={() =>
                             resolveMutation.mutate("VOIDED_REPLACED")
@@ -1414,10 +1423,10 @@ function ReceiptVerificationContent() {
                         </Button>
                       )}
                       {selectedSale.branchResponse ===
-                        "RECEIPT_CORRECTION_NEEDED" && !isAdmin && (
+                        "RECEIPT_CORRECTION_NEEDED" && canResolve && !canVoidReplace && (
                         <p className="rounded-lg bg-slate-100 p-3 text-sm text-slate-600">
-                          The branch confirmed a correction. Only Admin can void
-                          the original sale and post its replacement.
+                          The branch confirmed a correction. You do not have
+                          permission to void and replace the original sale.
                         </p>
                       )}
                     </div>

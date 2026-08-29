@@ -8,6 +8,8 @@ import {
   type UserStatus,
 } from "@prisma/client";
 
+import { CAPABILITY_IDS } from "../../lib/contracts/roles";
+
 export const BRANCH_CODES = ["QC", "BL", "LU", "VC", "SP"] as const;
 export type BranchCode = (typeof BRANCH_CODES)[number];
 
@@ -37,27 +39,22 @@ const ROLE_DEFINITION_BY_ROLE = {
   ADMIN: {
     id: "role-admin",
     scope: "OWNER",
-    permissions: [
-      "dashboard:view", "customers:view", "customer-orders:view", "sales:post",
-      "sales:verify:view", "sales:verify", "sales:resolve", "sales:mismatch:respond",
-      "products:view", "inventory:view", "inventory-receiving:create", "reports:view",
-      "users:manage", "branches:manage", "roles:manage", "stock-transfers:view",
-    ],
+    permissions: CAPABILITY_IDS,
   },
   STOCK_STAFF: {
     id: "role-stock-staff",
     scope: "STOCK_ROOM",
-    permissions: ["dashboard:view", "customers:view", "customer-orders:view", "products:view", "inventory:view", "inventory-receiving:create", "stock-transfers:view"],
+    permissions: ["dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push", "customers:view", "customer-orders:view", "sales:view", "products:view", "inventory:view", "inventory-availability:view", "inventory-movements:view", "stock-receipts:view", "inventory-receiving:create", "stock-transfers:view", "stock-transfers:audit:view", "stock-transfers:create", "stock-transfers:update", "stock-transfers:delete", "stock-transfers:finalize", "stock-transfers:dispatch", "stock-transfers:investigate"],
   },
   BRANCH_STAFF: {
     id: "role-branch-staff",
     scope: "BRANCH",
-    permissions: ["dashboard:view", "customers:view", "customer-orders:view", "sales:post", "sales:verify:view", "sales:mismatch:respond", "inventory:view", "stock-transfers:view"],
+    permissions: ["dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push", "customers:view", "customers:create", "customers:update", "customers:deactivate", "customer-orders:view", "customer-orders:create", "customer-orders:reserve", "customer-orders:record-payment", "customer-orders:release", "customer-orders:cancel", "sales:view", "sales:post", "sales:verify:view", "sales:mismatch:respond", "sales:evidence:view", "sales:evidence:upload", "inventory:view", "inventory-availability:view", "stock-transfers:view", "stock-transfers:receive", "stock-transfers:report-discrepancy", "offline-sales:snapshot", "offline-sales:sync"],
   },
   ACCOUNTING_STAFF: {
     id: "role-accounting-staff",
     scope: "BUSINESS_WIDE",
-    permissions: ["dashboard:view", "customers:view", "customer-orders:view", "sales:verify", "sales:verify:view", "sales:resolve", "reports:view"],
+    permissions: ["dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push", "customers:view", "customer-orders:view", "sales:view", "sales:verify", "sales:verify:view", "sales:resolve", "sales:evidence:view", "sales:evidence:upload", "reports:view", "reports:export"],
   },
 } as const;
 

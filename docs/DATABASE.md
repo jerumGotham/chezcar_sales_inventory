@@ -86,7 +86,7 @@ Deterministic built-ins are Admin, Stock Staff, Branch Staff, and Accounting Sta
 - `STOCK_ROOM -> STOCK_STAFF`
 - `BUSINESS_WIDE -> ACCOUNTING_STAFF`
 
-The application reloads User, accessRole, and Location on protected requests. Non-owner capability decisions use `RoleDefinition.permissions`; `UserRole` is not authoritative for grants. A functional index enforces case-insensitive role names and a partial index permits one OWNER role. The staged migration preserves and backfills existing users without changing sessions, locations, or history.
+The application reloads User, accessRole, and Location on protected requests. Non-owner capability decisions use `RoleDefinition.permissions`; `UserRole` is not authoritative for grants. Capabilities are action-specific strings such as `products:view`, `products:create`, `products:update`, and `products:delete`. Action grants imply only the module views needed to use that action; they never imply sibling mutations. The additive `20260829170000_granular_action_permissions` migration translates existing broad grants according to RoleScope, preserves custom-role operational intent, increments affected role versions, and removes the superseded administration `*:manage` strings. A functional index enforces case-insensitive role names and a partial index permits one OWNER role.
 
 ## Deliberately absent models
 

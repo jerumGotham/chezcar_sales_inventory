@@ -44,9 +44,9 @@ graph TD
 | Authentication | Better Auth email/password sessions; public sign-up disabled; generic admin operations unroutable | `lib/server/auth.ts`, `app/api/auth/[...all]/route.ts` |
 | Internal credentials | Server-only unmounted Better Auth Admin-plugin engine exposing only guarded staff `createUser`/`setUserPassword` primitives | `lib/server/internal-user-auth.ts` |
 | Page protection | Proxy validates sessions, reloads the persisted User/Location, maps the first path segment to a named capability, and redirects unauthenticated requests to `/sign-in` or forbidden requests to `/access-denied` | `proxy.ts`, `app/access-denied/page.tsx` |
-| Authorization | Compile-time capability catalog evaluated against reloaded User, persisted RoleDefinition grants, and RoleScope/Location; owner receives the full catalog | `lib/contracts/roles.ts`, `lib/server/policy/access.ts`, `lib/server/authorization.ts` |
+| Authorization | Compile-time action-capability catalog evaluated against reloaded User, persisted RoleDefinition grants, and RoleScope/Location; action grants imply module view only, every mutation requires its exact grant, and owner receives the full catalog | `lib/contracts/roles.ts`, `lib/permissions.ts`, `lib/server/policy/access.ts`, `lib/server/authorization.ts` |
 | Persistence | One server-only Prisma singleton and additive migration history for implemented auth, catalog, inventory, sales, and workflow models | `lib/server/prisma.ts`, `prisma/migrations/` |
-| Products | Validated paginated Prisma list/maintenance plus private authenticated product-image storage; mutations remain Admin-only | `app/api/products/`, `lib/server/catalog.ts`, `lib/server/services/product-images.ts`, `app/products/page.tsx` |
+| Products | Validated paginated Prisma list/maintenance plus private authenticated product-image storage; add/edit/delete/image actions are independently capability-gated | `app/api/products/`, `lib/server/catalog.ts`, `lib/server/services/product-images.ts`, `app/products/page.tsx` |
 | Inventory | Product-first list pagination plus live availability reads; persisted active-location scope enforced at the APIs and mirrored by role-clamped client controls | `app/api/inventory/`, `lib/server/catalog.ts`, `lib/server/inventory-availability.ts`, `app/inventory/`, `components/location-scope-control.tsx` |
 | Customers | Database-backed customer CRUD and persisted sales/order history; customer records are shared by POS and Customer Orders | `app/api/customers/`, `lib/server/services/customer-sales.ts`, `app/customers/` |
 | Customer orders | Database-backed reservations with Admin branch selection and branch-aware available-stock options | `app/api/customer-orders/`, `lib/server/services/customer-sales.ts`, `app/customer-orders/` |
@@ -55,7 +55,7 @@ graph TD
 | Data onboarding tooling | Read-only workbook profiler, fail-closed canonicalizer with keyed owner resolutions, and byte-stable fixture generator — developer CLIs only, no HTTP/UI surface | `scripts/data-onboarding/`, `prisma/fixtures/opening-catalog.json` |
 | User management | Owner-Admin-only `/api/users` lifecycle (list/create/update/status/password) with transactional session revocation and safe DTOs | `app/api/users/`, `lib/server/services/users.ts`, `app/users/` |
 | Role maintenance | Owner-only persisted role create/edit, assigned counts, optimistic versions, and grant-change session revocation | `app/api/roles/`, `lib/server/services/roles.ts`, `app/users/roles/` |
-| Branch maintenance | `branches:manage`-gated persisted active-branch add/edit workflow; shared Location boundary supplies and validates branch options across production workflows | `lib/server/locations.ts`, `lib/server/services/branches.ts`, `app/api/branches/`, `app/branches/` |
+| Branch maintenance | Owner-only `branches:view`/`branches:create`/`branches:update` persisted active-branch workflow; shared Location boundary supplies and validates branch options across production workflows | `lib/server/locations.ts`, `lib/server/services/branches.ts`, `app/api/branches/`, `app/branches/` |
 | Stock transfers | Durable SR-to-branch transfer lifecycle with Admin operational cover for Stock Staff actions, discrepancy investigation/resolution, inventory movements, audit view, and persisted workflow notifications | `app/api/stock-transfers/`, `lib/server/services/stock-transfers.ts`, `app/stock-transfers/` |
 | Stock receipts | Durable Stock Room supplier receipts that increment SR balances and write inventory movements | `app/api/stock-receipts/route.ts`, `app/inventory/receive/`, `lib/server/services/stock-receipts.ts` |
 | Notifications | Per-user persisted inbox rows with cursor replay, SSE wake-ups, browser push attempts, and read timestamps; escalation deferred | `app/api/notifications/`, `lib/server/services/notifications.ts`, `lib/server/services/push-notifications.ts`, `app/notifications/page.tsx` |
@@ -84,7 +84,7 @@ A session identifies a user but does not independently authorize a resource.
 
 ### User management and credentials
 
-1. The owner Admin's `/users` server page gates on `users:manage`, then hydrates a focused client component over the durable `/api/users` surface.
+1. The owner Admin's `/users` server page gates on `users:view`, then each list/create/update/status/password operation requires its exact owner-only capability.
 2. Create/update/status/password mutations run in application services owning Prisma transactions; user rows use `FOR UPDATE`, role assignment serializes against role-scope edits, and access changes delete all target sessions in the same transaction.
 3. Role dropdowns and writes use persisted `roleId`; services derive Location semantics and synchronize the compatibility UserRole enum from RoleScope.
 4. Staff credentials are created and reset only through the guarded internal Better Auth primitives (`lib/server/internal-user-auth.ts`); the public auth catch-all keeps an Admin-plugin-free instance, so generic admin operations are structurally unroutable.
@@ -94,7 +94,7 @@ A session identifies a user but does not independently authorize a resource.
 
 1. `/products` retains applied filter state and a complete TanStack Query key.
 2. The browser calls `GET /api/products` with validated pagination/filter parameters.
-3. The route permits only Admin or Stock Staff.
+3. The route requires `products:view`; create, update, delete, and image mutations independently require their matching capabilities.
 4. `lib/server/catalog.ts` queries Product and balance reorder information through Prisma.
 5. Decimal values are explicitly serialized for the existing UI DTO.
 

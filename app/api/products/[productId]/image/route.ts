@@ -53,7 +53,7 @@ export async function GET(request: Request, context: Context) {
 
 export async function POST(request: Request, context: Context) {
   try {
-    const actor = await requireCapability(request.headers, "products:view");
+    const actor = await requireCapability(request.headers, "products:image:update");
     const { productId } = await context.params;
     const formData = await request.formData();
     const file = formData.get("image");
@@ -68,7 +68,7 @@ export async function POST(request: Request, context: Context) {
 
 export async function DELETE(request: Request, context: Context) {
   try {
-    const actor = await requireCapability(request.headers, "products:view");
+    const actor = await requireCapability(request.headers, "products:image:update");
     const { productId } = await context.params;
     return Response.json({ data: await removeProductImage(actor, productId) });
   } catch (error) {

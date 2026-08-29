@@ -5,7 +5,11 @@ import { Prisma, type CustomerOrderStatus, type CustomerOrderType, type PaymentM
 import { z } from "zod";
 
 import { receiptComparisonSchema, type ReceiptComparison } from "../../contracts/sales";
-import type { AuthContext } from "../authorization";
+import {
+  assertCapability,
+  AuthorizationError,
+  type AuthContext,
+} from "../authorization";
 import { prisma } from "../prisma";
 import { findActiveBranch } from "../locations";
 import { createNotifications, notifyInventoryThresholdChange } from "./notifications";
@@ -129,23 +133,35 @@ export class CustomerSalesError extends Error {
   constructor(public readonly code: string, message: string, public readonly status = 400) { super(message); }
 }
 
-function assertBranchOrAdmin(actor: AuthContext) {
-  if (actor.role !== "BRANCH_STAFF" && actor.role !== "ADMIN") throw new CustomerSalesError("FORBIDDEN", "Branch Staff or Admin access required", 403);
+function assertOperationalActor(actor: AuthContext) {
+  if (!actor.isOwner && actor.roleScope !== "BRANCH") {
+    throw new CustomerSalesError("FORBIDDEN", "Owner or Branch scope is required", 403);
+  }
 }
 
 function assertAccounting(actor: AuthContext) {
-  if (actor.role !== "ACCOUNTING_STAFF" && actor.role !== "ADMIN") throw new CustomerSalesError("FORBIDDEN", "Accounting or Admin access required", 403);
-}
-
-function assertAccountingReviewActor(actor: AuthContext) {
-  if (actor.role !== "ACCOUNTING_STAFF" && actor.role !== "ADMIN") throw new CustomerSalesError("FORBIDDEN", "Admin or Accounting Staff access required", 403);
+  if (!actor.isOwner && actor.roleScope !== "BUSINESS_WIDE") {
+    throw new CustomerSalesError("FORBIDDEN", "Owner or Business-wide scope is required", 403);
+  }
 }
 
 function actorLocationId(actor: AuthContext) {
-  if (actor.role !== "BRANCH_STAFF" || !actor.locationId || actor.location?.id !== actor.locationId || actor.location.type !== "BRANCH" || !actor.location.isActive) {
-    throw new CustomerSalesError("FORBIDDEN", "Branch Staff must be assigned to an active branch", 403);
+  if (actor.roleScope !== "BRANCH" || !actor.locationId || actor.location?.id !== actor.locationId || actor.location.type !== "BRANCH" || !actor.location.isActive) {
+    throw new CustomerSalesError("FORBIDDEN", "Active Branch scope is required", 403);
   }
   return actor.locationId;
+}
+
+function operationalLocationId(actor: AuthContext, requestedLocationId?: string) {
+  assertOperationalActor(actor);
+  return actor.roleScope === "BRANCH" ? actorLocationId(actor) : requestedLocationId;
+}
+
+function assertOperationalResource(actor: AuthContext, locationId: string) {
+  assertOperationalActor(actor);
+  if (actor.roleScope === "BRANCH" && locationId !== actorLocationId(actor)) {
+    throw new CustomerSalesError("FORBIDDEN", "Resource is outside assigned branch", 403);
+  }
 }
 
 function decimal(value: number) { return new Prisma.Decimal(value); }
@@ -283,12 +299,12 @@ async function activeProducts(tx: Prisma.TransactionClient, ids: string[]) {
 }
 
 export async function createCustomer(actor: AuthContext, input: z.infer<typeof customerMutationSchema>) {
-  if (actor.role === "ACCOUNTING_STAFF") throw new CustomerSalesError("FORBIDDEN", "Accounting cannot create customers", 403);
+  assertCapability(actor, "customers:create");
   return prisma.customer.create({ data: { name: input.name, mobile: input.mobile || null, email: input.email || null, address: input.address || null, source: input.source || null, notes: input.notes || null, createdById: actor.userId } });
 }
 
 export async function updateCustomer(actor: AuthContext, id: string, input: z.infer<typeof customerMutationSchema>) {
-  if (actor.role === "STOCK_STAFF") throw new CustomerSalesError("FORBIDDEN", "Stock Staff cannot update customers", 403);
+  assertCapability(actor, "customers:update");
   try {
     return await prisma.customer.update({
       where: { id },
@@ -301,7 +317,7 @@ export async function updateCustomer(actor: AuthContext, id: string, input: z.in
 }
 
 export async function deactivateCustomer(actor: AuthContext, id: string) {
-  if (actor.role === "STOCK_STAFF") throw new CustomerSalesError("FORBIDDEN", "Stock Staff cannot deactivate customers", 403);
+  assertCapability(actor, "customers:deactivate");
   try {
     return await prisma.customer.update({ where: { id }, data: { status: "INACTIVE" } });
   } catch (error) {
@@ -311,6 +327,7 @@ export async function deactivateCustomer(actor: AuthContext, id: string) {
 }
 
 export async function listCustomers(actor: AuthContext, query: z.infer<typeof customerListQuerySchema> = customerListQuerySchema.parse({})) {
+  assertCapability(actor, "customers:view");
   const where: Prisma.CustomerWhereInput = {
     status: query.status === "all" ? undefined : query.status === "active" ? "ACTIVE" : "INACTIVE",
     name: query.name ? { contains: query.name, mode: "insensitive" } : undefined,
@@ -362,8 +379,8 @@ export async function listCustomers(actor: AuthContext, query: z.infer<typeof cu
 }
 
 export async function getCustomerHistory(actor: AuthContext, id: string) {
-  if (actor.role === "STOCK_STAFF") throw new CustomerSalesError("FORBIDDEN", "Stock Staff cannot view customers", 403);
-  const locationFilter = actor.role === "BRANCH_STAFF" ? { locationId: actorLocationId(actor) } : {};
+  assertCapability(actor, "customers:view");
+  const locationFilter = actor.roleScope === "BRANCH" ? { locationId: actorLocationId(actor) } : {};
   const customer = await prisma.customer.findUnique({
     where: { id },
     include: {
@@ -380,8 +397,8 @@ export async function getCustomerHistory(actor: AuthContext, id: string) {
 }
 
 export async function createCustomerOrder(actor: AuthContext, input: z.infer<typeof customerOrderMutationSchema>) {
-  assertBranchOrAdmin(actor);
-  const locationId = actor.role === "BRANCH_STAFF" ? actorLocationId(actor) : input.locationId;
+  assertCapability(actor, "customer-orders:create");
+  const locationId = operationalLocationId(actor, input.locationId);
   if (!locationId) throw new CustomerSalesError("LOCATION_REQUIRED", "Select a destination branch", 400);
   if (input.type === "RESERVATION_WITH_DP" && (!input.downpaymentReceiptNumber || input.downpaymentAmount <= 0)) throw new CustomerSalesError("DOWNPAYMENT_REQUIRED", "Downpayment orders require amount and receipt", 400);
   if (input.type !== "RESERVATION_WITH_DP" && input.downpaymentAmount > 0) throw new CustomerSalesError("INVALID_DOWNPAYMENT", "Only DP reservations may carry downpayment", 400);
@@ -431,25 +448,30 @@ export async function createCustomerOrder(actor: AuthContext, input: z.infer<typ
 const ORDER_INCLUDE = { customer: true, location: true, lines: true } as const;
 
 export async function listCustomerOrders(actor: AuthContext) {
-  const where = actor.role === "BRANCH_STAFF" ? { locationId: actorLocationId(actor) } : {};
+  assertCapability(actor, "customer-orders:view");
+  const where = actor.roleScope === "BRANCH" ? { locationId: actorLocationId(actor) } : {};
   const orders = await prisma.customerOrder.findMany({ where, orderBy: { createdAt: "desc" }, include: ORDER_INCLUDE, take: 200 });
   return orders.map(serializeOrder);
 }
 
 export async function getCustomerOrderById(actor: AuthContext, id: string) {
+  assertCapability(actor, "customer-orders:view");
   const order = await prisma.customerOrder.findUnique({ where: { id }, include: ORDER_INCLUDE });
   if (!order) throw new CustomerSalesError("NOT_FOUND", "Order not found", 404);
-  if (actor.role === "BRANCH_STAFF" && order.locationId !== actorLocationId(actor)) throw new CustomerSalesError("FORBIDDEN", "Order is outside assigned branch", 403);
+  if (actor.roleScope === "BRANCH" && order.locationId !== actorLocationId(actor)) {
+    throw new CustomerSalesError("FORBIDDEN", "Resource is outside assigned branch", 403);
+  }
   return serializeOrder(order);
 }
 
 export async function reserveCustomerOrder(actor: AuthContext, id: string) {
-  assertBranchOrAdmin(actor);
+  assertCapability(actor, "customer-orders:reserve");
+  assertOperationalActor(actor);
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "CustomerOrder" WHERE id = ${id} FOR UPDATE`;
     const order = await tx.customerOrder.findUnique({ where: { id }, include: ORDER_INCLUDE });
     if (!order) throw new CustomerSalesError("NOT_FOUND", "Order not found", 404);
-    if (actor.role === "BRANCH_STAFF" && order.locationId !== actorLocationId(actor)) throw new CustomerSalesError("FORBIDDEN", "Order is outside assigned branch", 403);
+    assertOperationalResource(actor, order.locationId);
     if (order.status !== "WAITING_STOCK") throw new CustomerSalesError("INVALID_STATUS", "Only waiting-stock orders can be reserved", 409);
 
     const productIds = order.lines.map((line) => line.productId).sort();
@@ -461,12 +483,13 @@ export async function reserveCustomerOrder(actor: AuthContext, id: string) {
 }
 
 export async function releaseCustomerOrder(actor: AuthContext, id: string, input: z.infer<typeof releaseOrderSchema>) {
-  assertBranchOrAdmin(actor);
+  assertCapability(actor, "customer-orders:release");
+  assertOperationalActor(actor);
   try {
     return await prisma.$transaction(async (tx) => {
     const order = await tx.customerOrder.findUnique({ where: { id }, include: ORDER_INCLUDE });
     if (!order) throw new CustomerSalesError("NOT_FOUND", "Order not found", 404);
-    if (actor.role === "BRANCH_STAFF" && order.locationId !== actorLocationId(actor)) throw new CustomerSalesError("FORBIDDEN", "Order is outside assigned branch", 403);
+    assertOperationalResource(actor, order.locationId);
     if (order.status !== "RESERVED" && order.status !== "READY_FOR_RELEASE") throw new CustomerSalesError("INVALID_STATUS", "Only reserved orders can be released", 409);
     if (input.amountPaid !== order.remainingBalance.toNumber()) throw new CustomerSalesError("INVALID_BALANCE", "Amount paid must match remaining balance", 400);
     await releaseReservedLines(tx, order.locationId, order.lines);
@@ -483,13 +506,24 @@ export async function releaseCustomerOrder(actor: AuthContext, id: string, input
 }
 
 export async function cancelCustomerOrder(actor: AuthContext, id: string, input: z.infer<typeof cancelOrderSchema>) {
-  assertBranchOrAdmin(actor);
+  assertOperationalActor(actor);
   return prisma.$transaction(async (tx) => {
     const order = await tx.customerOrder.findUnique({ where: { id }, include: { lines: true } });
     if (!order) throw new CustomerSalesError("NOT_FOUND", "Order not found", 404);
-    if (actor.role === "BRANCH_STAFF" && order.locationId !== actorLocationId(actor)) throw new CustomerSalesError("FORBIDDEN", "Order is outside assigned branch", 403);
+    assertOperationalResource(actor, order.locationId);
     if (order.status === "COMPLETED" || order.status === "CANCELLED") throw new CustomerSalesError("INVALID_STATUS", "Completed or cancelled orders cannot be cancelled", 409);
-    if (order.downpaymentAmount.toNumber() > 0 && actor.role !== "ADMIN") throw new CustomerSalesError("DP_CANCEL_ADMIN_ONLY", "Only Admin can cancel an order with a downpayment", 403);
+    if (order.downpaymentAmount.toNumber() > 0) {
+      try {
+        assertCapability(actor, "customer-orders:cancel-paid");
+      } catch (error) {
+        if (error instanceof AuthorizationError) {
+          throw new CustomerSalesError("DP_CANCEL_ADMIN_ONLY", "Cancelling a paid order requires the cancel-paid grant", 403);
+        }
+        throw error;
+      }
+    } else {
+      assertCapability(actor, "customer-orders:cancel");
+    }
     if (order.downpaymentAmount.toNumber() > 0 && !input.note) throw new CustomerSalesError("CANCELLATION_NOTE_REQUIRED", "A cancellation note is required for an order with a downpayment", 400);
     if (order.status === "RESERVED" || order.status === "READY_FOR_RELEASE") {
       for (const line of order.lines) await tx.inventoryBalance.update({ where: { locationId_productId: { locationId: order.locationId, productId: line.productId } }, data: { reserved: { decrement: line.quantity }, version: { increment: 1 } } });
@@ -503,7 +537,8 @@ export async function recordCustomerOrderPayment(
   id: string,
   input: z.infer<typeof orderPaymentSchema>,
 ) {
-  assertBranchOrAdmin(actor);
+  assertCapability(actor, "customer-orders:record-payment");
+  assertOperationalActor(actor);
   try {
     return await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "CustomerOrder" WHERE id = ${id} FOR UPDATE`;
@@ -515,7 +550,7 @@ export async function recordCustomerOrderPayment(
         throw new CustomerSalesError("NOT_FOUND", "Order not found", 404);
       }
       if (
-        actor.role === "BRANCH_STAFF" &&
+        actor.roleScope === "BRANCH" &&
         order.locationId !== actorLocationId(actor)
       ) {
         throw new CustomerSalesError(
@@ -580,9 +615,18 @@ export async function recordCustomerOrderPayment(
 }
 
 export async function createDirectSale(actor: AuthContext, rawInput: z.input<typeof directSaleSchema>) {
+  assertCapability(actor, "sales:post");
+  return createDirectSaleForActor(actor, rawInput);
+}
+
+export async function createOfflineDirectSale(actor: AuthContext, rawInput: z.input<typeof directSaleSchema>) {
+  assertCapability(actor, "offline-sales:sync");
+  return createDirectSaleForActor(actor, rawInput);
+}
+
+async function createDirectSaleForActor(actor: AuthContext, rawInput: z.input<typeof directSaleSchema>) {
   const input = directSaleSchema.parse(rawInput);
-  assertBranchOrAdmin(actor);
-  const locationId = actor.role === "BRANCH_STAFF" ? actorLocationId(actor) : input.locationId;
+  const locationId = operationalLocationId(actor, input.locationId);
   if (!locationId) throw new CustomerSalesError("LOCATION_REQUIRED", "Select a branch before posting a sale", 400);
   const productIds = input.lines.map((line) => line.productId);
   if (new Set(productIds).size !== productIds.length) throw new CustomerSalesError("INVALID_LINES", "A product may appear only once", 400);
@@ -611,7 +655,11 @@ export async function createDirectSale(actor: AuthContext, rawInput: z.input<typ
 const SALE_INCLUDE = { customer: true, location: true, lines: true, accountingReview: true, postedBy: { select: { name: true } } } as const;
 
 export async function listSales(actor: AuthContext) {
-  const where = actor.role === "BRANCH_STAFF" ? { locationId: actorLocationId(actor) } : {};
+  assertCapability(actor, "sales:view");
+  if (actor.roleScope === "STOCK_ROOM") {
+    throw new CustomerSalesError("FORBIDDEN", "Stock Room scope cannot read sales", 403);
+  }
+  const where = actor.roleScope === "BRANCH" ? { locationId: actorLocationId(actor) } : {};
   const sales = await prisma.sale.findMany({ where, orderBy: { postedAt: "desc" }, include: SALE_INCLUDE, take: 200 });
   return sales.map(serializeSale);
 }
@@ -654,11 +702,12 @@ function receiptVerificationWhere(
 }
 
 export async function listReceiptVerifications(actor: AuthContext, rawInput: unknown) {
-  if (actor.role !== "BRANCH_STAFF") assertAccounting(actor);
+  assertCapability(actor, "sales:verify:view");
+  if (actor.roleScope !== "BRANCH") assertAccounting(actor);
   const input = receiptVerificationListQuerySchema.parse(rawInput);
   const baseWhere = receiptVerificationWhere(input, false);
   const filteredWhere = receiptVerificationWhere(input, true);
-  if (actor.role === "BRANCH_STAFF") {
+  if (actor.roleScope === "BRANCH") {
     const locationId = actorLocationId(actor);
     baseWhere.locationId = locationId;
     filteredWhere.locationId = locationId;
@@ -666,9 +715,9 @@ export async function listReceiptVerifications(actor: AuthContext, rawInput: unk
   }
   const [totalItems, unverified, verified, mismatches] = await Promise.all([
     prisma.sale.count({ where: filteredWhere }),
-    actor.role === "BRANCH_STAFF" ? Promise.resolve(0) : prisma.sale.count({ where: { ...baseWhere, accountingReview: { status: "UNVERIFIED" } } }),
-    actor.role === "BRANCH_STAFF" ? Promise.resolve(0) : prisma.sale.count({ where: { ...baseWhere, accountingReview: { status: "VERIFIED" } } }),
-    prisma.sale.count({ where: actor.role === "BRANCH_STAFF" ? filteredWhere : { ...baseWhere, accountingReview: { status: "MISMATCH_REPORTED" } } }),
+    actor.roleScope === "BRANCH" ? Promise.resolve(0) : prisma.sale.count({ where: { ...baseWhere, accountingReview: { status: "UNVERIFIED" } } }),
+    actor.roleScope === "BRANCH" ? Promise.resolve(0) : prisma.sale.count({ where: { ...baseWhere, accountingReview: { status: "VERIFIED" } } }),
+    prisma.sale.count({ where: actor.roleScope === "BRANCH" ? filteredWhere : { ...baseWhere, accountingReview: { status: "MISMATCH_REPORTED" } } }),
   ]);
   const totalPages = Math.max(1, Math.ceil(totalItems / input.pageSize));
   const page = Math.min(input.page, totalPages);
@@ -687,14 +736,19 @@ export async function listReceiptVerifications(actor: AuthContext, rawInput: unk
 }
 
 export async function getSaleById(actor: AuthContext, saleId: string) {
+  assertCapability(actor, "sales:view");
+  if (actor.roleScope === "STOCK_ROOM") {
+    throw new CustomerSalesError("FORBIDDEN", "Stock Room scope cannot read sales", 403);
+  }
   const sale = await prisma.sale.findUnique({ where: { id: saleId }, include: SALE_INCLUDE });
   if (!sale) throw new CustomerSalesError("NOT_FOUND", "Sale not found", 404);
-  if (actor.role === "BRANCH_STAFF" && sale.locationId !== actorLocationId(actor)) throw new CustomerSalesError("FORBIDDEN", "Sale is outside assigned branch", 403);
+  if (actor.roleScope === "BRANCH") assertOperationalResource(actor, sale.locationId);
   return serializeSale(sale);
 }
 
 export async function reviewSale(actor: AuthContext, saleId: string, input: z.infer<typeof accountingReviewSchema>) {
-  assertAccountingReviewActor(actor);
+  assertCapability(actor, "sales:verify");
+  assertAccounting(actor);
   assertUniqueComparisonLines(input.comparison);
   if (input.receiptPhotoKey && !isReceiptEvidenceKey(input.receiptPhotoKey)) throw new CustomerSalesError("INVALID_INPUT", "Invalid receipt evidence key", 400);
   return prisma.$transaction(async (tx) => {
@@ -733,7 +787,8 @@ export async function reviewSale(actor: AuthContext, saleId: string, input: z.in
 }
 
 export async function respondToSaleMismatch(actor: AuthContext, saleId: string, input: z.infer<typeof branchMismatchResponseSchema>) {
-  if (actor.role !== "BRANCH_STAFF") throw new CustomerSalesError("FORBIDDEN", "Branch Staff access required", 403);
+  assertCapability(actor, "sales:mismatch:respond");
+  actorLocationId(actor);
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "Sale" WHERE id = ${saleId} FOR UPDATE`;
     const sale = await tx.sale.findUnique({ where: { id: saleId }, include: { accountingReview: true } });
@@ -788,8 +843,8 @@ export async function respondToSaleMismatch(actor: AuthContext, saleId: string, 
 }
 
 export async function resolveSale(actor: AuthContext, saleId: string, input: z.infer<typeof accountingResolutionSchema>) {
-  if (actor.role !== "ADMIN" && actor.role !== "ACCOUNTING_STAFF") throw new CustomerSalesError("FORBIDDEN", "Admin or Accounting Staff access required", 403);
-  if (input.action === "VOIDED_REPLACED" && actor.role !== "ADMIN") throw new CustomerSalesError("FORBIDDEN", "Only Admin can void and replace a sale", 403);
+  assertCapability(actor, input.action === "VOIDED_REPLACED" ? "sales:void-replace" : "sales:resolve");
+  assertAccounting(actor);
   if (input.receiptPhotoKey && !isReceiptEvidenceKey(input.receiptPhotoKey)) throw new CustomerSalesError("INVALID_INPUT", "Invalid receipt evidence key", 400);
   try {
     return await prisma.$transaction(async (tx) => {
@@ -874,26 +929,31 @@ function dateKey(date: Date) {
 }
 
 function saleScope(actor: AuthContext): Prisma.SaleWhereInput {
-  return actor.role === "BRANCH_STAFF" ? { locationId: actorLocationId(actor) } : {};
+  if (actor.roleScope === "BRANCH") return { locationId: actorLocationId(actor) };
+  if (actor.isOwner || actor.roleScope === "BUSINESS_WIDE") return {};
+  return { locationId: "__not_visible__" };
 }
 
 function orderScope(actor: AuthContext): Prisma.CustomerOrderWhereInput {
-  return actor.role === "BRANCH_STAFF" ? { locationId: actorLocationId(actor) } : {};
+  if (actor.roleScope === "BRANCH") return { locationId: actorLocationId(actor) };
+  if (actor.isOwner || actor.roleScope === "BUSINESS_WIDE") return {};
+  return { locationId: "__not_visible__" };
 }
 
 export async function getDashboardSummary(actor: AuthContext) {
+  assertCapability(actor, "dashboard:view");
   const scopedSales = saleScope(actor);
   const scopedOrders = orderScope(actor);
-  const inventoryScope: Prisma.InventoryBalanceWhereInput = actor.role === "BRANCH_STAFF"
+  const inventoryScope: Prisma.InventoryBalanceWhereInput = actor.roleScope === "BRANCH"
     ? { locationId: actorLocationId(actor) }
-    : actor.role === "STOCK_STAFF"
+    : actor.roleScope === "STOCK_ROOM"
       ? { location: { code: "SR" } }
-      : actor.role === "ADMIN"
+      : actor.isOwner
         ? {}
         : { locationId: "__not_visible__" };
-  const transferScope: Prisma.StockTransferWhereInput = actor.role === "BRANCH_STAFF"
+  const transferScope: Prisma.StockTransferWhereInput = actor.roleScope === "BRANCH"
     ? { destinationId: actorLocationId(actor) }
-    : actor.role === "ADMIN" || actor.role === "STOCK_STAFF"
+    : actor.isOwner || actor.roleScope === "STOCK_ROOM"
       ? {}
       : { destinationId: "__not_visible__" };
   const today = dayStart();
@@ -914,13 +974,13 @@ export async function getDashboardSummary(actor: AuthContext) {
       where: inventoryScope,
       include: { product: { select: { itemCode: true, name: true, status: true, reorderLevel: true } }, location: { select: { name: true } } },
     }),
-    actor.role === "STOCK_STAFF" ? prisma.stockReceipt.count({ where: { location: { code: "SR" }, receivedAt: { gte: today } } }) : Promise.resolve(0),
+    actor.roleScope === "STOCK_ROOM" ? prisma.stockReceipt.count({ where: { location: { code: "SR" }, receivedAt: { gte: today } } }) : Promise.resolve(0),
     prisma.stockTransfer.count({ where: { ...transferScope, status: "DRAFT" } }),
     prisma.stockTransfer.count({ where: { ...transferScope, status: "FOR_DISPATCH" } }),
     prisma.stockTransfer.count({ where: { ...transferScope, status: "IN_TRANSIT" } }),
     prisma.stockTransfer.count({ where: { ...transferScope, status: { in: ["DISCREPANCY_REPORTED", "UNDER_REVIEW"] } } }),
-    actor.role === "BRANCH_STAFF" ? prisma.stockTransfer.count({ where: { destinationId: actorLocationId(actor), status: "IN_TRANSIT" } }) : Promise.resolve(0),
-    actor.role === "ADMIN" || actor.role === "ACCOUNTING_STAFF"
+    actor.roleScope === "BRANCH" ? prisma.stockTransfer.count({ where: { destinationId: actorLocationId(actor), status: "IN_TRANSIT" } }) : Promise.resolve(0),
+    actor.isOwner || actor.roleScope === "BUSINESS_WIDE"
       ? prisma.sale.findMany({ where: { ...scopedSales, status: "POSTED", postedAt: { gte: trendStart } }, select: { postedAt: true, totalAmount: true, location: { select: { name: true } } } })
       : Promise.resolve([]),
   ]);
@@ -981,12 +1041,17 @@ export async function getDashboardSummary(actor: AuthContext) {
 }
 
 export async function getReportsSummary(actor: AuthContext) {
+  assertCapability(actor, "reports:view");
   assertAccounting(actor);
-  const sales = await listSales(actor);
-  const orders = await listCustomerOrders(actor);
-  const inventory = actor.role === "ADMIN"
-    ? await prisma.inventoryBalance.findMany({ include: { product: true, location: true }, take: 500 })
-    : [];
+  const [saleRecords, orderRecords, inventory] = await Promise.all([
+    prisma.sale.findMany({ orderBy: { postedAt: "desc" }, include: SALE_INCLUDE, take: 200 }),
+    prisma.customerOrder.findMany({ orderBy: { createdAt: "desc" }, include: ORDER_INCLUDE, take: 200 }),
+    actor.isOwner
+      ? prisma.inventoryBalance.findMany({ include: { product: true, location: true }, take: 500 })
+      : Promise.resolve([]),
+  ]);
+  const sales = saleRecords.map(serializeSale);
+  const orders = orderRecords.map(serializeOrder);
   return {
     sales: {
       totalSales: sales.filter((sale) => sale.status === "POSTED").reduce((sum, sale) => sum + sale.totalAmount, 0),

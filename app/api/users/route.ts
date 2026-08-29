@@ -9,7 +9,7 @@ import {
 export async function GET(request: Request) {
   try {
     // Authorize before parsing filters or executing protected service work.
-    await requireOwnerAdmin(request.headers);
+    await requireOwnerAdmin(request.headers, "users:view");
     const query = userListQuerySchema.parse(
       Object.fromEntries(new URL(request.url).searchParams),
     );
@@ -26,7 +26,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const actor = await requireOwnerAdmin(request.headers);
+    const actor = await requireOwnerAdmin(request.headers, "users:create");
     const input = createUserRequestSchema.parse(await request.json());
 
     return Response.json({ data: await createStaffUser(actor, input) }, { status: 201 });

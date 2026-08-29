@@ -13,7 +13,7 @@ function errorResponse(error: unknown) {
 
 export async function PATCH(request: Request, context: Context) {
   try {
-    const actor = await requireCapability(request.headers, "customers:view");
+    const actor = await requireCapability(request.headers, "customers:update");
     const { id } = await context.params;
     return Response.json({ data: await updateCustomer(actor, id, customerMutationSchema.parse(await request.json())) });
   } catch (error) {
@@ -33,7 +33,7 @@ export async function GET(request: Request, context: Context) {
 
 export async function DELETE(request: Request, context: Context) {
   try {
-    const actor = await requireCapability(request.headers, "customers:view");
+    const actor = await requireCapability(request.headers, "customers:deactivate");
     const { id } = await context.params;
     return Response.json({ data: await deactivateCustomer(actor, id) });
   } catch (error) {

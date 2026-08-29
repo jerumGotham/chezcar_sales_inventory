@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { FileText, Loader2 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
+import { useCan } from "@/components/shell-access-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -28,6 +29,7 @@ function formatPeso(value: number) {
 }
 
 export default function ReportsPage() {
+  const canExport = useCan("reports:export");
   const { data, isLoading, error } = useQuery({ queryKey: ["reports-summary"], queryFn: fetchReports });
   const reports = data?.data;
 
@@ -39,13 +41,13 @@ export default function ReportsPage() {
         <Card><CardContent className="p-6 text-sm text-red-600">{error?.message ?? "Reports unavailable"}</CardContent></Card>
       ) : (
         <div className="space-y-6">
-          <div className="flex justify-end">
+          {canExport && <div className="flex justify-end">
             <a href="/api/reports?format=pdf">
               <Button className="bg-emerald-600 text-white hover:bg-emerald-700">
                 <FileText className="mr-2 h-4 w-4" />Export PDF
               </Button>
             </a>
-          </div>
+          </div>}
 
           <div className="grid gap-4 md:grid-cols-3">
             <SummaryCard label="Sales Total" value={formatPeso(reports.sales.totalSales)} hint={`${reports.sales.transactionCount} posted transaction(s)`} />

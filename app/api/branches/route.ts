@@ -8,7 +8,7 @@ import {
 
 export async function GET(request: Request) {
   try {
-    const actor = await requireCapability(request.headers, "branches:manage");
+    const actor = await requireCapability(request.headers, "branches:view");
     if (!actor.isOwner) throw new AuthorizationError("Insufficient permissions");
     return Response.json({ data: await listBranches() });
   } catch (error) {
@@ -18,7 +18,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const actor = await requireCapability(request.headers, "branches:manage");
+    const actor = await requireCapability(request.headers, "branches:create");
     if (!actor.isOwner) throw new AuthorizationError("Insufficient permissions");
     const input = createBranchSchema.parse(await request.json());
     return Response.json({ data: await createBranch(input) }, { status: 201 });

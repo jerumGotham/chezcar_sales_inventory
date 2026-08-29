@@ -19,7 +19,7 @@ function frame(event: string, id: string | null, data: unknown) {
 
 export async function GET(request: Request) {
   try {
-    const actor = await requireCapability(request.headers, "dashboard:view");
+    const actor = await requireCapability(request.headers, "notifications:view");
     let cursor = parseCursor(request);
     const encoder = new TextEncoder();
 
@@ -69,7 +69,7 @@ export async function GET(request: Request) {
 
         unsubscribe = subscribeToNotificationWakeups(() => void flush());
         heartbeat = setInterval(() => {
-          void requireCapability(request.headers, "dashboard:view").then(
+          void requireCapability(request.headers, "notifications:view").then(
             () => enqueue(": heartbeat\n\n"),
             () => close(),
           );

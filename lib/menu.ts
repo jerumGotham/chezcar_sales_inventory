@@ -22,7 +22,7 @@ export type MenuDefinition = {
   href: ShellMenuHref;
   icon: LucideIcon;
   iconId: ShellMenuIcon;
-  capability: ShellCapabilityId;
+  capability: ShellCapabilityId | readonly ShellCapabilityId[];
   ownerOnly?: boolean;
 };
 
@@ -62,7 +62,7 @@ export const menus = [
     href: "/customer-orders",
     icon: ClipboardList,
     iconId: "customer-orders",
-    capability: "customer-orders:view",
+    capability: ["customer-orders:view", "sales:view"],
   },
   {
     label: "Products",
@@ -97,14 +97,14 @@ export const menus = [
     href: "/branches",
     icon: Building2,
     iconId: "branches",
-    capability: "branches:manage",
+    capability: "branches:view",
   },
   {
     label: "User Management",
     href: "/users",
     icon: UserCog,
     iconId: "users",
-    capability: "users:manage",
+    capability: "users:view",
     ownerOnly: true,
   },
   {
@@ -112,7 +112,7 @@ export const menus = [
     href: "/users/roles",
     icon: UserCog,
     iconId: "roles",
-    capability: "roles:manage",
+    capability: "roles:view",
     ownerOnly: true,
   },
 ] as const satisfies readonly MenuDefinition[];

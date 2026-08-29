@@ -40,7 +40,7 @@ function errorResponse(error: unknown) {
 
 export async function POST(request: Request, context: Context) {
   try {
-    const actor = await requireCapability(request.headers, "inventory:view");
+    const actor = await requireCapability(request.headers, "inventory:adjust");
     const { balanceId } = await context.params;
     const input = inventoryCorrectionSchema.parse(await request.json());
 

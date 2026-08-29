@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { ShellRole } from "@/lib/contracts/access";
+import type { CapabilityId } from "@/lib/contracts/roles";
 
 type TransferLine = {
   id: string;
@@ -147,18 +147,29 @@ async function fetchTransferPage(
 }
 
 export function StockTransfersClient({
-  role,
+  capabilities,
   branches,
   products,
   initialTransferId,
 }: {
-  role: ShellRole;
+  capabilities: ReadonlyArray<CapabilityId>;
   branches: Option[];
   products: Product[];
   initialTransferId?: string;
 }) {
   const queryClient = useQueryClient();
-  const canManageStockRoom = role === "ADMIN" || role === "STOCK_STAFF";
+  const canCreate = capabilities.includes("stock-transfers:create");
+  const canUpdate = capabilities.includes("stock-transfers:update");
+  const canDelete = capabilities.includes("stock-transfers:delete");
+  const canFinalize = capabilities.includes("stock-transfers:finalize");
+  const canDispatch = capabilities.includes("stock-transfers:dispatch");
+  const canReceive = capabilities.includes("stock-transfers:receive");
+  const canReportDiscrepancy = capabilities.includes(
+    "stock-transfers:report-discrepancy",
+  );
+  const canInvestigate = capabilities.includes("stock-transfers:investigate");
+  const canResolve = capabilities.includes("stock-transfers:resolve");
+  const canAudit = capabilities.includes("stock-transfers:audit:view");
   const [selectedTransferId, setSelectedTransferId] = useState(
     initialTransferId ?? "",
   );
@@ -508,7 +519,7 @@ export function StockTransfersClient({
         </div>
       )}
 
-      {canManageStockRoom && (
+      {canCreate && (
         <Card className="mb-6 min-w-0">
           <CardContent className="grid min-w-0 gap-3 p-5">
             <h2 className="font-semibold">Create Stock Room Transfer</h2>
@@ -625,7 +636,7 @@ export function StockTransfersClient({
                 {getTransferStatusLabel(selected.status)}
               </Badge>
             </div>
-            {canManageStockRoom && editLines.length > 0 && (
+            {canUpdate && editLines.length > 0 && (
               <div className="space-y-3">
                 {editLines.map((line, index) => (
                   <div
@@ -752,7 +763,7 @@ export function StockTransfersClient({
                 </div>
               </div>
             )}
-            {!canManageStockRoom && (
+            {!canUpdate && (
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left">
@@ -772,26 +783,30 @@ export function StockTransfersClient({
                 </tbody>
               </table>
             )}
-            {canManageStockRoom && (
+            {(canFinalize || canDelete) && (
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  className="border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800"
-                  disabled={mutation.isPending}
-                  onClick={() => act("finalize", {})}
-                >
-                  Finalize for dispatch
-                </Button>
-                <Button
-                  variant="outline"
-                  className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
-                  disabled={deleteDraftMutation.isPending}
-                  onClick={() =>
-                    deleteDraftMutation.mutate({ transferId: selected.id })
-                  }
-                >
-                  Delete draft
-                </Button>
+                {canFinalize && (
+                  <Button
+                    variant="outline"
+                    className="border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800"
+                    disabled={mutation.isPending}
+                    onClick={() => act("finalize", {})}
+                  >
+                    Finalize for dispatch
+                  </Button>
+                )}
+                {canDelete && (
+                  <Button
+                    variant="outline"
+                    className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                    disabled={deleteDraftMutation.isPending}
+                    onClick={() =>
+                      deleteDraftMutation.mutate({ transferId: selected.id })
+                    }
+                  >
+                    Delete draft
+                  </Button>
+                )}
               </div>
             )}
           </CardContent>
@@ -898,7 +913,7 @@ export function StockTransfersClient({
                 <p className="text-sm text-emerald-900">
                   <b>Resolution notes:</b> {selected.resolution.notes}
                 </p>
-                {canManageStockRoom && shortageDraftLines.length > 0 && (
+                {canCreate && shortageDraftLines.length > 0 && (
                   <Button variant="outline" onClick={startReplacementDraft}>
                     Create replacement draft for shortage
                   </Button>
@@ -906,154 +921,179 @@ export function StockTransfersClient({
               </div>
             )}
 
-            {canManageStockRoom && selected.status === "FOR_DISPATCH" && (
+            {(canDispatch || canDelete) &&
+              selected.status === "FOR_DISPATCH" && (
               <div className="flex items-center gap-3">
-                <Button
-                  disabled={mutation.isPending}
-                  onClick={() => act("dispatch", {})}
-                >
-                  Dispatch from Stock Room
-                </Button>
-                <Button
-                  variant="outline"
-                  className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
-                  disabled={deleteDraftMutation.isPending}
-                  onClick={() =>
-                    deleteDraftMutation.mutate({ transferId: selected.id })
-                  }
-                >
-                  Delete draft
-                </Button>
+                {canDispatch && (
+                  <Button
+                    disabled={mutation.isPending}
+                    onClick={() => act("dispatch", {})}
+                  >
+                    Dispatch from Stock Room
+                  </Button>
+                )}
+                {canDelete && (
+                  <Button
+                    variant="outline"
+                    className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                    disabled={deleteDraftMutation.isPending}
+                    onClick={() =>
+                      deleteDraftMutation.mutate({ transferId: selected.id })
+                    }
+                  >
+                    Delete draft
+                  </Button>
+                )}
               </div>
             )}
-            {role === "BRANCH_STAFF" && selected.status === "IN_TRANSIT" && (
+            {(canReceive || canReportDiscrepancy) &&
+              selected.status === "IN_TRANSIT" && (
               <div className="space-y-4 rounded-lg border p-4">
                 <div>
-                  <p className="font-medium">Count the items you received</p>
+                  <p className="font-medium">
+                    {canReportDiscrepancy
+                      ? "Count the items you received"
+                      : "Confirm the items you received"}
+                  </p>
                   <p className="text-sm text-slate-500">
-                    Use Confirm exact receipt only when every count matches the
-                    dispatch.
+                    {canReceive
+                      ? "Use Confirm exact receipt only when every count matches the dispatch."
+                      : "Record any difference between the dispatched and received quantities."}
                   </p>
                 </div>
-                {selected.lines?.map((line) => (
-                  <div
-                    className="flex items-end justify-between gap-4"
-                    key={line.id}
-                  >
-                    <div>
-                      <Label htmlFor={`actual-${line.id}`}>
-                        {line.product.name}
-                      </Label>
-                      <p className="text-xs text-slate-500">
-                        Sent: {line.dispatchedQuantity}
-                      </p>
+                {canReportDiscrepancy &&
+                  selected.lines?.map((line) => (
+                    <div
+                      className="flex items-end justify-between gap-4"
+                      key={line.id}
+                    >
+                      <div>
+                        <Label htmlFor={`actual-${line.id}`}>
+                          {line.product.name}
+                        </Label>
+                        <p className="text-xs text-slate-500">
+                          Sent: {line.dispatchedQuantity}
+                        </p>
+                      </div>
+                      <div className="space-y-1 text-right">
+                        <Label
+                          htmlFor={`actual-${line.id}`}
+                          className="text-xs text-slate-500"
+                        >
+                          {getDiscrepancyQuantityLabel(discrepancyType)}
+                        </Label>
+                        <Input
+                          id={`actual-${line.id}`}
+                          className="w-28"
+                          type="number"
+                          min="0"
+                          max={line.dispatchedQuantity}
+                          value={
+                            actualQuantities[line.id] ??
+                            line.dispatchedQuantity
+                          }
+                          onChange={(event) =>
+                            setActualQuantities((current) => ({
+                              ...current,
+                              [line.id]: Number(event.target.value),
+                            }))
+                          }
+                        />
+                      </div>
                     </div>
-                    <div className="space-y-1 text-right">
-                      <Label
-                        htmlFor={`actual-${line.id}`}
-                        className="text-xs text-slate-500"
-                      >
-                        {getDiscrepancyQuantityLabel(discrepancyType)}
-                      </Label>
-                      <Input
-                        id={`actual-${line.id}`}
-                        className="w-28"
-                        type="number"
-                        min="0"
-                        max={line.dispatchedQuantity}
-                        value={
-                          actualQuantities[line.id] ?? line.dispatchedQuantity
-                        }
-                        onChange={(event) =>
-                          setActualQuantities((current) => ({
-                            ...current,
-                            [line.id]: Number(event.target.value),
-                          }))
-                        }
-                      />
-                    </div>
+                  ))}
+                {canReportDiscrepancy && (
+                  <div className="space-y-2">
+                    <Label htmlFor="discrepancy-notes">What happened?</Label>
+                    <select
+                      id="discrepancy-notes"
+                      value={discrepancyType}
+                      onChange={(event) =>
+                        setDiscrepancyType(event.target.value)
+                      }
+                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="Items missing">Items missing</option>
+                      <option value="Wrong item delivered">
+                        Wrong item delivered
+                      </option>
+                      <option value="Items damaged">Items damaged</option>
+                      <option value="Seal broken / tampered">
+                        Seal broken / tampered
+                      </option>
+                      <option value="Short delivery">Short delivery</option>
+                      <option value="Other">Other</option>
+                    </select>
                   </div>
-                ))}
-                <div className="space-y-2">
-                  <Label htmlFor="discrepancy-notes">What happened?</Label>
-                  <select
-                    id="discrepancy-notes"
-                    value={discrepancyType}
-                    onChange={(event) => setDiscrepancyType(event.target.value)}
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  >
-                    <option value="Items missing">Items missing</option>
-                    <option value="Wrong item delivered">
-                      Wrong item delivered
-                    </option>
-                    <option value="Items damaged">Items damaged</option>
-                    <option value="Seal broken / tampered">
-                      Seal broken / tampered
-                    </option>
-                    <option value="Short delivery">Short delivery</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-                <p className="text-sm text-slate-500">
-                  Enter the actual quantity received for each line above.
-                  Missing or damaged quantity is calculated from the difference
-                  between sent and actual quantity.
-                </p>
-                <div className="space-y-2">
-                  <Label htmlFor="discrepancy-reason">
-                    Reason (optional details)
-                  </Label>
-                  <Input
-                    id="discrepancy-reason"
-                    ref={discrepancyReasonRef}
-                    placeholder="Optional: add details"
-                  />
-                </div>
-                {!hasDiscrepancy && (
+                )}
+                {canReportDiscrepancy && (
+                  <p className="text-sm text-slate-500">
+                    Enter the actual quantity received for each line above.
+                    Missing or damaged quantity is calculated from the difference
+                    between sent and actual quantity.
+                  </p>
+                )}
+                {canReportDiscrepancy && (
+                  <div className="space-y-2">
+                    <Label htmlFor="discrepancy-reason">
+                      Reason (optional details)
+                    </Label>
+                    <Input
+                      id="discrepancy-reason"
+                      ref={discrepancyReasonRef}
+                      placeholder="Optional: add details"
+                    />
+                  </div>
+                )}
+                {canReportDiscrepancy && !hasDiscrepancy && (
                   <p className="text-sm text-slate-500">
                     Tip: lower the actual quantity for missing stock, or choose
                     another incident type for wrong or damaged items.
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  <Button
-                    disabled={mutation.isPending || hasDiscrepancy}
-                    onClick={() => act("confirm-receipt", {})}
-                  >
-                    Confirm exact receipt
-                  </Button>
-                  <Button
-                    variant="outline"
-                    disabled={mutation.isPending || !hasDiscrepancy}
-                    onClick={() => {
-                      act("report-discrepancy", {
-                        notes: `${discrepancyType}${discrepancyReasonRef.current?.value ? ` - ${discrepancyReasonRef.current.value}` : ""}`,
-                        lines: selected.lines?.map((line) => {
-                          const enteredQuantity =
-                            actualQuantities[line.id] ??
-                            line.dispatchedQuantity;
-                          const counted = usesAffectedQuantity
-                            ? Math.max(
-                                0,
-                                line.dispatchedQuantity - enteredQuantity,
-                              )
-                            : enteredQuantity;
-                          return {
-                            lineId: line.id,
-                            actualQuantity: counted,
-                            reason: discrepancyType,
-                          };
-                        }),
-                      });
-                    }}
-                  >
-                    Report discrepancy
-                  </Button>
+                  {canReceive && (
+                    <Button
+                      disabled={mutation.isPending || hasDiscrepancy}
+                      onClick={() => act("confirm-receipt", {})}
+                    >
+                      Confirm exact receipt
+                    </Button>
+                  )}
+                  {canReportDiscrepancy && (
+                    <Button
+                      variant="outline"
+                      disabled={mutation.isPending || !hasDiscrepancy}
+                      onClick={() => {
+                        act("report-discrepancy", {
+                          notes: `${discrepancyType}${discrepancyReasonRef.current?.value ? ` - ${discrepancyReasonRef.current.value}` : ""}`,
+                          lines: selected.lines?.map((line) => {
+                            const enteredQuantity =
+                              actualQuantities[line.id] ??
+                              line.dispatchedQuantity;
+                            const counted = usesAffectedQuantity
+                              ? Math.max(
+                                  0,
+                                  line.dispatchedQuantity - enteredQuantity,
+                                )
+                              : enteredQuantity;
+                            return {
+                              lineId: line.id,
+                              actualQuantity: counted,
+                              reason: discrepancyType,
+                            };
+                          }),
+                        });
+                      }}
+                    >
+                      Report discrepancy
+                    </Button>
+                  )}
                 </div>
               </div>
             )}
 
-            {canManageStockRoom &&
+            {canInvestigate &&
             selected.status === "DISCREPANCY_REPORTED" ? (
               <div className="space-y-2">
                 <Label htmlFor="transfer-notes">Investigation findings</Label>
@@ -1064,7 +1104,7 @@ export function StockTransfersClient({
                 />
               </div>
             ) : null}
-            {canManageStockRoom &&
+            {canInvestigate &&
               selected.status === "DISCREPANCY_REPORTED" && (
                 <Button
                   disabled={!notes.trim() || mutation.isPending}
@@ -1073,7 +1113,7 @@ export function StockTransfersClient({
                   Submit investigation
                 </Button>
               )}
-            {(role === "ADMIN" || role === "STOCK_STAFF") &&
+            {canResolve &&
               selected.status === "UNDER_REVIEW" && (
                 <div className="space-y-4 rounded-lg border p-4">
                   <div>
@@ -1169,7 +1209,7 @@ export function StockTransfersClient({
                   </Button>
                 </div>
               )}
-            {(role === "ADMIN" || role === "STOCK_STAFF") &&
+            {canAudit &&
               selected.timeline &&
               selected.movements && (
                 <div className="grid gap-4 lg:grid-cols-2">
@@ -1303,8 +1343,7 @@ export function StockTransfersClient({
                               ? "Hide details"
                               : "View details"}
                           </Button>
-                          {transfer.status === "DRAFT" &&
-                            canManageStockRoom && (
+                          {transfer.status === "DRAFT" && canDelete && (
                               <Button
                                 size="sm"
                                 variant="outline"

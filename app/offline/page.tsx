@@ -10,9 +10,14 @@ export default async function OfflineDevicesPage() {
   const access = await loadShellAccess(await headers());
 
   if (!access.authenticated) redirect("/sign-in");
-  if (!access.capabilities.includes("users:manage")) redirect("/access-denied");
+  if (!access.capabilities.includes("offline-sales:activate-device")) redirect("/access-denied");
 
   const branches = await listActiveBranches();
 
-  return <OfflineDevicesClient branches={branches satisfies OfflineBranchOption[]} />;
+  return (
+    <OfflineDevicesClient
+      branches={branches satisfies OfflineBranchOption[]}
+      capabilities={access.capabilities}
+    />
+  );
 }

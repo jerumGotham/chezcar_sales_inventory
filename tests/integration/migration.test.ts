@@ -64,6 +64,34 @@ describe("trusted foundation migration", () => {
         credentialSetupRequired: false,
       });
       expect(session).toEqual({ impersonatedBy: null });
+
+      const roles = await prisma.roleDefinition.findMany({
+        where: { id: { in: ["role-admin", "role-stock-staff", "role-branch-staff"] } },
+        select: { id: true, permissions: true },
+      });
+      const adminPermissions = roles.find((role) => role.id === "role-admin")?.permissions ?? [];
+      const stockPermissions = roles.find((role) => role.id === "role-stock-staff")?.permissions ?? [];
+      const branchPermissions = roles.find((role) => role.id === "role-branch-staff")?.permissions ?? [];
+      expect(adminPermissions).toEqual(
+        expect.arrayContaining([
+          "products:create",
+          "products:update",
+          "products:delete",
+          "users:view",
+          "roles:update",
+        ]),
+      );
+      expect(adminPermissions).not.toContain("users:manage");
+      expect(stockPermissions).toEqual(
+        expect.arrayContaining([
+          "stock-transfers:create",
+          "stock-transfers:dispatch",
+          "stock-transfers:investigate",
+        ]),
+      );
+      expect(stockPermissions).not.toContain("stock-transfers:resolve");
+      expect(branchPermissions).toContain("inventory-movements:view");
+      expect(branchPermissions).not.toContain("customer-orders:cancel-paid");
     });
   }, 30_000);
 

@@ -112,6 +112,17 @@ function authenticate(role: UserRole) {
   );
 }
 
+function authenticateWithPermissions(
+  role: UserRole,
+  permissions: readonly string[],
+) {
+  mocks.getSession.mockResolvedValue({ user: { id: `user-${role.toLowerCase()}` } });
+  mocks.findUser.mockResolvedValue({
+    ...persistedUser(role, assignmentByRole[role]),
+    accessRole: { ...roleAccess[role], permissions },
+  });
+}
+
 async function request(path: string) {
   return proxy(new NextRequest(`http://localhost${path}`));
 }
@@ -241,5 +252,19 @@ describe("persisted page capability routing", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("x-middleware-next")).toBe("1");
+  });
+
+  it("uses the shared orders and sales gate only for the base page", async () => {
+    authenticateWithPermissions("ACCOUNTING_STAFF", ["sales:view"]);
+
+    expect((await request("/customer-orders")).status).toBe(200);
+    expect((await request("/customer-orders/")).status).toBe(200);
+    for (const path of [
+      "/customer-orders/create",
+      "/customer-orders/order-17",
+      "/customer-orders/order-17/release",
+    ]) {
+      expect(redirectPath(await request(path)), path).toBe("/access-denied");
+    }
   });
 });

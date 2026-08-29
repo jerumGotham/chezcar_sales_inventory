@@ -11,7 +11,7 @@ function errorResponse(error: unknown) {
 
 export async function GET(request: Request) {
   try {
-    const actor = await requireCapability(request.headers, "sales:post");
+    const actor = await requireCapability(request.headers, "offline-sales:snapshot");
     return Response.json({ data: await getOfflineSnapshot(actor, Object.fromEntries(new URL(request.url).searchParams)) });
   } catch (error) {
     return errorResponse(error);

@@ -20,6 +20,26 @@ const LOCATION_DISPLAY_NAMES = Object.freeze({
   SR: "Stock Room",
   VC: "Vigan City",
 });
+const ALL_CAPABILITIES = Object.freeze([
+  "dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push",
+  "customers:view", "customers:create", "customers:update", "customers:deactivate",
+  "customer-orders:view", "customer-orders:create", "customer-orders:reserve",
+  "customer-orders:record-payment", "customer-orders:release", "customer-orders:cancel",
+  "customer-orders:cancel-paid", "sales:view", "sales:post", "sales:verify:view",
+  "sales:verify", "sales:resolve", "sales:void-replace", "sales:mismatch:respond",
+  "sales:evidence:view", "sales:evidence:upload", "products:view", "products:create",
+  "products:update", "products:delete", "products:image:update", "inventory:view",
+  "inventory-availability:view", "inventory-movements:view", "inventory:adjust",
+  "inventory:cost:update", "stock-receipts:view", "inventory-receiving:create",
+  "stock-transfers:view", "stock-transfers:create", "stock-transfers:update",
+  "stock-transfers:delete", "stock-transfers:finalize", "stock-transfers:dispatch",
+  "stock-transfers:receive", "stock-transfers:report-discrepancy",
+  "stock-transfers:investigate", "stock-transfers:resolve", "stock-transfers:audit:view",
+  "reports:view", "reports:export", "offline-sales:snapshot", "offline-sales:sync",
+  "offline-sales:activate-device", "users:view", "users:create", "users:update",
+  "users:set-status", "users:reset-password", "branches:view", "branches:create",
+  "branches:update", "roles:view", "roles:create", "roles:update",
+]);
 const BUILT_IN_ROLES = Object.freeze([
   {
     id: "role-admin",
@@ -27,12 +47,7 @@ const BUILT_IN_ROLES = Object.freeze([
     name: "Admin",
     description: "Immutable owner role with full application access.",
     scope: "OWNER",
-    permissions: [
-      "dashboard:view", "customers:view", "customer-orders:view", "sales:post",
-      "sales:verify:view", "sales:verify", "sales:resolve", "sales:mismatch:respond",
-      "products:view", "inventory:view", "inventory-receiving:create", "reports:view",
-      "users:manage", "branches:manage", "roles:manage", "stock-transfers:view",
-    ],
+    permissions: ALL_CAPABILITIES,
   },
   {
     id: "role-stock-staff",
@@ -41,8 +56,13 @@ const BUILT_IN_ROLES = Object.freeze([
     description: "Built-in Stock Room operational role.",
     scope: "STOCK_ROOM",
     permissions: [
-      "dashboard:view", "customers:view", "customer-orders:view", "products:view",
-      "inventory:view", "inventory-receiving:create", "stock-transfers:view",
+      "dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push",
+      "customers:view", "customer-orders:view", "products:view",
+      "inventory:view", "inventory-availability:view", "inventory-movements:view",
+      "stock-receipts:view", "inventory-receiving:create", "stock-transfers:view",
+      "stock-transfers:audit:view", "stock-transfers:create", "stock-transfers:update",
+      "stock-transfers:delete", "stock-transfers:finalize", "stock-transfers:dispatch",
+      "stock-transfers:investigate",
     ],
   },
   {
@@ -52,8 +72,14 @@ const BUILT_IN_ROLES = Object.freeze([
     description: "Built-in branch operational role.",
     scope: "BRANCH",
     permissions: [
-      "dashboard:view", "customers:view", "customer-orders:view", "sales:post",
-      "sales:verify:view", "sales:mismatch:respond", "inventory:view", "stock-transfers:view",
+      "dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push",
+      "customers:view", "customers:create", "customers:update", "customers:deactivate",
+      "customer-orders:view", "customer-orders:create", "customer-orders:reserve",
+      "customer-orders:record-payment", "customer-orders:release", "customer-orders:cancel",
+      "sales:view", "sales:post", "sales:verify:view", "sales:mismatch:respond",
+      "sales:evidence:view", "sales:evidence:upload", "inventory:view",
+      "inventory-availability:view", "inventory-movements:view", "stock-transfers:view", "stock-transfers:receive",
+      "stock-transfers:report-discrepancy", "offline-sales:snapshot", "offline-sales:sync",
     ],
   },
   {
@@ -63,8 +89,10 @@ const BUILT_IN_ROLES = Object.freeze([
     description: "Built-in business-wide accounting role.",
     scope: "BUSINESS_WIDE",
     permissions: [
-      "dashboard:view", "customers:view", "customer-orders:view", "sales:verify",
-      "sales:verify:view", "sales:resolve", "reports:view",
+      "dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push",
+      "customers:view", "customer-orders:view", "sales:view", "sales:verify",
+      "sales:verify:view", "sales:resolve", "sales:evidence:view", "sales:evidence:upload",
+      "reports:view", "reports:export",
     ],
   },
 ]);

@@ -36,7 +36,7 @@ function errorResponse(error: unknown) {
 
 export async function PATCH(request: Request, context: Context) {
   try {
-    const actor = await requireCapability(request.headers, "products:view");
+    const actor = await requireCapability(request.headers, "products:update");
     const { productId } = await context.params;
     const input = productMutationSchema.parse(await request.json());
     return Response.json({ data: await updateProduct(actor, productId, input) });
@@ -47,7 +47,7 @@ export async function PATCH(request: Request, context: Context) {
 
 export async function DELETE(request: Request, context: Context) {
   try {
-    const actor = await requireCapability(request.headers, "products:view");
+    const actor = await requireCapability(request.headers, "products:delete");
     const { productId } = await context.params;
     return Response.json({ data: await deleteProduct(actor, productId) });
   } catch (error) {

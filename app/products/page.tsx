@@ -36,7 +36,7 @@ import {
   type ProductRow,
   type ProductStatus,
 } from "@/lib/catalog";
-import { useShellAccess } from "@/components/shell-access-context";
+import { useCan } from "@/components/shell-access-context";
 
 type SelectOption = {
   value: string;
@@ -179,8 +179,11 @@ const reactSelectStyles: StylesConfig<SelectOption, false> = {
 };
 
 export default function ProductsPage() {
-  const access = useShellAccess();
-  const isAdmin = access.identity?.role === "ADMIN";
+  const canCreate = useCan("products:create");
+  const canUpdate = useCan("products:update");
+  const canDelete = useCan("products:delete");
+  const canUpdateImage = useCan("products:image:update");
+  const hasProductActions = canUpdate || canDelete || canUpdateImage;
   const queryClient = useQueryClient();
   const [itemCode, setItemCode] = useState("");
   const [name, setName] = useState("");
@@ -281,15 +284,20 @@ export default function ProductsPage() {
         status: form.status,
       };
       const currentId = selectedProduct?.id ?? persistedProductId;
+      if (currentId ? !canUpdate && !canUpdateImage : !canCreate) {
+        throw new Error("You do not have permission to save this product.");
+      }
       const response = currentId
-        ? await productRequest(`/api/products/${currentId}`, "PATCH", payload)
+        ? canUpdate
+          ? await productRequest(`/api/products/${currentId}`, "PATCH", payload)
+          : { data: { id: currentId } }
         : await productRequest("/api/products", "POST", payload);
       const productId = currentId ?? response.data.id;
       if (!currentId) setPersistedProductId(productId);
 
-      if (imageFile) {
+      if (canUpdateImage && imageFile) {
         await productImageRequest(productId, "POST", imageFile);
-      } else if (removeImage) {
+      } else if (canUpdateImage && removeImage) {
         await productImageRequest(productId, "DELETE");
       }
       return response;
@@ -310,7 +318,10 @@ export default function ProductsPage() {
     },
   });
   const deleteMutation = useMutation({
-    mutationFn: (productId: string) => productRequest(`/api/products/${productId}`, "DELETE"),
+    mutationFn: (productId: string) => {
+      if (!canDelete) throw new Error("You do not have permission to delete products.");
+      return productRequest(`/api/products/${productId}`, "DELETE");
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["products-master-list"] }),
     onError: (error: Error) => setFormError(error.message),
   });
@@ -386,7 +397,8 @@ export default function ProductsPage() {
   };
 
   const submitProduct = () => {
-    if (!isAdmin) return;
+    const isUpdate = Boolean(selectedProduct || persistedProductId);
+    if (isUpdate ? !canUpdate && !canUpdateImage : !canCreate) return;
     setFormError("");
     saveMutation.mutate();
   };
@@ -397,7 +409,7 @@ export default function ProductsPage() {
         title="Products"
         subtitle="Manage product master data. Admin controls product edits while Stock Staff keeps read-only catalog visibility."
         actions={
-          isAdmin ? (
+          canCreate ? (
             <Button
               className="bg-emerald-600 text-white hover:bg-emerald-700"
               onClick={() => openProductDialog()}
@@ -574,7 +586,7 @@ export default function ProductsPage() {
             </div>
 
             <div className="overflow-x-auto">
-              <table className={`w-full ${isAdmin ? "min-w-[1240px]" : "min-w-[1110px]"}`}>
+              <table className={`w-full ${hasProductActions ? "min-w-[1240px]" : "min-w-[1110px]"}`}>
                 <thead className="bg-slate-50">
                   <tr className="border-b">
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -604,14 +616,14 @@ export default function ProductsPage() {
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Description
                     </th>
-                    {isAdmin && <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Action</th>}
+                    {hasProductActions && <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Action</th>}
                   </tr>
                 </thead>
 
                 <tbody>
                   {isLoading ? (
                     <tr>
-                      <td colSpan={isAdmin ? 10 : 9} className="px-5 py-16 text-center">
+                      <td colSpan={hasProductActions ? 10 : 9} className="px-5 py-16 text-center">
                         <div className="flex items-center justify-center gap-2 text-slate-500">
                           <Loader2 className="h-4 w-4 animate-spin" />
                           Loading products...
@@ -621,7 +633,7 @@ export default function ProductsPage() {
                   ) : error ? (
                     <tr>
                       <td
-                        colSpan={isAdmin ? 10 : 9}
+                        colSpan={hasProductActions ? 10 : 9}
                         className="px-5 py-16 text-center text-red-600"
                       >
                         {error.message}
@@ -630,7 +642,7 @@ export default function ProductsPage() {
                   ) : rows.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={isAdmin ? 10 : 9}
+                        colSpan={hasProductActions ? 10 : 9}
                         className="px-5 py-16 text-center text-slate-500"
                       >
                         No products found.
@@ -688,20 +700,20 @@ export default function ProductsPage() {
                             {product.description || "-"}
                           </span>
                         </td>
-                        {isAdmin && <td className="px-5 py-4">
+                        {hasProductActions && <td className="px-5 py-4">
                           <div className="flex flex-row gap-2">
-                            <div className="flex flex-wrap gap-2">
+                            {(canUpdate || canUpdateImage) && <div className="flex flex-wrap gap-2">
                               <Button
                                 size="sm"
                                 variant="outline"
                                 className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
                                 onClick={() => openProductDialog(product)}
                               >
-                                Edit
+                                {canUpdate ? "Edit" : "Manage Image"}
                               </Button>
-                            </div>
+                            </div>}
 
-                            <div className="flex flex-wrap gap-2">
+                            {canDelete && <div className="flex flex-wrap gap-2">
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -712,7 +724,7 @@ export default function ProductsPage() {
                               >
                                 Delete
                               </Button>
-                            </div>
+                            </div>}
                           </div>
                         </td>}
                       </tr>
@@ -780,7 +792,7 @@ export default function ProductsPage() {
           </DialogHeader>
 
           <div className="grid gap-6 py-2">
-            <div className="grid gap-4 rounded-xl border bg-slate-50/60 p-4 sm:grid-cols-[112px_1fr] sm:items-center">
+            {canUpdateImage && <div className="grid gap-4 rounded-xl border bg-slate-50/60 p-4 sm:grid-cols-[112px_1fr] sm:items-center">
               <div className="relative flex h-28 w-28 items-center justify-center overflow-hidden rounded-xl border bg-white">
                 {imagePreviewUrl || (!removeImage && selectedProduct?.imageUrl) ? (
                   <Image
@@ -828,7 +840,7 @@ export default function ProductsPage() {
                   </Button>
                 )}
               </div>
-            </div>
+            </div>}
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
@@ -836,7 +848,7 @@ export default function ProductsPage() {
                 <Input
                   id="itemCode"
                   value={form.itemCode}
-                  disabled={Boolean(selectedProduct && !selectedProduct.canEditItemCode)}
+                  disabled={Boolean(selectedProduct && (!canUpdate || !selectedProduct.canEditItemCode))}
                   onChange={(event) => setForm((current) => ({ ...current, itemCode: event.target.value }))}
                   placeholder="ITM-0013"
                 />
@@ -850,6 +862,7 @@ export default function ProductsPage() {
                 <Input
                   id="productName"
                   value={form.name}
+                  disabled={Boolean(selectedProduct && !canUpdate)}
                   onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
                   placeholder="Product name"
                 />
@@ -860,6 +873,7 @@ export default function ProductsPage() {
                 <Input
                   id="category"
                   value={form.category}
+                  disabled={Boolean(selectedProduct && !canUpdate)}
                   onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}
                   placeholder="Tint"
                 />
@@ -870,6 +884,7 @@ export default function ProductsPage() {
                 <Input
                   id="brand"
                   value={form.brand}
+                  disabled={Boolean(selectedProduct && !canUpdate)}
                   onChange={(event) => setForm((current) => ({ ...current, brand: event.target.value }))}
                   placeholder="Brand"
                 />
@@ -883,6 +898,7 @@ export default function ProductsPage() {
                   min="0.01"
                   step="0.01"
                   value={form.price}
+                  disabled={Boolean(selectedProduct && !canUpdate)}
                   onChange={(event) => setForm((current) => ({ ...current, price: event.target.value }))}
                 />
               </div>
@@ -895,6 +911,7 @@ export default function ProductsPage() {
                   min="0"
                   step="1"
                   value={form.reorderLevel}
+                  disabled={Boolean(selectedProduct && !canUpdate)}
                   onChange={(event) => setForm((current) => ({ ...current, reorderLevel: event.target.value }))}
                 />
                 <p className="text-xs text-slate-500">Applied to this product across Stock Room and branches.</p>
@@ -906,6 +923,7 @@ export default function ProductsPage() {
                   id="status"
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   value={form.status}
+                  disabled={Boolean(selectedProduct && !canUpdate)}
                   onChange={(event) => setForm((current) => ({ ...current, status: event.target.value as ProductForm["status"] }))}
                 >
                   <option value="ACTIVE">Active</option>
@@ -918,6 +936,7 @@ export default function ProductsPage() {
                 <Input
                   id="description"
                   value={form.description}
+                  disabled={Boolean(selectedProduct && !canUpdate)}
                   onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
                   placeholder="Product description"
                 />
@@ -951,7 +970,10 @@ export default function ProductsPage() {
 
             <Button
               className="bg-emerald-600 text-white hover:bg-emerald-700"
-              disabled={saveMutation.isPending}
+              disabled={
+                saveMutation.isPending ||
+                (Boolean(selectedProduct) && !canUpdate && !imageFile && !removeImage)
+              }
               onClick={submitProduct}
             >
               {selectedProduct ? "Save Changes" : "Create Product"}

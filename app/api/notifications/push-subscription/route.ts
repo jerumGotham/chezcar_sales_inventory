@@ -10,7 +10,7 @@ function errorResponse(error: unknown) {
 
 export async function POST(request: Request) {
   try {
-    const actor = await requireCapability(request.headers, "dashboard:view");
+    const actor = await requireCapability(request.headers, "notifications:push");
     const subscription = await savePushSubscription(actor, await request.json(), request.headers.get("user-agent"));
     return Response.json({ data: { id: subscription.id, enabled: subscription.isActive } });
   } catch (error) {
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const actor = await requireCapability(request.headers, "dashboard:view");
+    const actor = await requireCapability(request.headers, "notifications:push");
     await deletePushSubscription(actor, await request.json());
     return Response.json({ data: { enabled: false } });
   } catch (error) {

@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useShellAccess } from "@/components/shell-access-context";
-import { canManageCustomerOrders } from "@/lib/customer-order-actions";
+import { hasCapability } from "@/lib/permissions";
 
 type SelectOption = {
   value: string;
@@ -99,6 +99,8 @@ export default function CreateCustomerOrderPage() {
   const queryClient = useQueryClient();
   const access = useShellAccess();
   const role = access.authenticated ? access.identity.role : null;
+  const capabilities = access.authenticated ? access.capabilities : [];
+  const canCreate = hasCapability(capabilities, "customer-orders:create");
   const [location, setLocation] = useState<SelectOption | null>(null);
   const [status, setStatus] = useState<SelectOption>(STATUS_OPTIONS[1]);
   const branchStaffLocationId = access.authenticated ? access.scope.locationId : null;
@@ -238,7 +240,7 @@ export default function CreateCustomerOrderPage() {
               Back
             </Button>
           </Link>
-           {canManageCustomerOrders(role) ? <Button className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => { setErrorMessage(""); saveMutation.mutate(); }} disabled={saveMutation.isPending || optionsQuery.isLoading}>
+            {canCreate ? <Button className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => { setErrorMessage(""); saveMutation.mutate(); }} disabled={saveMutation.isPending || optionsQuery.isLoading}>
              {saveMutation.isPending ? "Saving..." : "Save Order"}
            </Button> : null}
         </div>
@@ -473,7 +475,7 @@ export default function CreateCustomerOrderPage() {
                   <span>{formatPeso(balance)}</span>
                 </div>
 
-                 {canManageCustomerOrders(role) ? <Button className="w-full bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => { setErrorMessage(""); saveMutation.mutate(); }} disabled={saveMutation.isPending || optionsQuery.isLoading}>
+                  {canCreate ? <Button className="w-full bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => { setErrorMessage(""); saveMutation.mutate(); }} disabled={saveMutation.isPending || optionsQuery.isLoading}>
                    {saveMutation.isPending ? "Saving..." : "Save Order"}
                  </Button> : null}
               </div>

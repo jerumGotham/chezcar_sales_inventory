@@ -8,6 +8,8 @@ import { z } from "zod";
 import {
   CAPABILITY_IDS,
   OWNER_ONLY_CAPABILITY_IDS,
+  capabilityIsAssignableToScope,
+  type AssignableRoleScope,
   type CapabilityId,
   type CreateRoleRequest,
   type RoleDefinitionDto,
@@ -76,10 +78,16 @@ function normalizePermissions(permissions: readonly CapabilityId[]): CapabilityI
   return CAPABILITY_IDS.filter((permission) => requested.has(permission));
 }
 
-function assertAssignablePermissions(permissions: readonly CapabilityId[]) {
+function assertAssignablePermissions(
+  scope: AssignableRoleScope,
+  permissions: readonly CapabilityId[],
+) {
   const ownerOnly = new Set<CapabilityId>(OWNER_ONLY_CAPABILITY_IDS);
   if (permissions.some((permission) => ownerOnly.has(permission))) {
-    throw roleFailure(400, "OWNER_PERMISSION_ONLY", "Administration permissions are reserved for the owner Admin");
+    throw roleFailure(400, "OWNER_PERMISSION_ONLY", "Owner-only permissions are reserved for the owner Admin");
+  }
+  if (permissions.some((permission) => !capabilityIsAssignableToScope(permission, scope))) {
+    throw roleFailure(400, "PERMISSION_SCOPE_MISMATCH", "One or more permissions cannot be used with this operational scope");
   }
 }
 
@@ -91,8 +99,11 @@ function roleFailure(status: number, code: string, message: string): RoleMainten
   return new RoleMaintenanceError(status, code, message);
 }
 
-export async function requireOwnerRoleManager(headers: Headers) {
-  const actor = await requireCapability(headers, "roles:manage");
+export async function requireOwnerRoleManager(
+  headers: Headers,
+  capability: CapabilityId,
+) {
+  const actor = await requireCapability(headers, capability);
   if (!actor.isOwner) throw new AuthorizationError("Insufficient permissions");
   return actor;
 }
@@ -123,7 +134,7 @@ export async function getRoleDefinition(roleId: string): Promise<RoleDefinitionD
 }
 
 export async function createRoleDefinition(input: CreateRoleRequest): Promise<RoleDefinitionDto> {
-  assertAssignablePermissions(input.permissions);
+  assertAssignablePermissions(input.scope, input.permissions);
   try {
     const role = await prisma.roleDefinition.create({
       data: {
@@ -170,7 +181,7 @@ export async function updateRoleDefinition(
       const nextPermissions = input.permissions
         ? normalizePermissions(input.permissions)
         : normalizePermissions(current.permissions as CapabilityId[]);
-      assertAssignablePermissions(nextPermissions);
+      assertAssignablePermissions(nextScope, nextPermissions);
       const permissionsChanged = !samePermissions(
         normalizePermissions(current.permissions as CapabilityId[]),
         nextPermissions,

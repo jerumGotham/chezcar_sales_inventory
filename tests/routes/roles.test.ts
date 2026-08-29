@@ -25,7 +25,10 @@ describe("role maintenance routes", () => {
   it("authorizes before reading role data", async () => {
     mocks.listRoleDefinitions.mockResolvedValue([]);
     await listRoles(new Request("http://localhost/api/roles"));
-    expect(mocks.requireOwnerRoleManager).toHaveBeenCalledWith(expect.any(Headers));
+    expect(mocks.requireOwnerRoleManager).toHaveBeenCalledWith(
+      expect.any(Headers),
+      "roles:view",
+    );
     expect(mocks.listRoleDefinitions).toHaveBeenCalledOnce();
 
     mocks.getRoleDefinition.mockResolvedValue({ id: "role-1" });

@@ -6,7 +6,7 @@ import Select from "react-select";
 import type { StylesConfig } from "react-select";
 
 import { PageShell } from "@/components/page-shell";
-import { useShellAccess } from "@/components/shell-access-context";
+import { useCan } from "@/components/shell-access-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -184,9 +184,10 @@ const reactSelectStyles: StylesConfig<SelectOption, false> = {
 };
 
 export default function CustomersPage() {
-  const access = useShellAccess();
-  const canManageCustomers = access.identity?.role !== "STOCK_STAFF" && access.identity?.role !== "ACCOUNTING_STAFF";
-  const canViewCustomerHistory = access.identity?.role !== "STOCK_STAFF";
+  const canCreateCustomer = useCan("customers:create");
+  const canUpdateCustomer = useCan("customers:update");
+  const canDeactivateCustomer = useCan("customers:deactivate");
+  const canViewCustomerHistory = useCan("customers:view");
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [status, setStatus] = useState<SelectOption>(STATUS_OPTIONS[0]);
@@ -255,6 +256,9 @@ export default function CustomersPage() {
 
   const saveCustomerMutation = useMutation({
     mutationFn: async () => {
+      if (selectedCustomer ? !canUpdateCustomer : !canCreateCustomer) {
+        throw new Error("You do not have permission to save this customer.");
+      }
       const name = `${customerForm.firstName} ${customerForm.lastName}`.trim();
       if (!name) throw new Error("Customer name is required.");
       const body = { name, mobile: customerForm.mobile.trim(), email: customerForm.email.trim(), address: customerForm.address.trim(), source: customerForm.source.trim(), notes: customerForm.notes.trim() };
@@ -277,6 +281,7 @@ export default function CustomersPage() {
 
   const deleteCustomerMutation = useMutation({
     mutationFn: async (id: string) => {
+      if (!canDeactivateCustomer) throw new Error("You do not have permission to deactivate customers.");
       const response = await fetch(`/api/customers/${id}`, { method: "DELETE", credentials: "same-origin" });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error?.message ?? "Unable to deactivate customer");
@@ -316,7 +321,7 @@ export default function CustomersPage() {
         title="Customers"
         subtitle="Manage customer records and review persisted sales and customer orders."
         actions={
-          canManageCustomers ? (
+          canCreateCustomer ? (
             <Button
               className="bg-emerald-600 text-white hover:bg-emerald-700"
               onClick={() => {
@@ -525,7 +530,7 @@ export default function CustomersPage() {
                               View
                             </Button>}
 
-                            {canManageCustomers && <Button
+                            {canUpdateCustomer && <Button
                               size="sm"
                               variant="outline"
                               className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
@@ -536,7 +541,7 @@ export default function CustomersPage() {
                               Edit
                             </Button>}
 
-                            {canManageCustomers && <div className="flex flex-wrap gap-2">
+                            {canDeactivateCustomer && <div className="flex flex-wrap gap-2">
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -670,7 +675,11 @@ export default function CustomersPage() {
             </Button>
             <Button
               className="bg-emerald-600 text-white hover:bg-emerald-700"
-              onClick={() => saveCustomerMutation.mutate()}
+              onClick={() => {
+                if (selectedCustomer ? canUpdateCustomer : canCreateCustomer) {
+                  saveCustomerMutation.mutate();
+                }
+              }}
               disabled={saveCustomerMutation.isPending}
             >
               {saveCustomerMutation.isPending ? "Saving..." : selectedCustomer ? "Save Changes" : "Create Customer"}
