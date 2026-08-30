@@ -65,6 +65,7 @@ npm run prisma:generate
 npm run db:migrate     # development migration; requires DATABASE_URL
 npm run db:migrate:deploy # deployment migration; requires a reviewed, backed-up target
 npm run db:seed        # guarded local catalog replacement; requires DATABASE_URL and SEED_ADMIN_* values
+npm run db:provision-owner # guarded create-only production owner bootstrap; run once after migrations
 npm run db:data:reset  # guarded local reset; preserves users/auth, products, locations
 docker compose up -d postgres
 docker compose stop postgres

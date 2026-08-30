@@ -17,6 +17,11 @@ Copy the sanitized `.env.example` to an untracked `.env` and replace every place
 | `SEED_ADMIN_EMAIL` | Seed only | None | Email for the first development Admin. |
 | `SEED_ADMIN_PASSWORD` | Seed only | None | Admin password; the seed rejects examples and values shorter than 12 characters. |
 | `SEED_ADMIN_NAME` | Seed only | None | Display name for the seeded Admin. |
+| `ALLOW_OWNER_PROVISIONING` | One-time production bootstrap | None | Must equal `true` for `db:provision-owner`; remove immediately after success. |
+| `PROVISION_OWNER_DATABASE` | One-time production bootstrap | None | Exact database name expected from `DATABASE_URL` and `current_database()`. |
+| `PROVISION_OWNER_EMAIL` | One-time production bootstrap | None | Email for the first immutable owner Admin. |
+| `PROVISION_OWNER_PASSWORD` | One-time production bootstrap | None | Temporary owner password; hashed before storage and changed at first sign-in. |
+| `PROVISION_OWNER_NAME` | One-time production bootstrap | None | Display name for the first owner Admin. |
 | `ALLOW_CATALOG_RESET` | Local catalog seed/reload and the phase gate only | `true` in `.env.example` | Must equal `true`; accepts only the exact local Compose URL or disposable test URL and refuses production or unknown targets. |
 | `ALLOW_OPERATIONAL_DATA_RESET` | `db:data:reset` only | `true` in `.env.example` | Accepts only the exact local Compose or disposable test URL and preserves users/auth, roles, products, and locations. |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Browser push only | Empty | Public VAPID key exposed to authenticated browsers for PushManager subscription. |
@@ -64,6 +69,7 @@ The npm scripts in `package.json` are:
 | `npm run db:migrate` | `prisma migrate dev` | Create/apply development migrations. Production uses `prisma migrate deploy`. |
 | `npm run db:migrate:deploy` | `prisma migrate deploy` | Apply checked-in migrations in a controlled deployment task against a backed-up target. |
 | `npm run db:seed` | `prisma db seed` | Transactionally reconcile the local canonical catalog, replace opening balances, and create or update the environment-supplied owner Admin while preserving product identities. |
+| `npm run db:provision-owner` | `node scripts/provision-owner-admin.mjs` | Create the first production owner User and Better Auth credential once after migrations; refuses replacement and verifies the connected database. |
 | `npm run db:catalog:reload` | `node --env-file=.env prisma/seed.mjs --catalog-only` | Transactionally reconcile canonical products, replace opening balances, and upsert the six import locations while preserving product identities, auth, and additional records; uses the same positive reset gates. |
 | `npm run db:data:reset` | `node --env-file=.env prisma/reset-operational-data.mjs` | Transactionally delete local operational data while preserving users/auth, roles, products, and required locations; requires the exact approved Compose database identity. |
 | `npm run verify:phase-01 -- [--validate-evidence]` | `node scripts/verify-phase-01.mjs` | Phase 1 evidence gate: asserts the disposable test target and seed/reset environment, then runs fresh migration deploy, seed, two equivalent catalog reloads, full unit/integration suites, typecheck, and build; captures lint's expected failure baseline separately and writes/validates `docs/verification/phase-01-evidence.md`. |

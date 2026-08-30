@@ -55,7 +55,18 @@ Use a production PostgreSQL database reachable from the application container. `
 6. On the first deployment, Coolify has no old application container in which to run the pre-deployment command. Open the started container's Coolify terminal and run `npm run db:migrate:deploy` once.
 7. Confirm `https://chezcar.antiguasbakeandcuisine.com/api/health` returns a successful readiness response.
 
-The current production workflow does not include a supported first owner-Admin provisioning command. A healthy deployment can therefore be ready at the HTTP/database level while sign-in remains unavailable. Design and verify a separate production-safe provisioning operation before onboarding production users; never bypass this gap with the local seed.
+After all migrations are applied, provision the first owner Admin once from the Coolify application terminal. Configure these as temporary process environment variables rather than writing credentials into a file or command history:
+
+```text
+NODE_ENV=production
+ALLOW_OWNER_PROVISIONING=true
+PROVISION_OWNER_DATABASE=<exact database name from DATABASE_URL>
+PROVISION_OWNER_EMAIL=<owner email>
+PROVISION_OWNER_PASSWORD=<temporary password with at least 12 characters>
+PROVISION_OWNER_NAME=<owner display name>
+```
+
+Run `npm run db:provision-owner`, confirm the success message, then immediately remove all `ALLOW_OWNER_PROVISIONING` and `PROVISION_OWNER_*` values. The create-only command verifies `current_database()`, requires the migrated immutable owner role, hashes the password through Better Auth, creates the User and credential Account atomically, requires password setup on first sign-in, and refuses to run when any owner already exists. It does not import or reset products, inventory, or other business data. Do not use the destructive local seed in production.
 
 ## Later Releases
 
