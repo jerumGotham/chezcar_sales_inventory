@@ -42,6 +42,7 @@ graph TD
 | Area | Current behavior | Key files |
 | --- | --- | --- |
 | Authentication | Better Auth email/password sessions; public sign-up disabled; generic admin operations unroutable | `lib/server/auth.ts`, `app/api/auth/[...all]/route.ts` |
+| Idle session logout | Authenticated shell signs out after 10 minutes without keyboard, pointer, touch, scroll, or visible-tab activity; timestamps synchronize across same-origin tabs | `components/idle-session-logout.tsx`, `lib/idle-session.ts` |
 | Internal credentials | Server-only unmounted Better Auth Admin-plugin engine exposing only guarded staff `createUser`/`setUserPassword` primitives | `lib/server/internal-user-auth.ts` |
 | Page protection | Proxy validates sessions, reloads persisted capabilities and UserLocation assignments, maps the first path segment to a named capability, and redirects unauthenticated requests to `/sign-in` or forbidden requests to `/access-denied` | `proxy.ts`, `app/access-denied/page.tsx` |
 | Authorization | Reloaded action capabilities plus explicit `isOwner` and UserLocation assignments; owner/`locations:all` reaches every active location, restricted empty assignments fail closed | `lib/contracts/roles.ts`, `lib/server/policy/access.ts`, `lib/server/authorization.ts` |
