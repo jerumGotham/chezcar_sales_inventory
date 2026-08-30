@@ -164,45 +164,58 @@ function RoleEditor({
                   : "Select All"}
               </Button>
             </div>
-            {capabilityGroups.map(([module, capabilities]) => (
-              <fieldset key={module} className="rounded-xl border p-4">
-                <legend className="px-1 text-sm font-semibold">{module}</legend>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={mutation.isPending}
-                  onClick={() => {
-                    const ids = capabilities.map((capability) => capability.id);
-                    const allSelected = ids.every((id) => permissions.includes(id));
-                    setPermissions((current) =>
-                      allSelected
-                        ? current.filter((id) => !ids.includes(id))
-                        : [...new Set([...current, ...ids])],
-                    );
-                  }}
-                >
-                  {capabilities.every((capability) => permissions.includes(capability.id))
-                    ? "Clear group"
-                    : "Select group"}
-                </Button>
-                <div className="grid gap-3 pt-2 md:grid-cols-2">
-                  {capabilities.map((capability) => (
-                    <label
-                      key={capability.id}
-                      className="flex items-center gap-3 text-sm"
-                    >
+            {capabilityGroups.map(([module, capabilities]) => {
+              const groupIds = capabilities.map((capability) => capability.id);
+              const selectedCount = groupIds.filter((id) =>
+                permissions.includes(id),
+              ).length;
+              const allSelected = selectedCount === groupIds.length;
+
+              return (
+                <fieldset key={module} className="rounded-xl border p-4">
+                  <legend className="sr-only">{module}</legend>
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
+                    <div>
+                      <h4 className="text-sm font-semibold">{module}</h4>
+                      <p className="text-muted-foreground text-xs">
+                        {selectedCount} of {groupIds.length} selected
+                      </p>
+                    </div>
+                    <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
                       <Checkbox
-                        checked={permissions.includes(capability.id)}
+                        checked={allSelected}
+                        indeterminate={selectedCount > 0 && !allSelected}
                         disabled={mutation.isPending}
-                        onCheckedChange={() => togglePermission(capability.id)}
+                        aria-label={`Select all ${module} permissions`}
+                        onCheckedChange={() =>
+                          setPermissions((current) =>
+                            allSelected
+                              ? current.filter((id) => !groupIds.includes(id))
+                              : [...new Set([...current, ...groupIds])],
+                          )
+                        }
                       />
-                      {capability.label}
+                      Select all
                     </label>
-                  ))}
-                </div>
-              </fieldset>
-            ))}
+                  </div>
+                  <div className="grid gap-3 pt-4 md:grid-cols-2">
+                    {capabilities.map((capability) => (
+                      <label
+                        key={capability.id}
+                        className="flex items-center gap-3 text-sm"
+                      >
+                        <Checkbox
+                          checked={permissions.includes(capability.id)}
+                          disabled={mutation.isPending}
+                          onCheckedChange={() => togglePermission(capability.id)}
+                        />
+                        {capability.label}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              );
+            })}
           </div>
           {error && (
             <p role="alert" className="text-destructive text-sm">
