@@ -54,6 +54,10 @@ function RoleEditor({
   const assignableCapabilities = ASSIGNABLE_CAPABILITY_CATALOG.filter((capability) =>
     grantableCapabilities.includes(capability.id),
   );
+  const assignableIds = assignableCapabilities.map((capability) => capability.id);
+  const selectedAssignableCount = permissions.filter((permission) =>
+    assignableIds.includes(permission),
+  ).length;
   const capabilityGroups = Array.from(
     assignableCapabilities.reduce((groups, capability) => {
       const items = groups.get(capability.module) ?? [];
@@ -140,7 +144,7 @@ function RoleEditor({
               <div>
                 <h3 className="font-semibold">Permissions</h3>
                 <p className="text-muted-foreground text-sm">
-                  {permissions.length} selected. Action permissions automatically
+                  {selectedAssignableCount} selected. Action permissions automatically
                   include the module view needed to use them.
                 </p>
               </div>
@@ -151,15 +155,13 @@ function RoleEditor({
                 disabled={mutation.isPending}
                 onClick={() =>
                   setPermissions(
-                    permissions.length === assignableCapabilities.length
-                      ? []
-                      : assignableCapabilities.map(
-                          (capability) => capability.id,
-                        ),
+                    selectedAssignableCount === assignableCapabilities.length
+                      ? permissions.filter((permission) => !assignableIds.includes(permission))
+                      : Array.from(new Set([...permissions, ...assignableIds])),
                   )
                 }
               >
-                {permissions.length === assignableCapabilities.length
+                {selectedAssignableCount === assignableCapabilities.length
                   ? "Clear All"
                   : "Select All"}
               </Button>

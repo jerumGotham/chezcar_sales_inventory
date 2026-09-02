@@ -87,7 +87,7 @@ export function canAccessTransferRecord(
   return canAccessLocation(actor, sourceId) || canAccessLocation(actor, destinationId);
 }
 function canViewTransferAudit(actor: AuthContext) {
-  return actor.capabilities.includes("stock-transfers:audit:view");
+  return actor.isOwner;
 }
 function assertVersion(actual: number, expected: number) {
   if (actual !== expected)
@@ -418,7 +418,10 @@ export async function deleteDraftTransfer(actor: AuthContext, id: string) {
   await assertSourceActor(actor);
   await prisma.$transaction(
     async (tx) => {
-      const transfer = await tx.stockTransfer.findUnique({ where: { id } });
+      const transfer = await tx.stockTransfer.findUnique({
+        where: { id },
+        include: { destination: { select: { name: true } } },
+      });
       if (!transfer)
         throw new TransferError("NOT_FOUND", "Transfer not found", 404);
       if (transfer.status !== "DRAFT" && transfer.status !== "FOR_DISPATCH")
@@ -426,8 +429,25 @@ export async function deleteDraftTransfer(actor: AuthContext, id: string) {
           "INVALID_STATE",
           "Only draft or ready for dispatch transfers can be deleted",
         );
+      const recipients = await tx.user.findMany({
+        where: {
+          status: "ACTIVE",
+          OR: [{ id: actor.userId }, { accessRole: { isOwner: true } }],
+        },
+        select: { id: true },
+      });
       await tx.stockTransferLine.deleteMany({ where: { transferId: id } });
       await tx.stockTransfer.delete({ where: { id } });
+      await createNotifications(
+        tx,
+        recipients.map((recipient) => ({
+          userId: recipient.id,
+          title: "Transfer draft deleted",
+          description: `${transfer.reference} to ${transfer.destination.name} was deleted.`,
+          type: "INFO",
+        })),
+      );
+      return { id };
     },
     { isolationLevel: "Serializable" },
   );

@@ -62,14 +62,19 @@ export const CAPABILITY_CATALOG = [
   { id: "branches:view", module: "Administration", label: "View branches" },
   { id: "branches:create", module: "Administration", label: "Add branches" },
   { id: "branches:update", module: "Administration", label: "Edit branches" },
-  { id: "roles:view", module: "Administration", label: "View roles" },
-  { id: "roles:create", module: "Administration", label: "Add roles" },
-  { id: "roles:update", module: "Administration", label: "Edit roles" },
+  { id: "roles:view", module: "Role Permissions", label: "View roles" },
+  { id: "roles:create", module: "Role Permissions", label: "Add roles" },
+  { id: "roles:update", module: "Role Permissions", label: "Edit roles" },
 ] as const;
 
 export type CapabilityId = (typeof CAPABILITY_CATALOG)[number]["id"];
 export const CAPABILITY_IDS = CAPABILITY_CATALOG.map((item) => item.id) as readonly CapabilityId[];
-export const ASSIGNABLE_CAPABILITY_CATALOG = CAPABILITY_CATALOG;
+export const ASSIGNABLE_CAPABILITY_CATALOG = CAPABILITY_CATALOG.filter(
+  ({ id }) =>
+    id !== "offline-sales:snapshot" &&
+    id !== "offline-sales:sync" &&
+    id !== "stock-transfers:audit:view",
+);
 const capabilitySchema = z.enum(CAPABILITY_IDS as [CapabilityId, ...CapabilityId[]]);
 
 const roleNameSchema = z.string().trim().min(1).max(120);

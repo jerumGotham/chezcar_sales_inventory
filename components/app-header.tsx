@@ -75,6 +75,7 @@ export function AppHeader({
   const [pushState, setPushState] = useState<"unsupported" | "unavailable" | "default" | "denied" | "subscribed" | "pending">("unavailable");
   const menuRef = useRef<HTMLDivElement>(null);
   const seenNotificationIds = useRef(new Set<string>());
+  const notificationsInitialized = useRef(false);
   const notificationsQuery = useQuery({
     queryKey: ["notifications"],
     queryFn: fetchHeaderNotifications,
@@ -187,8 +188,9 @@ export function AppHeader({
     const notifications = notificationsQuery.data;
     if (!notifications) return;
 
-    if (seenNotificationIds.current.size === 0) {
+    if (!notificationsInitialized.current) {
       notifications.forEach((notification) => seenNotificationIds.current.add(notification.id));
+      notificationsInitialized.current = true;
       return;
     }
 

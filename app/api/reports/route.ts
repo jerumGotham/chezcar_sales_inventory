@@ -20,7 +20,7 @@ export async function GET(request: Request) {
         `Transactions: ${summary.sales.transactionCount}`,
         `Accounting unverified: ${summary.accounting.unverified}`,
         `Accounting verified: ${summary.accounting.verified}`,
-        `Accounting flagged: ${summary.accounting.flagged}`,
+        `Accounting mismatches: ${summary.accounting.flagged}`,
         `Open orders: ${summary.orders.open}`,
         `Inventory rows: ${summary.inventory.length}`,
       ].join("\n");

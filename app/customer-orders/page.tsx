@@ -14,6 +14,7 @@ import {
   ShoppingBag,
   Clock3,
   CheckCircle2,
+  Eye,
   Wallet,
 } from "lucide-react";
 import {
@@ -97,6 +98,13 @@ type DirectSaleRow = {
   postedAt: string;
   postedBy: string;
   reviewStatus: string;
+  lines: Array<{
+    productId: string;
+    itemCode: string;
+    name: string;
+    quantity: number;
+    unitPrice: number;
+  }>;
 };
 
 const ORDER_STATUS_OPTIONS: SelectOption[] = [
@@ -321,6 +329,7 @@ export default function CustomerOrdersPage() {
   const pageSize = 10;
   const [saleSearch, setSaleSearch] = useState("");
   const [salePage, setSalePage] = useState(1);
+  const [selectedSale, setSelectedSale] = useState<DirectSaleRow | null>(null);
 
   const { data, isLoading, isFetching, error: ordersError } = useQuery({
     queryKey: [
@@ -1086,6 +1095,7 @@ export default function CustomerOrdersPage() {
       </Dialog>
         </>
       ) : (
+        <>
         <Card>
           <CardContent className="p-0">
             <div className="flex flex-col gap-4 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1116,15 +1126,16 @@ export default function CustomerOrdersPage() {
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Payment</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Review</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Posted</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {directSalesQuery.isLoading ? (
-                    <tr><td colSpan={8} className="px-5 py-16 text-center text-slate-500">Loading direct sales...</td></tr>
+                    <tr><td colSpan={9} className="px-5 py-16 text-center text-slate-500">Loading direct sales...</td></tr>
                   ) : directSalesQuery.isError ? (
-                    <tr><td colSpan={8} className="px-5 py-16 text-center text-rose-600">Unable to load direct sales.</td></tr>
+                    <tr><td colSpan={9} className="px-5 py-16 text-center text-rose-600">Unable to load direct sales.</td></tr>
                   ) : paginatedSales.length === 0 ? (
-                    <tr><td colSpan={8} className="px-5 py-16 text-center text-slate-500">No direct sales found.</td></tr>
+                    <tr><td colSpan={9} className="px-5 py-16 text-center text-slate-500">No direct sales found.</td></tr>
                   ) : (
                     paginatedSales.map((sale) => (
                       <tr key={sale.id} className="border-b transition-colors hover:bg-slate-50">
@@ -1141,6 +1152,11 @@ export default function CustomerOrdersPage() {
                           <Badge className={sale.reviewStatus === "VERIFIED" ? getPaymentStatusBadgeClass("Paid") : getPaymentStatusBadgeClass("Partial")}>{sale.reviewStatus}</Badge>
                         </td>
                         <td className="px-5 py-4 text-sm text-slate-600">{formatDate(sale.postedAt)}</td>
+                        <td className="px-5 py-4">
+                          <Button size="sm" variant="view" onClick={() => setSelectedSale(sale)}>
+                            <Eye className="mr-2 h-4 w-4" /> View
+                          </Button>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -1162,6 +1178,59 @@ export default function CustomerOrdersPage() {
             </div>
           </CardContent>
         </Card>
+        <Dialog open={Boolean(selectedSale)} onOpenChange={(open) => !open && setSelectedSale(null)}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Direct Sale Details</DialogTitle>
+              <DialogDescription>
+                Receipt, payment, and purchased-item details for this sale.
+              </DialogDescription>
+            </DialogHeader>
+            {selectedSale ? (
+              <div className="space-y-5">
+                <div className="grid gap-3 rounded-lg border p-4 text-sm sm:grid-cols-2">
+                  <div><p className="text-slate-500">Receipt</p><p className="font-medium">{selectedSale.manualReceiptNumber}</p></div>
+                  <div><p className="text-slate-500">Reference</p><p className="font-medium">{selectedSale.reference}</p></div>
+                  <div><p className="text-slate-500">Customer</p><p className="font-medium">{selectedSale.customer}</p></div>
+                  <div><p className="text-slate-500">Branch</p><p className="font-medium">{selectedSale.branch}</p></div>
+                  <div><p className="text-slate-500">Payment</p><p className="font-medium">{selectedSale.paymentMethod}</p></div>
+                  <div><p className="text-slate-500">Posted</p><p className="font-medium">{formatDate(selectedSale.postedAt)} by {selectedSale.postedBy}</p></div>
+                </div>
+                <div className="overflow-x-auto rounded-lg border">
+                  <table className="w-full min-w-[620px]">
+                    <thead className="bg-slate-50">
+                      <tr className="border-b">
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Item</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-slate-500">Quantity</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-slate-500">Unit Price</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-slate-500">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedSale.lines.map((line) => (
+                        <tr key={`${line.productId}-${line.itemCode}`} className="border-b last:border-b-0">
+                          <td className="px-4 py-3 text-sm"><p className="font-medium">{line.name}</p><p className="text-xs text-slate-500">{line.itemCode}</p></td>
+                          <td className="px-4 py-3 text-right text-sm">{line.quantity}</td>
+                          <td className="px-4 py-3 text-right text-sm">{formatPeso(line.unitPrice)}</td>
+                          <td className="px-4 py-3 text-right text-sm font-medium">{formatPeso(line.quantity * line.unitPrice)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="ml-auto max-w-sm space-y-2 rounded-lg bg-slate-50 p-4 text-sm">
+                  <div className="flex justify-between gap-4"><span className="text-slate-500">Discount</span><span>{formatPeso(selectedSale.discountAmount)}</span></div>
+                  <div className="flex justify-between gap-4"><span className="text-slate-500">Amount paid</span><span>{formatPeso(selectedSale.amountPaid)}</span></div>
+                  <div className="flex justify-between gap-4 border-t pt-2 font-semibold"><span>Total</span><span>{formatPeso(selectedSale.totalAmount)}</span></div>
+                </div>
+              </div>
+            ) : null}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setSelectedSale(null)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        </>
       )}
     </PageShell>
   );

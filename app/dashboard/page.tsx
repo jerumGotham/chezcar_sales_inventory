@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import type { Route } from "next";
 import { AlertTriangle, ArrowLeftRight, Bell, ClipboardList, Loader2, Package, ReceiptText, ShieldCheck, TrendingUp, Warehouse } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
@@ -25,6 +26,7 @@ type DashboardResponse = {
     agedOrders: number;
     availableStock: number;
     lowStockCount: number;
+    lowStockBranchCount: number;
     outOfStockCount: number;
     inactiveWithStockCount: number;
     supplierReceiptsToday: number;
@@ -71,10 +73,10 @@ export default function DashboardPage() {
            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
              {summary.capabilities.includes("locations:all") && summary.capabilities.includes("sales:post") ? (
                <>
-                 <MetricCard icon={<TrendingUp className="h-5 w-5 text-emerald-600" />} label="Today Sales" value={formatPeso(summary.todaySales)} hint={`${summary.todayTransactions} transaction(s) today`} />
-                 <MetricCard icon={<ReceiptText className="h-5 w-5 text-sky-600" />} label="Today Transactions" value={String(summary.todayTransactions)} hint="Posted sales today" />
-                 <MetricCard icon={<TrendingUp className="h-5 w-5 text-indigo-600" />} label="Month-to-Date Sales" value={formatPeso(summary.monthSales)} hint={`${summary.monthTransactions} posted transaction(s)`} />
-                 <MetricCard icon={<ClipboardList className="h-5 w-5 text-violet-600" />} label="Open Reservations" value={String(summary.openOrders)} hint={`${summary.readyOrders} ready for release`} />
+                  <MetricCard href="/customer-orders?view=sales" icon={<TrendingUp className="h-5 w-5 text-emerald-600" />} label="Today Sales" value={formatPeso(summary.todaySales)} hint={`${summary.todayTransactions} transaction(s) today`} />
+                  <MetricCard href="/customer-orders?view=sales" icon={<ReceiptText className="h-5 w-5 text-sky-600" />} label="Today Transactions" value={String(summary.todayTransactions)} hint="Posted sales today" />
+                  <MetricCard href="/reports" icon={<TrendingUp className="h-5 w-5 text-indigo-600" />} label="Month-to-Date Sales" value={formatPeso(summary.monthSales)} hint={`${summary.monthTransactions} posted transaction(s)`} />
+                  <MetricCard href="/inventory" icon={<AlertTriangle className="h-5 w-5 text-amber-600" />} label="Low-Stock Branches" value={String(summary.lowStockBranchCount)} hint={`${summary.lowStockCount} low-stock item-location row(s)`} />
                </>
               ) : summary.capabilities.includes("inventory-receiving:create") && !summary.capabilities.includes("sales:post") ? (
                <>
@@ -157,7 +159,7 @@ export default function DashboardPage() {
               <CardContent className="p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-base font-semibold">Low / Out Stock</h2>
+                     <h2 className="text-base font-semibold">Low Stock by Branch</h2>
                    <p className="text-sm text-slate-500">{summary.outOfStockCount} out of stock, {summary.lowStockCount} at or below reorder level.</p>
                   </div>
                   <Link href="/inventory" className={buttonVariants({ variant: "view", size: "sm" })}>Inventory</Link>
@@ -166,7 +168,7 @@ export default function DashboardPage() {
                   {summary.lowStock.length === 0 ? <p className="text-sm text-slate-500">No low-stock rows in scope.</p> : summary.lowStock.map((item) => (
                     <div key={`${item.itemCode}-${item.location}`} className="rounded-xl border p-3">
                       <div className="flex items-center justify-between gap-3">
-                        <div><p className="font-medium">{item.name}</p><p className="text-xs text-slate-500">{item.itemCode} • {item.location}</p></div>
+                         <div><p className="font-medium">{item.location}</p><p className="text-sm text-slate-700">{item.itemCode} - {item.name}</p></div>
                         <Badge variant="outline">{item.available} / {item.reorderLevel}</Badge>
                       </div>
                     </div>
@@ -205,6 +207,7 @@ export default function DashboardPage() {
   );
 }
 
-function MetricCard({ icon, label, value, hint }: { icon: React.ReactNode; label: string; value: string; hint: string }) {
-  return <Card><CardContent className="flex items-start justify-between gap-4 p-5"><div><p className="text-sm text-slate-500">{label}</p><p className="mt-3 text-2xl font-bold">{value}</p><p className="mt-2 text-sm text-slate-500">{hint}</p></div><div className="rounded-full bg-slate-50 p-2">{icon}</div></CardContent></Card>;
+function MetricCard({ icon, label, value, hint, href }: { icon: React.ReactNode; label: string; value: string; hint: string; href?: Route }) {
+  const card = <Card className={href ? "h-full transition-colors hover:border-emerald-300 hover:bg-emerald-50/30" : undefined}><CardContent className="flex items-start justify-between gap-4 p-5"><div><p className="text-sm text-slate-500">{label}</p><p className="mt-3 text-2xl font-bold">{value}</p><p className="mt-2 text-sm text-slate-500">{hint}</p></div><div className="rounded-full bg-slate-50 p-2">{icon}</div></CardContent></Card>;
+  return href ? <Link href={href} className="block h-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">{card}</Link> : card;
 }

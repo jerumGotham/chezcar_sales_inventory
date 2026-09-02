@@ -5,14 +5,13 @@ import { FileText, Loader2 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { useCan } from "@/components/shell-access-context";
-import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
 type ReportsResponse = {
   data: {
-    sales: { totalSales: number; transactionCount: number; rows: Array<{ id: string; manualReceiptNumber: string; branch: string; customer: string; totalAmount: number; reviewStatus: string }> };
-    accounting: { unverified: number; verified: number; flagged: number; flaggedRows: Array<{ id: string; manualReceiptNumber: string; branch: string; customer: string }> };
+    sales: { totalSales: number; transactionCount: number; rows: Array<{ id: string; source: "Direct Sale" | "Customer Order"; manualReceiptNumber: string; branch: string; customer: string; totalAmount: number; reviewStatus: string }> };
+    accounting: { unverified: number; verified: number; flagged: number; flaggedRows: Array<{ id: string; manualReceiptNumber: string; branch: string; customer: string; totalAmount: number; mismatchCategory: string | null }> };
     orders: { open: number; rows: Array<{ id: string; orderNo: string; customer: string; status: string; balance: number }> };
     inventory: Array<{ itemCode: string; name: string; location: string; onHand: number; reserved: number; available: number; reorderLevel: number }>;
   };
@@ -34,7 +33,7 @@ export default function ReportsPage() {
   const reports = data?.data;
 
   return (
-    <PageShell title="Reports" subtitle="Read-only live summaries for Sales, Accounting/Reconciliation, Orders, and authorized Inventory.">
+    <PageShell title="Reports" subtitle="Read-only summaries for Sales, Accounting/Reconciliation, Orders, and authorized Inventory.">
       {isLoading ? (
         <Card><CardContent className="flex items-center gap-2 p-6 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading reports...</CardContent></Card>
       ) : error || !reports ? (
@@ -54,8 +53,8 @@ export default function ReportsPage() {
           </div>
 
           <div className="grid min-w-0 gap-6 xl:grid-cols-2">
-            <ReportTable title="Receipt-Level Sales" rows={reports.sales.rows.slice(0, 10).map((sale) => [sale.manualReceiptNumber, sale.branch, sale.customer, formatPeso(sale.totalAmount), sale.reviewStatus])} headers={["Receipt", "Branch", "Customer", "Total", "Review"]} />
-            <ReportTable title="Flagged Accounting Detail" rows={reports.accounting.flaggedRows.slice(0, 10).map((sale) => [sale.manualReceiptNumber, sale.branch, sale.customer])} headers={["Receipt", "Branch", "Customer"]} />
+            <ReportTable title="Customer Sales" rows={reports.sales.rows.filter((sale) => sale.source === "Direct Sale").slice(0, 10).map((sale) => [sale.manualReceiptNumber, sale.branch, sale.customer, formatPeso(sale.totalAmount), sale.reviewStatus])} headers={["Receipt", "Branch", "Customer", "Total", "Review"]} />
+            <ReportTable title="Mismatch Sales" rows={reports.accounting.flaggedRows.slice(0, 10).map((sale) => [sale.manualReceiptNumber, sale.branch, sale.customer, sale.mismatchCategory ?? "Mismatch", formatPeso(sale.totalAmount)])} headers={["Receipt", "Branch", "Customer", "Mismatch", "Total"]} />
             <ReportTable title="Customer Orders" rows={reports.orders.rows.slice(0, 10).map((order) => [order.orderNo, order.customer, order.status, formatPeso(order.balance)])} headers={["Order", "Customer", "Status", "Balance"]} />
             <ReportTable title="Inventory Summary" rows={reports.inventory.slice(0, 10).map((item) => [item.itemCode, item.name, item.location, String(item.onHand), String(item.reserved), String(item.available)])} headers={["Code", "Name", "Location", "On Hand", "Reserved", "Available"]} />
           </div>
@@ -73,7 +72,7 @@ function ReportTable({ title, headers, rows }: { title: string; headers: string[
   return (
     <Card className="min-w-0">
       <CardContent className="min-w-0 p-5">
-        <div className="mb-4 flex items-center justify-between gap-3"><h2 className="font-semibold">{title}</h2><Badge variant="outline">Live DB</Badge></div>
+        <div className="mb-4"><h2 className="font-semibold">{title}</h2></div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[560px] text-sm">
             <thead><tr className="border-b">{headers.map((header) => <th key={header} className="px-3 py-2 text-left font-medium text-slate-500">{header}</th>)}</tr></thead>

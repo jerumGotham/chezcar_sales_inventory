@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -85,6 +86,10 @@ type TransferPage = {
 function getTransferStatusLabel(status: string) {
   return status === "FOR_DISPATCH"
     ? "Ready for dispatch"
+    : status === "DISCREPANCY_REPORTED"
+      ? "Receiving issue"
+      : status === "UNDER_REVIEW"
+        ? "Under investigation"
     : status.replaceAll("_", " ");
 }
 
@@ -151,12 +156,15 @@ export function StockTransfersClient({
   branches,
   products,
   initialTransferId,
+  isAdmin,
 }: {
   capabilities: ReadonlyArray<CapabilityId>;
   branches: Option[];
   products: Product[];
   initialTransferId?: string;
+  isAdmin: boolean;
 }) {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const canCreate = capabilities.includes("stock-transfers:create");
   const canUpdate = capabilities.includes("stock-transfers:update");
@@ -169,7 +177,8 @@ export function StockTransfersClient({
   );
   const canInvestigate = capabilities.includes("stock-transfers:investigate");
   const canResolve = capabilities.includes("stock-transfers:resolve");
-  const canAudit = capabilities.includes("stock-transfers:audit:view");
+  const canAudit = isAdmin;
+  const [transferIdFilter, setTransferIdFilter] = useState(initialTransferId);
   const [selectedTransferId, setSelectedTransferId] = useState(
     initialTransferId ?? "",
   );
@@ -202,20 +211,32 @@ export function StockTransfersClient({
   }
 
   const transfers = useQuery({
-    queryKey: ["stock-transfers", { page, pageSize, initialTransferId }],
-    queryFn: () => fetchTransferPage(page, pageSize, initialTransferId),
+    queryKey: ["stock-transfers", { page, pageSize, transferId: transferIdFilter }],
+    queryFn: () => fetchTransferPage(page, pageSize, transferIdFilter),
     placeholderData: (previousData) => previousData,
   });
   const selected = selectedTransferId
     ? (transfers.data?.data.find((transfer) => transfer.id === selectedTransferId) ??
       null)
     : null;
-  const rememberTransfer = (transfer: Transfer) => {
+  const rememberTransfer = (transfer: Transfer, clearFilter = false) => {
+    const nextPage = clearFilter ? 1 : page;
+    const nextTransferId = clearFilter ? undefined : transferIdFilter;
+    if (clearFilter) {
+      setPage(1);
+      setTransferIdFilter(undefined);
+      router.replace("/stock-transfers", { scroll: false });
+    }
     setSelectedTransferId(transfer.id);
     queryClient.setQueryData<TransferPage>(
-      ["stock-transfers", { page, pageSize, initialTransferId }],
+      ["stock-transfers", { page: nextPage, pageSize, transferId: nextTransferId }],
       (current) => {
-        if (!current) return current;
+        if (!current) {
+          return {
+            data: [transfer],
+            meta: { page: nextPage, pageSize, total: 1, totalPages: 1 },
+          };
+        }
         const exists = current.data.some((item) => item.id === transfer.id);
         return {
           ...current,
@@ -272,7 +293,7 @@ export function StockTransfersClient({
         {},
       );
     },
-    onSuccess: () => {
+    onSuccess: (_, { transferId }) => {
       notify("Draft deleted successfully.");
       setSelectedTransferId("");
       setDestinationId("");
@@ -281,6 +302,20 @@ export function StockTransfersClient({
       setNotes("");
       setActualQuantities({});
       setShortageResolutions({});
+      queryClient.setQueriesData<TransferPage>(
+        { queryKey: ["stock-transfers"] },
+        (current) =>
+          current
+            ? {
+                ...current,
+                data: current.data.filter((transfer) => transfer.id !== transferId),
+                meta: {
+                  ...current.meta,
+                  total: Math.max(0, current.meta.total - 1),
+                },
+              }
+            : current,
+      );
       queryClient.invalidateQueries({ queryKey: ["stock-transfers"] });
     },
     onError: (error: Error) => notify(error.message, "error"),
@@ -302,10 +337,10 @@ export function StockTransfersClient({
         body,
       );
     },
-    onSuccess: (transfer) => {
+    onSuccess: (transfer, { action }) => {
       notify("Transfer created successfully.");
       setValidationErrors([]);
-      rememberTransfer(transfer);
+      rememberTransfer(transfer, action === "create");
       setEditLines(
         (transfer.lines ?? []).map((line) => ({
           productId: line.product.id,
@@ -836,8 +871,9 @@ export function StockTransfersClient({
                 <tr className="text-left">
                   <th>Product</th>
                   <th>Sent</th>
-                  <th>In transit</th>
-                  <th>Reported</th>
+                  <th>Received by branch</th>
+                  <th>Missing / affected</th>
+                  <th>Issue</th>
                 </tr>
               </thead>
               <tbody>
@@ -847,8 +883,20 @@ export function StockTransfersClient({
                       {line.product.itemCode} - {line.product.name}
                     </td>
                     <td>{line.dispatchedQuantity || line.requestedQuantity}</td>
-                    <td>{line.inTransitQuantity}</td>
-                    <td>{line.discrepancy?.actualQuantity ?? "-"}</td>
+                    <td>
+                      {line.discrepancy?.actualQuantity ??
+                        (selected.status === "RECEIVED"
+                          ? line.dispatchedQuantity
+                          : "-")}
+                    </td>
+                    <td>
+                      {line.discrepancy
+                        ? line.dispatchedQuantity - line.discrepancy.actualQuantity
+                        : selected.status === "RECEIVED"
+                          ? 0
+                          : "-"}
+                    </td>
+                    <td>{line.discrepancy?.reason ?? "No issue"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -856,7 +904,7 @@ export function StockTransfersClient({
 
             {selected.discrepancy && (
               <p className="text-sm">
-                <b>Branch report:</b> {selected.discrepancy.notes}
+                <b>Receiving issue:</b> {selected.discrepancy.notes}
               </p>
             )}
             {selected.investigation && (

@@ -37,6 +37,7 @@ export default async function StockTransfersPage({
       branches={branches}
       products={products}
       initialTransferId={transferId}
+      isAdmin={access.identity.isOwner}
     />
   );
 }

@@ -953,7 +953,7 @@ export async function getDashboardSummary(actor: AuthContext) {
     prisma.customerOrder.count({ where: { ...scopedOrders, createdAt: { lt: agedOrderDate }, status: { in: ["RESERVED", "WAITING_STOCK", "READY_FOR_RELEASE"] } } }),
     prisma.inventoryBalance.findMany({
       where: inventoryScope,
-      include: { product: { select: { itemCode: true, name: true, status: true, reorderLevel: true } }, location: { select: { name: true } } },
+      include: { product: { select: { itemCode: true, name: true, status: true, reorderLevel: true } }, location: { select: { name: true, type: true } } },
     }),
     prisma.stockReceipt.count({ where: { locationId: locationIdFilter(actor), receivedAt: { gte: today } } }),
     prisma.stockTransfer.count({ where: { ...transferScope, status: "DRAFT" } }),
@@ -969,6 +969,15 @@ export async function getDashboardSummary(actor: AuthContext) {
     .map((balance) => ({ itemCode: balance.product.itemCode, name: balance.product.name, location: balance.location.name, available: balance.onHand - balance.reserved, reorderLevel: balance.product.reorderLevel }));
   const availableStock = lowBalances.reduce((sum, balance) => sum + Math.max(0, balance.onHand - balance.reserved), 0);
   const lowStockCount = lowBalances.filter((balance) => balance.onHand - balance.reserved <= balance.product.reorderLevel).length;
+  const lowStockBranchCount = new Set(
+    lowBalances
+      .filter(
+        (balance) =>
+          balance.location.type === "BRANCH" &&
+          balance.onHand - balance.reserved <= balance.product.reorderLevel,
+      )
+      .map((balance) => balance.locationId),
+  ).size;
   const outOfStockCount = lowBalances.filter((balance) => balance.onHand - balance.reserved <= 0).length;
   const inactiveWithStockCount = lowBalances.filter((balance) => balance.product.status === "INACTIVE" && balance.onHand > 0).length;
   const trendByDate = new Map<string, { date: string; sales: number; transactions: number }>();
@@ -1005,6 +1014,7 @@ export async function getDashboardSummary(actor: AuthContext) {
     agedOrders,
     availableStock,
     lowStockCount,
+    lowStockBranchCount,
     outOfStockCount,
     inactiveWithStockCount,
     supplierReceiptsToday,
@@ -1070,5 +1080,5 @@ function parseReportedComparison(comparisonJson: string | null | undefined) {
 }
 
 function serializeSale(sale: Prisma.SaleGetPayload<{ include: typeof SALE_INCLUDE }>) {
-  return { id: sale.id, reference: sale.reference, manualReceiptNumber: sale.manualReceiptNumber, receiptBooklet: (sale as unknown as { receiptBooklet: string }).receiptBooklet ?? "", version: (sale as unknown as { version: number }).version ?? 1, branch: sale.location.name, customer: sale.customer?.name ?? "Guest", totalAmount: serializeMoney(sale.totalAmount), discountAmount: serializeMoney(sale.discountAmount), amountPaid: serializeMoney(sale.amountPaid), paymentMethod: sale.paymentMethod, status: sale.status, postedAt: sale.postedAt.toISOString(), postedBy: sale.postedBy.name, reviewStatus: sale.accountingReview?.status ?? "UNVERIFIED", mismatchCategory: sale.accountingReview?.mismatchCategory ?? null, reviewNotes: sale.accountingReview?.notes ?? null, reportedComparison: parseReportedComparison(sale.accountingReview?.comparisonJson), branchResponse: sale.accountingReview?.branchResponse ?? null, branchResponseNote: sale.accountingReview?.branchResponseNote ?? null, branchReplacementReceiptNumber: sale.accountingReview?.branchReplacementReceiptNumber ?? null, branchRespondedAt: sale.accountingReview?.branchRespondedAt?.toISOString() ?? null, receiptPhotoUrl: sale.accountingReview?.receiptPhotoKey ? `/api/accounting/receipts/${sale.id}/photo` : null, reviewedAt: sale.accountingReview?.reviewedAt?.toISOString() ?? null, resolutionAction: sale.accountingReview?.resolutionAction ?? null, resolutionNote: sale.accountingReview?.resolutionNote ?? null, resolvedAt: sale.accountingReview?.resolvedAt?.toISOString() ?? null, correctionOfId: sale.correctionOfId ?? null, lines: sale.lines.map((line) => ({ productId: line.productId, itemCode: line.productItemCode, name: line.productName, quantity: line.quantity, unitPrice: serializeMoney(line.unitPrice) })) };
+  return { id: sale.id, reference: sale.reference, source: sale.orderId ? "Customer Order" : "Direct Sale", manualReceiptNumber: sale.manualReceiptNumber, receiptBooklet: (sale as unknown as { receiptBooklet: string }).receiptBooklet ?? "", version: (sale as unknown as { version: number }).version ?? 1, branch: sale.location.name, customer: sale.customer?.name ?? "Guest", totalAmount: serializeMoney(sale.totalAmount), discountAmount: serializeMoney(sale.discountAmount), amountPaid: serializeMoney(sale.amountPaid), paymentMethod: sale.paymentMethod, status: sale.status, postedAt: sale.postedAt.toISOString(), postedBy: sale.postedBy.name, reviewStatus: sale.accountingReview?.status ?? "UNVERIFIED", mismatchCategory: sale.accountingReview?.mismatchCategory ?? null, reviewNotes: sale.accountingReview?.notes ?? null, reportedComparison: parseReportedComparison(sale.accountingReview?.comparisonJson), branchResponse: sale.accountingReview?.branchResponse ?? null, branchResponseNote: sale.accountingReview?.branchResponseNote ?? null, branchReplacementReceiptNumber: sale.accountingReview?.branchReplacementReceiptNumber ?? null, branchRespondedAt: sale.accountingReview?.branchRespondedAt?.toISOString() ?? null, receiptPhotoUrl: sale.accountingReview?.receiptPhotoKey ? `/api/accounting/receipts/${sale.id}/photo` : null, reviewedAt: sale.accountingReview?.reviewedAt?.toISOString() ?? null, resolutionAction: sale.accountingReview?.resolutionAction ?? null, resolutionNote: sale.accountingReview?.resolutionNote ?? null, resolvedAt: sale.accountingReview?.resolvedAt?.toISOString() ?? null, correctionOfId: sale.correctionOfId ?? null, lines: sale.lines.map((line) => ({ productId: line.productId, itemCode: line.productItemCode, name: line.productName, quantity: line.quantity, unitPrice: serializeMoney(line.unitPrice) })) };
 }

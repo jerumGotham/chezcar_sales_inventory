@@ -1145,31 +1145,41 @@ function ReceiptVerificationContent() {
                           : "Enter the quantity and unit price shown on the handwritten receipt."}
                       </p>
                       <div className="mt-4 hidden grid-cols-[minmax(0,1fr)_100px_120px_40px] gap-2 px-1 text-xs font-medium uppercase tracking-wide text-slate-500 sm:grid">
-                        <span>Item code</span>
+                        <span>Item code - name</span>
                         <span>Quantity</span>
                         <span>Unit price</span>
                         <span />
                       </div>
                       <div className="mt-2 space-y-3">
                         {comparison.lines.map((line, index) => {
+                          const saleLine = selectedSale.lines.find(
+                            (item) => item.itemCode === line.itemCode,
+                          );
                           return (
                             <div
                               key={index}
                               className="grid gap-2 rounded-lg bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_100px_120px_40px] sm:bg-transparent sm:p-0"
                             >
-                              <Input
-                                aria-label={`Item code ${index + 1}`}
-                                placeholder="Item code"
-                                value={line.itemCode}
-                                onChange={(event) =>
-                                  setComparison((current) => ({
-                                    ...current,
-                                    lines: current.lines.map((item, itemIndex) =>
-                                      itemIndex === index ? { ...item, itemCode: event.target.value } : item,
-                                    ),
-                                  }))
-                                }
-                              />
+                              <div className="space-y-1">
+                                <Input
+                                  aria-label={`Item code ${index + 1}`}
+                                  placeholder="Item code"
+                                  value={line.itemCode}
+                                  onChange={(event) =>
+                                    setComparison((current) => ({
+                                      ...current,
+                                      lines: current.lines.map((item, itemIndex) =>
+                                        itemIndex === index ? { ...item, itemCode: event.target.value } : item,
+                                      ),
+                                    }))
+                                  }
+                                />
+                                {saleLine ? (
+                                  <p className="px-1 text-xs text-slate-500">
+                                    {saleLine.itemCode} - {saleLine.name}
+                                  </p>
+                                ) : null}
+                              </div>
                               <Input
                                 aria-label={`Quantity ${index + 1}`}
                                 placeholder="Quantity"
