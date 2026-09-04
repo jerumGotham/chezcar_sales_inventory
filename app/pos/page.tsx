@@ -1228,15 +1228,15 @@ function PosTab() {
           setIsCheckoutConfirmationOpen(open);
         }}
       >
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-3xl">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Confirm direct sale</DialogTitle>
             <DialogDescription>
               Review the exact sale details before posting. A posted sale cannot be directly edited or deleted.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid gap-3 rounded-xl border bg-muted/40 p-4 text-sm sm:grid-cols-2">
+          <div className="flex min-h-0 flex-1 flex-col gap-4">
+            <div className="grid shrink-0 gap-3 rounded-xl border bg-muted/40 p-4 text-sm sm:grid-cols-2">
               <div>
                 <p className="text-slate-500">Selling branch</p>
                 <p className="font-medium">{selectedLocation?.label ?? (access.authenticated ? access.scope.label : "Not selected")}</p>
@@ -1258,7 +1258,7 @@ function PosTab() {
                 <p className="font-medium">{receiptPhoto?.name ?? "Not attached"}</p>
               </div>
             </div>
-            <div className="overflow-x-auto rounded-xl border">
+            <div className="min-h-24 flex-1 overflow-auto rounded-xl border">
               <table className="w-full min-w-[620px]">
                 <thead className="bg-muted/40">
                   <tr className="border-b">
@@ -1280,18 +1280,18 @@ function PosTab() {
                 </tbody>
               </table>
             </div>
-            <div className="ml-auto max-w-sm space-y-2 rounded-xl bg-muted/40 p-4 text-sm">
+            <div className="ml-auto w-full max-w-sm shrink-0 space-y-2 rounded-xl bg-muted/40 p-4 text-sm">
               <div className="flex justify-between gap-4"><span className="text-slate-500">Subtotal</span><span>{formatPeso(subtotal)}</span></div>
               <div className="flex justify-between gap-4"><span className="text-slate-500">Discount</span><span>{formatPeso(discount)}</span></div>
               <div className="flex justify-between gap-4 border-t pt-2 font-semibold"><span>Total paid</span><span>{formatPeso(total)}</span></div>
             </div>
-            <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+            <div className="flex shrink-0 gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
               <AlertTriangle className="mt-0.5 size-5 shrink-0" />
               <p>Posting immediately deducts these quantities from branch inventory. If this is submitted by mistake, Branch can only report it for Admin review.</p>
             </div>
             {checkoutError ? <p className="text-sm font-medium text-red-600">{checkoutError}</p> : null}
           </div>
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button variant="outline" onClick={() => setIsCheckoutConfirmationOpen(false)} disabled={isCheckoutPending}>
               Back to sale
             </Button>
