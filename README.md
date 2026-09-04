@@ -16,7 +16,7 @@ The framework baseline was upgraded to Next.js `16.3.2`, React `19.2.8`, and Tai
 ## Key modules
 
 - **Dashboard** — sales summaries, trends, branch performance, pending orders, and low-stock views.
-- **Customers and products** — Products uses validated, authorized PostgreSQL list/maintenance APIs with private product-image upload and authenticated thumbnails; customer records and sales history are also durable.
+- **Customers and products** — Products uses validated, authorized PostgreSQL list/maintenance APIs with private product-image upload and authenticated thumbnails; customer records and sales history are also durable. POS can attach private handwritten-receipt photos after sale posting, and Accounting cannot verify a sale while that evidence is pending.
 - **Inventory** — the primary product/location list and Inventory Availability sheet use authorized PostgreSQL reads constrained to owner/all-location access or active `UserLocation` assignments. Supplier receiving is durable and SR-only; stock cards and adjustments remain prototypes.
 - **Customer and job orders** — list, create, detail, edit, and release-oriented prototype flows.
 - **Stock transfers** — durable SR-to-active-branch transfer ledger with exact receipt/discrepancy, investigation, and final resolution; real-time/offline/evidence uploads remain deferred.

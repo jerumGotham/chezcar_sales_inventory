@@ -12,6 +12,7 @@ import {
   removeReceiptEvidence,
   saveReceiptEvidence,
 } from "@/lib/server/services/receipt-evidence";
+import { notifyReceiptEvidenceUploaded } from "@/lib/server/services/receipt-evidence-notifications";
 
 type Context = { params: Promise<{ saleId: string }> };
 
@@ -33,7 +34,7 @@ export async function POST(request: Request, context: Context) {
     await assertEvidenceScope(actor, saleId);
     const review = await prisma.saleAccountingReview.findUnique({
       where: { saleId },
-      select: { id: true, status: true, resolvedAt: true },
+      select: { id: true, status: true, resolvedAt: true, receiptPhotoKey: true },
     });
     if (!review) throw new CustomerSalesError("NOT_FOUND", "Accounting review not found", 404);
     if (review.status === "VERIFIED" || review.resolvedAt) {
@@ -55,6 +56,10 @@ export async function POST(request: Request, context: Context) {
       await removeReceiptEvidence(evidence.key);
       throw new CustomerSalesError("INVALID_STATE", "Receipt evidence cannot be changed after review", 409);
     }
+    if (review.receiptPhotoKey && review.receiptPhotoKey !== evidence.key) {
+      await removeReceiptEvidence(review.receiptPhotoKey).catch(() => undefined);
+    }
+    await notifyReceiptEvidenceUploaded(saleId);
     return Response.json({ data: evidence });
   } catch (error) {
     if (error instanceof CustomerSalesError) return Response.json({ error: { code: error.code, message: error.message } }, { status: error.status });

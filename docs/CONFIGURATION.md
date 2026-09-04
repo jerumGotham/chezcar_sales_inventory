@@ -11,6 +11,7 @@ Copy the sanitized `.env.example` to an untracked `.env` and replace every place
 | --- | --- | --- | --- |
 | `DATABASE_URL` | Authenticated runtime and Prisma commands | None | PostgreSQL connection used by Prisma, Better Auth, and catalog/inventory reads. |
 | `PRODUCT_IMAGE_STORAGE_PATH` | Product image upload | `./data/product-images` | Private JPEG/PNG/WebP product-image directory. Mount persistent storage in deployed environments; files are served only through the authenticated product-image API. |
+| `RECEIPT_EVIDENCE_REMINDER_TIME` | Receipt evidence reminders | `19:00` | Daily 24-hour cutoff in Asia/Manila. A pending receipt gets at most one end-of-shift reminder after this time; branches without pending sales generate nothing. |
 | `BETTER_AUTH_SECRET` | Runtime | None | At least 32 random characters used to protect authentication state. Use a deployment secret. |
 | `BETTER_AUTH_URL` | Runtime | Application origin | Canonical application origin, such as `http://localhost:3000` locally. |
 | `BETTER_AUTH_TRUSTED_ORIGINS` | Runtime | Empty | Optional comma-separated additional browser origins for local LAN device testing. |

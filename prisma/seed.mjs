@@ -9,8 +9,7 @@ const TEST_DATABASE_URL =
   "postgresql://postgres:postgres@localhost:55435/chezcar_test_01_13?schema=public";
 const DEVELOPMENT_DATABASE_URL =
   "postgresql://postgres:postgres@localhost:5435/chezcar_db?schema=public";
-const APPROVED_FIXTURE_HASH =
-  "a1570f220c260b7fe66e2e4a2eaf1eebe27538563b0b721fd0c9d80f6896d76b";
+const APPROVED_FIXTURE_HASH = "87f985b2235889ba41506730948150ef4a0c06a01dc2f4c73d9ba19a67af17c4";
 const LOCATION_CODES = Object.freeze(["BL", "LU", "QC", "SP", "SR", "VC"]);
 const LOCATION_DISPLAY_NAMES = Object.freeze({
   BL: "Biñan Laguna",
@@ -139,6 +138,7 @@ function fixtureHash(fixture) {
   const fixtureBase = {
     schemaVersion: fixture.schemaVersion,
     generatedFrom: fixture.generatedFrom,
+    importSummary: fixture.importSummary,
     locations: fixture.locations,
     products: fixture.products,
     openingBalances: fixture.openingBalances,
@@ -152,14 +152,14 @@ function validateOpeningCatalog(value) {
   if (
     !value ||
     typeof value !== "object" ||
-    value.schemaVersion !== 1 ||
+    value.schemaVersion !== 2 ||
     value.fixtureHash !== APPROVED_FIXTURE_HASH ||
     !Array.isArray(value.locations) ||
     value.locations.length !== 6 ||
     !Array.isArray(value.products) ||
-    value.products.length !== 1432 ||
+    value.products.length !== 1382 ||
     !Array.isArray(value.openingBalances) ||
-    value.openingBalances.length !== 8592
+    value.openingBalances.length !== 8292
   ) {
     throw new Error("Canonical opening catalog fixture is invalid");
   }
@@ -193,12 +193,26 @@ function validateOpeningCatalog(value) {
       product.status === "INACTIVE" &&
       product.sellable === false &&
       product.salePrice === null;
+    const validCompatibilities =
+      Array.isArray(product.vehicleCompatibilities) &&
+      product.vehicleCompatibilities.every(
+        (compatibility) =>
+          typeof compatibility.model === "string" &&
+          compatibility.model.length > 0 &&
+          (compatibility.make === null || typeof compatibility.make === "string") &&
+          (compatibility.startYear === null || Number.isInteger(compatibility.startYear)) &&
+          (compatibility.endYear === null || Number.isInteger(compatibility.endYear)) &&
+          (compatibility.startYear === null ||
+            compatibility.endYear === null ||
+            compatibility.startYear <= compatibility.endYear),
+      );
     if (
       typeof product.itemCode !== "string" ||
       !product.itemCode ||
       typeof product.name !== "string" ||
       !product.name ||
       (!validActive && !validInactive) ||
+      !validCompatibilities ||
       productCodes.has(product.itemCode)
     ) {
       throw new Error("Canonical opening catalog product is invalid");
@@ -288,6 +302,8 @@ async function replaceOpeningCatalog(tx, fixture) {
           where: { itemCode: product.itemCode },
           data: {
             name: product.name,
+            description: product.description,
+            brand: product.brand,
             price: product.salePrice,
             status: product.status,
           },
@@ -300,6 +316,8 @@ async function replaceOpeningCatalog(tx, fixture) {
       .map((product) => ({
         itemCode: product.itemCode,
         name: product.name,
+        description: product.description,
+        brand: product.brand,
         price: product.salePrice,
         status: product.status,
       })),
@@ -310,6 +328,16 @@ async function replaceOpeningCatalog(tx, fixture) {
   ]);
   const locationByCode = new Map(locations.map((location) => [location.code, location.id]));
   const productByCode = new Map(products.map((product) => [product.itemCode, product.id]));
+  await tx.productVehicleCompatibility.deleteMany({
+    where: { productId: { in: [...productByCode.values()] } },
+  });
+  await tx.productVehicleCompatibility.createMany({
+    data: fixture.products.flatMap((product) =>
+      product.vehicleCompatibilities.map((compatibility) => ({
+        productId: productByCode.get(product.itemCode),
+        ...compatibility,
+      }))),
+  });
   await tx.inventoryBalance.createMany({
     data: fixture.openingBalances.map((balance) => ({
       locationId: locationByCode.get(balance.locationCode),

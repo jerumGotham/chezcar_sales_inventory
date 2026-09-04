@@ -13,6 +13,7 @@
     "test:integration": "vitest run --project integration --no-file-parallelism",
     "data:profile": "node scripts/data-onboarding/workbook-profile.mjs",
     "data:generate": "node scripts/data-onboarding/generate-seed.mjs",
+    "data:generate:june-2026": "node scripts/data-onboarding/generate-june-2026-seed.mjs",
     "prisma:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",

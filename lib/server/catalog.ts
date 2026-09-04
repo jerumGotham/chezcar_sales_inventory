@@ -39,12 +39,24 @@ const baseListQuery = {
 export const productListQuerySchema = z.object({
   ...baseListQuery,
   brand: z.string().trim().max(100).default("all"),
+  vehicleMake: z.string().trim().max(100).default("all"),
+  vehicleModel: z.string().trim().max(200).default("all"),
+  vehicleYear: z.union([z.literal("all"), z.coerce.number().int().min(1886).max(2200)]).default("all"),
   status: z.enum(["all", "Active", "Inactive"]).default("all"),
   stockStatus: z.enum(["all", "has-stock", "no-stock", "inactive-with-stock"]).default("all"),
 });
 
 const optionalText = z.string().trim().max(200).optional();
 const positivePrice = z.coerce.number().positive();
+const vehicleCompatibilitySchema = z.object({
+  make: z.string().trim().min(1).max(100),
+  model: z.string().trim().min(1).max(200),
+  startYear: z.coerce.number().int().min(1886).max(2200).nullable(),
+  endYear: z.coerce.number().int().min(1886).max(2200).nullable(),
+}).refine(
+  (value) => value.startYear === null || value.endYear === null || value.startYear <= value.endYear,
+  { message: "Start year must not be later than end year", path: ["endYear"] },
+);
 
 export const productMutationSchema = z.object({
   itemCode: z.string().trim().min(1).max(100),
@@ -55,6 +67,7 @@ export const productMutationSchema = z.object({
   price: z.union([positivePrice, z.null()]),
   reorderLevel: z.coerce.number().int().min(0).default(0),
   status: z.enum(["ACTIVE", "INACTIVE"]),
+  vehicleCompatibilities: z.array(vehicleCompatibilitySchema).max(100).default([]),
 });
 
 export const inventoryListQuerySchema = z.object({
@@ -192,6 +205,18 @@ export async function listProducts(
       : undefined,
     category: query.category === "all" ? undefined : query.category,
     brand: query.brand === "all" ? undefined : query.brand,
+    vehicleCompatibilities: query.vehicleMake === "all" && query.vehicleModel === "all" && query.vehicleYear === "all"
+      ? undefined
+      : {
+          some: {
+            make: query.vehicleMake === "all" ? undefined : query.vehicleMake,
+            model: query.vehicleModel === "all" ? undefined : query.vehicleModel,
+            AND: query.vehicleYear === "all" ? undefined : [
+              { OR: [{ startYear: null }, { startYear: { lte: query.vehicleYear } }] },
+              { OR: [{ endYear: null }, { endYear: { gte: query.vehicleYear } }] },
+            ],
+          },
+        },
     status:
       query.status === "all"
         ? undefined
@@ -209,7 +234,7 @@ export async function listProducts(
     where.inventoryBalances = { some: { locationId, OR: [{ onHand: { gt: 0 } }, { reserved: { gt: 0 } }] } };
   }
 
-  const [total, totalProducts, activeProducts, inactiveProducts, withReorderLevel, categoryRows, brandRows] =
+  const [total, totalProducts, activeProducts, inactiveProducts, withReorderLevel, categoryRows, compatibilityRows, brandRows] =
     await Promise.all([
       prisma.product.count({ where }),
       prisma.product.count(),
@@ -220,6 +245,10 @@ export async function listProducts(
         where: { category: { not: null } },
         distinct: ["category"],
         select: { category: true },
+      }),
+      prisma.productVehicleCompatibility.findMany({
+        select: { make: true, model: true },
+        distinct: ["make", "model"],
       }),
       prisma.product.findMany({
         where: { brand: { not: null } },
@@ -238,6 +267,7 @@ export async function listProducts(
       transferLines: { select: { id: true }, take: 1 },
       receiptLines: { select: { id: true }, take: 1 },
       inventoryMovements: { select: { id: true }, take: 1 },
+      vehicleCompatibilities: { orderBy: [{ make: "asc" }, { model: "asc" }] },
     },
   });
 
@@ -255,6 +285,13 @@ export async function listProducts(
        reorderLevel: product.reorderLevel,
       status: product.status === "ACTIVE" ? "Active" : "Inactive",
       description: product.description ?? undefined,
+      vehicleCompatibilities: product.vehicleCompatibilities.map((compatibility) => ({
+        id: compatibility.id,
+        make: compatibility.make ?? "",
+        model: compatibility.model,
+        startYear: compatibility.startYear,
+        endYear: compatibility.endYear,
+      })),
       canEditItemCode: product.inventoryBalances.length === 0 && product.transferLines.length === 0 && product.receiptLines.length === 0 && product.inventoryMovements.length === 0,
       canDelete: product.inventoryBalances.length === 0 && product.transferLines.length === 0 && product.receiptLines.length === 0 && product.inventoryMovements.length === 0,
       hasStock: product.inventoryBalances.some((balance) => balance.onHand > 0 || balance.reserved > 0),
@@ -263,6 +300,8 @@ export async function listProducts(
     filterOptions: {
       categories: categoryRows.map((product) => product.category).filter((value): value is string => Boolean(value)).sort(),
       brands: brandRows.map((product) => product.brand).filter((value): value is string => Boolean(value)).sort(),
+      vehicleMakes: [...new Set(compatibilityRows.map((row) => row.make).filter((value): value is string => Boolean(value)))].sort(),
+      vehicleModels: [...new Set(compatibilityRows.map((row) => row.model))].sort(),
     },
     summary: {
       totalProducts,
@@ -293,6 +332,7 @@ function normalizeProductInput(input: z.infer<typeof productMutationSchema>) {
     price: input.price === null ? null : new Prisma.Decimal(input.price),
     reorderLevel: input.reorderLevel,
     status: input.status,
+    vehicleCompatibilities: input.vehicleCompatibilities,
   };
 }
 
@@ -313,7 +353,12 @@ export async function createProduct(actor: AuthContext, input: z.infer<typeof pr
 
   try {
     return await prisma.product.create({
-      data: { ...data, createdById: actor.userId, updatedById: actor.userId },
+      data: {
+        ...data,
+        vehicleCompatibilities: { create: data.vehicleCompatibilities },
+        createdById: actor.userId,
+        updatedById: actor.userId,
+      },
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
@@ -339,6 +384,10 @@ export async function updateProduct(actor: AuthContext, productId: string, input
       where: { id: productId },
       data: {
         ...data,
+        vehicleCompatibilities: {
+          deleteMany: {},
+          create: data.vehicleCompatibilities,
+        },
         updatedById: actor.userId,
         deactivatedById: existing.status === "ACTIVE" && data.status === "INACTIVE" ? actor.userId : existing.deactivatedById,
         reactivatedById: existing.status === "INACTIVE" && data.status === "ACTIVE" ? actor.userId : existing.reactivatedById,

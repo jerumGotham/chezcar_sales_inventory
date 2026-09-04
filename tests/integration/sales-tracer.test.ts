@@ -191,6 +191,10 @@ describe("sales tracer — per-branch receipt, stock deduction, Accounting VERIF
       expect(blList.find((s) => s.id === qcSale.id)).toBeUndefined();
 
       // Accounting marks UNVERIFIED → VERIFIED
+      await prisma.saleAccountingReview.updateMany({
+        where: { saleId: { in: [blSale.id, qcSale.id] } },
+        data: { receiptPhotoKey: "00000000-0000-4000-8000-000000000001.jpg", receiptPhotoType: "image/jpeg" },
+      });
        const verified = await reviewSale(accountingActor, blSale.id, { status: "VERIFIED", comparison: matchingComparison(blSale) });
       expect(verified.status).toBe("VERIFIED");
       expect(verified.reviewedById).toBe(accounting.id);

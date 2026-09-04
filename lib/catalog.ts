@@ -1,5 +1,13 @@
 export type ProductStatus = "Active" | "Inactive";
 
+export type VehicleCompatibility = {
+  id?: string;
+  make: string;
+  model: string;
+  startYear: number | null;
+  endYear: number | null;
+};
+
 export type ProductRow = {
   id: string;
   imageUrl: string | null;
@@ -11,6 +19,7 @@ export type ProductRow = {
   reorderLevel: number;
   status: ProductStatus;
   description?: string;
+  vehicleCompatibilities: VehicleCompatibility[];
   canEditItemCode: boolean;
   canDelete: boolean;
   hasStock: boolean;
@@ -22,6 +31,8 @@ export type ProductsApiResponse = {
   filterOptions: {
     categories: string[];
     brands: string[];
+    vehicleMakes: string[];
+    vehicleModels: string[];
   };
   summary: {
     totalProducts: number;

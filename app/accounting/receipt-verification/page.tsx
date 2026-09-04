@@ -87,6 +87,7 @@ type ReceiptListResponse = {
     unverified: number;
     verified: number;
     mismatches: number;
+    missingEvidence: number;
   };
   branches: BranchOption[];
 };
@@ -334,6 +335,7 @@ function ReceiptVerificationContent() {
     unverified: 0,
     verified: 0,
     mismatches: 0,
+    missingEvidence: 0,
   };
   const branches = data?.branches ?? [];
 
@@ -496,6 +498,20 @@ function ReceiptVerificationContent() {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoKey, setPhotoKey] = useState<string | null>(null);
+  const evidenceMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedId || !photoFile) throw new Error("Select a receipt photo first.");
+      return uploadPhoto(selectedId, photoFile, null);
+    },
+    onSuccess: () => {
+      setPhotoFile(null);
+      setPhotoPreview(null);
+      setPhotoKey(null);
+      setFormError(null);
+      queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] });
+    },
+    onError: (mutationError) => setFormError((mutationError as Error).message),
+  });
 
   useEffect(() => {
     if (meta.totalItems > 0 && filters.page > meta.totalPages) {
@@ -646,7 +662,8 @@ function ReceiptVerificationContent() {
       title="Receipt Verification"
       subtitle="Compare posted manual receipts with the branch encoding before closing the accounting queue."
     >
-      <div className="mb-6 grid gap-3 sm:grid-cols-3">
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard label="Evidence pending" value={meta.missingEvidence} tone="amber" />
         <SummaryCard label="Unverified" value={meta.unverified} tone="amber" />
         <SummaryCard
           label="Mismatch reported"
@@ -810,6 +827,7 @@ function ReceiptVerificationContent() {
                       <th className="px-3 py-3">Branch</th>
                       <th className="px-3 py-3">Customer</th>
                       <th className="px-3 py-3">Total</th>
+                      <th className="px-3 py-3">Evidence</th>
                       <th className="px-3 py-3">Status</th>
                       <th className="px-3 py-3" />
                     </tr>
@@ -842,6 +860,11 @@ function ReceiptVerificationContent() {
                         </td>
                         <td className="px-3 py-4 font-medium">
                           {formatPeso(sale.totalAmount)}
+                        </td>
+                        <td className="px-3 py-4">
+                          <Badge variant={sale.receiptPhotoUrl ? "secondary" : "outline"}>
+                            {sale.receiptPhotoUrl ? "Attached" : "Pending"}
+                          </Badge>
                         </td>
                         <td className="px-3 py-4">
                           <ReviewBadge status={sale.reviewStatus} />
@@ -1072,6 +1095,61 @@ function ReceiptVerificationContent() {
                     className="max-h-64 w-full rounded-xl border object-contain"
                   />
                 )}
+                {!selectedSale.receiptPhotoUrl && !photoPreview ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                    Receipt evidence is pending. Accounting may report a missing or unreadable receipt, but cannot confirm this sale as correct yet.
+                  </div>
+                ) : null}
+                {canUploadEvidence &&
+                selectedSale.status === "POSTED" &&
+                selectedSale.reviewStatus !== "VERIFIED" ? (
+                  <div className="space-y-3 rounded-xl border p-4">
+                    <div>
+                      <Label htmlFor="receipt-photo">Receipt photo</Label>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Required to verify. Branch Staff or Accounting can attach a missing image or replace an unreadable one.
+                      </p>
+                    </div>
+                    <Input
+                      id="receipt-photo"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      capture="environment"
+                      onChange={(event) => handlePhoto(event.target.files?.[0])}
+                    />
+                    {photoPreview ? (
+                      <Image
+                        src={photoPreview}
+                        alt="Receipt preview"
+                        width={800}
+                        height={600}
+                        unoptimized
+                        className="max-h-40 w-full rounded-xl border object-contain"
+                      />
+                    ) : null}
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="workflow"
+                        size="sm"
+                        onClick={() => evidenceMutation.mutate()}
+                        disabled={!photoFile || evidenceMutation.isPending}
+                      >
+                        <Upload className="mr-2 size-4" />
+                        {evidenceMutation.isPending
+                          ? "Uploading..."
+                          : selectedSale.receiptPhotoUrl
+                            ? "Replace receipt photo"
+                            : "Attach receipt photo"}
+                      </Button>
+                      {photoFile ? (
+                        <Button type="button" variant="outline" size="sm" onClick={clearSelectedPhoto}>
+                          Clear selection
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
                 {canEditComparison &&
                 selectedSale.reviewStatus !== "VERIFIED" ? (
                   <div className="space-y-4 border-t pt-4">
@@ -1267,14 +1345,14 @@ function ReceiptVerificationContent() {
                           variant="workflow"
                           onClick={() => reviewMutation.mutate("VERIFIED")}
                           disabled={
-                            reviewMutation.isPending || Boolean(comparisonError) || differences.length > 0
+                            reviewMutation.isPending || Boolean(comparisonError) || differences.length > 0 || (!selectedSale.receiptPhotoUrl && !photoFile)
                           }
                         >
                           <CheckCircle2 className="mr-2 h-4 w-4" />
                           Confirm correct
                         </Button>
                         <span className="self-center text-xs text-slate-500">
-                          Correct all comparison fields before confirming.
+                          Correct all comparison fields and attach receipt evidence before confirming.
                         </span>
                       </div>
                     )}
@@ -1310,49 +1388,6 @@ function ReceiptVerificationContent() {
                           />
                         </div>
                       </>
-                    )}
-                    {canUploadEvidence && <div className="grid gap-2">
-                      <Label htmlFor="receipt-photo">
-                        Receipt photo (optional)
-                      </Label>
-                      <Input
-                        id="receipt-photo"
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        onChange={(event) =>
-                          handlePhoto(event.target.files?.[0])
-                        }
-                      />
-                      <p className="text-xs text-slate-500">
-                        Optional even for Receipt Not Found. Upload only if you
-                        have supporting evidence.
-                      </p>
-                    </div>}
-                    {canUploadEvidence && photoPreview && (
-                      <div className="space-y-2">
-                        <Image
-                          src={photoPreview}
-                          alt="Receipt preview"
-                          width={800}
-                          height={600}
-                          unoptimized
-                          className="max-h-40 w-full rounded-xl border object-contain"
-                        />
-                        <Button
-                          type="button"
-                          variant="destructive"
-                          size="sm"
-                          onClick={clearSelectedPhoto}
-                        >
-                          Remove selected image
-                        </Button>
-                      </div>
-                    )}
-                    {canUploadEvidence && canViewEvidence && selectedSale.receiptPhotoUrl && !photoPreview && (
-                      <p className="text-xs text-slate-500">
-                        A receipt image is already attached. Choose a new file
-                        above to replace it.
-                      </p>
                     )}
                     {canReview &&
                       selectedSale.reviewStatus === "UNVERIFIED" && (

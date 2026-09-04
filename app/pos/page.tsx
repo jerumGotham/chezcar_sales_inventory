@@ -19,6 +19,7 @@ import {
   Package2,
   Car,
   FileText,
+  Upload,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -419,6 +420,7 @@ function PosTab() {
   const access = useShellAccess();
   const queryClient = useQueryClient();
   const capabilities = access.authenticated ? access.capabilities : [];
+  const canUploadReceiptEvidence = capabilities.includes("sales:evidence:upload");
   const canUseOfflineSales = capabilities.includes("offline-sales:snapshot") && capabilities.includes("offline-sales:sync");
   const requiresLocationSelection = access.authenticated && access.scope.locationId === null;
   const [selectedLocation, setSelectedLocation] = useState<SelectOption | null>(null);
@@ -496,6 +498,7 @@ function PosTab() {
   );
   const [paymentType, setPaymentType] = useState<SelectOption | null>(null);
   const [manualReceiptNumber, setManualReceiptNumber] = useState("");
+  const [receiptPhoto, setReceiptPhoto] = useState<File | null>(null);
   const [checkoutError, setCheckoutError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [isCheckoutPending, setIsCheckoutPending] = useState(false);
@@ -693,6 +696,7 @@ function PosTab() {
     );
     setPaymentType(null);
     setManualReceiptNumber("");
+    setReceiptPhoto(null);
     setDiscountAmount("0");
     setCheckoutError("");
     setSearch("");
@@ -741,8 +745,31 @@ function PosTab() {
         } | null;
         throw new Error(payload?.error?.message ?? "Unable to complete sale");
       }
+      const payload = (await response.json()) as { data: { id: string } };
+      let evidenceMessage = " Receipt evidence is pending.";
+      if (receiptPhoto && canUploadReceiptEvidence) {
+        const formData = new FormData();
+        formData.set("photo", receiptPhoto);
+        const evidenceResponse = await fetch(
+          `/api/accounting/receipts/${encodeURIComponent(payload.data.id)}/photo`,
+          {
+            method: "POST",
+            credentials: "same-origin",
+            body: formData,
+          },
+        );
+        evidenceMessage = evidenceResponse.ok
+          ? " Receipt photo attached for Accounting."
+          : " Sale posted, but the receipt photo upload failed and remains pending.";
+      }
+      if (evidenceMessage.includes("pending")) {
+        await fetch(
+          `/api/accounting/receipts/${encodeURIComponent(payload.data.id)}/evidence-pending`,
+          { method: "POST", credentials: "same-origin" },
+        ).catch(() => undefined);
+      }
       clearSale();
-      setSuccessMessage("Customer sale posted successfully.");
+      setSuccessMessage(`Customer sale posted successfully.${evidenceMessage}`);
     } catch (error) {
       if (OFFLINE_POS_ENABLED && canUseOfflineSales && offlineSupported() && (!navigator.onLine || error instanceof TypeError)) {
         await queueOfflineSale(salePayload);
@@ -1029,6 +1056,27 @@ function PosTab() {
                 placeholder="Official handwritten receipt number"
               />
             </div>
+
+            {canUploadReceiptEvidence ? (
+              <div className="space-y-3">
+                <Label htmlFor="receipt-photo">Handwritten Receipt Photo</Label>
+                <Input
+                  id="receipt-photo"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  capture="environment"
+                  onChange={(event) => setReceiptPhoto(event.target.files?.[0] ?? null)}
+                />
+                <p className="text-xs text-slate-500">
+                  Take a clear photo of the complete receipt. The sale can still post if the upload fails, but Accounting cannot verify it until evidence is attached.
+                </p>
+                {receiptPhoto ? (
+                  <p className="flex items-center gap-2 text-xs font-medium text-emerald-700">
+                    <Upload className="size-4" /> {receiptPhoto.name}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
 
             <Separator />
 

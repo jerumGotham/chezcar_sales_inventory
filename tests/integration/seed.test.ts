@@ -96,19 +96,35 @@ describe("canonical opening seed", () => {
             salePrice,
             status,
           }),
-        ),
+        ).sort((left, right) => left.itemCode < right.itemCode ? -1 : left.itemCode > right.itemCode ? 1 : 0),
         balances: openingCatalog.openingBalances.map(
           ({ itemCode, locationCode, onHand }) => ({
             itemCode,
             locationCode,
             onHand,
           }),
+        ).sort((left, right) =>
+          left.itemCode < right.itemCode
+            ? -1
+            : left.itemCode > right.itemCode
+              ? 1
+              : left.locationCode < right.locationCode
+                ? -1
+                : left.locationCode > right.locationCode
+                  ? 1
+                  : 0,
         ),
       };
       expect(await canonicalRows(prisma)).toEqual(expectedRows);
       expect(
         await prisma.product.count({ where: { price: null, status: "INACTIVE" } }),
-      ).toBe(707);
+      ).toBe(openingCatalog.products.filter((product) => product.salePrice === null && product.status === "INACTIVE").length);
+      expect(await prisma.productVehicleCompatibility.count()).toBe(
+        openingCatalog.products.reduce(
+          (total, product) => total + product.vehicleCompatibilities.length,
+          0,
+        ),
+      );
 
       const ownerBefore = await prisma.user.findUniqueOrThrow({
         where: { email: ADMIN_ENV.SEED_ADMIN_EMAIL },

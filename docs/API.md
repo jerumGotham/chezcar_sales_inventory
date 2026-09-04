@@ -62,10 +62,11 @@ The complete list and Role Maintenance labels are generated from `CAPABILITY_CAT
 | `GET` | `/api/customer-orders/:orderId` | Single persisted customer order with lines and release/payment summary | `customer-orders:view`; Branch Staff restricted to assigned branch |
 | `POST` | `/api/customer-orders/:orderId/:action` | Prisma CustomerOrder/Sale/InventoryMovement | Exact `customer-orders:reserve`, `:record-payment`, `:release`, or `:cancel`; paid cancellation also requires `:cancel-paid` |
 | `GET`, `POST` | `/api/sales` | Prisma Sale/SaleLine/InventoryMovement | `sales:view` / `sales:post` plus effective location access |
-| `GET` | `/api/accounting/receipts?page=1&pageSize=10&reviewStatus=all&saleStatus=POSTED` | Prisma Sale/SaleLine/SaleAccountingReview/Location | `sales:verify:view`; server-side filters and pagination |
-| `POST` | `/api/accounting/receipts/:saleId/review` | Prisma SaleAccountingReview/Notification | `sales:verify`; Accounting Staff only |
+| `GET` | `/api/accounting/receipts?page=1&pageSize=10&reviewStatus=all&saleStatus=POSTED` | Prisma Sale/SaleLine/SaleAccountingReview/Location | `sales:verify:view`; server-side filters, pagination, and missing-evidence summary |
+| `POST` | `/api/accounting/receipts/:saleId/review` | Prisma SaleAccountingReview/Notification | `sales:verify`; matching receipt evidence is required before `VERIFIED`, while missing evidence may be reported as a mismatch |
 | `POST` | `/api/accounting/receipts/:saleId/resolve` | Prisma Sale/SaleLine/SaleAccountingReview/InventoryMovement/Notification | `sales:resolve` for confirm-correct; `sales:void-replace` for stock-changing replacement |
 | `POST`, `GET` | `/api/accounting/receipts/:saleId/photo` | Coolify persistent receipt-evidence storage | `sales:evidence:upload` / `sales:evidence:view`; Branch scope is enforced by sale location |
+| `POST` | `/api/accounting/receipts/:saleId/evidence-pending` | Prisma SaleAccountingReview/Notification | `sales:evidence:upload`; records and notifies a pending upload once without changing the sale |
 | `GET` | `/api/reports` | Prisma sales/orders/accounting/inventory summaries | `reports:view`; every dataset is restricted to effective locations; PDF additionally requires `reports:export` |
 | `GET`, `POST` | `/api/products` | Prisma Product/InventoryBalance | `products:view` / `products:create` |
 | `PATCH`, `DELETE` | `/api/products/:productId` | Prisma Product | `products:update` / `products:delete` |
@@ -131,7 +132,7 @@ One serializable transaction persists the receipt, immutable item-code/name line
 
 ## Product list
 
-`POST /api/products` and `PATCH /api/products/:productId` are Admin-only. Active products require a positive current price; inactive products may have null price. `reorderLevel` is stored once on Product and applies to every location. Item code is globally unique and cannot be changed after the product has inventory balances or receipt/transfer/movement history. `DELETE /api/products/:productId` is Admin-only and allowed only for products with no inventory balance rows and no usage/history.
+`POST /api/products` and `PATCH /api/products/:productId` are Admin-only. Active products require a positive current price; inactive products may have null price. `reorderLevel` is stored once on Product and applies to every location. Item code is globally unique; product names are not unique. Item code cannot be changed after the product has inventory balances or receipt/transfer/movement history. Product mutations accept `vehicleCompatibilities`, an array of `{ make, model, startYear, endYear }`; years may be null for an open-ended or unspecified range, and a supplied start year cannot exceed the end year. `DELETE /api/products/:productId` is Admin-only and allowed only for products with no inventory balance rows and no usage/history.
 
 `POST /api/products/:productId/image` accepts multipart field `image` and replaces the current product image after validating JPEG, PNG, or WebP content and a 6 MB maximum. `DELETE` clears the image metadata and best-effort removes the stored file. `GET` serves the image only to authenticated `products:view` holders with private caching. Product list rows expose a cache-busted authenticated `imageUrl`, not the private storage key.
 
@@ -145,6 +146,9 @@ One serializable transaction persists the receipt, immutable item-code/name line
 | `name` | string, empty | Case-insensitive substring |
 | `category` | string, `all` | Exact category or all |
 | `brand` | string, `all` | Exact brand or all |
+| `vehicleMake` | string, `all` | Exact compatible vehicle make or all |
+| `vehicleModel` | string, `all` | Exact compatible vehicle model or all |
+| `vehicleYear` | integer `1886..2200`, `all` | Matches compatibility ranges containing the year; null range bounds are open |
 | `status` | `all`, `Active`, `Inactive` | Product status |
 | `stockStatus` | `all`, `has-stock`, `no-stock`, `inactive-with-stock` | Product balance/status filter |
 
@@ -163,9 +167,21 @@ type ProductsResponse = {
     reorderLevel: number;
     status: "Active" | "Inactive";
     description?: string;
+    vehicleCompatibilities: Array<{
+      id: string;
+      make: string;
+      model: string;
+      startYear: number | null;
+      endYear: number | null;
+    }>;
   }>;
   meta: { page: number; pageSize: number; total: number; totalPages: number };
-  filterOptions: { categories: string[]; brands: string[] };
+  filterOptions: {
+    categories: string[];
+    brands: string[];
+    vehicleMakes: string[];
+    vehicleModels: string[];
+  };
   summary: {
     totalProducts: number;
     activeProducts: number;

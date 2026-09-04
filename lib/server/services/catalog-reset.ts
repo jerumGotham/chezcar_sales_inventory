@@ -12,7 +12,7 @@ const TEST_DATABASE_URL =
 const DEVELOPMENT_DATABASE_URL =
   "postgresql://postgres:postgres@localhost:5435/chezcar_db?schema=public";
 const APPROVED_FIXTURE_HASH =
-  "a1570f220c260b7fe66e2e4a2eaf1eebe27538563b0b721fd0c9d80f6896d76b";
+  "87f985b2235889ba41506730948150ef4a0c06a01dc2f4c73d9ba19a67af17c4";
 const LOCATION_CODES = ["BL", "LU", "QC", "SP", "SR", "VC"] as const;
 const LOCATION_DISPLAY_NAMES: Record<(typeof LOCATION_CODES)[number], string> = {
   BL: "Biñan Laguna",
@@ -36,23 +36,35 @@ const productSchema = z.object({
   status: z.enum(["ACTIVE", "INACTIVE"]),
   sellable: z.boolean(),
   sourceIds: z.array(z.string().min(1)).min(1),
+  description: z.string().nullable(),
+  brand: z.string().nullable(),
+  vehicleCompatibilities: z.array(z.object({
+    make: z.string().nullable(),
+    model: z.string().min(1),
+    startYear: z.number().int().nullable(),
+    endYear: z.number().int().nullable(),
+  }).refine(
+    (value) => value.startYear === null || value.endYear === null || value.startYear <= value.endYear,
+  )),
 });
 const balanceSchema = z.object({
   itemCode: z.string().trim().min(1),
   locationCode: z.enum(LOCATION_CODES),
   onHand: z.number().int().nonnegative(),
-  sourceIds: z.array(z.string()),
+  sourceId: z.string(),
 });
 const fixtureSchema = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   generatedFrom: z.object({
     workbookHash: z.string().regex(/^[a-f0-9]{64}$/),
-    resolutionHash: z.string().regex(/^[a-f0-9]{64}$/),
-    sourceMappingHash: z.string().regex(/^[a-f0-9]{64}$/),
+    sheet: z.string(),
+    range: z.string(),
+    policy: z.string(),
   }),
+  importSummary: z.record(z.string(), z.unknown()),
   locations: z.array(locationSchema).length(6),
-  products: z.array(productSchema).length(1432),
-  openingBalances: z.array(balanceSchema).length(8592),
+  products: z.array(productSchema).length(1382),
+  openingBalances: z.array(balanceSchema).length(8292),
   fixtureHash: z.literal(APPROVED_FIXTURE_HASH),
 });
 
@@ -73,6 +85,7 @@ function stableFixtureHash(fixture: OpeningCatalogFixture) {
   const fixtureBase = {
     schemaVersion: fixture.schemaVersion,
     generatedFrom: fixture.generatedFrom,
+    importSummary: fixture.importSummary,
     locations: fixture.locations,
     products: fixture.products,
     openingBalances: fixture.openingBalances,
@@ -142,7 +155,7 @@ export function validateOpeningCatalog(value: unknown): OpeningCatalogFixture {
   ) {
     throw new Error("Canonical opening catalog does not contain every product/location balance");
   }
-  if (stableFixtureHash(fixture) !== fixture.fixtureHash) {
+  if (stableFixtureHash(value as OpeningCatalogFixture) !== fixture.fixtureHash) {
     throw new Error("Canonical opening catalog fixture hash is invalid");
   }
 
@@ -225,6 +238,8 @@ export async function replaceOpeningCatalog(
           where: { itemCode: product.itemCode },
           data: {
             name: product.name,
+            description: product.description,
+            brand: product.brand,
             price: product.salePrice,
             status: product.status,
           },
@@ -237,6 +252,8 @@ export async function replaceOpeningCatalog(
       .map((product) => ({
         itemCode: product.itemCode,
         name: product.name,
+        description: product.description,
+        brand: product.brand,
         price: product.salePrice,
         status: product.status,
       })),
@@ -250,6 +267,17 @@ export async function replaceOpeningCatalog(
   ]);
   const locationByCode = new Map(locations.map((location) => [location.code, location.id]));
   const productByCode = new Map(products.map((product) => [product.itemCode, product.id]));
+
+  await tx.productVehicleCompatibility.deleteMany({
+    where: { productId: { in: [...productByCode.values()] } },
+  });
+  await tx.productVehicleCompatibility.createMany({
+    data: fixture.products.flatMap((product) =>
+      product.vehicleCompatibilities.map((compatibility) => ({
+        productId: productByCode.get(product.itemCode)!,
+        ...compatibility,
+      }))),
+  });
 
   await tx.inventoryBalance.createMany({
     data: fixture.openingBalances.map((balance) => ({

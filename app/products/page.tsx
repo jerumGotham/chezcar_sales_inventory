@@ -68,6 +68,12 @@ type ProductForm = {
   price: string;
   reorderLevel: string;
   status: "ACTIVE" | "INACTIVE";
+  vehicleCompatibilities: Array<{
+    make: string;
+    model: string;
+    startYear: string;
+    endYear: string;
+  }>;
 };
 
 const EMPTY_PRODUCT_FORM: ProductForm = {
@@ -79,6 +85,7 @@ const EMPTY_PRODUCT_FORM: ProductForm = {
   price: "",
   reorderLevel: "0",
   status: "ACTIVE",
+  vehicleCompatibilities: [],
 };
 
 type ProductMutationResponse = { data: { id: string } };
@@ -191,6 +198,9 @@ export default function ProductsPage() {
   const [brand, setBrand] = useState<SelectOption>(ALL_BRANDS_OPTION);
   const [status, setStatus] = useState<SelectOption>(STATUS_OPTIONS[0]);
   const [stockStatus, setStockStatus] = useState<SelectOption>(STOCK_STATUS_OPTIONS[0]);
+  const [vehicleMake, setVehicleMake] = useState("");
+  const [vehicleModel, setVehicleModel] = useState("");
+  const [vehicleYear, setVehicleYear] = useState("");
 
   const [appliedItemCode, setAppliedItemCode] = useState("");
   const [appliedName, setAppliedName] = useState("");
@@ -198,6 +208,9 @@ export default function ProductsPage() {
   const [appliedBrand, setAppliedBrand] = useState("all");
   const [appliedStatus, setAppliedStatus] = useState("all");
   const [appliedStockStatus, setAppliedStockStatus] = useState("all");
+  const [appliedVehicleMake, setAppliedVehicleMake] = useState("all");
+  const [appliedVehicleModel, setAppliedVehicleModel] = useState("all");
+  const [appliedVehicleYear, setAppliedVehicleYear] = useState("all");
 
   const [page, setPage] = useState(1);
   const pageSize = 10;
@@ -244,6 +257,9 @@ export default function ProductsPage() {
         brand: appliedBrand,
         status: appliedStatus,
         stockStatus: appliedStockStatus,
+        vehicleMake: appliedVehicleMake,
+        vehicleModel: appliedVehicleModel,
+        vehicleYear: appliedVehicleYear,
       },
     ],
     queryFn: () =>
@@ -256,6 +272,9 @@ export default function ProductsPage() {
         brand: appliedBrand,
         status: appliedStatus,
         stockStatus: appliedStockStatus,
+        vehicleMake: appliedVehicleMake,
+        vehicleModel: appliedVehicleModel,
+        vehicleYear: appliedVehicleYear,
       }),
     placeholderData: (previousData) => previousData,
   });
@@ -282,6 +301,12 @@ export default function ProductsPage() {
         price: form.price ? Number(form.price) : null,
         reorderLevel: Number(form.reorderLevel || 0),
         status: form.status,
+        vehicleCompatibilities: form.vehicleCompatibilities.map((compatibility) => ({
+          make: compatibility.make,
+          model: compatibility.model,
+          startYear: compatibility.startYear ? Number(compatibility.startYear) : null,
+          endYear: compatibility.endYear ? Number(compatibility.endYear) : null,
+        })),
       };
       const currentId = selectedProduct?.id ?? persistedProductId;
       if (currentId ? !canUpdate && !canUpdateImage : !canCreate) {
@@ -356,6 +381,9 @@ export default function ProductsPage() {
     setAppliedBrand(brand.value);
     setAppliedStatus(status.value);
     setAppliedStockStatus(stockStatus.value);
+    setAppliedVehicleMake(vehicleMake || "all");
+    setAppliedVehicleModel(vehicleModel || "all");
+    setAppliedVehicleYear(vehicleYear || "all");
   };
 
   const handleResetFilters = () => {
@@ -365,6 +393,9 @@ export default function ProductsPage() {
     setBrand(ALL_BRANDS_OPTION);
     setStatus(STATUS_OPTIONS[0]);
     setStockStatus(STOCK_STATUS_OPTIONS[0]);
+    setVehicleMake("");
+    setVehicleModel("");
+    setVehicleYear("");
 
     setAppliedItemCode("");
     setAppliedName("");
@@ -372,6 +403,9 @@ export default function ProductsPage() {
     setAppliedBrand("all");
     setAppliedStatus("all");
     setAppliedStockStatus("all");
+    setAppliedVehicleMake("all");
+    setAppliedVehicleModel("all");
+    setAppliedVehicleYear("all");
     setPage(1);
   };
 
@@ -387,6 +421,12 @@ export default function ProductsPage() {
         price: product.price?.toString() ?? "",
         reorderLevel: String(product.reorderLevel),
         status: product.status === "Active" ? "ACTIVE" : "INACTIVE",
+        vehicleCompatibilities: product.vehicleCompatibilities.map((compatibility) => ({
+          make: compatibility.make,
+          model: compatibility.model,
+          startYear: compatibility.startYear?.toString() ?? "",
+          endYear: compatibility.endYear?.toString() ?? "",
+        })),
       }
       : EMPTY_PRODUCT_FORM);
     setFormError("");
@@ -489,7 +529,7 @@ export default function ProductsPage() {
         </div>
 
         <Card className="mt-6">
-          <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-6">
+          <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
             <Input
               placeholder="Item Code"
               value={itemCode}
@@ -515,6 +555,10 @@ export default function ProductsPage() {
                 styles={reactSelectStyles}
               />
             </div>
+
+            <Input placeholder="Car make" value={vehicleMake} onChange={(event) => setVehicleMake(event.target.value)} />
+            <Input placeholder="Car model" value={vehicleModel} onChange={(event) => setVehicleModel(event.target.value)} />
+            <Input type="number" min="1886" max="2200" placeholder="Vehicle year" value={vehicleYear} onChange={(event) => setVehicleYear(event.target.value)} />
 
             <div className="w-full">
               <Select
@@ -552,7 +596,7 @@ export default function ProductsPage() {
               />
             </div>
 
-            <div className="flex flex-wrap gap-2 md:col-span-2 xl:col-span-6 xl:justify-end">
+            <div className="flex flex-wrap gap-2 md:col-span-2 xl:col-span-4 xl:justify-end">
               <Button
                 onClick={handleApplyFilters}
               >
@@ -602,6 +646,7 @@ export default function ProductsPage() {
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Brand
                     </th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Vehicle Compatibility</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Price
                     </th>
@@ -621,7 +666,7 @@ export default function ProductsPage() {
                 <tbody>
                   {isLoading ? (
                     <tr>
-                      <td colSpan={hasProductActions ? 10 : 9} className="px-5 py-16 text-center">
+                      <td colSpan={hasProductActions ? 11 : 10} className="px-5 py-16 text-center">
                         <div className="flex items-center justify-center gap-2 text-slate-500">
                           <Loader2 className="h-4 w-4 animate-spin" />
                           Loading products...
@@ -631,7 +676,7 @@ export default function ProductsPage() {
                   ) : error ? (
                     <tr>
                       <td
-                        colSpan={hasProductActions ? 10 : 9}
+                        colSpan={hasProductActions ? 11 : 10}
                         className="px-5 py-16 text-center text-red-600"
                       >
                         {error.message}
@@ -640,7 +685,7 @@ export default function ProductsPage() {
                   ) : rows.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={hasProductActions ? 10 : 9}
+                        colSpan={hasProductActions ? 11 : 10}
                         className="px-5 py-16 text-center text-slate-500"
                       >
                         No products found.
@@ -679,6 +724,18 @@ export default function ProductsPage() {
                         </td>
                         <td className="px-5 py-4 text-sm text-slate-600">
                           {product.brand}
+                        </td>
+                        <td className="px-5 py-4 text-sm text-slate-600">
+                          {product.vehicleCompatibilities.length === 0
+                            ? "Universal / not specified"
+                            : product.vehicleCompatibilities.map((compatibility) => {
+                                const years = compatibility.startYear
+                                  ? compatibility.startYear === compatibility.endYear
+                                    ? String(compatibility.startYear)
+                                    : `${compatibility.startYear}-${compatibility.endYear ?? "present"}`
+                                  : "all years";
+                                return `${compatibility.make ? `${compatibility.make} ` : ""}${compatibility.model} (${years})`;
+                              }).join(", ")}
                         </td>
                         <td className="px-5 py-4 text-sm font-medium text-slate-700">
                           {formatPeso(product.price)}
@@ -935,6 +992,36 @@ export default function ProductsPage() {
                   onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
                   placeholder="Product description"
                 />
+              </div>
+
+              <div className="space-y-3 md:col-span-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <Label>Vehicle Compatibility</Label>
+                    <p className="text-xs text-slate-500">Add each compatible make, model, and year range separately.</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={Boolean(selectedProduct && !canUpdate)}
+                    onClick={() => setForm((current) => ({
+                      ...current,
+                      vehicleCompatibilities: [...current.vehicleCompatibilities, { make: "", model: "", startYear: "", endYear: "" }],
+                    }))}
+                  >
+                    Add Vehicle
+                  </Button>
+                </div>
+                {form.vehicleCompatibilities.map((compatibility, index) => (
+                  <div key={index} className="grid gap-2 rounded-xl border p-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_110px_110px_auto]">
+                    <Input aria-label={`Vehicle make ${index + 1}`} placeholder="Make" value={compatibility.make} disabled={Boolean(selectedProduct && !canUpdate)} onChange={(event) => setForm((current) => ({ ...current, vehicleCompatibilities: current.vehicleCompatibilities.map((item, itemIndex) => itemIndex === index ? { ...item, make: event.target.value } : item) }))} />
+                    <Input aria-label={`Vehicle model ${index + 1}`} placeholder="Model" value={compatibility.model} disabled={Boolean(selectedProduct && !canUpdate)} onChange={(event) => setForm((current) => ({ ...current, vehicleCompatibilities: current.vehicleCompatibilities.map((item, itemIndex) => itemIndex === index ? { ...item, model: event.target.value } : item) }))} />
+                    <Input aria-label={`Start year ${index + 1}`} type="number" min="1886" max="2200" placeholder="From" value={compatibility.startYear} disabled={Boolean(selectedProduct && !canUpdate)} onChange={(event) => setForm((current) => ({ ...current, vehicleCompatibilities: current.vehicleCompatibilities.map((item, itemIndex) => itemIndex === index ? { ...item, startYear: event.target.value } : item) }))} />
+                    <Input aria-label={`End year ${index + 1}`} type="number" min="1886" max="2200" placeholder="To" value={compatibility.endYear} disabled={Boolean(selectedProduct && !canUpdate)} onChange={(event) => setForm((current) => ({ ...current, vehicleCompatibilities: current.vehicleCompatibilities.map((item, itemIndex) => itemIndex === index ? { ...item, endYear: event.target.value } : item) }))} />
+                    <Button type="button" variant="ghost" size="sm" aria-label={`Remove vehicle compatibility ${index + 1}`} disabled={Boolean(selectedProduct && !canUpdate)} onClick={() => setForm((current) => ({ ...current, vehicleCompatibilities: current.vehicleCompatibilities.filter((_, itemIndex) => itemIndex !== index) }))}><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                ))}
               </div>
             </div>
 

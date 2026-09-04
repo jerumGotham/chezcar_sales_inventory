@@ -28,7 +28,7 @@ The implemented database boundary consists of:
 - `lib/server/catalog.ts`: validated product reads plus inventory reads, Admin corrections, reorder-level updates, and movement listing.
 - `lib/server/services/product-images.ts`: private product-image validation, storage, replacement, read, and best-effort cleanup.
 - `prisma/seed.mjs`: validated canonical opening catalog and environment-driven first Admin.
-- `prisma/fixtures/opening-catalog.json`: approved canonical fixture (1,432 products, 8,592 six-location opening balances) with embedded workbook/resolution/source-map hashes.
+- `prisma/fixtures/opening-catalog.json`: approved June 2026 fixture (1,382 products, 8,292 six-location opening balances) with embedded workbook and fixture hashes.
 - `scripts/data-onboarding/`: read-only workbook profiler, fail-closed canonicalizer, reviewed resolutions, and the byte-stable fixture generator (`generate-seed.mjs --check` refuses stale committed output). These are developer CLIs with no HTTP or UI surface.
 - `lib/server/services/catalog-reset.ts`: transactionally scoped catalog reload with positive target identity checks.
 - `lib/server/services/stock-transfers.ts`: authorized serializable transfer state transitions and inventory posting.
@@ -48,7 +48,7 @@ The additive `20260828030000_branch_display_names` migration updates the existin
 
 ### Product
 
-Uses unique `itemCode`, name, optional description/category/brand, nullable current Decimal price, optional paired private image key/MIME metadata, `ACTIVE`/`INACTIVE` status, and timestamps. A null price is an approved value only for inactive, non-sellable opening products; it is not converted to zero. Historical price versions are not implemented yet. Product images are validated JPEG/PNG/WebP files stored outside the database and served through an authenticated route.
+Uses unique `itemCode`, non-unique name, optional description/category/brand, nullable current Decimal price, optional paired private image key/MIME metadata, `ACTIVE`/`INACTIVE` status, and timestamps. Vehicle fitment uses separate `ProductVehicleCompatibility` rows so one product can target multiple make/model/year ranges. A null price is an approved value only for inactive, non-sellable opening products; it is not converted to zero. Historical price versions are not implemented yet. Product images are validated JPEG/PNG/WebP files stored outside the database and served through an authenticated route.
 
 The additive `20260826030000_product_management_audit` migration adds nullable actor fields for product create/update/deactivate/reactivate accountability. Existing seeded/imported products may have null actor fields; Admin product mutations populate the relevant actor fields going forward.
 
@@ -122,7 +122,7 @@ npm run db:catalog:reload
 
 `db:migrate` uses Prisma's development migration workflow. Deployment should use `prisma migrate deploy` against a backed-up target.
 
-The seed validates the approved fixture hash and complete six-location/product/balance shape, then upserts the six import locations, reconciles canonical products, replaces opening balances, and creates or updates the first Admin in one transaction. It preserves canonical product IDs, additional products, additional Branch Maintenance locations, users, and sessions; rejects placeholder credentials, passwords shorter than 12 characters, and a different existing Admin. `db:catalog:reload` runs the same catalog-only CLI path without changing the Admin credential. No credential is committed. The operator workflow is documented in [Local Database Seeding](SEEDING.md).
+The seed validates the approved fixture hash and complete six-location/product/balance shape, then upserts the six import locations, reconciles canonical products and compatibility rows, replaces opening balances, seeds the built-in roles, and creates or updates the first Admin in one transaction. It preserves canonical product IDs, additional products, additional Branch Maintenance locations, users, and sessions; rejects placeholder credentials, passwords shorter than 12 characters, and a different existing Admin. `db:catalog:reload` runs the same catalog-only CLI path without changing the Admin credential. No credential is committed. The operator workflow is documented in [Local Database Seeding](SEEDING.md).
 
 Both commands refuse before opening a write transaction unless `ALLOW_CATALOG_RESET=true` and the URL exactly identifies either the local Compose target above or the fixed disposable integration target. Production and unknown URLs are always refused. The service additionally verifies the connected database name with `current_database()` inside the transaction before its first write and validates the approved fixture hash plus complete six-location/product/balance shape. Catalog reload updates or inserts canonical products without deleting their identities, replaces opening balances, upserts the six import locations with their confirmed display names, and preserves additional products, authoritative Location rows, and user assignments.
 

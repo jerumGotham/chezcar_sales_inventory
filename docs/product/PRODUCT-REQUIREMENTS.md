@@ -126,12 +126,12 @@ Available branch stock is reserved immediately for reservation orders by increas
 
 1. A customer buys items at a branch.
 2. Branch Staff writes the handwritten receipt and releases the goods.
-3. Branch Staff encodes one system sale for that receipt.
+3. Branch Staff encodes one system sale for that receipt and captures a clear photo of the complete handwritten receipt for Accounting.
 4. The server validates the individual user, assigned branch, receipt identity, items, quantities, captured prices/payment, and sufficient branch stock.
 5. Successful posting creates the sale and lines, deducts branch stock, creates immutable inventory movements, and records actor/time in one transaction.
 6. Branch stock, Admin dashboard totals, and Accounting's unverified queue reflect the committed sale immediately without an end-of-day batch.
 7. Low-stock rules create durable real-time notifications for actionable users.
-8. The sale waits for Accounting verification.
+8. The sale waits for Accounting verification. A sale remains posted if evidence upload fails so inventory stays authoritative, but it is visibly evidence-pending and cannot be verified until the photo is attached.
 
 ### Sales Rules
 

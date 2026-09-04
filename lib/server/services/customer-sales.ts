@@ -700,11 +700,12 @@ export async function listReceiptVerifications(actor: AuthContext, rawInput: unk
     baseWhere.locationId = permittedLocationIds;
     filteredWhere.locationId = permittedLocationIds;
   }
-  const [totalItems, unverified, verified, mismatches] = await Promise.all([
+  const [totalItems, unverified, verified, mismatches, missingEvidence] = await Promise.all([
     prisma.sale.count({ where: filteredWhere }),
     prisma.sale.count({ where: { ...baseWhere, accountingReview: { status: "UNVERIFIED" } } }),
     prisma.sale.count({ where: { ...baseWhere, accountingReview: { status: "VERIFIED" } } }),
     prisma.sale.count({ where: { ...baseWhere, accountingReview: { status: "MISMATCH_REPORTED" } } }),
+    prisma.sale.count({ where: { ...baseWhere, accountingReview: { receiptPhotoKey: null } } }),
   ]);
   const totalPages = Math.max(1, Math.ceil(totalItems / input.pageSize));
   const page = Math.min(input.page, totalPages);
@@ -718,7 +719,7 @@ export async function listReceiptVerifications(actor: AuthContext, rawInput: unk
 
   return {
     data: sales.map(serializeSale),
-    meta: { page, pageSize: input.pageSize, totalItems, totalPages, unverified, verified, mismatches },
+    meta: { page, pageSize: input.pageSize, totalItems, totalPages, unverified, verified, mismatches, missingEvidence },
   };
 }
 
@@ -749,6 +750,9 @@ export async function reviewSale(actor: AuthContext, saleId: string, input: z.in
     const freshReview = await tx.saleAccountingReview.findUnique({ where: { id: review.id } });
     if (!freshReview) throw new CustomerSalesError("NOT_FOUND", "Accounting review not found", 404);
     if (freshReview.status === "VERIFIED") throw new CustomerSalesError("INVALID_STATE", "Sale has already been verified", 409);
+    if (input.status === "VERIFIED" && !freshReview.receiptPhotoKey) {
+      throw new CustomerSalesError("RECEIPT_EVIDENCE_REQUIRED", "Attach the handwritten receipt photo before verifying this sale", 409);
+    }
     const differences = compareReceipt(sale, input.comparison);
     if (input.status === "VERIFIED" && differences.length > 0) throw new CustomerSalesError("RECEIPT_MISMATCH", differences.join("; "), 409);
     const updated = await tx.saleAccountingReview.update({
@@ -760,8 +764,8 @@ export async function reviewSale(actor: AuthContext, saleId: string, input: z.in
         mismatchCategory: input.status === "MISMATCH_REPORTED" ? input.mismatchCategory : null,
         notes: input.status === "MISMATCH_REPORTED" ? input.notes : null,
         comparisonJson: JSON.stringify({ comparison: input.comparison, differences }),
-        receiptPhotoKey: input.status === "MISMATCH_REPORTED" ? input.receiptPhotoKey ?? freshReview.receiptPhotoKey : null,
-        receiptPhotoType: input.status === "MISMATCH_REPORTED" ? receiptPhotoType(input.receiptPhotoKey) ?? freshReview.receiptPhotoType : null,
+        receiptPhotoKey: input.receiptPhotoKey ?? freshReview.receiptPhotoKey,
+        receiptPhotoType: receiptPhotoType(input.receiptPhotoKey) ?? freshReview.receiptPhotoType,
       },
     });
     if (input.status === "MISMATCH_REPORTED") {

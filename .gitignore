@@ -47,6 +47,7 @@ next-env.d.ts
 
 # local source workbook and Windows shell artifact
 /excel/
+/file-sample/
 /nul
 
 # local OpenCode workspace configuration

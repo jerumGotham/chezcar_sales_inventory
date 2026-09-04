@@ -99,7 +99,66 @@ describe("customer orders, direct sales, accounting", () => {
         expect.objectContaining({ userId: fixture.users.branchStaff.id, title: "Low Stock: SALE-ITEM" }),
       ]));
       await expect(createDirectSale(branchActor, { locationId: fixture.locations.branches.QC.id, receiptBooklet: "", manualReceiptNumber: "SALE-0001", amountPaid: 75, paymentMethod: "GCASH", lines: [{ productId: product.id, quantity: 1 }] })).rejects.toMatchObject({ code: "DUPLICATE_RECEIPT" });
+      await expect(reviewSale(adminActor, sale.id, { status: "VERIFIED", comparison: { receiptBooklet: "", receiptNumber: "SALE-0001", paymentMethod: "GCASH", discountAmount: 0, amountPaid: 75, totalAmount: 75, lines: [{ itemCode: "SALE-ITEM", quantity: 1, unitPrice: 75 }] } })).rejects.toMatchObject({ code: "RECEIPT_EVIDENCE_REQUIRED" });
+      await prisma.saleAccountingReview.update({
+        where: { saleId: sale.id },
+        data: { receiptPhotoKey: "00000000-0000-4000-8000-000000000001.jpg", receiptPhotoType: "image/jpeg" },
+      });
        await expect(reviewSale(adminActor, sale.id, { status: "VERIFIED", comparison: { receiptBooklet: "", receiptNumber: "SALE-0001", paymentMethod: "GCASH", discountAmount: 0, amountPaid: 75, totalAmount: 75, lines: [{ itemCode: "SALE-ITEM", quantity: 1, unitPrice: 75 }] } })).resolves.toMatchObject({ status: "VERIFIED", reviewedById: fixture.users.admin.id });
+      await expect(prisma.saleAccountingReview.findUniqueOrThrow({ where: { saleId: sale.id } })).resolves.toMatchObject({ receiptPhotoKey: "00000000-0000-4000-8000-000000000001.jpg" });
+    });
+  }, 30_000);
+
+  it("notifies receipt evidence parties once for pending and cutoff, then Accounting on upload", async () => {
+    await withDisposableDatabase(async ({ prisma }) => {
+      const fixture = await createAuthFixture(prisma, { namespace: "receipt-evidence-notifications" });
+      const product = await prisma.product.create({
+        data: { itemCode: "EVIDENCE-ITEM", name: "Evidence Item", price: 25, status: "ACTIVE" },
+      });
+      await prisma.inventoryBalance.create({
+        data: { locationId: fixture.locations.branches.QC.id, productId: product.id, onHand: 2, unitCost: 10 },
+      });
+      const { createDirectSale } = await import("../../lib/server/services/customer-sales");
+      const {
+        createDueReceiptEvidenceReminders,
+        notifyReceiptEvidencePending,
+        notifyReceiptEvidenceUploaded,
+      } = await import("../../lib/server/services/receipt-evidence-notifications");
+      const branchActor = actor(fixture.users.branchStaff, fixture.locations.branches.QC);
+      const sale = await createDirectSale(branchActor, {
+        locationId: fixture.locations.branches.QC.id,
+        manualReceiptNumber: "EVIDENCE-001",
+        amountPaid: 25,
+        paymentMethod: "CASH",
+        lines: [{ productId: product.id, quantity: 1 }],
+      });
+
+      await notifyReceiptEvidencePending(branchActor, sale.id);
+      await notifyReceiptEvidencePending(branchActor, sale.id);
+      expect(await prisma.notification.count({
+        where: { relatedId: sale.id, title: "Receipt evidence pending", userId: fixture.users.branchStaff.id },
+      })).toBe(1);
+
+      const afterNextCutoff = new Date(Date.now() + 48 * 60 * 60 * 1000);
+      await createDueReceiptEvidenceReminders(afterNextCutoff);
+      await createDueReceiptEvidenceReminders(afterNextCutoff);
+      expect(await prisma.notification.count({
+        where: { relatedId: sale.id, title: "End-of-shift receipt reminder", userId: fixture.users.branchStaff.id },
+      })).toBe(1);
+
+      await prisma.saleAccountingReview.update({
+        where: { saleId: sale.id },
+        data: { receiptPhotoKey: "00000000-0000-4000-8000-000000000002.jpg", receiptPhotoType: "image/jpeg" },
+      });
+      await notifyReceiptEvidenceUploaded(sale.id);
+      expect(await prisma.notification.count({
+        where: { relatedId: sale.id, title: "Receipt evidence uploaded", userId: fixture.users.accountingStaff.id },
+      })).toBe(1);
+      await expect(prisma.saleAccountingReview.findUniqueOrThrow({ where: { saleId: sale.id } })).resolves.toMatchObject({
+        evidencePendingNotifiedAt: expect.any(Date),
+        evidenceReminderSentAt: afterNextCutoff,
+        evidenceUploadedAt: expect.any(Date),
+      });
     });
   }, 30_000);
 
