@@ -58,6 +58,26 @@ type Sale = {
   branchReplacementReceiptNumber: string | null;
   branchRespondedAt: string | null;
   receiptPhotoUrl: string | null;
+  receiptOcrStatus: "PENDING" | "COMPLETE" | "FAILED" | null;
+  receiptOcrError: string | null;
+  receiptOcrAt: string | null;
+  receiptOcrDraft: {
+    rawText: string;
+    confidence: number;
+    detectedReceiptNumber: string | null;
+    detectedTotalAmount: number | null;
+    receiptNumberMatches: boolean;
+    totalAmountMatches: boolean;
+    lines: Array<{
+      itemCode: string;
+      name: string;
+      quantity: number;
+      unitPrice: number;
+      itemDetected: boolean;
+      quantityDetected: boolean;
+      priceDetected: boolean;
+    }>;
+  } | null;
   correctionOfId: string | null;
   resolutionAction: string | null;
   resolutionNote: string | null;
@@ -953,16 +973,63 @@ function ReceiptVerificationContent() {
                     <ReviewBadge status={selectedSale.reviewStatus} />
                   </div>
                 </div>
-                <ReceiptSummary
-                  title="Encoded receipt"
-                  receiptBooklet={selectedSale.receiptBooklet}
-                  receiptNumber={selectedSale.manualReceiptNumber}
-                  paymentMethod={selectedSale.paymentMethod}
-                  discountAmount={selectedSale.discountAmount}
-                  amountPaid={selectedSale.amountPaid}
-                  totalAmount={selectedSale.totalAmount}
-                  lines={selectedSale.lines}
-                />
+                <div className="grid items-start gap-4 xl:grid-cols-2">
+                  <ReceiptSummary
+                    title="System sale input"
+                    receiptBooklet={selectedSale.receiptBooklet}
+                    receiptNumber={selectedSale.manualReceiptNumber}
+                    paymentMethod={selectedSale.paymentMethod}
+                    discountAmount={selectedSale.discountAmount}
+                    amountPaid={selectedSale.amountPaid}
+                    totalAmount={selectedSale.totalAmount}
+                    lines={selectedSale.lines}
+                  />
+                  <div className="space-y-4 rounded-xl border p-4">
+                    <div>
+                      <p className="font-semibold">Uploaded receipt and OCR draft</p>
+                      <p className="mt-1 text-xs text-amber-700">Draft only. Confirm every value against the original image before verifying.</p>
+                    </div>
+                    {canViewEvidence && selectedSale.receiptPhotoUrl ? (
+                      <Image
+                        src={selectedSale.receiptPhotoUrl}
+                        alt="Uploaded handwritten receipt"
+                        width={800}
+                        height={1000}
+                        unoptimized
+                        className="max-h-[32rem] w-full rounded-xl border bg-slate-50 object-contain"
+                      />
+                    ) : (
+                      <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">No receipt image uploaded.</p>
+                    )}
+                    {selectedSale.receiptOcrStatus === "PENDING" && <p className="text-sm text-sky-700">Reading receipt...</p>}
+                    {selectedSale.receiptOcrStatus === "FAILED" && <p className="text-sm text-red-700">{selectedSale.receiptOcrError}</p>}
+                    {selectedSale.receiptOcrDraft && (
+                      <div className="space-y-3 text-sm">
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="outline">OCR confidence {selectedSale.receiptOcrDraft.confidence}%</Badge>
+                          <Badge variant={selectedSale.receiptOcrDraft.receiptNumberMatches ? "secondary" : "outline"} className={selectedSale.receiptOcrDraft.receiptNumberMatches ? undefined : "border-red-200 bg-red-50 text-red-700"}>Receipt number {selectedSale.receiptOcrDraft.receiptNumberMatches ? "found" : "not matched"}</Badge>
+                          <Badge variant={selectedSale.receiptOcrDraft.totalAmountMatches ? "secondary" : "outline"} className={selectedSale.receiptOcrDraft.totalAmountMatches ? undefined : "border-red-200 bg-red-50 text-red-700"}>Total {selectedSale.receiptOcrDraft.totalAmountMatches ? "matched" : "not matched"}</Badge>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <p><span className="text-slate-500">Read receipt:</span> {selectedSale.receiptOcrDraft.detectedReceiptNumber ?? "Not detected"}</p>
+                          <p><span className="text-slate-500">Read total:</span> {selectedSale.receiptOcrDraft.detectedTotalAmount === null ? "Not detected" : formatPeso(selectedSale.receiptOcrDraft.detectedTotalAmount)}</p>
+                        </div>
+                        <div className="space-y-2">
+                          {selectedSale.receiptOcrDraft.lines.map((line) => (
+                            <div key={line.itemCode} className="rounded-lg border p-2">
+                              <p className="font-medium">{line.itemCode} - {line.name}</p>
+                              <p className="mt-1 text-xs text-slate-500">Item {line.itemDetected ? "found" : "not found"} · Qty {line.quantityDetected ? "found" : "not found"} · Price {line.priceDetected ? "found" : "not found"}</p>
+                            </div>
+                          ))}
+                        </div>
+                        <details>
+                          <summary className="cursor-pointer font-medium">Raw OCR text</summary>
+                          <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{selectedSale.receiptOcrDraft.rawText || "No text recognized."}</pre>
+                        </details>
+                      </div>
+                    )}
+                  </div>
+                </div>
                 {selectedSale.reportedComparison && (
                   <ReceiptSummary
                     title="Persisted reported receipt"
@@ -1085,16 +1152,6 @@ function ReceiptVerificationContent() {
                       </Button>
                     </div>
                   )}
-                {canViewEvidence && selectedSale.receiptPhotoUrl && !photoPreview && (
-                  <Image
-                    src={selectedSale.receiptPhotoUrl}
-                    alt="Attached manual receipt"
-                    width={800}
-                    height={600}
-                    unoptimized
-                    className="max-h-64 w-full rounded-xl border object-contain"
-                  />
-                )}
                 {!selectedSale.receiptPhotoUrl && !photoPreview ? (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
                     Receipt evidence is pending. Accounting may report a missing or unreadable receipt, but cannot confirm this sale as correct yet.

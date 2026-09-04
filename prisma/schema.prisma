@@ -622,6 +622,10 @@ model SaleAccountingReview {
   comparisonJson                 String?                     @db.Text
   receiptPhotoKey                String?
   receiptPhotoType               String?
+  receiptOcrStatus               String?
+  receiptOcrJson                 String?                     @db.Text
+  receiptOcrError                String?                     @db.Text
+  receiptOcrAt                   DateTime?
   evidencePendingNotifiedAt      DateTime?
   evidenceReminderSentAt         DateTime?
   evidenceUploadedAt             DateTime?
