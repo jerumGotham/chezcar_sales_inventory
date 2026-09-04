@@ -6,7 +6,7 @@ import { accountingReviewSchema, CustomerSalesError, reviewSale } from "@/lib/se
 type Context = { params: Promise<{ saleId: string }> };
 
 function errorResponse(error: unknown) {
-  if (error instanceof ZodError) return Response.json({ error: { code: "INVALID_INPUT", message: "Invalid review input" } }, { status: 400 });
+  if (error instanceof ZodError) return Response.json({ error: { code: "INVALID_INPUT", message: error.issues[0]?.message ?? "Invalid review input" } }, { status: 400 });
   if (error instanceof CustomerSalesError) return Response.json({ error: { code: error.code, message: error.message } }, { status: error.status });
   return authorizationErrorResponse(error);
 }

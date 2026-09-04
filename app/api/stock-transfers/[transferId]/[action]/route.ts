@@ -2,14 +2,15 @@ import { ZodError } from "zod";
 
 import type { CapabilityId } from "@/lib/contracts/roles";
 import { authorizationErrorResponse, requireCapability } from "@/lib/server/authorization";
-import { discrepancySchema, investigationSchema, resolutionSchema, updateDraftSchema, versionSchema } from "@/lib/contracts/stock-transfers";
-import { TransferError, confirmReceipt, deleteDraftTransfer, dispatchTransfer, finalizeTransfer, reportDiscrepancy, resolveTransfer, submitInvestigation, updateDraftTransfer } from "@/lib/server/services/stock-transfers";
+import { cancelTransferSchema, discrepancySchema, investigationSchema, resolutionSchema, updateDraftSchema, versionSchema } from "@/lib/contracts/stock-transfers";
+import { TransferError, cancelTransfer, confirmReceipt, deleteDraftTransfer, dispatchTransfer, finalizeTransfer, reportDiscrepancy, resolveTransfer, submitInvestigation, updateDraftTransfer } from "@/lib/server/services/stock-transfers";
 
 type Context = { params: Promise<{ transferId: string; action: string }> };
 
 const ACTION_CAPABILITIES = {
   finalize: "stock-transfers:finalize",
   dispatch: "stock-transfers:dispatch",
+  cancel: "stock-transfers:cancel",
   "confirm-receipt": "stock-transfers:receive",
   "report-discrepancy": "stock-transfers:report-discrepancy",
   investigate: "stock-transfers:investigate",
@@ -32,13 +33,11 @@ export async function POST(request: Request, context: Context) {
     }
 
     const actor = await requireCapability(request.headers, ACTION_CAPABILITIES[action]);
-    if (action === "delete") {
-      return Response.json({ data: await deleteDraftTransfer(actor, transferId) });
-    }
-
     const body = await request.json();
+    if (action === "delete") return Response.json({ data: await deleteDraftTransfer(actor, transferId, versionSchema.parse(body).version) });
     if (action === "finalize") return Response.json({ data: await finalizeTransfer(actor, transferId, versionSchema.parse(body).version) });
     if (action === "dispatch") return Response.json({ data: await dispatchTransfer(actor, transferId, versionSchema.parse(body).version) });
+    if (action === "cancel") return Response.json({ data: await cancelTransfer(actor, transferId, cancelTransferSchema.parse(body)) });
     if (action === "confirm-receipt") return Response.json({ data: await confirmReceipt(actor, transferId, versionSchema.parse(body).version) });
     if (action === "report-discrepancy") return Response.json({ data: await reportDiscrepancy(actor, transferId, discrepancySchema.parse(body)) });
     if (action === "investigate") return Response.json({ data: await submitInvestigation(actor, transferId, investigationSchema.parse(body)) });

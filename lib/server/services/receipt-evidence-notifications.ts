@@ -108,13 +108,38 @@ export async function createDueReceiptEvidenceReminders(now = new Date()) {
     where: {
       receiptPhotoKey: null,
       evidenceReminderSentAt: null,
-      sale: { status: "POSTED", postedAt: { lte: reminderCutoff(now) } },
+      sale: {
+        status: "POSTED",
+        postedAt: { lte: reminderCutoff(now) },
+        correctionRequests: { none: { status: "PENDING" } },
+      },
     },
-    select: { id: true },
+    select: { id: true, saleId: true },
     take: 100,
   });
   for (const candidate of due) {
     await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Sale" WHERE id = ${candidate.saleId} FOR UPDATE`;
+      const actionable = await tx.saleAccountingReview.findUnique({
+        where: { id: candidate.id },
+        select: {
+          receiptPhotoKey: true,
+          evidenceReminderSentAt: true,
+          sale: {
+            select: {
+              status: true,
+              correctionRequests: { where: { status: "PENDING" }, take: 1, select: { id: true } },
+            },
+          },
+        },
+      });
+      if (
+        !actionable ||
+        actionable.receiptPhotoKey ||
+        actionable.evidenceReminderSentAt ||
+        actionable.sale.status !== "POSTED" ||
+        actionable.sale.correctionRequests.length > 0
+      ) return;
       const claimed = await tx.saleAccountingReview.updateMany({
         where: { id: candidate.id, receiptPhotoKey: null, evidenceReminderSentAt: null },
         data: { evidenceReminderSentAt: now },

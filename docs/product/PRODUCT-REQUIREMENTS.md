@@ -87,6 +87,7 @@ All MVP replenishment enters `SR`. Transfers are `SR` to branch only. Branch-to-
 - Review unverified receipts as operational cover for Accounting
 - Resolve final stock discrepancies after Stock Staff investigation
 - Resolve Accounting mismatch reports
+- Resolve Branch-originated direct-sale correction requests; only approval posts the reversal
 
 ### Stock Staff
 
@@ -102,6 +103,7 @@ All MVP replenishment enters `SR`. Transfers are `SR` to branch only. Branch-to-
 - Use an individual account assigned to exactly one branch
 - View stock and incoming transfers for the assigned branch
 - Encode a completed handwritten-receipt sale
+- Report an accidental, duplicate, nonexistent, or incorrectly submitted own-branch direct sale without editing, deleting, voiding, or restoring stock
 - Double-check own-branch receipt mismatches and confirm either the original encoding or the need for correction with a replacement receipt number
 - Confirm a transfer when every physical item and quantity matches
 - Submit a discrepancy form when any item or quantity does not match
@@ -143,6 +145,9 @@ Available branch stock is reserved immediately for reservation orders by increas
 - Optional customer information may be attached but is not required.
 - A free-form discount may be encoded; preserve base price, discount, and final price. A discount reason is not required in the MVP.
 - Posted sales are not directly edited or hard-deleted. An encoding correction uses an auditable void-and-replace flow.
+- POS shows a complete confirmation before posting because successful submission deducts stock immediately.
+- A Branch wrong-submission report is a request only: no receipt photo is required and stock remains deducted until Admin acts.
+- Admin may keep the reported sale with no inventory effect or approve a void-only reversal when the direct sale did not occur or was submitted accidentally/duplicated. A real sale with incorrect encoded details continues through receipt verification and void-and-replace.
 
 ## Workflow 2: Accounting Verification
 

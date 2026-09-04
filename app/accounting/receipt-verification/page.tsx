@@ -24,7 +24,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { receiptComparisonSchema, type ReceiptComparison } from "@/lib/contracts/sales";
+import {
+  receiptComparisonSchema,
+  type ReceiptComparison,
+  type SaleCorrectionRequestDto,
+} from "@/lib/contracts/sales";
 
 type SaleLine = {
   itemCode: string;
@@ -82,6 +86,7 @@ type Sale = {
   resolutionAction: string | null;
   resolutionNote: string | null;
   resolvedAt: string | null;
+  correctionRequest: SaleCorrectionRequestDto | null;
   lines: SaleLine[];
 };
 
@@ -154,7 +159,7 @@ async function fetchReceipts(filters: ReceiptFilters) {
   if (filters.saleId) params.set("saleId", filters.saleId);
   const response = await fetch(
     `/api/accounting/receipts?${params.toString()}`,
-    { credentials: "same-origin" },
+    { credentials: "same-origin", cache: "no-store" },
   );
   const json = await response.json();
   if (!response.ok)
@@ -193,9 +198,8 @@ function toComparison(draft: ComparisonDraft) {
 async function uploadPhoto(
   saleId: string,
   file: File | null,
-  existingKey: string | null,
 ) {
-  if (!file || existingKey) return existingKey;
+  if (!file) return;
   const formData = new FormData();
   formData.set("photo", file);
   const response = await fetch(`/api/accounting/receipts/${saleId}/photo`, {
@@ -211,7 +215,6 @@ async function uploadPhoto(
     throw new Error(json?.error?.message ?? "Unable to upload receipt photo");
   if (!json?.data?.key)
     throw new Error("Receipt photo upload returned an invalid response");
-  return json.data.key;
 }
 
 type ComparisonDifference = {
@@ -315,6 +318,7 @@ function ReceiptVerificationContent() {
   const canRespond = useCan("sales:mismatch:respond");
   const canViewEvidence = useCan("sales:evidence:view");
   const canUploadEvidence = useCan("sales:evidence:upload");
+  const canDeleteEvidence = useCan("sales:evidence:delete");
   const searchParams = useSearchParams();
   const linkedSaleId = searchParams.get("saleId") ?? "";
   const queryClient = useQueryClient();
@@ -322,7 +326,7 @@ function ReceiptVerificationContent() {
   const [reviewStatusDraft, setReviewStatusDraft] =
     useState<ReceiptFilters["reviewStatus"]>("all");
   const [saleStatusDraft, setSaleStatusDraft] =
-    useState<ReceiptFilters["saleStatus"]>("POSTED");
+    useState<ReceiptFilters["saleStatus"]>("all");
   const [locationDraft, setLocationDraft] = useState("");
   const [dateFromDraft, setDateFromDraft] = useState("");
   const [dateToDraft, setDateToDraft] = useState("");
@@ -331,11 +335,11 @@ function ReceiptVerificationContent() {
     pageSize: 10,
     search: "",
     reviewStatus: "all",
-    saleStatus: "POSTED",
+    saleStatus: "all",
     locationId: "",
     dateFrom: "",
     dateTo: "",
-    saleId: linkedSaleId,
+    saleId: "",
   });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [category, setCategory] = useState("PRICE_MISMATCH");
@@ -346,7 +350,23 @@ function ReceiptVerificationContent() {
     queryFn: () => fetchReceipts(filters),
     placeholderData: (previousData) => previousData,
   });
+  const linkedReceiptQuery = useQuery({
+    queryKey: ["accounting-receipt-linked", linkedSaleId],
+    queryFn: () => fetchReceipts({
+      page: 1,
+      pageSize: 5,
+      search: "",
+      reviewStatus: "all",
+      saleStatus: "all",
+      locationId: "",
+      dateFrom: "",
+      dateTo: "",
+      saleId: linkedSaleId,
+    }),
+    enabled: Boolean(linkedSaleId),
+  });
   const sales = useMemo(() => data?.data ?? [], [data?.data]);
+  const linkedSale = linkedReceiptQuery.data?.data[0] ?? null;
   const meta = data?.meta ?? {
     page: 1,
     pageSize: 10,
@@ -363,9 +383,7 @@ function ReceiptVerificationContent() {
     mutationFn: async (status: "VERIFIED" | "MISMATCH_REPORTED") => {
       if (!canReview) throw new Error("You do not have permission to review receipts.");
       if (!selectedId) throw new Error("Select a receipt first.");
-      const nextPhotoKey = canUploadEvidence
-        ? await uploadPhoto(selectedId, photoFile, photoKey)
-        : photoKey;
+      if (canUploadEvidence && photoFile) await uploadPhoto(selectedId, photoFile);
       const response = await fetch(
         `/api/accounting/receipts/${selectedId}/review`,
         {
@@ -378,8 +396,6 @@ function ReceiptVerificationContent() {
               status === "MISMATCH_REPORTED" ? category : undefined,
             notes: status === "MISMATCH_REPORTED" ? notes : undefined,
             comparison: toComparison(comparison),
-            receiptPhotoKey:
-              status === "MISMATCH_REPORTED" ? nextPhotoKey : undefined,
           }),
         },
       );
@@ -398,7 +414,6 @@ function ReceiptVerificationContent() {
       setNotes("");
       setPhotoFile(null);
       setPhotoPreview(null);
-      setPhotoKey(null);
       setFormError(null);
       queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] });
     },
@@ -424,9 +439,7 @@ function ReceiptVerificationContent() {
           "Enter the new replacement receipt number before voiding the original sale.",
         );
       }
-      const nextPhotoKey = canUploadEvidence
-        ? await uploadPhoto(selectedId, photoFile, photoKey)
-        : photoKey;
+      if (canUploadEvidence && photoFile) await uploadPhoto(selectedId, photoFile);
       const response = await fetch(
         `/api/accounting/receipts/${selectedId}/resolve`,
         {
@@ -440,7 +453,6 @@ function ReceiptVerificationContent() {
               action === "VOIDED_REPLACED"
                 ? toComparison(comparison)
                 : undefined,
-            receiptPhotoKey: nextPhotoKey ?? undefined,
           }),
         },
       );
@@ -452,7 +464,33 @@ function ReceiptVerificationContent() {
         throw new Error(json?.error?.message ?? "Unable to resolve mismatch");
       return json?.data;
     },
-    onSuccess: () => {
+    onSuccess: (_, action) => {
+      if (action === "CONFIRMED_CORRECT") {
+        queryClient.setQueriesData<ReceiptListResponse>(
+          { queryKey: ["accounting-receipts"] },
+          (current) => {
+            if (!current) return current;
+            const resolvedSale = current.data.find((sale) => sale.id === selectedId);
+            if (!resolvedSale) return current;
+            return {
+              ...current,
+              data: current.data.map((sale) => sale.id === selectedId
+                ? {
+                    ...sale,
+                    reviewStatus: "VERIFIED",
+                    resolutionAction: "CONFIRMED_CORRECT",
+                    resolutionNote: resolutionNote.trim(),
+                  }
+                : sale),
+              meta: {
+                ...current.meta,
+                verified: current.meta.verified + (resolvedSale.reviewStatus === "VERIFIED" ? 0 : 1),
+                mismatches: Math.max(0, current.meta.mismatches - (resolvedSale.reviewStatus === "MISMATCH_REPORTED" ? 1 : 0)),
+              },
+            };
+          },
+        );
+      }
       setSelectedId(null);
       setResolutionNote("");
       setFormError(null);
@@ -498,7 +536,54 @@ function ReceiptVerificationContent() {
     onError: (mutationError) => setFormError((mutationError as Error).message),
   });
 
-  const selectedSale = sales.find((sale) => sale.id === selectedId) ?? null;
+  const correctionResolutionMutation = useMutation({
+    mutationFn: async (action: "KEEP_SALE" | "VOID_SALE") => {
+      if (!canVoidReplace) throw new Error("You do not have permission to resolve sale correction requests.");
+      if (!selectedId) throw new Error("Select a sale first.");
+      if (!selectedSale?.correctionRequest?.id) throw new Error("The pending correction request is unavailable. Reload and try again.");
+      if (!correctionResolutionNote.trim()) throw new Error("Admin resolution note is required.");
+      const response = await fetch(
+        `/api/sales/${encodeURIComponent(selectedId)}/correction-request`,
+        {
+          method: "PATCH",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            correctionRequestId: selectedSale?.correctionRequest?.id,
+            action,
+            note: correctionResolutionNote,
+          }),
+        },
+      );
+      const json = (await response.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      if (!response.ok) {
+        throw new Error(json?.error?.message ?? "Unable to resolve the correction request");
+      }
+    },
+    onSuccess: async () => {
+      setSelectedId(null);
+      setCorrectionResolutionNote("");
+      setFormError(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] }),
+        queryClient.invalidateQueries({ queryKey: ["accounting-receipt-linked"] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-direct-sales-list"] }),
+        queryClient.invalidateQueries({ queryKey: ["pos-options"] }),
+        queryClient.invalidateQueries({ queryKey: ["inventory-locations"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["customers"] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-history"] }),
+        queryClient.invalidateQueries({ queryKey: ["reports"] }),
+      ]);
+    },
+    onError: (mutationError) => setFormError((mutationError as Error).message),
+  });
+
+  const selectedSale =
+    sales.find((sale) => sale.id === selectedId) ??
+    (linkedSale?.id === selectedId ? linkedSale : null);
   const [comparison, setComparison] = useState<ComparisonDraft>({
     receiptBooklet: "",
     receiptNumber: "",
@@ -509,6 +594,7 @@ function ReceiptVerificationContent() {
     lines: [],
   });
   const [resolutionNote, setResolutionNote] = useState("");
+  const [correctionResolutionNote, setCorrectionResolutionNote] = useState("");
   const [branchResponse, setBranchResponse] = useState<
     "ORIGINAL_ENCODING_CORRECT" | "RECEIPT_CORRECTION_NEEDED"
   >("ORIGINAL_ENCODING_CORRECT");
@@ -517,17 +603,51 @@ function ReceiptVerificationContent() {
     useState("");
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const [photoKey, setPhotoKey] = useState<string | null>(null);
   const evidenceMutation = useMutation({
     mutationFn: async () => {
       if (!selectedId || !photoFile) throw new Error("Select a receipt photo first.");
-      return uploadPhoto(selectedId, photoFile, null);
+      return uploadPhoto(selectedId, photoFile);
     },
     onSuccess: () => {
-      setPhotoFile(null);
-      setPhotoPreview(null);
-      setPhotoKey(null);
+      clearSelectedPhoto();
       setFormError(null);
+      queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] });
+    },
+    onError: (mutationError) => setFormError((mutationError as Error).message),
+  });
+  const deleteEvidenceMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedId) throw new Error("Select a receipt first.");
+      const response = await fetch(`/api/accounting/receipts/${encodeURIComponent(selectedId)}/photo`, {
+        method: "DELETE",
+        credentials: "same-origin",
+      });
+      const json = (await response.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      if (!response.ok) throw new Error(json?.error?.message ?? "Unable to delete receipt photo");
+    },
+    onSuccess: () => {
+      clearSelectedPhoto();
+      setFormError(null);
+      queryClient.setQueriesData<ReceiptListResponse>(
+        { queryKey: ["accounting-receipts"] },
+        (current) => current
+          ? {
+              ...current,
+              data: current.data.map((sale) => sale.id === selectedId
+                ? {
+                    ...sale,
+                    receiptPhotoUrl: null,
+                    receiptOcrStatus: null,
+                    receiptOcrDraft: null,
+                    receiptOcrError: null,
+                    receiptOcrAt: null,
+                  }
+                : sale),
+            }
+          : current,
+      );
       queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] });
     },
     onError: (mutationError) => setFormError((mutationError as Error).message),
@@ -544,7 +664,7 @@ function ReceiptVerificationContent() {
   const hasActiveFilters = Boolean(
     filters.search ||
     filters.reviewStatus !== "all" ||
-    filters.saleStatus !== "POSTED" ||
+    filters.saleStatus !== "all" ||
     filters.locationId ||
     filters.dateFrom ||
     filters.dateTo,
@@ -574,7 +694,7 @@ function ReceiptVerificationContent() {
   const resetFilters = () => {
     setSearchDraft("");
     setReviewStatusDraft("all");
-    setSaleStatusDraft("POSTED");
+    setSaleStatusDraft("all");
     setLocationDraft("");
     setDateFromDraft("");
     setDateToDraft("");
@@ -583,7 +703,7 @@ function ReceiptVerificationContent() {
       pageSize: 10,
       search: "",
       reviewStatus: "all",
-      saleStatus: "POSTED",
+      saleStatus: "all",
       locationId: "",
       dateFrom: "",
       dateTo: "",
@@ -613,6 +733,7 @@ function ReceiptVerificationContent() {
       })),
     });
     setResolutionNote("");
+    setCorrectionResolutionNote("");
     setBranchResponse(
       sale.branchResponse ?? "ORIGINAL_ENCODING_CORRECT",
     );
@@ -620,19 +741,16 @@ function ReceiptVerificationContent() {
     setBranchReplacementReceiptNumber(
       sale.branchReplacementReceiptNumber ?? "",
     );
-    setPhotoFile(null);
-    setPhotoPreview(null);
-    setPhotoKey(null);
+    clearSelectedPhoto();
   };
 
   useEffect(() => {
     if (!linkedSaleId || selectedId === linkedSaleId) return;
-    const linkedSale = sales.find((sale) => sale.id === linkedSaleId);
     if (!linkedSale) return;
     // Initialize the selected transaction after its linked notification query loads.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     selectSale(linkedSale);
-  }, [linkedSaleId, sales, selectedId]);
+  }, [linkedSale, linkedSaleId, selectedId]);
 
   const handlePhoto = (file: File | undefined) => {
     if (!file) return;
@@ -645,15 +763,19 @@ function ReceiptVerificationContent() {
       return;
     }
     setPhotoFile(file);
-    setPhotoPreview(URL.createObjectURL(file));
-    setPhotoKey(null);
+    setPhotoPreview((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return URL.createObjectURL(file);
+    });
   };
 
-  const clearSelectedPhoto = () => {
+  function clearSelectedPhoto() {
     setPhotoFile(null);
-    setPhotoPreview(null);
-    setPhotoKey(null);
-  };
+    setPhotoPreview((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
+    });
+  }
 
   const parsedComparison = parseComparison(comparison);
   const comparisonError = parsedComparison.success
@@ -669,6 +791,7 @@ function ReceiptVerificationContent() {
   const canEditComparison = Boolean(
     selectedSale &&
     selectedSale.status === "POSTED" &&
+    selectedSale.correctionRequest?.status !== "PENDING" &&
     ((canReview && selectedSale.reviewStatus === "UNVERIFIED") ||
       (canVoidReplace &&
         selectedSale.reviewStatus === "MISMATCH_REPORTED" &&
@@ -733,8 +856,8 @@ function ReceiptVerificationContent() {
               }
               className="h-10 rounded-md border bg-background px-3 text-sm"
             >
-              <option value="POSTED">Posted sales</option>
               <option value="all">All sale statuses</option>
+              <option value="POSTED">Posted sales</option>
               <option value="VOIDED">Voided sales</option>
             </select>
             <select
@@ -840,7 +963,7 @@ function ReceiptVerificationContent() {
                   ) : null}
                 </div>
               ) : (
-                <table className="w-full min-w-[680px] text-left text-sm">
+                <table className="w-full min-w-[840px] text-left text-sm">
                   <thead>
                     <tr className="border-b text-xs uppercase tracking-wide text-slate-500">
                       <th className="px-3 py-3">Receipt</th>
@@ -848,8 +971,9 @@ function ReceiptVerificationContent() {
                       <th className="px-3 py-3">Customer</th>
                       <th className="px-3 py-3">Total</th>
                       <th className="px-3 py-3">Evidence</th>
-                      <th className="px-3 py-3">Status</th>
-                      <th className="px-3 py-3" />
+                       <th className="px-3 py-3">Status</th>
+                       <th className="px-3 py-3">Resolution note</th>
+                       <th className="px-3 py-3" />
                     </tr>
                   </thead>
                   <tbody>
@@ -882,13 +1006,31 @@ function ReceiptVerificationContent() {
                           {formatPeso(sale.totalAmount)}
                         </td>
                         <td className="px-3 py-4">
-                          <Badge variant={sale.receiptPhotoUrl ? "secondary" : "outline"}>
-                            {sale.receiptPhotoUrl ? "Attached" : "Pending"}
-                          </Badge>
+                          {sale.status === "VOIDED" ? (
+                            <span className="text-slate-400">-</span>
+                          ) : (
+                            <Badge variant={sale.receiptPhotoUrl ? "secondary" : "outline"}>
+                              {sale.receiptPhotoUrl ? "Attached" : "Pending"}
+                            </Badge>
+                          )}
                         </td>
                         <td className="px-3 py-4">
-                          <ReviewBadge status={sale.reviewStatus} />
-                        </td>
+                          <div className="flex flex-col items-start gap-1">
+                            {sale.status === "VOIDED" ? (
+                              <SaleStatusBadge status={sale.status} />
+                            ) : (
+                              <ReviewBadge status={sale.reviewStatus} />
+                            )}
+                            {sale.correctionRequest?.status === "PENDING" ? (
+                              <Badge className="border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-50">
+                                Correction requested
+                              </Badge>
+                            ) : null}
+                          </div>
+                         </td>
+                         <td className="max-w-56 px-3 py-4 text-xs text-slate-600">
+                           <span className="line-clamp-2">{sale.resolutionNote ?? sale.correctionRequest?.resolutionNote ?? "-"}</span>
+                         </td>
                         <td className="px-3 py-4 text-right">
                           <Button
                             size="sm"
@@ -970,9 +1112,86 @@ function ReceiptVerificationContent() {
                   </div>
                   <div className="flex flex-wrap justify-end gap-2">
                     <SaleStatusBadge status={selectedSale.status} />
-                    <ReviewBadge status={selectedSale.reviewStatus} />
+                    {selectedSale.status === "POSTED" ? (
+                      <ReviewBadge status={selectedSale.reviewStatus} />
+                    ) : null}
                   </div>
                 </div>
+                {selectedSale.correctionRequest ? (
+                  <div className={selectedSale.correctionRequest.status === "PENDING"
+                    ? "space-y-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+                    : "space-y-2 rounded-xl border bg-muted/40 p-4 text-sm text-foreground"}
+                  >
+                    <div>
+                      <p className="font-semibold">
+                        {selectedSale.correctionRequest.status === "PENDING"
+                          ? "Branch correction request pending"
+                          : `Branch correction request ${selectedSale.correctionRequest.resolution === "VOIDED" ? "approved" : "dismissed"}`}
+                      </p>
+                      <p className="mt-1">
+                        {selectedSale.correctionRequest.reason.toLowerCase().replaceAll("_", " ")}: {selectedSale.correctionRequest.note}
+                      </p>
+                      <p className="mt-2 text-xs opacity-80">
+                        Reported by {selectedSale.correctionRequest.requestedBy} on {new Date(selectedSale.correctionRequest.requestedAt).toLocaleString("en-PH")}.
+                      </p>
+                      {selectedSale.correctionRequest.resolutionNote ? (
+                        <p className="mt-2 border-t pt-2">
+                          Admin resolution: {selectedSale.correctionRequest.resolutionNote}
+                        </p>
+                      ) : null}
+                    </div>
+                    {selectedSale.correctionRequest.status === "PENDING" && canVoidReplace && selectedSale.status === "POSTED" ? (
+                      <div className="space-y-3 border-t border-amber-200 pt-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="correction-resolution-note">Admin resolution note</Label>
+                          <Textarea
+                            id="correction-resolution-note"
+                            value={correctionResolutionNote}
+                            onChange={(event) => setCorrectionResolutionNote(event.target.value)}
+                            placeholder="Explain why the sale stays posted or why its stock deduction must be reversed"
+                            maxLength={5_000}
+                            rows={3}
+                            disabled={correctionResolutionMutation.isPending}
+                          />
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={() => correctionResolutionMutation.mutate("KEEP_SALE")}
+                            disabled={correctionResolutionMutation.isPending || !correctionResolutionNote.trim()}
+                          >
+                            Keep sale posted
+                          </Button>
+                          {["ACCIDENTAL_SUBMISSION", "DUPLICATE_SUBMISSION", "SALE_DID_NOT_HAPPEN"].includes(selectedSale.correctionRequest.reason) ? (
+                            <Button
+                              variant="destructive"
+                              onClick={() => {
+                                if (window.confirm("Approve this request and reverse the original inventory deduction?")) {
+                                  correctionResolutionMutation.mutate("VOID_SALE");
+                                }
+                              }}
+                              disabled={correctionResolutionMutation.isPending || !correctionResolutionNote.trim()}
+                            >
+                              {correctionResolutionMutation.isPending ? "Resolving..." : "Approve and void sale"}
+                            </Button>
+                          ) : null}
+                        </div>
+                        {!["ACCIDENTAL_SUBMISSION", "DUPLICATE_SUBMISSION", "SALE_DID_NOT_HAPPEN"].includes(selectedSale.correctionRequest.reason) ? (
+                          <p className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-800 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
+                            If a real sale occurred with wrong information, keep this sale posted and use receipt mismatch plus void-and-replace after evidence review.
+                          </p>
+                        ) : null}
+                        <p className="text-xs">
+                          Inventory changes only when Approve and void sale succeeds. Keeping the sale creates no stock movement.
+                        </p>
+                      </div>
+                    ) : selectedSale.correctionRequest.status === "PENDING" ? (
+                      <p className="border-t border-amber-200 pt-3 text-xs">
+                        Inventory remains deducted while this request waits for Admin resolution.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="grid items-start gap-4 xl:grid-cols-2">
                   <ReceiptSummary
                     title="System sale input"
@@ -986,8 +1205,8 @@ function ReceiptVerificationContent() {
                   />
                   <div className="space-y-4 rounded-xl border p-4">
                     <div>
-                      <p className="font-semibold">Uploaded receipt and OCR draft</p>
-                      <p className="mt-1 text-xs text-amber-700">Draft only. Confirm every value against the original image before verifying.</p>
+                      <p className="font-semibold">1. Uploaded receipt photo</p>
+                      <p className="mt-1 text-xs text-slate-500">This is the receipt Accounting must verify.</p>
                     </div>
                     {canViewEvidence && selectedSale.receiptPhotoUrl ? (
                       <Image
@@ -1001,29 +1220,59 @@ function ReceiptVerificationContent() {
                     ) : (
                       <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">No receipt image uploaded.</p>
                     )}
+                    {canDeleteEvidence &&
+                    selectedSale.receiptPhotoUrl &&
+                    selectedSale.status === "POSTED" &&
+                    selectedSale.reviewStatus === "UNVERIFIED" ? (
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        disabled={deleteEvidenceMutation.isPending || evidenceMutation.isPending || reviewMutation.isPending}
+                        onClick={() => {
+                          if (window.confirm("Delete this receipt photo and its OCR result?")) {
+                            deleteEvidenceMutation.mutate();
+                          }
+                        }}
+                      >
+                        <Trash2 className="mr-2 size-4" />
+                        {deleteEvidenceMutation.isPending ? "Deleting..." : "Delete receipt photo"}
+                      </Button>
+                    ) : null}
                     {selectedSale.receiptOcrStatus === "PENDING" && <p className="text-sm text-sky-700">Reading receipt...</p>}
                     {selectedSale.receiptOcrStatus === "FAILED" && <p className="text-sm text-red-700">{selectedSale.receiptOcrError}</p>}
                     {selectedSale.receiptOcrDraft && (
-                      <div className="space-y-3 text-sm">
+                      <div className="space-y-3 rounded-xl border border-sky-200 bg-sky-50/50 p-3 text-sm">
+                        <div>
+                          <p className="font-semibold text-sky-950">2. Details read by OCR</p>
+                          <p className="mt-1 text-xs text-sky-800">Computer-read draft only. Compare these results with the receipt photo before confirming.</p>
+                        </div>
                         <div className="flex flex-wrap gap-2">
                           <Badge variant="outline">OCR confidence {selectedSale.receiptOcrDraft.confidence}%</Badge>
                           <Badge variant={selectedSale.receiptOcrDraft.receiptNumberMatches ? "secondary" : "outline"} className={selectedSale.receiptOcrDraft.receiptNumberMatches ? undefined : "border-red-200 bg-red-50 text-red-700"}>Receipt number {selectedSale.receiptOcrDraft.receiptNumberMatches ? "found" : "not matched"}</Badge>
                           <Badge variant={selectedSale.receiptOcrDraft.totalAmountMatches ? "secondary" : "outline"} className={selectedSale.receiptOcrDraft.totalAmountMatches ? undefined : "border-red-200 bg-red-50 text-red-700"}>Total {selectedSale.receiptOcrDraft.totalAmountMatches ? "matched" : "not matched"}</Badge>
                         </div>
                         <div className="grid gap-2 sm:grid-cols-2">
-                          <p><span className="text-slate-500">Read receipt:</span> {selectedSale.receiptOcrDraft.detectedReceiptNumber ?? "Not detected"}</p>
-                          <p><span className="text-slate-500">Read total:</span> {selectedSale.receiptOcrDraft.detectedTotalAmount === null ? "Not detected" : formatPeso(selectedSale.receiptOcrDraft.detectedTotalAmount)}</p>
+                          <div className="rounded-lg border bg-background p-3">
+                            <p className="text-xs text-slate-500">Detected receipt number</p>
+                            <p className="mt-1 font-semibold">{selectedSale.receiptOcrDraft.detectedReceiptNumber ?? "Not detected"}</p>
+                          </div>
+                          <div className="rounded-lg border bg-background p-3">
+                            <p className="text-xs text-slate-500">Detected total</p>
+                            <p className="mt-1 font-semibold">{selectedSale.receiptOcrDraft.detectedTotalAmount === null ? "Not detected" : formatPeso(selectedSale.receiptOcrDraft.detectedTotalAmount)}</p>
+                          </div>
                         </div>
                         <div className="space-y-2">
                           {selectedSale.receiptOcrDraft.lines.map((line) => (
-                            <div key={line.itemCode} className="rounded-lg border p-2">
+                            <div key={line.itemCode} className="rounded-lg border bg-background p-3">
                               <p className="font-medium">{line.itemCode} - {line.name}</p>
-                              <p className="mt-1 text-xs text-slate-500">Item {line.itemDetected ? "found" : "not found"} · Qty {line.quantityDetected ? "found" : "not found"} · Price {line.priceDetected ? "found" : "not found"}</p>
+                              <p className="mt-1 text-xs text-slate-500">Expected from system: Qty {line.quantity} at {formatPeso(line.unitPrice)}</p>
+                              <p className="mt-1 text-xs">OCR check: Item {line.itemDetected ? "found" : "not found"} · Qty {line.quantityDetected ? "found" : "not found"} · Price {line.priceDetected ? "found" : "not found"}</p>
                             </div>
                           ))}
                         </div>
                         <details>
-                          <summary className="cursor-pointer font-medium">Raw OCR text</summary>
+                          <summary className="cursor-pointer font-medium">Show all text read by OCR</summary>
                           <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{selectedSale.receiptOcrDraft.rawText || "No text recognized."}</pre>
                         </details>
                       </div>
@@ -1038,7 +1287,16 @@ function ReceiptVerificationContent() {
                 )}
                 {selectedSale.status === "VOIDED" && (
                   <div className="rounded-xl bg-slate-100 p-3 text-sm text-slate-700">
-                    This sale is voided and read-only.
+                    <p className="font-medium">This sale is voided and excluded from active sales.</p>
+                    {selectedSale.resolutionNote ? (
+                      <p className="mt-1">Resolution note: {selectedSale.resolutionNote}</p>
+                    ) : null}
+                  </div>
+                )}
+                {selectedSale.reviewStatus === "VERIFIED" && selectedSale.resolutionNote && (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+                    <p className="font-medium">Original encoding confirmed</p>
+                    <p className="mt-1">Resolution note: {selectedSale.resolutionNote}</p>
                   </div>
                 )}
                 {selectedSale.reviewStatus === "MISMATCH_REPORTED" && (
@@ -1152,9 +1410,9 @@ function ReceiptVerificationContent() {
                       </Button>
                     </div>
                   )}
-                {!selectedSale.receiptPhotoUrl && !photoPreview ? (
+                {selectedSale.status === "POSTED" && !selectedSale.receiptPhotoUrl && !photoPreview ? (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                    Receipt evidence is pending. Accounting may report a missing or unreadable receipt, but cannot confirm this sale as correct yet.
+                    Receipt evidence is pending. Attach the handwritten receipt photo before confirming the sale or reporting a mismatch.
                   </div>
                 ) : null}
                 {canUploadEvidence &&
@@ -1162,9 +1420,11 @@ function ReceiptVerificationContent() {
                 selectedSale.reviewStatus !== "VERIFIED" ? (
                   <div className="space-y-3 rounded-xl border p-4">
                     <div>
-                      <Label htmlFor="receipt-photo">Receipt photo</Label>
+                      <Label htmlFor="receipt-photo">
+                        {selectedSale.receiptPhotoUrl ? "Replace receipt photo" : "Attach receipt photo"}
+                      </Label>
                       <p className="mt-1 text-xs text-slate-500">
-                        Required to verify. Branch Staff or Accounting can attach a missing image or replace an unreadable one.
+                        Choose a file only when the receipt is missing or the current photo is unreadable. Uploading a replacement runs OCR again.
                       </p>
                     </div>
                     <Input
@@ -1209,7 +1469,13 @@ function ReceiptVerificationContent() {
                 ) : null}
                 {canEditComparison &&
                 selectedSale.reviewStatus !== "VERIFIED" ? (
-                  <div className="space-y-4 border-t pt-4">
+                  <div className="space-y-4 rounded-xl border p-4">
+                    <div>
+                      <p className="font-semibold">3. Accounting verification details</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        These editable fields start with the system sale values, not the OCR result. Compare them with the photo and OCR text, then correct only the values that differ.
+                      </p>
+                    </div>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="grid gap-2">
                         <Label htmlFor="paper-booklet">Receipt booklet</Label>
@@ -1318,7 +1584,9 @@ function ReceiptVerificationContent() {
                               <Input
                                 aria-label={`Quantity ${index + 1}`}
                                 placeholder="Quantity"
-                                inputMode="numeric"
+                                type="number"
+                                min="1"
+                                step="1"
                                 value={line.quantity}
                                 onChange={(event) =>
                                   setComparison((current) => ({
@@ -1396,6 +1664,7 @@ function ReceiptVerificationContent() {
                         <MismatchDetails differences={differences} />
                       )}
                     {canReview &&
+                      selectedSale.correctionRequest?.status !== "PENDING" &&
                       selectedSale.reviewStatus === "UNVERIFIED" && (
                       <div className="flex flex-wrap gap-2">
                         <Button
@@ -1414,6 +1683,7 @@ function ReceiptVerificationContent() {
                       </div>
                     )}
                     {canReview &&
+                      selectedSale.correctionRequest?.status !== "PENDING" &&
                       selectedSale.reviewStatus === "UNVERIFIED" && (
                       <>
                         <div className="grid gap-2">
@@ -1447,6 +1717,7 @@ function ReceiptVerificationContent() {
                       </>
                     )}
                     {canReview &&
+                      selectedSale.correctionRequest?.status !== "PENDING" &&
                       selectedSale.reviewStatus === "UNVERIFIED" && (
                       <Button
                         variant="warning"
@@ -1459,7 +1730,11 @@ function ReceiptVerificationContent() {
                           }
                           reviewMutation.mutate("MISMATCH_REPORTED");
                         }}
-                        disabled={reviewMutation.isPending || Boolean(comparisonError)}
+                        disabled={
+                          reviewMutation.isPending ||
+                          Boolean(comparisonError) ||
+                          (!selectedSale.receiptPhotoUrl && !photoFile)
+                        }
                       >
                         <AlertTriangle className="mr-2 h-4 w-4" />
                         Report mismatch

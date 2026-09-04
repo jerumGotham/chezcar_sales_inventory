@@ -15,16 +15,17 @@ Editing the original transfer after dispatch would hide whether the Stock Room r
 1. Stock Staff normally initiates and dispatches transfers from `SR` to a branch. Admin may perform the same source-side actions as operational cover when Stock Staff is unavailable. Branch requests, branch-to-branch transfers, and direct supplier-to-branch receipts are deferred.
 2. A dispatched transfer is an immutable record of what `SR` says it sent.
 3. Dispatch deducts `SR` stock, records equal in-transit quantities, and notifies the destination branch in real time.
-4. Assigned Branch Staff can perform one of two controlled actions:
+4. Before the destination records a receipt or discrepancy, authorized Stock Staff or Admin may cancel the complete in-transit transfer with a required reason. Cancellation preserves the immutable dispatch, restores every in-transit quantity to `SR` through compensating movements, records actor and time, and ends in terminal `CANCELLED`.
+5. Assigned Branch Staff can perform one of two controlled actions:
    - confirm that every item and quantity matches; or
    - submit the actual disposition of every dispatched line, plus any excess/wrong SKU lines and discrepancy reasons.
-5. A matched confirmation clears in-transit stock, posts destination stock automatically, marks the transfer `RECEIVED`, and notifies Stock Staff and Admin.
-6. There is no separate `DELIVERED` or `CONFIRMED` status. `RECEIVED` means physically at the branch and confirmed matched.
-7. A discrepancy form records actual quantities, reason, notes, and conditionally required photos; it notifies Admin and Stock Staff and does not let Branch Staff set inventory.
-8. Disputed quantities remain unavailable for sale.
-9. Stock Staff normally investigates and records findings; Admin may perform the investigation as operational cover. Admin performs the final linked stock correction.
-10. Resolution clears the complete original in-transit quantity and accounts for every destination, restoration, non-sellable, loss/write-off, return, or supplemental movement.
-11. Original dispatch, branch report, findings, Admin resolution, actors, reasons, timestamps, and movements remain visible.
+6. A matched confirmation clears in-transit stock, posts destination stock automatically, marks the transfer `RECEIVED`, and notifies Stock Staff and Admin.
+7. There is no separate `DELIVERED` or `CONFIRMED` status. `RECEIVED` means physically at the branch and confirmed matched.
+8. A discrepancy form records actual quantities, reason, notes, and conditionally required photos; it notifies Admin and Stock Staff and does not let Branch Staff set inventory.
+9. Disputed quantities remain unavailable for sale.
+10. Stock Staff normally investigates and records findings; Admin may perform the investigation as operational cover. Admin performs the final linked stock correction.
+11. Resolution clears the complete original in-transit quantity and accounts for every destination, restoration, non-sellable, loss/write-off, return, or supplemental movement.
+12. Original dispatch, cancellation, branch report, findings, Admin resolution, actors, reasons, timestamps, and movements remain visible.
 
 Admin approval is one fixed MVP control, not a configurable approval engine. Branch Staff never approves, and Stock Staff cannot perform final posting in the MVP.
 
@@ -59,6 +60,7 @@ The transfer answers, "What did the Stock Room dispatch?" The discrepancy report
 
 ```text
 DRAFT -> FOR_DISPATCH -> IN_TRANSIT
+  -> CANCELLED
   -> RECEIVED
    -> DISCREPANCY_REPORTED -> UNDER_REVIEW -> RESOLVED
 ```

@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   Eye,
   Wallet,
+  AlertTriangle,
 } from "lucide-react";
 import {
   Dialog,
@@ -36,6 +37,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { useShellAccess } from "@/components/shell-access-context";
 import { getCustomerOrderActions, type CustomerOrderStatusCode } from "@/lib/customer-order-actions";
 import { hasCapability } from "@/lib/permissions";
+import type {
+  SaleCorrectionRequestDto,
+  SaleCorrectionRequestReasonDto,
+} from "@/lib/contracts/sales";
 
 type SelectOption = {
   value: string;
@@ -87,6 +92,7 @@ type CustomerOrdersApiResponse = {
 type DirectSaleRow = {
   id: string;
   reference: string;
+  source: "Customer Order" | "Direct Sale";
   manualReceiptNumber: string;
   branch: string;
   customer: string;
@@ -98,6 +104,7 @@ type DirectSaleRow = {
   postedAt: string;
   postedBy: string;
   reviewStatus: string;
+  correctionRequest: SaleCorrectionRequestDto | null;
   lines: Array<{
     productId: string;
     itemCode: string;
@@ -106,6 +113,21 @@ type DirectSaleRow = {
     unitPrice: number;
   }>;
 };
+
+const SALE_CORRECTION_REASON_OPTIONS: Array<{
+  value: SaleCorrectionRequestReasonDto;
+  label: string;
+}> = [
+  { value: "ACCIDENTAL_SUBMISSION", label: "Accidental submission" },
+  { value: "DUPLICATE_SUBMISSION", label: "Duplicate submission" },
+  { value: "WRONG_INFORMATION", label: "Wrong sale information" },
+  { value: "SALE_DID_NOT_HAPPEN", label: "Sale did not happen" },
+  { value: "OTHER", label: "Other" },
+];
+
+function saleCorrectionReasonLabel(reason: SaleCorrectionRequestReasonDto) {
+  return SALE_CORRECTION_REASON_OPTIONS.find((option) => option.value === reason)?.label ?? reason;
+}
 
 const ORDER_STATUS_OPTIONS: SelectOption[] = [
   { value: "all", label: "All Statuses" },
@@ -297,6 +319,7 @@ export default function CustomerOrdersPage() {
   const capabilities = access.authenticated ? access.capabilities : [];
   const canViewOrders = hasCapability(capabilities, "customer-orders:view");
   const canViewSales = hasCapability(capabilities, "sales:view");
+  const canRequestSaleCorrection = hasCapability(capabilities, "sales:correction:request");
   const [activeView, setActiveView] = useState<"orders" | "sales">(
     (searchParams.get("view") === "sales" && canViewSales) || !canViewOrders
       ? "sales"
@@ -330,6 +353,9 @@ export default function CustomerOrdersPage() {
   const [saleSearch, setSaleSearch] = useState("");
   const [salePage, setSalePage] = useState(1);
   const [selectedSale, setSelectedSale] = useState<DirectSaleRow | null>(null);
+  const [correctionSale, setCorrectionSale] = useState<DirectSaleRow | null>(null);
+  const [correctionReason, setCorrectionReason] = useState<SaleCorrectionRequestReasonDto>("ACCIDENTAL_SUBMISSION");
+  const [correctionNote, setCorrectionNote] = useState("");
 
   const { data, isLoading, isFetching, error: ordersError } = useQuery({
     queryKey: [
@@ -360,6 +386,36 @@ export default function CustomerOrdersPage() {
     queryKey: ["customer-direct-sales-list"],
     queryFn: fetchDirectSales,
     enabled: activeView === "sales" && canViewSales,
+  });
+  const saleCorrectionMutation = useMutation({
+    mutationFn: async () => {
+      if (!correctionSale) throw new Error("Select a direct sale first.");
+      const response = await fetch(
+        `/api/sales/${encodeURIComponent(correctionSale.id)}/correction-request`,
+        {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason: correctionReason, note: correctionNote }),
+        },
+      );
+      const json = (await response.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      if (!response.ok) {
+        throw new Error(json?.error?.message ?? "Unable to submit the correction request");
+      }
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["customer-direct-sales-list"] }),
+        queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] }),
+        queryClient.invalidateQueries({ queryKey: ["accounting-receipt-linked"] }),
+      ]);
+      setCorrectionSale(null);
+      setCorrectionReason("ACCIDENTAL_SUBMISSION");
+      setCorrectionNote("");
+    },
   });
   const paymentMutation = useMutation({
     mutationFn: async () => {
@@ -1149,7 +1205,14 @@ export default function CustomerOrdersPage() {
                         <td className="px-5 py-4 text-sm text-slate-600">{formatPeso(sale.discountAmount)}</td>
                         <td className="px-5 py-4 text-sm text-slate-600">{sale.paymentMethod}</td>
                         <td className="px-5 py-4 text-sm">
-                          <Badge className={sale.reviewStatus === "VERIFIED" ? getPaymentStatusBadgeClass("Paid") : getPaymentStatusBadgeClass("Partial")}>{sale.reviewStatus}</Badge>
+                          <div className="flex flex-col items-start gap-1">
+                            <Badge className={sale.reviewStatus === "VERIFIED" ? getPaymentStatusBadgeClass("Paid") : getPaymentStatusBadgeClass("Partial")}>{sale.reviewStatus}</Badge>
+                            {sale.correctionRequest?.status === "PENDING" ? (
+                              <Badge className="border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-50">
+                                Correction requested
+                              </Badge>
+                            ) : null}
+                          </div>
                         </td>
                         <td className="px-5 py-4 text-sm text-slate-600">{formatDate(sale.postedAt)}</td>
                         <td className="px-5 py-4">
@@ -1223,10 +1286,125 @@ export default function CustomerOrdersPage() {
                   <div className="flex justify-between gap-4"><span className="text-slate-500">Amount paid</span><span>{formatPeso(selectedSale.amountPaid)}</span></div>
                   <div className="flex justify-between gap-4 border-t pt-2 font-semibold"><span>Total</span><span>{formatPeso(selectedSale.totalAmount)}</span></div>
                 </div>
+                {selectedSale.correctionRequest ? (
+                  <div className={selectedSale.correctionRequest.status === "PENDING"
+                    ? "rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+                    : "rounded-lg border bg-muted/40 p-4 text-sm text-foreground"}
+                  >
+                    <p className="font-semibold">
+                      {selectedSale.correctionRequest.status === "PENDING"
+                        ? "Correction requested"
+                        : `Correction request ${selectedSale.correctionRequest.resolution === "KEPT" ? "dismissed" : "approved"}`}
+                    </p>
+                    <p className="mt-1">
+                      {saleCorrectionReasonLabel(selectedSale.correctionRequest.reason)}: {selectedSale.correctionRequest.note}
+                    </p>
+                    <p className="mt-2 text-xs opacity-80">
+                      Reported by {selectedSale.correctionRequest.requestedBy} on {formatDate(selectedSale.correctionRequest.requestedAt)}.
+                    </p>
+                    {selectedSale.correctionRequest.resolutionNote ? (
+                      <p className="mt-2 border-t pt-2">
+                        Admin resolution: {selectedSale.correctionRequest.resolutionNote}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             ) : null}
             <DialogFooter>
               <Button variant="outline" onClick={() => setSelectedSale(null)}>Close</Button>
+              {selectedSale &&
+              selectedSale.source === "Direct Sale" &&
+              selectedSale.correctionRequest?.status !== "PENDING" &&
+              canRequestSaleCorrection ? (
+                <Button
+                  variant="warning"
+                  onClick={() => {
+                    setCorrectionSale(selectedSale);
+                    setSelectedSale(null);
+                    setCorrectionReason("ACCIDENTAL_SUBMISSION");
+                    setCorrectionNote("");
+                    saleCorrectionMutation.reset();
+                  }}
+                >
+                  <AlertTriangle className="mr-2 h-4 w-4" />
+                  Report wrong submission
+                </Button>
+              ) : null}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        <Dialog
+          open={Boolean(correctionSale)}
+          onOpenChange={(open) => {
+            if (saleCorrectionMutation.isPending) return;
+            if (!open) {
+              setCorrectionSale(null);
+              setCorrectionNote("");
+              saleCorrectionMutation.reset();
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Report wrong sale submission?</DialogTitle>
+              <DialogDescription>
+                This sends an auditable request to Admin. It does not edit the sale, delete it, or restore inventory.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+                <p className="font-medium">Receipt {correctionSale?.manualReceiptNumber}</p>
+                <p className="mt-1 text-slate-500">{correctionSale?.reference} · {correctionSale?.branch}</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="sale-correction-reason">What went wrong?</Label>
+                <select
+                  id="sale-correction-reason"
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={correctionReason}
+                  onChange={(event) => setCorrectionReason(event.target.value as SaleCorrectionRequestReasonDto)}
+                  disabled={saleCorrectionMutation.isPending}
+                >
+                  {SALE_CORRECTION_REASON_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="sale-correction-note">Explanation</Label>
+                <Textarea
+                  id="sale-correction-note"
+                  value={correctionNote}
+                  onChange={(event) => setCorrectionNote(event.target.value)}
+                  placeholder="Explain exactly why this sale should be checked by Admin"
+                  maxLength={5_000}
+                  rows={4}
+                  disabled={saleCorrectionMutation.isPending}
+                />
+              </div>
+              <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                Stock remains deducted while this request is pending. Only Admin approval can reverse it.
+              </p>
+              {saleCorrectionMutation.error ? (
+                <p className="text-sm text-red-600">{(saleCorrectionMutation.error as Error).message}</p>
+              ) : null}
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setCorrectionSale(null)}
+                disabled={saleCorrectionMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="warning"
+                onClick={() => saleCorrectionMutation.mutate()}
+                disabled={saleCorrectionMutation.isPending || !correctionNote.trim()}
+              >
+                {saleCorrectionMutation.isPending ? "Submitting..." : "Submit correction request"}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

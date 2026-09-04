@@ -38,7 +38,7 @@ async function fetchNotifications() {
 }
 
 async function markNotificationRead(id: string) {
-  const response = await fetch(`/api/notifications/${id}/read`, {
+  const response = await fetch(`/api/notifications/${encodeURIComponent(id)}/read`, {
     method: "POST",
     credentials: "same-origin",
   });
@@ -106,6 +106,13 @@ export default function NotificationsPage() {
     onSuccess: (notifications) =>
       queryClient.setQueryData(["notifications"], notifications),
   });
+  const activateNotification = (
+    notification: Notification,
+    destination: string | null,
+  ) => {
+    if (openMutation.isPending) return;
+    openMutation.mutate({ notification, destination });
+  };
 
   const notifications = useMemo(
     () =>
@@ -186,7 +193,8 @@ export default function NotificationsPage() {
                     return (
                       <tr
                         key={notification.id}
-                        className={`border-b last:border-0 ${notification.read ? "bg-white dark:bg-slate-950" : "bg-green-50/60 dark:bg-emerald-950/30"}`}
+                        onClick={destination ? () => activateNotification(notification, destination) : undefined}
+                        className={`border-b last:border-0 ${notification.read ? "bg-white dark:bg-slate-950" : "bg-green-50/60 dark:bg-emerald-950/30"} ${destination ? "cursor-pointer transition-colors hover:bg-green-100/60 dark:hover:bg-emerald-950/50" : ""}`}
                       >
                         <td className="px-4 py-3">
                           <TypeIcon type={notification.type} />
@@ -215,9 +223,11 @@ export default function NotificationsPage() {
                             size="sm"
                             variant={destination ? "view" : "workflow"}
                             disabled={openMutation.isPending || (!destination && notification.read)}
-                            onClick={() =>
-                              openMutation.mutate({ notification, destination })
-                            }
+                            aria-label={destination ? `Open ${notification.relatedReference ?? notification.title}` : `Mark ${notification.title} as read`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              activateNotification(notification, destination);
+                            }}
                           >
                             {destination ? (
                               <>

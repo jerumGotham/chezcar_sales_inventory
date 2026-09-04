@@ -23,6 +23,7 @@ export const CAPABILITIES = {
   customerOrdersCreate: "customer-orders:create",
   salesView: "sales:view",
   salesPost: "sales:post",
+  salesCorrectionRequest: "sales:correction:request",
   salesVerifyView: "sales:verify:view",
   salesVerify: "sales:verify",
   salesResolve: "sales:resolve",

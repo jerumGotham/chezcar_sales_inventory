@@ -19,6 +19,10 @@ export const updateDraftSchema = z.object({
 
 export const versionSchema = z.object({ version: z.number().int().positive() });
 
+export const cancelTransferSchema = versionSchema.extend({
+  reason: z.string().trim().min(1).max(4_000),
+});
+
 export const discrepancySchema = versionSchema.extend({
   notes: z.string().trim().min(1).max(4_000),
   lines: z.array(z.object({
@@ -41,6 +45,7 @@ export const resolutionSchema = versionSchema.extend({
 
 export type CreateTransferInput = z.infer<typeof createTransferSchema>;
 export type UpdateDraftTransferInput = z.infer<typeof updateDraftTransferSchema>;
+export type CancelTransferInput = z.infer<typeof cancelTransferSchema>;
 export type DiscrepancyInput = z.infer<typeof discrepancySchema>;
 export type InvestigationInput = z.infer<typeof investigationSchema>;
 export type ResolutionInput = z.infer<typeof resolutionSchema>;

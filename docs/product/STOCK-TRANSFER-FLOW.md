@@ -1,6 +1,6 @@
 # Stock Transfer Flow Note
 
-**Status:** Implemented durable core workflow. The current slice has server authorization, PostgreSQL transactions, transfer/movement audit records, and a live menu. Real-time notifications, offline capture, photo evidence upload, and dedicated damaged/return locations remain deferred.
+**Status:** Implemented durable core workflow. The current slice has server authorization, PostgreSQL transactions, transfer/movement audit records, persisted real-time notifications, and a live menu. Offline capture, photo evidence upload, and dedicated damaged/return locations remain deferred.
 
 ## Purpose
 
@@ -11,7 +11,7 @@ Inventory answers, "What stock is available at this location?" Stock Transfers i
 | Role | Access |
 | --- | --- |
 | Admin | View every transfer; cover Stock Staff source-side actions when needed; approve and post the final discrepancy resolution. |
-| Stock Staff | View `SR` transfer work; create and dispatch `SR`-to-branch transfers; investigate discrepancies and submit findings. |
+| Stock Staff | View `SR` transfer work; create, dispatch, and cancel in-transit `SR`-to-branch transfers; investigate discrepancies and submit findings. |
 | Branch Staff | View only transfers sent to the assigned branch; confirm an exact receipt or submit a discrepancy report. |
 | Accounting Staff | No Stock Transfers access. |
 
@@ -21,13 +21,14 @@ Transfer records are authorized by source or destination. A user assigned to act
 
 ## Planned Flow
 
-1. Stock Staff creates and dispatches a multi-item transfer from `SR` to a branch.
+1. Stock Staff creates a private multi-item draft from `SR` to a branch. Draft creation sends no notification; finalizing the draft alerts Stock Room staff who can dispatch it.
 2. Dispatch deducts stock from `SR` and records matching stock as in transit.
-3. The destination Branch Staff compares the physical delivery with every dispatched line.
-4. If every line matches, Branch Staff confirms receipt; the system moves stock from in transit to the destination branch.
-5. If any line differs, Branch Staff submits actual quantities, reasons, notes, and required evidence. The transfer becomes `DISCREPANCY_REPORTED`; disputed stock is unavailable for sale.
-6. Stock Staff investigates and submits findings or a resolution proposal.
-7. Admin reviews and posts the final resolution. The system clears the in-transit quantity and creates all destination, restoration, loss, damaged, return, or supplemental movements in one authorized transaction.
+3. Before the branch records a receipt or discrepancy, Stock Staff may cancel the complete in-transit transfer with a required reason. The dispatch remains immutable, compensating movements restore the stock to `SR`, and the transfer becomes `CANCELLED`.
+4. The destination Branch Staff compares the physical delivery with every dispatched line.
+5. If every line matches, Branch Staff confirms receipt; the system moves stock from in transit to the destination branch.
+6. If any line differs, Branch Staff submits actual quantities, reasons, notes, and required evidence. The transfer becomes `DISCREPANCY_REPORTED`; disputed stock is unavailable for sale.
+7. Stock Staff investigates and submits findings or a resolution proposal.
+8. Admin reviews and posts the final resolution. The system clears the in-transit quantity and creates all destination, restoration, loss, damaged, return, or supplemental movements in one authorized transaction.
 
 ## Implementation Boundary
 

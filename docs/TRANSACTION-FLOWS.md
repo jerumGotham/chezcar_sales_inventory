@@ -59,6 +59,8 @@ Dispatch the transfer:
 
 Movement: `TRANSFER_DISPATCH -30` at Stock Room. The 30 units are now in transit and are not sellable.
 
+If Stock Staff cancels before the branch records a receipt or discrepancy, the original dispatch remains in the audit trail and `TRANSFER_CANCELLATION +30` restores the complete in-transit quantity to Stock Room. A cancellation reason is required and the transfer becomes terminal `CANCELLED`.
+
 QC confirms exact receipt:
 
 | Location | On Hand | Reserved | Available |
@@ -266,6 +268,9 @@ The complete allocation posts atomically and clears In Transit.
 | Verify receipt | None |
 | Report mismatch | None |
 | Branch response | None |
+| Branch reports wrong submission | None; sale remains posted and stock remains deducted |
+| Admin keeps reported sale | None |
+| Admin approves void-only request | Reverse original quantities |
 | Confirm original encoding correct | None |
 | Void and replace sale | Reverse original quantities, then deduct replacement quantities |
 
@@ -277,6 +282,15 @@ Reserved = unchanged
 ```
 
 Movements are `SALE_CORRECTION_REVERSAL +original` and `SALE_CORRECTION -replacement`.
+
+Void-only formula for an Admin-approved Branch correction request:
+
+```text
+Final On Hand = Current On Hand + Original Quantity
+Reserved = unchanged
+```
+
+The Branch request itself writes no movement. Approval marks the direct sale `VOIDED` and writes `SALE_CORRECTION_REVERSAL +original`; dismissing the request keeps the sale and inventory unchanged.
 
 ### Inventory Quantity Correction
 
@@ -314,6 +328,7 @@ Writes a zero-quantity `MANUAL_ADJUSTMENT` movement as an audit entry.
 | Product create/update/status/image | Product master or private image only |
 | Order payment | Payment and receipt records only |
 | Accounting verify/mismatch/response | Review and notification records only |
+| Branch sale correction request or Admin keep-sale decision | Correction request and notification records only |
 | Transfer draft/finalize/discrepancy/investigation | Transfer status and audit records only |
 | Notification read/unread actions | Notification state only |
 | User, role, branch, password, and status changes | Administration and session records only |
@@ -326,6 +341,7 @@ Writes a zero-quantity `MANUAL_ADJUSTMENT` movement as an audit entry.
 | `DIRECT_SALE` | Negative | Direct/POS or synchronized offline sale |
 | `CUSTOMER_ORDER_RELEASE` | Negative | Reserved customer order physically released |
 | `TRANSFER_DISPATCH` | Negative | Stock left Stock Room and became in transit |
+| `TRANSFER_CANCELLATION` | Positive | A cancelled in-transit transfer was restored to Stock Room |
 | `TRANSFER_RECEIPT` | Positive | Exact transfer entered destination branch |
 | `TRANSFER_RESOLUTION` | Positive | Discrepancy allocation entered destination |
 | `TRANSFER_RESTORATION` | Positive | Discrepancy allocation returned to Stock Room |

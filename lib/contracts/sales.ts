@@ -95,9 +95,48 @@ export const accountingReviewRequestSchema = z.object({
   mismatchCategory: z.enum(["PRICE_MISMATCH", "QUANTITY_MISMATCH", "ITEM_MISMATCH", "TOTAL_MISMATCH", "RECEIPT_NOT_FOUND", "OTHER"]).optional(),
   notes: z.string().trim().max(5_000).optional(),
   comparison: receiptComparisonSchema,
-  receiptPhotoKey: z.string().trim().max(200).optional(),
 });
 export type AccountingReviewRequest = z.infer<typeof accountingReviewRequestSchema>;
+
+export const SALE_CORRECTION_REQUEST_REASONS = [
+  "ACCIDENTAL_SUBMISSION",
+  "DUPLICATE_SUBMISSION",
+  "WRONG_INFORMATION",
+  "SALE_DID_NOT_HAPPEN",
+  "OTHER",
+] as const;
+export type SaleCorrectionRequestReasonDto =
+  (typeof SALE_CORRECTION_REQUEST_REASONS)[number];
+
+export const branchSaleCorrectionRequestSchema = z.object({
+  reason: z.enum(SALE_CORRECTION_REQUEST_REASONS),
+  note: z.string().trim().min(1).max(5_000),
+});
+export type BranchSaleCorrectionRequest = z.infer<
+  typeof branchSaleCorrectionRequestSchema
+>;
+
+export const saleCorrectionResolutionSchema = z.object({
+  correctionRequestId: z.string().min(1),
+  action: z.enum(["KEEP_SALE", "VOID_SALE"]),
+  note: z.string().trim().min(1).max(5_000),
+});
+export type SaleCorrectionResolution = z.infer<
+  typeof saleCorrectionResolutionSchema
+>;
+
+export type SaleCorrectionRequestDto = {
+  id: string;
+  reason: SaleCorrectionRequestReasonDto;
+  note: string;
+  status: "PENDING" | "RESOLVED";
+  resolution: "KEPT" | "VOIDED" | null;
+  resolutionNote: string | null;
+  requestedBy: string;
+  requestedAt: string;
+  resolvedBy: string | null;
+  resolvedAt: string | null;
+};
 
 export type SaleLineDto = {
   productId: string;
@@ -110,6 +149,7 @@ export type SaleLineDto = {
 export type SaleDto = {
   id: string;
   reference: string;
+  source: "Customer Order" | "Direct Sale";
   manualReceiptNumber: string;
   receiptBooklet: string;
   version: number;
@@ -130,6 +170,7 @@ export type SaleDto = {
   resolutionAction: string | null;
   resolutionNote: string | null;
   resolvedAt: string | null;
+  correctionRequest: SaleCorrectionRequestDto | null;
   lines: SaleLineDto[];
 };
 

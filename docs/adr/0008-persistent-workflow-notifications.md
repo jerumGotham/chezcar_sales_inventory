@@ -35,7 +35,8 @@ Persist notifications for:
 4. Discrepancy reported, notifying Stock Staff to investigate.
 5. Investigation submitted, notifying Admin to approve final resolution.
 6. Admin resolution posted, notifying Admin and destination Branch Staff of the final outcome.
-7. Replacement draft created from a resolved shortage, notifying involved Stock Staff as an informational outcome.
+
+Draft creation, including replacement drafts, is not a notification event. A draft remains private work-in-progress until it is finalized for dispatch.
 
 ## Consequences
 

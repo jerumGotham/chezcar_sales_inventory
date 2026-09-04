@@ -41,7 +41,12 @@ export async function readReceiptEvidence(key: string) {
 
 export async function removeReceiptEvidence(key: string) {
   if (!isReceiptEvidenceKey(key)) throw new Error("Invalid receipt evidence key");
-  await unlink(path.join(/*turbopackIgnore: true*/ storageRoot(), key));
+  try {
+    await unlink(path.join(/*turbopackIgnore: true*/ storageRoot(), key));
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return;
+    throw error;
+  }
 }
 
 export function isReceiptEvidenceKey(key: string) {

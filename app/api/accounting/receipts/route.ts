@@ -17,7 +17,10 @@ export async function GET(request: Request) {
           : rows.filter((branch) => actor.locationIds.includes(branch.id)),
       ),
     ]);
-    return Response.json({ ...receipts, branches });
+    return Response.json(
+      { ...receipts, branches },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
   } catch (error) {
     if (error instanceof ZodError) return Response.json({ error: { code: "INVALID_FILTERS", message: "One or more receipt filters are invalid" } }, { status: 400 });
     if (error instanceof CustomerSalesError) return Response.json({ error: { code: error.code, message: error.message } }, { status: error.status });

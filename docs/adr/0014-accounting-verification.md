@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-08-26
-**Amended:** 2026-08-28
+**Amended:** 2026-09-05
 
 ## Context
 
@@ -35,7 +35,7 @@ Stored per mismatch report with required `notes`, comparison snapshot, and optio
 
 ### 5. Evidence
 
-- Accounting may attach an **optional** photo of the handwritten receipt. The database stores only a generated evidence key and MIME type; the file is served through an authorized route from the configured persistent storage path. Required photo for damage/materiality threshold is deferred.
+- Accounting verification and mismatch reporting require a photo of the handwritten receipt. The database stores only a generated evidence key and MIME type; the file is served through an authorized route from the configured persistent storage path.
 
 ### 6. Notifications
 
@@ -47,7 +47,7 @@ Stored per mismatch report with required `notes`, comparison snapshot, and optio
 
 - Never mutate a posted sale in place. On “Fix with correction”, create a new `Sale` row linked via `correctionOfId` (or `voidedSaleId`), mark original `VOIDED`, post compensating inventory movements (reverse original deduction, apply corrected deduction) in one transaction.
 - “Confirm correct” keeps original, marks mismatch `RESOLVED_MISTAKEN`, and transitions sale to `VERIFIED`.
-- Corrected replacement is **auto-VERIFIED**; no re-verification loop.
+- Corrected replacement starts **UNVERIFIED** and requires its own receipt photo and Accounting review. The voided original remains queryable for audit but has no actionable evidence-pending state.
 - Only `ADMIN` can post the stock-changing void-and-replace correction. `ACCOUNTING_STAFF` may close only a mismatch where Branch confirmed that the original encoding is correct. Branch Staff submits evidence and the replacement receipt identity but cannot mutate sale or inventory facts.
 
 ### 8. Server rules preserved
@@ -55,6 +55,15 @@ Stored per mismatch report with required `notes`, comparison snapshot, and optio
 - No negative stock on correction (validate corrected quantities against branch `onHand`).
 - Server-calculated authoritative totals.
 - Idempotent retry, actor/time recorded, immutable movements.
+
+### 9. Branch-originated wrong-submission request
+
+- Before posting, POS presents the exact branch, customer, receipt, payment, lines, totals, and immediate stock effect for confirmation.
+- Branch Staff may report a wrong assigned-branch direct-sale submission through a separate `SaleCorrectionRequest`; this is not Accounting verification and does not require receipt evidence.
+- Request creation records reason/note/actor/time, notifies Admin, leaves the sale posted, and creates no inventory movement.
+- Accounting review is blocked while the request is pending.
+- Admin may keep the sale without stock effect, or void it and restore every original line through `SALE_CORRECTION_REVERSAL` movements in one transaction. Branch Staff never receives edit, delete, void, or stock-adjustment authority.
+- A real sale with incorrect receipt-backed encoding still uses the mismatch and void-and-replace flow rather than void-only.
 
 ## Consequences
 

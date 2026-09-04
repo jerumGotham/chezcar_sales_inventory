@@ -22,6 +22,7 @@ import {
   Upload,
   ChevronLeft,
   ChevronRight,
+  AlertTriangle,
 } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -502,6 +503,7 @@ function PosTab() {
   const [checkoutError, setCheckoutError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [isCheckoutPending, setIsCheckoutPending] = useState(false);
+  const [isCheckoutConfirmationOpen, setIsCheckoutConfirmationOpen] = useState(false);
 
   const customerOptions: SelectOption[] = [
     { value: "guest", label: "Guest" },
@@ -769,12 +771,24 @@ function PosTab() {
         ).catch(() => undefined);
       }
       clearSale();
+      setIsCheckoutConfirmationOpen(false);
       setSuccessMessage(`Customer sale posted successfully.${evidenceMessage}`);
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["pos-options"] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-direct-sales-list"] }),
+        queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["inventory-locations"] }),
+        queryClient.invalidateQueries({ queryKey: ["customers"] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-history"] }),
+        queryClient.invalidateQueries({ queryKey: ["reports"] }),
+      ]);
     } catch (error) {
       if (OFFLINE_POS_ENABLED && canUseOfflineSales && offlineSupported() && (!navigator.onLine || error instanceof TypeError)) {
         await queueOfflineSale(salePayload);
         await refreshOfflineQueueStatus();
         clearSale();
+        setIsCheckoutConfirmationOpen(false);
         setSuccessMessage("Sale queued for sync. It will upload automatically when this device can reach the cloud server.");
         setOfflineSyncMessage("Waiting for internet. Keep POS open or reopen it after reconnecting to auto-sync pending sales.");
         if (navigator.onLine) window.setTimeout(() => void syncOfflineQueue("auto"), 3_000);
@@ -1193,7 +1207,10 @@ function PosTab() {
               <Button
                 className="w-full"
                 size="lg"
-                onClick={handleCheckout}
+                onClick={() => {
+                  setCheckoutError("");
+                  setIsCheckoutConfirmationOpen(true);
+                }}
                  disabled={!activeLocationId || !cart.length || !paymentType || !manualReceiptNumber.trim() || discount > subtotal || isCheckoutPending}
               >
                 <CreditCard className="mr-2 size-4" />
@@ -1203,6 +1220,87 @@ function PosTab() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog
+        open={isCheckoutConfirmationOpen}
+        onOpenChange={(open) => {
+          if (isCheckoutPending) return;
+          setIsCheckoutConfirmationOpen(open);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Confirm direct sale</DialogTitle>
+            <DialogDescription>
+              Review the exact sale details before posting. A posted sale cannot be directly edited or deleted.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-3 rounded-xl border bg-muted/40 p-4 text-sm sm:grid-cols-2">
+              <div>
+                <p className="text-slate-500">Selling branch</p>
+                <p className="font-medium">{selectedLocation?.label ?? (access.authenticated ? access.scope.label : "Not selected")}</p>
+              </div>
+              <div>
+                <p className="text-slate-500">Customer</p>
+                <p className="font-medium">{selectedCustomer?.label ?? "Guest"}</p>
+              </div>
+              <div>
+                <p className="text-slate-500">Receipt number</p>
+                <p className="font-medium">{manualReceiptNumber}</p>
+              </div>
+              <div>
+                <p className="text-slate-500">Payment</p>
+                <p className="font-medium">{paymentType?.label ?? "Not selected"}</p>
+              </div>
+              <div className="sm:col-span-2">
+                <p className="text-slate-500">Receipt photo</p>
+                <p className="font-medium">{receiptPhoto?.name ?? "Not attached"}</p>
+              </div>
+            </div>
+            <div className="overflow-x-auto rounded-xl border">
+              <table className="w-full min-w-[620px]">
+                <thead className="bg-muted/40">
+                  <tr className="border-b">
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Item</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-slate-500">Quantity</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-slate-500">Unit price</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-slate-500">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cart.map((item) => (
+                    <tr key={item.sku} className="border-b last:border-b-0">
+                      <td className="px-4 py-3 text-sm"><p className="font-medium">{item.name}</p><p className="text-xs text-slate-500">{item.sku}</p></td>
+                      <td className="px-4 py-3 text-right text-sm">{item.qty}</td>
+                      <td className="px-4 py-3 text-right text-sm">{formatPeso(item.price)}</td>
+                      <td className="px-4 py-3 text-right text-sm font-medium">{formatPeso(item.qty * item.price)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="ml-auto max-w-sm space-y-2 rounded-xl bg-muted/40 p-4 text-sm">
+              <div className="flex justify-between gap-4"><span className="text-slate-500">Subtotal</span><span>{formatPeso(subtotal)}</span></div>
+              <div className="flex justify-between gap-4"><span className="text-slate-500">Discount</span><span>{formatPeso(discount)}</span></div>
+              <div className="flex justify-between gap-4 border-t pt-2 font-semibold"><span>Total paid</span><span>{formatPeso(total)}</span></div>
+            </div>
+            <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+              <AlertTriangle className="mt-0.5 size-5 shrink-0" />
+              <p>Posting immediately deducts these quantities from branch inventory. If this is submitted by mistake, Branch can only report it for Admin review.</p>
+            </div>
+            {checkoutError ? <p className="text-sm font-medium text-red-600">{checkoutError}</p> : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCheckoutConfirmationOpen(false)} disabled={isCheckoutPending}>
+              Back to sale
+            </Button>
+            <Button onClick={() => void handleCheckout()} disabled={isCheckoutPending}>
+              {isCheckoutPending ? "Posting Sale..." : "Confirm and post sale"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </>
   );

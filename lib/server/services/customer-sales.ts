@@ -4,7 +4,13 @@ import { randomUUID } from "node:crypto";
 import { Prisma, type CustomerOrderStatus, type CustomerOrderType, type PaymentMethod } from "@prisma/client";
 import { z } from "zod";
 
-import { receiptComparisonSchema, type ReceiptComparison } from "../../contracts/sales";
+import {
+  branchSaleCorrectionRequestSchema,
+  receiptComparisonSchema,
+  saleCorrectionResolutionSchema,
+  type ReceiptComparison,
+  type SaleCorrectionRequestDto,
+} from "../../contracts/sales";
 import {
   assertCapability,
   AuthorizationError,
@@ -14,7 +20,6 @@ import { prisma } from "../prisma";
 import { findActiveBranch } from "../locations";
 import { canAccessLocation, hasAllLocationAccess } from "../policy/access";
 import { createNotifications, notifyInventoryThresholdChange } from "./notifications";
-import { isReceiptEvidenceKey } from "./receipt-evidence";
 import { parseReceiptOcrDraft } from "./receipt-ocr";
 
 const positiveInt = z.coerce.number().int().positive();
@@ -96,7 +101,6 @@ export const accountingReviewSchema = z.object({
   mismatchCategory: z.enum(["PRICE_MISMATCH", "QUANTITY_MISMATCH", "ITEM_MISMATCH", "TOTAL_MISMATCH", "RECEIPT_NOT_FOUND", "OTHER"]).optional(),
   notes: z.string().trim().max(5_000).optional(),
   comparison: receiptComparisonSchema,
-  receiptPhotoKey: z.string().trim().max(200).optional(),
 }).superRefine((input, context) => {
   if (input.status === "MISMATCH_REPORTED" && !input.mismatchCategory) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["mismatchCategory"], message: "Mismatch category is required" });
@@ -124,7 +128,6 @@ export const accountingResolutionSchema = z.object({
   action: z.enum(["CONFIRMED_CORRECT", "VOIDED_REPLACED"]),
   note: z.string().trim().min(1).max(5_000),
   replacement: receiptComparisonSchema.optional(),
-  receiptPhotoKey: z.string().trim().max(200).optional(),
 }).superRefine((input, context) => {
   if (input.action === "VOIDED_REPLACED" && !input.replacement) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["replacement"], message: "Replacement sale details are required" });
@@ -164,10 +167,6 @@ function locationIdFilter(actor: AuthContext): Prisma.StringFilter | undefined {
 
 function decimal(value: number) { return new Prisma.Decimal(value); }
 function serializeMoney(value: Prisma.Decimal) { return value.toNumber(); }
-
-function receiptPhotoType(key: string | undefined) {
-  return key?.endsWith(".jpg") ? "image/jpeg" : key?.endsWith(".png") ? "image/png" : key?.endsWith(".webp") ? "image/webp" : null;
-}
 
 export function compareReceipt(sale: {
   manualReceiptNumber: string;
@@ -228,13 +227,28 @@ async function notifySaleParties(tx: Prisma.TransactionClient, sale: { id: strin
   await createNotifications(tx, Array.from(recipientIds).map((userId) => ({ userId, title, description, type: "WARNING" as const, relatedType: "SALE" as const, relatedId: sale.id, relatedReference: sale.reference })));
 }
 
-async function updateSaleInventory(tx: Prisma.TransactionClient, locationId: string, lines: Array<{ productId: string; quantity: number }>, direction: "reverse" | "deduct", actorId: string, reference: string) {
+async function saleCorrectionResolvers(tx: Prisma.TransactionClient, locationId: string) {
+  return tx.user.findMany({
+    where: {
+      status: "ACTIVE",
+      accessRole: { OR: [{ isOwner: true }, { permissions: { has: "sales:void-replace" } }] },
+      OR: [
+        { accessRole: { isOwner: true } },
+        { accessRole: { permissions: { has: "locations:all" } } },
+        { locationAssignments: { some: { locationId } } },
+      ],
+    },
+    select: { id: true },
+  });
+}
+
+async function updateSaleInventory(tx: Prisma.TransactionClient, locationId: string, lines: Array<{ productId: string; quantity: number }>, direction: "reverse" | "deduct", actorId: string, reference: string, remarks?: string) {
   for (const line of lines) {
     const balance = await tx.inventoryBalance.findUnique({ where: { locationId_productId: { locationId, productId: line.productId } } });
     if (!balance) throw new CustomerSalesError("INVENTORY_NOT_FOUND", "Inventory balance is missing for corrected sale", 409);
     if (direction === "deduct" && balance.onHand - balance.reserved < line.quantity) throw new CustomerSalesError("INSUFFICIENT_STOCK", "Corrected sale would make available stock negative", 409);
     await tx.inventoryBalance.update({ where: { id: balance.id }, data: { onHand: direction === "reverse" ? { increment: line.quantity } : { decrement: line.quantity }, version: { increment: 1 } } });
-    await tx.inventoryMovement.create({ data: { productId: line.productId, locationId, quantity: direction === "reverse" ? line.quantity : -line.quantity, type: direction === "reverse" ? "SALE_CORRECTION_REVERSAL" : "SALE_CORRECTION", actorId, reference } });
+    await tx.inventoryMovement.create({ data: { productId: line.productId, locationId, quantity: direction === "reverse" ? line.quantity : -line.quantity, type: direction === "reverse" ? "SALE_CORRECTION_REVERSAL" : "SALE_CORRECTION", actorId, reference, remarks } });
   }
 }
 
@@ -636,7 +650,7 @@ async function createDirectSaleForActor(actor: AuthContext, rawInput: z.input<ty
     const sale = await tx.sale.create({ data: { reference: `SALE-${randomUUID()}`, manualReceiptNumber: input.manualReceiptNumber, receiptBooklet: input.receiptBooklet ?? "", locationId, customerId, paymentMethod: input.paymentMethod as PaymentMethod, totalAmount: decimal(total), discountAmount: decimal(input.discountAmount), amountPaid: decimal(input.amountPaid), notes: input.notes || null, postedById: actor.userId, lines: { create: input.lines.map((line) => { const product = products.get(line.productId)!; return { productId: product.id, productItemCode: product.itemCode, productName: product.name, quantity: line.quantity, unitPrice: decimal(line.unitPrice ?? product.price?.toNumber() ?? 0) }; }) }, accountingReview: { create: {} } }, include: SALE_INCLUDE });
     await registerReceipt(tx, input.manualReceiptNumber, "DIRECT_SALE", { saleId: sale.id, locationId, receiptBooklet: input.receiptBooklet ?? "" });
     for (const line of input.lines) await tx.inventoryMovement.create({ data: { productId: line.productId, locationId, quantity: -line.quantity, type: "DIRECT_SALE", actorId: actor.userId, reference: input.receiptBooklet ? `${input.receiptBooklet}-${input.manualReceiptNumber}` : input.manualReceiptNumber, remarks: `Direct sale ${sale.reference}` } });
-    return serializeSale(sale);
+    return serializeSaleWithCorrection(sale);
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") throw new CustomerSalesError("DUPLICATE_RECEIPT", "Manual receipt number already exists", 409);
@@ -644,13 +658,27 @@ async function createDirectSaleForActor(actor: AuthContext, rawInput: z.input<ty
   }
 }
 
-const SALE_INCLUDE = { customer: true, location: true, lines: true, accountingReview: true, postedBy: { select: { name: true } } } as const;
+const SALE_INCLUDE = {
+  customer: true,
+  location: true,
+  lines: true,
+  accountingReview: true,
+  correctionRequests: {
+    orderBy: { requestedAt: "desc" },
+    take: 1,
+    include: {
+      requestedBy: { select: { name: true } },
+      resolvedBy: { select: { name: true } },
+    },
+  },
+  postedBy: { select: { name: true } },
+} as const;
 
 export async function listSales(actor: AuthContext) {
   assertCapability(actor, "sales:view");
-  const where = { locationId: locationIdFilter(actor) };
+  const where = { locationId: locationIdFilter(actor), status: "POSTED" as const };
   const sales = await prisma.sale.findMany({ where, orderBy: { postedAt: "desc" }, include: SALE_INCLUDE, take: 200 });
-  return sales.map(serializeSale);
+  return sales.map(serializeSaleWithCorrection);
 }
 
 function receiptDate(value: string, endOfDay = false) {
@@ -703,10 +731,17 @@ export async function listReceiptVerifications(actor: AuthContext, rawInput: unk
   }
   const [totalItems, unverified, verified, mismatches, missingEvidence] = await Promise.all([
     prisma.sale.count({ where: filteredWhere }),
-    prisma.sale.count({ where: { ...baseWhere, accountingReview: { status: "UNVERIFIED" } } }),
-    prisma.sale.count({ where: { ...baseWhere, accountingReview: { status: "VERIFIED" } } }),
-    prisma.sale.count({ where: { ...baseWhere, accountingReview: { status: "MISMATCH_REPORTED" } } }),
-    prisma.sale.count({ where: { ...baseWhere, accountingReview: { receiptPhotoKey: null } } }),
+    prisma.sale.count({ where: { ...baseWhere, status: "POSTED", accountingReview: { status: "UNVERIFIED" } } }),
+    prisma.sale.count({ where: { ...baseWhere, status: "POSTED", accountingReview: { status: "VERIFIED" } } }),
+    prisma.sale.count({ where: { ...baseWhere, status: "POSTED", accountingReview: { status: "MISMATCH_REPORTED" } } }),
+    prisma.sale.count({
+      where: {
+        ...baseWhere,
+        status: "POSTED",
+        accountingReview: { receiptPhotoKey: null },
+        correctionRequests: { none: { status: "PENDING" } },
+      },
+    }),
   ]);
   const totalPages = Math.max(1, Math.ceil(totalItems / input.pageSize));
   const page = Math.min(input.page, totalPages);
@@ -719,7 +754,7 @@ export async function listReceiptVerifications(actor: AuthContext, rawInput: unk
   });
 
   return {
-    data: sales.map(serializeSale),
+    data: sales.map(serializeSaleWithCorrection),
     meta: { page, pageSize: input.pageSize, totalItems, totalPages, unverified, verified, mismatches, missingEvidence },
   };
 }
@@ -729,18 +764,186 @@ export async function getSaleById(actor: AuthContext, saleId: string) {
   const sale = await prisma.sale.findUnique({ where: { id: saleId }, include: SALE_INCLUDE });
   if (!sale) throw new CustomerSalesError("NOT_FOUND", "Sale not found", 404);
   assertOperationalResource(actor, sale.locationId);
-  return serializeSale(sale);
+  return serializeSaleWithCorrection(sale);
+}
+
+export async function reportSaleCorrection(
+  actor: AuthContext,
+  saleId: string,
+  rawInput: z.input<typeof branchSaleCorrectionRequestSchema>,
+) {
+  assertCapability(actor, "sales:correction:request");
+  const input = branchSaleCorrectionRequestSchema.parse(rawInput);
+  try {
+    return await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Sale" WHERE id = ${saleId} FOR UPDATE`;
+      const sale = await tx.sale.findUnique({
+        where: { id: saleId },
+        include: {
+          accountingReview: true,
+          correctionRequests: { where: { status: "PENDING" }, take: 1 },
+        },
+      });
+      if (!sale) throw new CustomerSalesError("NOT_FOUND", "Sale not found", 404);
+      assertOperationalResource(actor, sale.locationId);
+      if (sale.orderId) {
+        throw new CustomerSalesError("INVALID_SALE_SOURCE", "Only direct sales can be reported through this workflow", 409);
+      }
+      if (sale.status !== "POSTED") {
+        throw new CustomerSalesError("INVALID_STATE", "Only posted direct sales can be reported", 409);
+      }
+      if (sale.accountingReview?.status === "MISMATCH_REPORTED" && !sale.accountingReview.resolvedAt) {
+        throw new CustomerSalesError("INVALID_STATE", "This sale already has an unresolved receipt mismatch", 409);
+      }
+      if (sale.correctionRequests.length > 0) {
+        throw new CustomerSalesError("CORRECTION_ALREADY_PENDING", "A correction request is already pending for this sale", 409);
+      }
+
+      const request = await tx.saleCorrectionRequest.create({
+        data: {
+          saleId: sale.id,
+          reason: input.reason,
+          note: input.note,
+          requestedById: actor.userId,
+        },
+        include: {
+          requestedBy: { select: { name: true } },
+          resolvedBy: { select: { name: true } },
+        },
+      });
+      const resolvers = await saleCorrectionResolvers(tx, sale.locationId);
+      await createNotifications(tx, resolvers.map(({ id: userId }) => ({
+        userId,
+        title: "Sale correction requested",
+        description: `${sale.manualReceiptNumber}: Branch reported ${input.reason.toLowerCase().replaceAll("_", " ")}. Inventory remains deducted until Admin resolves the request.`,
+        type: "WARNING" as const,
+        relatedType: "SALE" as const,
+        relatedId: sale.id,
+        relatedReference: sale.reference,
+      })));
+      return serializeSaleCorrectionRequest(request);
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new CustomerSalesError("CORRECTION_ALREADY_PENDING", "A correction request is already pending for this sale", 409);
+    }
+    throw error;
+  }
+}
+
+export async function resolveSaleCorrection(
+  actor: AuthContext,
+  saleId: string,
+  rawInput: z.input<typeof saleCorrectionResolutionSchema>,
+) {
+  assertCapability(actor, "sales:void-replace");
+  const input = saleCorrectionResolutionSchema.parse(rawInput);
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Sale" WHERE id = ${saleId} FOR UPDATE`;
+    const sale = await tx.sale.findUnique({
+      where: { id: saleId },
+      include: {
+        lines: true,
+        correctionRequests: {
+          where: { status: "PENDING" },
+          orderBy: { requestedAt: "desc" },
+          take: 1,
+        },
+      },
+    });
+    if (!sale) throw new CustomerSalesError("NOT_FOUND", "Sale not found", 404);
+    assertOperationalResource(actor, sale.locationId);
+    if (sale.orderId) {
+      throw new CustomerSalesError("INVALID_SALE_SOURCE", "Only direct sales can use this correction workflow", 409);
+    }
+    if (sale.status !== "POSTED") {
+      throw new CustomerSalesError("INVALID_STATE", "Only posted direct sales can be resolved", 409);
+    }
+    const request = sale.correctionRequests[0];
+    if (!request) {
+      throw new CustomerSalesError("CORRECTION_NOT_PENDING", "No pending correction request was found", 409);
+    }
+    if (request.id !== input.correctionRequestId) {
+      throw new CustomerSalesError("STALE_CORRECTION_REQUEST", "The correction request changed; reload before resolving it", 409);
+    }
+    if (
+      input.action === "VOID_SALE" &&
+      !["ACCIDENTAL_SUBMISSION", "DUPLICATE_SUBMISSION", "SALE_DID_NOT_HAPPEN"].includes(request.reason)
+    ) {
+      throw new CustomerSalesError(
+        "VOID_REQUIRES_NONSALE_REASON",
+        "Wrong-information and other reports must use receipt verification and void-and-replace when a real sale occurred",
+        409,
+      );
+    }
+
+    const now = new Date();
+    if (input.action === "VOID_SALE") {
+      await updateSaleInventory(
+        tx,
+        sale.locationId,
+        sale.lines.map((line) => ({ productId: line.productId, quantity: line.quantity })),
+        "reverse",
+        actor.userId,
+        `VOID-${sale.reference}`,
+        `Admin-approved reversal for correction request ${request.id}`,
+      );
+      await tx.sale.update({
+        where: { id: sale.id },
+        data: { status: "VOIDED", correctedById: actor.userId, correctedAt: now },
+      });
+    }
+
+    const updated = await tx.saleCorrectionRequest.update({
+      where: { id: request.id },
+      data: {
+        status: "RESOLVED",
+        resolution: input.action === "VOID_SALE" ? "VOIDED" : "KEPT",
+        resolutionNote: input.note,
+        resolvedById: actor.userId,
+        resolvedAt: now,
+      },
+      include: {
+        requestedBy: { select: { name: true } },
+        resolvedBy: { select: { name: true } },
+      },
+    });
+    const recipientIds = new Set([request.requestedById, sale.postedById]);
+    await createNotifications(tx, Array.from(recipientIds).map((userId) => ({
+      userId,
+      title: input.action === "VOID_SALE" ? "Sale correction approved" : "Sale correction dismissed",
+      description: input.action === "VOID_SALE"
+        ? `${sale.manualReceiptNumber} was voided and its inventory deduction was reversed.`
+        : `${sale.manualReceiptNumber} remains posted. Admin did not approve a reversal.`,
+      type: input.action === "VOID_SALE" ? "SUCCESS" as const : "INFO" as const,
+      relatedType: "SALE" as const,
+      relatedId: sale.id,
+      relatedReference: sale.reference,
+    })));
+    return {
+      action: input.action,
+      saleId: sale.id,
+      saleStatus: input.action === "VOID_SALE" ? "VOIDED" as const : "POSTED" as const,
+      correctionRequest: serializeSaleCorrectionRequest(updated),
+    };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
 export async function reviewSale(actor: AuthContext, saleId: string, input: z.infer<typeof accountingReviewSchema>) {
   assertCapability(actor, "sales:verify");
   assertAccounting(actor);
   assertUniqueComparisonLines(input.comparison);
-  if (input.receiptPhotoKey && !isReceiptEvidenceKey(input.receiptPhotoKey)) throw new CustomerSalesError("INVALID_INPUT", "Invalid receipt evidence key", 400);
   return prisma.$transaction(async (tx) => {
     // Lock sale and review for Serializable safety
     await tx.$queryRaw`SELECT id FROM "Sale" WHERE id = ${saleId} FOR UPDATE`;
-    const sale = await tx.sale.findUnique({ where: { id: saleId }, include: { accountingReview: true, lines: true } });
+    const sale = await tx.sale.findUnique({
+      where: { id: saleId },
+      include: {
+        accountingReview: true,
+        lines: true,
+        correctionRequests: { where: { status: "PENDING" }, take: 1 },
+      },
+    });
     if (!sale) throw new CustomerSalesError("NOT_FOUND", "Sale not found", 404);
     assertOperationalResource(actor, sale.locationId);
     if (sale.status !== "POSTED") throw new CustomerSalesError("INVALID_STATE", "Only posted sales can be verified", 409);
@@ -750,9 +953,12 @@ export async function reviewSale(actor: AuthContext, saleId: string, input: z.in
     await tx.$queryRaw`SELECT id FROM "SaleAccountingReview" WHERE id = ${review.id} FOR UPDATE`;
     const freshReview = await tx.saleAccountingReview.findUnique({ where: { id: review.id } });
     if (!freshReview) throw new CustomerSalesError("NOT_FOUND", "Accounting review not found", 404);
-    if (freshReview.status === "VERIFIED") throw new CustomerSalesError("INVALID_STATE", "Sale has already been verified", 409);
-    if (input.status === "VERIFIED" && !freshReview.receiptPhotoKey) {
-      throw new CustomerSalesError("RECEIPT_EVIDENCE_REQUIRED", "Attach the handwritten receipt photo before verifying this sale", 409);
+    if (freshReview.status !== "UNVERIFIED") throw new CustomerSalesError("INVALID_STATE", "Only unverified sales can be reviewed", 409);
+    if (sale.correctionRequests.length > 0) {
+      throw new CustomerSalesError("CORRECTION_PENDING", "Resolve the branch correction request before reviewing this receipt", 409);
+    }
+    if (!freshReview.receiptPhotoKey) {
+      throw new CustomerSalesError("RECEIPT_EVIDENCE_REQUIRED", "Attach the handwritten receipt photo before reviewing this sale", 409);
     }
     const differences = compareReceipt(sale, input.comparison);
     if (input.status === "VERIFIED" && differences.length > 0) throw new CustomerSalesError("RECEIPT_MISMATCH", differences.join("; "), 409);
@@ -765,8 +971,6 @@ export async function reviewSale(actor: AuthContext, saleId: string, input: z.in
         mismatchCategory: input.status === "MISMATCH_REPORTED" ? input.mismatchCategory : null,
         notes: input.status === "MISMATCH_REPORTED" ? input.notes : null,
         comparisonJson: JSON.stringify({ comparison: input.comparison, differences }),
-        receiptPhotoKey: input.receiptPhotoKey ?? freshReview.receiptPhotoKey,
-        receiptPhotoType: receiptPhotoType(input.receiptPhotoKey) ?? freshReview.receiptPhotoType,
       },
     });
     if (input.status === "MISMATCH_REPORTED") {
@@ -842,7 +1046,6 @@ export async function respondToSaleMismatch(actor: AuthContext, saleId: string, 
 export async function resolveSale(actor: AuthContext, saleId: string, input: z.infer<typeof accountingResolutionSchema>) {
   assertCapability(actor, input.action === "VOIDED_REPLACED" ? "sales:void-replace" : "sales:resolve");
   assertAccounting(actor);
-  if (input.receiptPhotoKey && !isReceiptEvidenceKey(input.receiptPhotoKey)) throw new CustomerSalesError("INVALID_INPUT", "Invalid receipt evidence key", 400);
   try {
     return await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "Sale" WHERE id = ${saleId} FOR UPDATE`;
@@ -896,7 +1099,7 @@ export async function resolveSale(actor: AuthContext, saleId: string, input: z.i
         correctedById: actor.userId,
         correctedAt: now,
         lines: { create: replacement.lines.map((line) => ({ productId: productsByCode.get(line.itemCode)!.id, productItemCode: line.itemCode, productName: productsByCode.get(line.itemCode)!.name, quantity: line.quantity, unitPrice: decimal(line.unitPrice) })) },
-        accountingReview: { create: { status: "VERIFIED", reviewedById: actor.userId, reviewedAt: now, comparisonJson: JSON.stringify({ replacement }) } },
+        accountingReview: { create: {} },
       },
       include: SALE_INCLUDE,
     });
@@ -904,7 +1107,8 @@ export async function resolveSale(actor: AuthContext, saleId: string, input: z.i
     await tx.sale.update({ where: { id: sale.id }, data: { status: "VOIDED", correctedById: actor.userId, correctedAt: now } });
     await tx.saleAccountingReview.update({ where: { id: review.id }, data: { resolutionAction: "VOIDED_REPLACED", resolutionNote: input.note, resolvedById: actor.userId, resolvedAt: now } });
     await notifySaleParties(tx, sale, "Receipt mismatch corrected", `${sale.manualReceiptNumber} was voided and replaced by ${replacement.receiptNumber}.`);
-    return { action: input.action, sale: serializeSale(replacementSale) };
+    await notifySaleParties(tx, replacementSale, "Replacement receipt evidence required", `${replacement.receiptNumber} was created as the replacement for ${sale.manualReceiptNumber}. Upload its receipt photo for Accounting verification.`);
+      return { action: input.action, sale: serializeSaleWithCorrection(replacementSale) };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
@@ -952,9 +1156,9 @@ export async function getDashboardSummary(actor: AuthContext) {
     prisma.sale.aggregate({ where: { ...scopedSales, status: "POSTED", postedAt: { gte: month } }, _sum: { totalAmount: true }, _count: true }),
     prisma.customerOrder.count({ where: { ...scopedOrders, status: { in: ["RESERVED", "WAITING_STOCK", "READY_FOR_RELEASE"] } } }),
     prisma.customerOrder.count({ where: { ...scopedOrders, status: "READY_FOR_RELEASE" } }),
-    prisma.saleAccountingReview.count({ where: { status: "MISMATCH_REPORTED", sale: scopedSales } }),
-    prisma.saleAccountingReview.count({ where: { status: "UNVERIFIED", sale: scopedSales } }),
-    prisma.saleAccountingReview.count({ where: { status: "VERIFIED", reviewedAt: { gte: today }, sale: scopedSales } }),
+    prisma.saleAccountingReview.count({ where: { status: "MISMATCH_REPORTED", sale: { ...scopedSales, status: "POSTED" } } }),
+    prisma.saleAccountingReview.count({ where: { status: "UNVERIFIED", sale: { ...scopedSales, status: "POSTED" } } }),
+    prisma.saleAccountingReview.count({ where: { status: "VERIFIED", reviewedAt: { gte: today }, sale: { ...scopedSales, status: "POSTED" } } }),
     prisma.customerOrder.count({ where: { ...scopedOrders, createdAt: { lt: agedOrderDate }, status: { in: ["RESERVED", "WAITING_STOCK", "READY_FOR_RELEASE"] } } }),
     prisma.inventoryBalance.findMany({
       where: inventoryScope,
@@ -1039,15 +1243,15 @@ export async function getReportsSummary(actor: AuthContext) {
   assertAccounting(actor);
   const permittedLocationIds = locationIdFilter(actor);
   const [saleRecords, orderRecords, inventory] = await Promise.all([
-    prisma.sale.findMany({ where: { locationId: permittedLocationIds }, orderBy: { postedAt: "desc" }, include: SALE_INCLUDE, take: 200 }),
+    prisma.sale.findMany({ where: { locationId: permittedLocationIds, status: "POSTED" }, orderBy: { postedAt: "desc" }, include: SALE_INCLUDE, take: 200 }),
     prisma.customerOrder.findMany({ where: { locationId: permittedLocationIds }, orderBy: { createdAt: "desc" }, include: ORDER_INCLUDE, take: 200 }),
     prisma.inventoryBalance.findMany({ where: { locationId: permittedLocationIds }, include: { product: true, location: true }, take: 500 }),
   ]);
-  const sales = saleRecords.map(serializeSale);
+  const sales = saleRecords.map(serializeSaleWithCorrection);
   const orders = orderRecords.map(serializeOrder);
   return {
     sales: {
-      totalSales: sales.filter((sale) => sale.status === "POSTED").reduce((sum, sale) => sum + sale.totalAmount, 0),
+      totalSales: sales.reduce((sum, sale) => sum + sale.totalAmount, 0),
       transactionCount: sales.length,
       rows: sales,
     },
@@ -1085,5 +1289,41 @@ function parseReportedComparison(comparisonJson: string | null | undefined) {
 }
 
 function serializeSale(sale: Prisma.SaleGetPayload<{ include: typeof SALE_INCLUDE }>) {
-  return { id: sale.id, reference: sale.reference, source: sale.orderId ? "Customer Order" : "Direct Sale", manualReceiptNumber: sale.manualReceiptNumber, receiptBooklet: (sale as unknown as { receiptBooklet: string }).receiptBooklet ?? "", version: (sale as unknown as { version: number }).version ?? 1, branch: sale.location.name, customer: sale.customer?.name ?? "Guest", totalAmount: serializeMoney(sale.totalAmount), discountAmount: serializeMoney(sale.discountAmount), amountPaid: serializeMoney(sale.amountPaid), paymentMethod: sale.paymentMethod, status: sale.status, postedAt: sale.postedAt.toISOString(), postedBy: sale.postedBy.name, reviewStatus: sale.accountingReview?.status ?? "UNVERIFIED", mismatchCategory: sale.accountingReview?.mismatchCategory ?? null, reviewNotes: sale.accountingReview?.notes ?? null, reportedComparison: parseReportedComparison(sale.accountingReview?.comparisonJson), branchResponse: sale.accountingReview?.branchResponse ?? null, branchResponseNote: sale.accountingReview?.branchResponseNote ?? null, branchReplacementReceiptNumber: sale.accountingReview?.branchReplacementReceiptNumber ?? null, branchRespondedAt: sale.accountingReview?.branchRespondedAt?.toISOString() ?? null, receiptPhotoUrl: sale.accountingReview?.receiptPhotoKey ? `/api/accounting/receipts/${sale.id}/photo` : null, receiptOcrStatus: sale.accountingReview?.receiptOcrStatus ?? null, receiptOcrDraft: parseReceiptOcrDraft(sale.accountingReview?.receiptOcrJson), receiptOcrError: sale.accountingReview?.receiptOcrError ?? null, receiptOcrAt: sale.accountingReview?.receiptOcrAt?.toISOString() ?? null, reviewedAt: sale.accountingReview?.reviewedAt?.toISOString() ?? null, resolutionAction: sale.accountingReview?.resolutionAction ?? null, resolutionNote: sale.accountingReview?.resolutionNote ?? null, resolvedAt: sale.accountingReview?.resolvedAt?.toISOString() ?? null, correctionOfId: sale.correctionOfId ?? null, lines: sale.lines.map((line) => ({ productId: line.productId, itemCode: line.productItemCode, name: line.productName, quantity: line.quantity, unitPrice: serializeMoney(line.unitPrice) })) };
+  return { id: sale.id, reference: sale.reference, source: sale.orderId ? "Customer Order" : "Direct Sale", manualReceiptNumber: sale.manualReceiptNumber, receiptBooklet: (sale as unknown as { receiptBooklet: string }).receiptBooklet ?? "", version: (sale as unknown as { version: number }).version ?? 1, branch: sale.location.name, customer: sale.customer?.name ?? "Guest", totalAmount: serializeMoney(sale.totalAmount), discountAmount: serializeMoney(sale.discountAmount), amountPaid: serializeMoney(sale.amountPaid), paymentMethod: sale.paymentMethod, status: sale.status, postedAt: sale.postedAt.toISOString(), postedBy: sale.postedBy.name, reviewStatus: sale.accountingReview?.status ?? "UNVERIFIED", mismatchCategory: sale.accountingReview?.mismatchCategory ?? null, reviewNotes: sale.accountingReview?.notes ?? null, reportedComparison: parseReportedComparison(sale.accountingReview?.comparisonJson), branchResponse: sale.accountingReview?.branchResponse ?? null, branchResponseNote: sale.accountingReview?.branchResponseNote ?? null, branchReplacementReceiptNumber: sale.accountingReview?.branchReplacementReceiptNumber ?? null, branchRespondedAt: sale.accountingReview?.branchRespondedAt?.toISOString() ?? null, receiptPhotoUrl: sale.accountingReview?.receiptPhotoKey ? `/api/accounting/receipts/${sale.id}/photo?v=${sale.accountingReview.evidenceUploadedAt?.getTime() ?? sale.accountingReview.receiptOcrAt?.getTime() ?? 0}` : null, receiptOcrStatus: sale.accountingReview?.receiptOcrStatus ?? null, receiptOcrDraft: parseReceiptOcrDraft(sale.accountingReview?.receiptOcrJson), receiptOcrError: sale.accountingReview?.receiptOcrError ?? null, receiptOcrAt: sale.accountingReview?.receiptOcrAt?.toISOString() ?? null, reviewedAt: sale.accountingReview?.reviewedAt?.toISOString() ?? null, resolutionAction: sale.accountingReview?.resolutionAction ?? null, resolutionNote: sale.accountingReview?.resolutionNote ?? null, resolvedAt: sale.accountingReview?.resolvedAt?.toISOString() ?? null, correctionOfId: sale.correctionOfId ?? null, lines: sale.lines.map((line) => ({ productId: line.productId, itemCode: line.productItemCode, name: line.productName, quantity: line.quantity, unitPrice: serializeMoney(line.unitPrice) })) };
+}
+
+function serializeSaleCorrectionRequest(request: {
+  id: string;
+  reason: SaleCorrectionRequestDto["reason"];
+  note: string;
+  status: SaleCorrectionRequestDto["status"];
+  resolution: SaleCorrectionRequestDto["resolution"];
+  resolutionNote: string | null;
+  requestedAt: Date;
+  resolvedAt: Date | null;
+  requestedBy: { name: string };
+  resolvedBy: { name: string } | null;
+}): SaleCorrectionRequestDto {
+  return {
+    id: request.id,
+    reason: request.reason,
+    note: request.note,
+    status: request.status,
+    resolution: request.resolution,
+    resolutionNote: request.resolutionNote,
+    requestedBy: request.requestedBy.name,
+    requestedAt: request.requestedAt.toISOString(),
+    resolvedBy: request.resolvedBy?.name ?? null,
+    resolvedAt: request.resolvedAt?.toISOString() ?? null,
+  };
+}
+
+function serializeSaleWithCorrection(
+  sale: Prisma.SaleGetPayload<{ include: typeof SALE_INCLUDE }>,
+) {
+  const request = sale.correctionRequests[0] ?? null;
+  return {
+    ...serializeSale(sale),
+    correctionRequest: request ? serializeSaleCorrectionRequest(request) : null,
+  };
 }

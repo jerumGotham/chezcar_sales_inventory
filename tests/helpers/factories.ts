@@ -46,19 +46,19 @@ const ROLE_DEFINITION_BY_ROLE = {
     id: "role-stock-staff",
     isOwner: false,
     hasAllLocations: false,
-    permissions: ["dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push", "customers:view", "customer-orders:view", "sales:view", "products:view", "inventory:view", "inventory-availability:view", "inventory-movements:view", "stock-receipts:view", "inventory-receiving:create", "stock-transfers:view", "stock-transfers:audit:view", "stock-transfers:create", "stock-transfers:update", "stock-transfers:delete", "stock-transfers:finalize", "stock-transfers:dispatch", "stock-transfers:investigate"],
+    permissions: ["dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push", "customers:view", "customer-orders:view", "sales:view", "products:view", "inventory:view", "inventory-availability:view", "inventory-movements:view", "stock-receipts:view", "inventory-receiving:create", "stock-transfers:view", "stock-transfers:audit:view", "stock-transfers:create", "stock-transfers:update", "stock-transfers:delete", "stock-transfers:finalize", "stock-transfers:dispatch", "stock-transfers:cancel", "stock-transfers:investigate"],
   },
   BRANCH_STAFF: {
     id: "role-branch-staff",
     isOwner: false,
     hasAllLocations: false,
-    permissions: ["dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push", "customers:view", "customers:create", "customers:update", "customers:deactivate", "customer-orders:view", "customer-orders:create", "customer-orders:reserve", "customer-orders:record-payment", "customer-orders:release", "customer-orders:cancel", "sales:view", "sales:post", "sales:verify:view", "sales:mismatch:respond", "sales:evidence:view", "sales:evidence:upload", "inventory:view", "inventory-availability:view", "stock-transfers:view", "stock-transfers:receive", "stock-transfers:report-discrepancy", "offline-sales:snapshot", "offline-sales:sync"],
+    permissions: ["dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push", "customers:view", "customers:create", "customers:update", "customers:deactivate", "customer-orders:view", "customer-orders:create", "customer-orders:reserve", "customer-orders:record-payment", "customer-orders:release", "customer-orders:cancel", "sales:view", "sales:post", "sales:correction:request", "sales:verify:view", "sales:mismatch:respond", "sales:evidence:view", "sales:evidence:upload", "sales:evidence:delete", "inventory:view", "inventory-availability:view", "stock-transfers:view", "stock-transfers:receive", "stock-transfers:report-discrepancy", "offline-sales:snapshot", "offline-sales:sync"],
   },
   ACCOUNTING_STAFF: {
     id: "role-accounting-staff",
     isOwner: false,
     hasAllLocations: true,
-    permissions: ["dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push", "customers:view", "customer-orders:view", "sales:view", "sales:verify", "sales:verify:view", "sales:resolve", "sales:evidence:view", "sales:evidence:upload", "reports:view", "reports:export"],
+    permissions: ["dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push", "customers:view", "customer-orders:view", "sales:view", "sales:verify", "sales:verify:view", "sales:resolve", "sales:evidence:view", "sales:evidence:upload", "sales:evidence:delete", "reports:view", "reports:export"],
   },
 } as const;
 

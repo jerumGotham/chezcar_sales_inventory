@@ -60,6 +60,7 @@ type Transfer = {
   discrepancy: { notes: string } | null;
   investigation: { findings: string } | null;
   resolution: { notes: string; postedAt: string } | null;
+  cancellation: { reason: string; cancelledAt: string } | null;
   timeline?: TransferTimelineItem[];
   movements?: TransferMovement[];
 };
@@ -84,19 +85,18 @@ type TransferPage = {
 };
 
 function getTransferStatusLabel(status: string) {
-  return status === "FOR_DISPATCH"
-    ? "Ready for dispatch"
-    : status === "DISCREPANCY_REPORTED"
-      ? "Receiving issue"
-      : status === "UNDER_REVIEW"
-        ? "Under investigation"
-    : status.replaceAll("_", " ");
+  if (status === "FOR_DISPATCH") return "Ready for dispatch";
+  if (status === "DISCREPANCY_REPORTED") return "Receiving issue";
+  if (status === "UNDER_REVIEW") return "Under investigation";
+  if (status === "CANCELLED") return "Cancelled";
+  return status.replaceAll("_", " ");
 }
 
 function getTransferStatusClass(status: string) {
   if (status === "DRAFT") return "bg-slate-100 text-slate-700";
   if (status === "FOR_DISPATCH") return "bg-blue-100 text-blue-700";
   if (status === "IN_TRANSIT") return "bg-amber-100 text-amber-800";
+  if (status === "CANCELLED") return "bg-red-100 text-red-700";
   if (status === "DISCREPANCY_REPORTED") return "bg-orange-100 text-orange-800";
   if (status === "UNDER_REVIEW") return "bg-violet-100 text-violet-700";
   if (status === "RESOLVED") return "bg-emerald-100 text-emerald-700";
@@ -171,6 +171,7 @@ export function StockTransfersClient({
   const canDelete = capabilities.includes("stock-transfers:delete");
   const canFinalize = capabilities.includes("stock-transfers:finalize");
   const canDispatch = capabilities.includes("stock-transfers:dispatch");
+  const canCancel = capabilities.includes("stock-transfers:cancel");
   const canReceive = capabilities.includes("stock-transfers:receive");
   const canReportDiscrepancy = capabilities.includes(
     "stock-transfers:report-discrepancy",
@@ -185,12 +186,14 @@ export function StockTransfersClient({
   const [page, setPage] = useState(1);
   const pageSize = 10;
   const [destinationId, setDestinationId] = useState("");
+  const [sourceProducts, setSourceProducts] = useState(products);
   const [replacementForTransferId, setReplacementForTransferId] = useState("");
   const [draftLines, setDraftLines] = useState<DraftLine[]>([
     { productId: "", quantity: 1 },
   ]);
   const [editLines, setEditLines] = useState<DraftLine[]>([]);
   const [notes, setNotes] = useState("");
+  const [cancellationReason, setCancellationReason] = useState("");
   const [actualQuantities, setActualQuantities] = useState<
     Record<string, number>
   >({});
@@ -286,11 +289,11 @@ export function StockTransfersClient({
   });
 
   const deleteDraftMutation = useMutation({
-    mutationFn: ({ transferId }: { transferId: string }) => {
+    mutationFn: ({ transferId, version }: { transferId: string; version: number }) => {
       return request<{ id: string }>(
         `/api/stock-transfers/${transferId}/delete`,
         "POST",
-        {},
+        { version },
       );
     },
     onSuccess: (_, { transferId }) => {
@@ -302,6 +305,7 @@ export function StockTransfersClient({
       setNotes("");
       setActualQuantities({});
       setShortageResolutions({});
+      setCancellationReason("");
       queryClient.setQueriesData<TransferPage>(
         { queryKey: ["stock-transfers"] },
         (current) =>
@@ -317,6 +321,7 @@ export function StockTransfersClient({
             : current,
       );
       queryClient.invalidateQueries({ queryKey: ["stock-transfers"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
     },
     onError: (error: Error) => notify(error.message, "error"),
   });
@@ -338,7 +343,17 @@ export function StockTransfersClient({
       );
     },
     onSuccess: (transfer, { action }) => {
-      notify("Transfer created successfully.");
+      const successMessages: Record<string, string> = {
+        create: "Transfer draft created successfully.",
+        finalize: "Transfer finalized for dispatch.",
+        dispatch: "Transfer dispatched successfully.",
+        cancel: "Transfer cancelled and stock restored to Stock Room.",
+        "confirm-receipt": "Transfer receipt confirmed.",
+        "report-discrepancy": "Receiving issue reported.",
+        investigate: "Investigation submitted.",
+        resolve: "Transfer discrepancy resolved.",
+      };
+      notify(successMessages[action] ?? "Transfer updated successfully.");
       setValidationErrors([]);
       rememberTransfer(transfer, action === "create");
       setEditLines(
@@ -350,8 +365,29 @@ export function StockTransfersClient({
       setDestinationId("");
       setReplacementForTransferId("");
       setDraftLines([{ productId: "", quantity: 1 }]);
+      setCancellationReason("");
+      if (action === "dispatch" || action === "cancel") {
+        setSourceProducts((current) =>
+          current.map((product) => {
+            const line = transfer.lines.find((item) => item.product.id === product.id);
+            if (!line) return product;
+            return {
+              ...product,
+              availableQuantity:
+                action === "dispatch"
+                  ? Math.max(0, product.availableQuantity - line.dispatchedQuantity)
+                  : product.availableQuantity + line.dispatchedQuantity,
+            };
+          }),
+        );
+        router.refresh();
+      }
       queryClient.invalidateQueries({ queryKey: ["stock-transfers"] });
       queryClient.invalidateQueries({ queryKey: ["inventory-locations"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory-availability"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory-movements"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
     },
     onError: (error: Error) => notify(error.message, "error"),
   });
@@ -362,6 +398,7 @@ export function StockTransfersClient({
       setNotes("");
       setActualQuantities({});
       setShortageResolutions({});
+      setCancellationReason("");
       setEditLines([]);
       return;
     }
@@ -370,6 +407,7 @@ export function StockTransfersClient({
     setNotes("");
     setActualQuantities({});
     setShortageResolutions({});
+    setCancellationReason("");
     setDiscrepancyType("Items missing");
     if (transfer.status === "DRAFT") {
       setEditLines(
@@ -397,7 +435,7 @@ export function StockTransfersClient({
         errors.push(`Enter a valid quantity for line ${index + 1}.`);
       }
 
-      const product = products.find((item) => item.id === line.productId);
+      const product = sourceProducts.find((item) => item.id === line.productId);
       if (product && line.quantity > product.availableQuantity) {
         errors.push(
           `${product.itemCode} has only ${product.availableQuantity} available in Stock Room.`,
@@ -585,7 +623,7 @@ export function StockTransfersClient({
                   }
                 >
                   <option value="">Product</option>
-                  {products
+                  {sourceProducts
                     .filter((product) => {
                       const selectedInAnotherLine = draftLines.some(
                         (otherLine, otherIndex) =>
@@ -698,7 +736,7 @@ export function StockTransfersClient({
                       }}
                     >
                       <option value="">Product</option>
-                      {products
+                      {sourceProducts
                         .filter(
                           (p) =>
                             p.id === line.productId ||
@@ -835,7 +873,10 @@ export function StockTransfersClient({
                     variant="destructive"
                     disabled={deleteDraftMutation.isPending}
                     onClick={() =>
-                      deleteDraftMutation.mutate({ transferId: selected.id })
+                      deleteDraftMutation.mutate({
+                        transferId: selected.id,
+                        version: selected.version,
+                      })
                     }
                   >
                     Delete draft
@@ -857,8 +898,9 @@ export function StockTransfersClient({
               </Badge>
             </div>
             <p className="text-sm text-slate-500">
-              Source is Stock Room. In-transit stock cannot be sold until the
-              branch confirms receipt or stock staff resolves a discrepancy.
+              {selected.status === "CANCELLED"
+                ? "This transfer was cancelled and all in-transit stock was restored to Stock Room."
+                : "Source is Stock Room. In-transit stock cannot be sold until the branch confirms receipt or stock staff resolves a discrepancy."}
             </p>
             <div className="flex flex-col gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm sm:flex-row sm:items-center sm:gap-2">
               <span className="font-medium text-emerald-900">Transfer route:</span>
@@ -896,7 +938,11 @@ export function StockTransfersClient({
                           ? 0
                           : "-"}
                     </td>
-                    <td>{line.discrepancy?.reason ?? "No issue"}</td>
+                    <td>
+                      {selected.status === "CANCELLED"
+                        ? "Transfer cancelled"
+                        : (line.discrepancy?.reason ?? "No issue")}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -911,6 +957,12 @@ export function StockTransfersClient({
               <p className="text-sm">
                 <b>Investigation:</b> {selected.investigation.findings}
               </p>
+            )}
+            {selected.status === "CANCELLED" && selected.cancellation && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                <p className="font-medium">Transfer cancelled</p>
+                <p className="mt-1">{selected.cancellation.reason}</p>
+              </div>
             )}
             {selected.status === "RESOLVED" && selected.resolution && (
               <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/60 p-4">
@@ -985,7 +1037,10 @@ export function StockTransfersClient({
                     variant="destructive"
                     disabled={deleteDraftMutation.isPending}
                     onClick={() =>
-                      deleteDraftMutation.mutate({ transferId: selected.id })
+                      deleteDraftMutation.mutate({
+                        transferId: selected.id,
+                        version: selected.version,
+                      })
                     }
                   >
                     Delete draft
@@ -1138,6 +1193,37 @@ export function StockTransfersClient({
                     </Button>
                   )}
                 </div>
+              </div>
+            )}
+
+            {canCancel && selected.status === "IN_TRANSIT" && (
+              <div className="space-y-3 rounded-lg border border-red-200 bg-red-50/60 p-4">
+                <div>
+                  <p className="font-medium text-red-900">Cancel in-transit transfer</p>
+                  <p className="text-sm text-red-800">
+                    Use only when the shipment will not be received. All in-transit quantities will be returned to Stock Room.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cancellation-reason">Cancellation reason</Label>
+                  <Input
+                    id="cancellation-reason"
+                    value={cancellationReason}
+                    onChange={(event) => setCancellationReason(event.target.value)}
+                    placeholder="Explain why the dispatched transfer is being cancelled"
+                  />
+                </div>
+                <Button
+                  variant="destructive"
+                  disabled={mutation.isPending || !cancellationReason.trim()}
+                  onClick={() => {
+                    if (window.confirm("Cancel this transfer and restore all in-transit stock to Stock Room?")) {
+                      act("cancel", { reason: cancellationReason.trim() });
+                    }
+                  }}
+                >
+                  Cancel transfer and restore stock
+                </Button>
               </div>
             )}
 
@@ -1402,6 +1488,7 @@ export function StockTransfersClient({
                                 onClick={() =>
                                   deleteDraftMutation.mutate({
                                     transferId: transfer.id,
+                                    version: transfer.version,
                                   })
                                 }
                               >

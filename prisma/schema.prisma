@@ -40,6 +40,7 @@ enum StockTransferStatus {
   DRAFT
   FOR_DISPATCH
   IN_TRANSIT
+  CANCELLED
   RECEIVED
   DISCREPANCY_REPORTED
   UNDER_REVIEW
@@ -49,6 +50,7 @@ enum StockTransferStatus {
 enum InventoryMovementType {
   SUPPLIER_RECEIPT
   TRANSFER_DISPATCH
+  TRANSFER_CANCELLATION
   TRANSFER_RECEIPT
   TRANSFER_RESTORATION
   TRANSFER_LOSS
@@ -109,6 +111,24 @@ enum BranchMismatchResponse {
   RECEIPT_CORRECTION_NEEDED
 }
 
+enum SaleCorrectionRequestStatus {
+  PENDING
+  RESOLVED
+}
+
+enum SaleCorrectionRequestReason {
+  ACCIDENTAL_SUBMISSION
+  DUPLICATE_SUBMISSION
+  WRONG_INFORMATION
+  SALE_DID_NOT_HAPPEN
+  OTHER
+}
+
+enum SaleCorrectionRequestResolution {
+  KEPT
+  VOIDED
+}
+
 enum NotificationType {
   INFO
   WARNING
@@ -165,34 +185,34 @@ model Location {
 }
 
 model Product {
-  id                 String              @id @default(cuid())
-  itemCode           String              @unique
-  name               String
-  description        String?
-  category           String?
-  brand              String?
-  imageKey           String?             @unique
-  imageType          String?
-  price              Decimal?            @db.Decimal(12, 2)
-  reorderLevel       Int                 @default(0)
-  status             ProductStatus       @default(ACTIVE)
-  inventoryBalances  InventoryBalance[]
-  transferLines      StockTransferLine[]
-  receiptLines       StockReceiptLine[]
-  inventoryMovements InventoryMovement[]
-  customerOrderLines CustomerOrderLine[]
-  saleLines          SaleLine[]
+  id                     String                        @id @default(cuid())
+  itemCode               String                        @unique
+  name                   String
+  description            String?
+  category               String?
+  brand                  String?
+  imageKey               String?                       @unique
+  imageType              String?
+  price                  Decimal?                      @db.Decimal(12, 2)
+  reorderLevel           Int                           @default(0)
+  status                 ProductStatus                 @default(ACTIVE)
+  inventoryBalances      InventoryBalance[]
+  transferLines          StockTransferLine[]
+  receiptLines           StockReceiptLine[]
+  inventoryMovements     InventoryMovement[]
+  customerOrderLines     CustomerOrderLine[]
+  saleLines              SaleLine[]
   vehicleCompatibilities ProductVehicleCompatibility[]
-  createdById        String?
-  updatedById        String?
-  deactivatedById    String?
-  reactivatedById    String?
-  createdBy          User?               @relation("ProductCreatedBy", fields: [createdById], references: [id])
-  updatedBy          User?               @relation("ProductUpdatedBy", fields: [updatedById], references: [id])
-  deactivatedBy      User?               @relation("ProductDeactivatedBy", fields: [deactivatedById], references: [id])
-  reactivatedBy      User?               @relation("ProductReactivatedBy", fields: [reactivatedById], references: [id])
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  createdById            String?
+  updatedById            String?
+  deactivatedById        String?
+  reactivatedById        String?
+  createdBy              User?                         @relation("ProductCreatedBy", fields: [createdById], references: [id])
+  updatedBy              User?                         @relation("ProductUpdatedBy", fields: [updatedById], references: [id])
+  deactivatedBy          User?                         @relation("ProductDeactivatedBy", fields: [deactivatedById], references: [id])
+  reactivatedBy          User?                         @relation("ProductReactivatedBy", fields: [reactivatedById], references: [id])
+  createdAt              DateTime                      @default(now())
+  updatedAt              DateTime                      @updatedAt
 
   @@index([createdById])
   @@index([updatedById])
@@ -201,13 +221,13 @@ model Product {
 }
 
 model ProductVehicleCompatibility {
-  id        String  @id @default(cuid())
+  id        String   @id @default(cuid())
   productId String
   make      String?
   model     String
   startYear Int?
   endYear   Int?
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -235,50 +255,53 @@ model InventoryBalance {
 }
 
 model User {
-  id                      String                       @id @default(cuid())
-  name                    String
-  email                   String                       @unique
-  emailVerified           Boolean                      @default(false)
-  image                   String?
-  role                    UserRole                     @default(BRANCH_STAFF)
-  roleDefinitionId        String
-  accessRole              RoleDefinition               @relation(fields: [roleDefinitionId], references: [id], onDelete: Restrict)
+  id                       String                       @id @default(cuid())
+  name                     String
+  email                    String                       @unique
+  emailVerified            Boolean                      @default(false)
+  image                    String?
+  role                     UserRole                     @default(BRANCH_STAFF)
+  roleDefinitionId         String
+  accessRole               RoleDefinition               @relation(fields: [roleDefinitionId], references: [id], onDelete: Restrict)
   /// Application activation is governed only by status. Lifecycle services keep the plugin ban fields false/null.
-  status                  UserStatus                   @default(ACTIVE)
-  credentialSetupRequired Boolean                      @default(false)
-  banned                  Boolean                      @default(false)
-  banReason               String?
-  banExpires              DateTime?
-  locationId              String?
-  location                Location?                    @relation(fields: [locationId], references: [id])
-  locationAssignments     UserLocation[]
-  sessions                Session[]
-  accounts                Account[]
-  createdTransfers        StockTransfer[]              @relation("TransferCreatedBy")
-  finalizedTransfers      StockTransfer[]              @relation("TransferFinalizedBy")
-  dispatchedTransfers     StockTransfer[]              @relation("TransferDispatchedBy")
-  receivedTransfers       StockTransfer[]              @relation("TransferReceivedBy")
-  discrepancyReports      StockTransferDiscrepancy[]   @relation("DiscrepancyReportedBy")
-  investigations          StockTransferInvestigation[] @relation("InvestigationSubmittedBy")
-  resolutions             StockTransferResolution[]    @relation("ResolutionPostedBy")
-  inventoryMovements      InventoryMovement[]
-  stockReceipts           StockReceipt[]               @relation("ReceiptReceivedBy")
-  notifications           Notification[]
-  createdCustomers        Customer[]                   @relation("CustomerCreatedBy")
-  createdCustomerOrders   CustomerOrder[]              @relation("CustomerOrderCreatedBy")
-  releasedCustomerOrders  CustomerOrder[]              @relation("CustomerOrderReleasedBy")
-  cancelledCustomerOrders CustomerOrder[]              @relation("CustomerOrderCancelledBy")
-  postedSales             Sale[]                       @relation("SalePostedBy")
-  reviewedSales           SaleAccountingReview[]       @relation("SaleReviewedBy")
-  branchMismatchResponses SaleAccountingReview[]       @relation("SaleBranchRespondedBy")
-  correctedSales          Sale[]                       @relation("SaleCorrectedBy")
-  resolvedReviews         SaleAccountingReview[]       @relation("SaleResolvedBy")
-  createdProducts         Product[]                    @relation("ProductCreatedBy")
-  updatedProducts         Product[]                    @relation("ProductUpdatedBy")
-  deactivatedProducts     Product[]                    @relation("ProductDeactivatedBy")
-  reactivatedProducts     Product[]                    @relation("ProductReactivatedBy")
-  createdAt               DateTime                     @default(now())
-  updatedAt               DateTime                     @updatedAt
+  status                   UserStatus                   @default(ACTIVE)
+  credentialSetupRequired  Boolean                      @default(false)
+  banned                   Boolean                      @default(false)
+  banReason                String?
+  banExpires               DateTime?
+  locationId               String?
+  location                 Location?                    @relation(fields: [locationId], references: [id])
+  locationAssignments      UserLocation[]
+  sessions                 Session[]
+  accounts                 Account[]
+  createdTransfers         StockTransfer[]              @relation("TransferCreatedBy")
+  finalizedTransfers       StockTransfer[]              @relation("TransferFinalizedBy")
+  dispatchedTransfers      StockTransfer[]              @relation("TransferDispatchedBy")
+  cancelledTransfers       StockTransfer[]              @relation("TransferCancelledBy")
+  receivedTransfers        StockTransfer[]              @relation("TransferReceivedBy")
+  discrepancyReports       StockTransferDiscrepancy[]   @relation("DiscrepancyReportedBy")
+  investigations           StockTransferInvestigation[] @relation("InvestigationSubmittedBy")
+  resolutions              StockTransferResolution[]    @relation("ResolutionPostedBy")
+  inventoryMovements       InventoryMovement[]
+  stockReceipts            StockReceipt[]               @relation("ReceiptReceivedBy")
+  notifications            Notification[]
+  createdCustomers         Customer[]                   @relation("CustomerCreatedBy")
+  createdCustomerOrders    CustomerOrder[]              @relation("CustomerOrderCreatedBy")
+  releasedCustomerOrders   CustomerOrder[]              @relation("CustomerOrderReleasedBy")
+  cancelledCustomerOrders  CustomerOrder[]              @relation("CustomerOrderCancelledBy")
+  postedSales              Sale[]                       @relation("SalePostedBy")
+  reviewedSales            SaleAccountingReview[]       @relation("SaleReviewedBy")
+  branchMismatchResponses  SaleAccountingReview[]       @relation("SaleBranchRespondedBy")
+  requestedSaleCorrections SaleCorrectionRequest[]      @relation("SaleCorrectionRequestedBy")
+  resolvedSaleCorrections  SaleCorrectionRequest[]      @relation("SaleCorrectionResolvedBy")
+  correctedSales           Sale[]                       @relation("SaleCorrectedBy")
+  resolvedReviews          SaleAccountingReview[]       @relation("SaleResolvedBy")
+  createdProducts          Product[]                    @relation("ProductCreatedBy")
+  updatedProducts          Product[]                    @relation("ProductUpdatedBy")
+  deactivatedProducts      Product[]                    @relation("ProductDeactivatedBy")
+  reactivatedProducts      Product[]                    @relation("ProductReactivatedBy")
+  createdAt                DateTime                     @default(now())
+  updatedAt                DateTime                     @updatedAt
 
   @@index([locationId])
   @@index([roleDefinitionId])
@@ -313,30 +336,34 @@ model UserLocation {
 }
 
 model StockTransfer {
-  id             String                      @id @default(cuid())
-  reference      String                      @unique
-  destinationId  String
-  status         StockTransferStatus         @default(DRAFT)
-  version        Int                         @default(1)
-  createdById    String
-  finalizedById  String?
-  dispatchedById String?
-  receivedById   String?
-  finalizedAt    DateTime?
-  dispatchedAt   DateTime?
-  receivedAt     DateTime?
-  destination    Location                    @relation("TransferDestination", fields: [destinationId], references: [id])
-  createdBy      User                        @relation("TransferCreatedBy", fields: [createdById], references: [id])
-  finalizedBy    User?                       @relation("TransferFinalizedBy", fields: [finalizedById], references: [id])
-  dispatchedBy   User?                       @relation("TransferDispatchedBy", fields: [dispatchedById], references: [id])
-  receivedBy     User?                       @relation("TransferReceivedBy", fields: [receivedById], references: [id])
-  lines          StockTransferLine[]
-  discrepancy    StockTransferDiscrepancy?
-  investigation  StockTransferInvestigation?
-  resolution     StockTransferResolution?
-  movements      InventoryMovement[]
-  createdAt      DateTime                    @default(now())
-  updatedAt      DateTime                    @updatedAt
+  id                 String                      @id @default(cuid())
+  reference          String                      @unique
+  destinationId      String
+  status             StockTransferStatus         @default(DRAFT)
+  version            Int                         @default(1)
+  createdById        String
+  finalizedById      String?
+  dispatchedById     String?
+  cancelledById      String?
+  receivedById       String?
+  finalizedAt        DateTime?
+  dispatchedAt       DateTime?
+  cancelledAt        DateTime?
+  cancellationReason String?                     @db.Text
+  receivedAt         DateTime?
+  destination        Location                    @relation("TransferDestination", fields: [destinationId], references: [id])
+  createdBy          User                        @relation("TransferCreatedBy", fields: [createdById], references: [id])
+  finalizedBy        User?                       @relation("TransferFinalizedBy", fields: [finalizedById], references: [id])
+  dispatchedBy       User?                       @relation("TransferDispatchedBy", fields: [dispatchedById], references: [id])
+  cancelledBy        User?                       @relation("TransferCancelledBy", fields: [cancelledById], references: [id])
+  receivedBy         User?                       @relation("TransferReceivedBy", fields: [receivedById], references: [id])
+  lines              StockTransferLine[]
+  discrepancy        StockTransferDiscrepancy?
+  investigation      StockTransferInvestigation?
+  resolution         StockTransferResolution?
+  movements          InventoryMovement[]
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
 
   @@index([destinationId, status])
   @@index([status])
@@ -559,36 +586,37 @@ model CustomerOrderLine {
 }
 
 model Sale {
-  id                  String                @id @default(cuid())
-  reference           String                @unique
+  id                  String                  @id @default(cuid())
+  reference           String                  @unique
   manualReceiptNumber String
-  receiptBooklet      String                @default("")
-  version             Int                   @default(1)
+  receiptBooklet      String                  @default("")
+  version             Int                     @default(1)
   locationId          String
   customerId          String?
-  orderId             String?               @unique
+  orderId             String?                 @unique
   correctionOfId      String?
   correctedById       String?
   correctedAt         DateTime?
-  status              SaleStatus            @default(POSTED)
+  status              SaleStatus              @default(POSTED)
   paymentMethod       PaymentMethod
-  totalAmount         Decimal               @db.Decimal(12, 2)
-  discountAmount      Decimal               @default(0) @db.Decimal(12, 2)
-  amountPaid          Decimal               @db.Decimal(12, 2)
-  notes               String?               @db.Text
+  totalAmount         Decimal                 @db.Decimal(12, 2)
+  discountAmount      Decimal                 @default(0) @db.Decimal(12, 2)
+  amountPaid          Decimal                 @db.Decimal(12, 2)
+  notes               String?                 @db.Text
   postedById          String
-  postedAt            DateTime              @default(now())
-  location            Location              @relation(fields: [locationId], references: [id])
-  customer            Customer?             @relation(fields: [customerId], references: [id])
-  order               CustomerOrder?        @relation(fields: [orderId], references: [id])
-  postedBy            User                  @relation("SalePostedBy", fields: [postedById], references: [id])
-  correctionOf        Sale?                 @relation("SaleCorrections", fields: [correctionOfId], references: [id], onDelete: Restrict)
-  corrections         Sale[]                @relation("SaleCorrections")
-  correctedBy         User?                 @relation("SaleCorrectedBy", fields: [correctedById], references: [id])
+  postedAt            DateTime                @default(now())
+  location            Location                @relation(fields: [locationId], references: [id])
+  customer            Customer?               @relation(fields: [customerId], references: [id])
+  order               CustomerOrder?          @relation(fields: [orderId], references: [id])
+  postedBy            User                    @relation("SalePostedBy", fields: [postedById], references: [id])
+  correctionOf        Sale?                   @relation("SaleCorrections", fields: [correctionOfId], references: [id], onDelete: Restrict)
+  corrections         Sale[]                  @relation("SaleCorrections")
+  correctedBy         User?                   @relation("SaleCorrectedBy", fields: [correctedById], references: [id])
   lines               SaleLine[]
   accountingReview    SaleAccountingReview?
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime              @updatedAt
+  correctionRequests  SaleCorrectionRequest[]
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
 
   @@unique([locationId, receiptBooklet, manualReceiptNumber])
   @@index([locationId, postedAt])
@@ -650,6 +678,29 @@ model SaleAccountingReview {
   @@index([resolvedById])
   @@index([branchRespondedById])
   @@index([evidenceReminderSentAt, receiptPhotoKey])
+}
+
+model SaleCorrectionRequest {
+  id             String                           @id @default(cuid())
+  saleId         String
+  reason         SaleCorrectionRequestReason
+  note           String                           @db.Text
+  status         SaleCorrectionRequestStatus      @default(PENDING)
+  resolution     SaleCorrectionRequestResolution?
+  resolutionNote String?                          @db.Text
+  requestedById  String
+  requestedAt    DateTime                         @default(now())
+  resolvedById   String?
+  resolvedAt     DateTime?
+  sale           Sale                             @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  requestedBy    User                             @relation("SaleCorrectionRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+  resolvedBy     User?                            @relation("SaleCorrectionResolvedBy", fields: [resolvedById], references: [id], onDelete: Restrict)
+  createdAt      DateTime                         @default(now())
+  updatedAt      DateTime                         @updatedAt
+
+  @@index([saleId, status])
+  @@index([requestedById])
+  @@index([resolvedById])
 }
 
 model Notification {

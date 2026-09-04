@@ -8,6 +8,7 @@ import {
   type AuthContext,
 } from "@/lib/server/authorization";
 import type {
+  CancelTransferInput,
   CreateTransferInput,
   DiscrepancyInput,
   InvestigationInput,
@@ -48,6 +49,7 @@ const TRANSFER_INCLUDE = {
   createdBy: { select: { name: true } },
   finalizedBy: { select: { name: true } },
   dispatchedBy: { select: { name: true } },
+  cancelledBy: { select: { name: true } },
   receivedBy: { select: { name: true } },
   movements: {
     include: {
@@ -318,7 +320,6 @@ export async function createTransfer(
         );
       }
 
-      let replacementReference = "";
       if (input.replacementForTransferId) {
         const sourceTransfer = await tx.stockTransfer.findFirst({
           where: {
@@ -334,7 +335,6 @@ export async function createTransfer(
             "Replacement source must be a resolved transfer for the same branch",
             400,
           );
-        replacementReference = sourceTransfer.reference;
       }
 
       const transfer = await tx.stockTransfer.create({
@@ -351,19 +351,6 @@ export async function createTransfer(
         },
         include: TRANSFER_INCLUDE,
       });
-
-      if (replacementReference) {
-        await notifyUsersForTransfer(
-          tx,
-          transfer,
-          [{ capability: "stock-transfers:update", locationId: await stockRoomId(tx) }],
-          {
-            title: "Replacement transfer draft created",
-            description: `${transfer.reference} was created as a replacement draft for shortage from ${replacementReference}.`,
-            type: "INFO",
-          },
-        );
-      }
 
       return serializeTransfer(transfer, canViewTransferAudit(actor));
     },
@@ -413,40 +400,23 @@ export async function updateDraftTransfer(
   );
 }
 
-export async function deleteDraftTransfer(actor: AuthContext, id: string) {
+export async function deleteDraftTransfer(actor: AuthContext, id: string, version: number) {
   assertCapability(actor, "stock-transfers:delete");
   await assertSourceActor(actor);
   await prisma.$transaction(
     async (tx) => {
-      const transfer = await tx.stockTransfer.findUnique({
-        where: { id },
-        include: { destination: { select: { name: true } } },
-      });
-      if (!transfer)
-        throw new TransferError("NOT_FOUND", "Transfer not found", 404);
+      const transfer = await lockTransfer(tx, id);
       if (transfer.status !== "DRAFT" && transfer.status !== "FOR_DISPATCH")
         throw new TransferError(
           "INVALID_STATE",
           "Only draft or ready for dispatch transfers can be deleted",
         );
-      const recipients = await tx.user.findMany({
-        where: {
-          status: "ACTIVE",
-          OR: [{ id: actor.userId }, { accessRole: { isOwner: true } }],
-        },
-        select: { id: true },
+      assertVersion(transfer.version, version);
+      await tx.notification.deleteMany({
+        where: { relatedType: "STOCK_TRANSFER", relatedId: id },
       });
       await tx.stockTransferLine.deleteMany({ where: { transferId: id } });
       await tx.stockTransfer.delete({ where: { id } });
-      await createNotifications(
-        tx,
-        recipients.map((recipient) => ({
-          userId: recipient.id,
-          title: "Transfer draft deleted",
-          description: `${transfer.reference} to ${transfer.destination.name} was deleted.`,
-          type: "INFO",
-        })),
-      );
       return { id };
     },
     { isolationLevel: "Serializable" },
@@ -917,6 +887,80 @@ function actorLabel(actor: { name: string } | null) {
   return actor?.name ?? "System";
 }
 
+export async function cancelTransfer(
+  actor: AuthContext,
+  id: string,
+  input: CancelTransferInput,
+) {
+  assertCapability(actor, "stock-transfers:cancel");
+  await assertSourceActor(actor);
+  return prisma.$transaction(
+    async (tx) => {
+      const transfer = await lockTransfer(tx, id);
+      if (transfer.status === "CANCELLED")
+        return serializeTransfer(transfer, canViewTransferAudit(actor));
+      assertVersion(transfer.version, input.version);
+      if (transfer.status !== "IN_TRANSIT")
+        throw new TransferError(
+          "INVALID_STATE",
+          "Only in-transit transfers can be cancelled",
+        );
+
+      const sr = await stockRoomId(tx);
+      for (const line of transfer.lines) {
+        if (line.inTransitQuantity > 0) {
+          await increaseBalance(tx, sr, line.productId, line.inTransitQuantity);
+          await tx.inventoryMovement.create({
+            data: {
+              transferId: id,
+              productId: line.productId,
+              locationId: sr,
+              quantity: line.inTransitQuantity,
+              type: "TRANSFER_CANCELLATION",
+              actorId: actor.userId,
+              remarks: input.reason,
+            },
+          });
+        }
+        await tx.stockTransferLine.update({
+          where: { id: line.id },
+          data: { inTransitQuantity: 0 },
+        });
+      }
+
+      const updated = await tx.stockTransfer.update({
+        where: { id },
+        data: {
+          status: "CANCELLED",
+          cancelledById: actor.userId,
+          cancelledAt: new Date(),
+          cancellationReason: input.reason,
+          version: { increment: 1 },
+        },
+        include: TRANSFER_INCLUDE,
+      });
+      await tx.notification.deleteMany({
+        where: { relatedType: "STOCK_TRANSFER", relatedId: id },
+      });
+      await notifyUsersForTransfer(
+        tx,
+        updated,
+        [
+          { capability: "stock-transfers:dispatch", locationId: sr },
+          { capability: "stock-transfers:receive", locationId: updated.destinationId },
+        ],
+        {
+          title: "Transfer cancelled",
+          description: `${updated.reference} to ${updated.destination.name} was cancelled and its in-transit stock was restored to Stock Room.`,
+          type: "WARNING",
+        },
+      );
+      return serializeTransfer(updated, canViewTransferAudit(actor));
+    },
+    { isolationLevel: "Serializable" },
+  );
+}
+
 function serializeTransfer(transfer: TransferRecord, includeAudit = false) {
   const timeline = includeAudit
     ? [
@@ -937,6 +981,14 @@ function serializeTransfer(transfer: TransferRecord, includeAudit = false) {
               label: "Dispatched from Stock Room",
               actor: actorLabel(transfer.dispatchedBy),
               at: transfer.dispatchedAt.toISOString(),
+            }
+          : null,
+        transfer.cancelledAt
+          ? {
+              label: "In-transit transfer cancelled",
+              actor: actorLabel(transfer.cancelledBy),
+              at: transfer.cancelledAt.toISOString(),
+              notes: transfer.cancellationReason ?? undefined,
             }
           : null,
         transfer.receivedAt
@@ -1011,6 +1063,12 @@ function serializeTransfer(transfer: TransferRecord, includeAudit = false) {
       ? {
           notes: transfer.resolution.notes,
           postedAt: transfer.resolution.postedAt.toISOString(),
+        }
+      : null,
+    cancellation: transfer.cancelledAt
+      ? {
+          reason: transfer.cancellationReason ?? "No reason recorded",
+          cancelledAt: transfer.cancelledAt.toISOString(),
         }
       : null,
     timeline,

@@ -10,7 +10,7 @@
 | Actual Received Quantity | The physical quantity counted by an individually authenticated Branch Staff user assigned to the destination branch. It may differ from the dispatched quantity. |
 | Available Stock | Sellable quantity at one location after excluding stock in non-sellable states. The MVP never permits a posted sale to make stock negative, including during offline synchronization. In-transit stock is separately accountable and is unavailable at both source and destination until receipt is posted. |
 | Branch | A retail location that sells items and receives stock from the central Stock Room. |
-| Branch Staff | A branch-scoped user who records sales, views branch inventory, confirms transfer receipt, reports transfer discrepancies, and responds to assigned-branch receipt mismatches. This role cannot directly adjust stock balances or void sales. |
+| Branch Staff | A branch-scoped user who records sales, views branch inventory, confirms transfer receipt, reports transfer discrepancies, responds to assigned-branch receipt mismatches, and may request review of a wrong direct-sale submission. This role cannot directly adjust stock balances or void sales. |
 | Customer Order | A branch customer commitment for reserved stock, reserved stock with downpayment, or waiting-stock/special-order fulfillment. It requires customer identity and is completed through final release. |
 | Correction | A new auditable action that fixes a posted transaction without rewriting its original history. |
 | Daily Reconciliation | An informational dashboard summary of individual receipt-level verification for a branch and date. It is not a submitted closing. Formal daily closing and actual-cash reconciliation are deferred. |
@@ -38,6 +38,7 @@
 | Product | A sellable or historically accountable item identified by a unique item code. Active products require a positive current price; inactive products remain visible for inventory/history but cannot be selected for new business flows. |
 | Posted Sale | A finalized internal sale that has created sale lines and stock deduction movements. It cannot be silently edited or hard-deleted. |
 | Reconciliation Issue | A mismatch reported by Admin or Accounting between any system sale line, quantity, price, discount, payment, total, or receipt identity and the handwritten receipt. Assigned Branch Staff double-checks it before Admin/Accounting confirms the original or Admin voids and replaces the sale. |
+| Sale Correction Request | An auditable Branch report that a posted direct sale was accidental, duplicated, incorrect, or did not occur. It requires a reason and note but not receipt evidence. The request has no stock effect; Admin either keeps the sale or voids it and posts the reversal. |
 | Received Transfer | A transfer for which assigned Branch Staff submitted a complete physical count and confirmed that every item and quantity matches the `SR` dispatch. A mismatch does not become `RECEIVED`; it enters the discrepancy path. There is no separate `CONFIRMED` status. |
 | Stock Card | Chronological inventory movement history for one product and location. |
 | Stock Room | The central non-retail inventory location identified by `SR`. All MVP replenishment enters the Stock Room before Stock Staff dispatches stock to a branch. |
@@ -49,8 +50,8 @@
 | Variance Movement | A separate inventory movement recording a confirmed missing, excess, damaged, loss, or correction quantity during discrepancy resolution. |
 | Void and Replace | The recommended correction pattern for a materially incorrect sale: reverse the original through an auditable void, then post a corrected sale. |
 | Verification | Admin or Accounting comparison of an encoded sale against its handwritten receipt. Outcomes are `VERIFIED` or `MISMATCH_REPORTED`. |
-| Mismatch Report | A structured Admin/Accounting filing on an `UNVERIFIED` sale with a closed category (`PRICE_MISMATCH`, `QUANTITY_MISMATCH`, `ITEM_MISMATCH`, `TOTAL_MISMATCH`, `RECEIPT_NOT_FOUND`, `OTHER`), notes, optional photo, and actor/time. Assigned Branch Staff must respond before final resolution; the report itself does not correct stock. |
-| Voided Sale | A posted sale marked voided and preserved for audit, replaced by a linked corrected sale. |
+| Mismatch Report | A structured Admin/Accounting filing on an `UNVERIFIED` sale with a closed category (`PRICE_MISMATCH`, `QUANTITY_MISMATCH`, `ITEM_MISMATCH`, `TOTAL_MISMATCH`, `RECEIPT_NOT_FOUND`, `OTHER`), notes, required receipt photo, and actor/time. Assigned Branch Staff must respond before final resolution; the report itself does not correct stock. |
+| Voided Sale | A posted sale marked voided and preserved for audit. It is either linked to a corrected replacement or to an approved Branch correction request that reversed a sale which did not occur or was accidentally duplicated. |
 | Warehouse | Legacy synonym for Stock Room. Owner-facing language should use Stock Room and code `SR`. |
 
 ## Naming Decisions Still Open
