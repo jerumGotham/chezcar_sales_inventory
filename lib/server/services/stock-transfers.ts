@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { Prisma, type StockTransferStatus } from "@prisma/client";
 
 import {
+  assertAnyCapability,
   assertCapability,
   type AuthContext,
 } from "@/lib/server/authorization";
@@ -13,6 +14,7 @@ import type {
   DiscrepancyInput,
   InvestigationInput,
   ResolutionInput,
+  TransferProductOptionDto,
 } from "@/lib/contracts/stock-transfers";
 import { prisma } from "@/lib/server/prisma";
 import { findActiveBranch } from "@/lib/server/locations";
@@ -77,6 +79,8 @@ async function assertSourceActor(actor: AuthContext) {
       403,
     );
   }
+
+  return stockRoom.id;
 }
 
 export function canAccessTransferRecord(
@@ -197,6 +201,135 @@ async function stockRoomId(tx: Prisma.TransactionClient) {
   return stockRoom.id;
 }
 
+async function assertDraftLinesAvailable(
+  tx: Prisma.TransactionClient,
+  sourceId: string,
+  lines: Array<{ productId: string; quantity: number }>,
+) {
+  if (lines.some((line) => !Number.isInteger(line.quantity) || line.quantity < 1)) {
+    throw new TransferError(
+      "INVALID_LINES",
+      "Every transfer quantity must be a positive whole number",
+      400,
+    );
+  }
+
+  const products = await tx.product.findMany({
+    where: { id: { in: lines.map((line) => line.productId) } },
+    select: {
+      id: true,
+      itemCode: true,
+      status: true,
+      inventoryBalances: {
+        where: { locationId: sourceId },
+        select: { onHand: true, reserved: true },
+      },
+    },
+  });
+  const productById = new Map(products.map((product) => [product.id, product]));
+
+  if (
+    products.length !== lines.length ||
+    products.some((product) => product.status !== "ACTIVE")
+  ) {
+    throw new TransferError(
+      "INVALID_LINES",
+      "Every transfer product must be active",
+      400,
+    );
+  }
+
+  for (const line of lines) {
+    const product = productById.get(line.productId)!;
+    const balance = product.inventoryBalances[0];
+    const available = (balance?.onHand ?? 0) - (balance?.reserved ?? 0);
+
+    if (available < line.quantity) {
+      throw new TransferError(
+        "INSUFFICIENT_STOCK",
+        `${product.itemCode} has only ${Math.max(0, available)} available in Stock Room`,
+      );
+    }
+  }
+}
+
+export async function listTransferProductOptions(
+  actor: AuthContext,
+): Promise<TransferProductOptionDto[]> {
+  assertAnyCapability(actor, [
+    "stock-transfers:create",
+    "stock-transfers:update",
+  ]);
+  const sourceId = await assertSourceActor(actor);
+  const balances = await prisma.inventoryBalance.findMany({
+    where: {
+      locationId: sourceId,
+      onHand: { gt: 0 },
+      product: { status: "ACTIVE" },
+    },
+    select: {
+      onHand: true,
+      reserved: true,
+      product: { select: { id: true, itemCode: true, name: true } },
+    },
+    orderBy: { product: { itemCode: "asc" } },
+  });
+
+  return balances
+    .map((balance) => ({
+      id: balance.product.id,
+      itemCode: balance.product.itemCode,
+      name: balance.product.name,
+      availableQuantity: balance.onHand - balance.reserved,
+    }))
+    .filter((product) => product.availableQuantity > 0);
+}
+
+export async function getInTransitTransferChecklist(
+  actor: AuthContext,
+  id: string,
+) {
+  assertCapability(actor, "stock-transfers:view");
+  const [source, transfer] = await prisma.$transaction([
+    prisma.location.findFirst({
+      where: { code: "SR", type: "WAREHOUSE", isActive: true },
+      select: { id: true, code: true, name: true },
+    }),
+    prisma.stockTransfer.findFirst({
+      where: { id, status: "IN_TRANSIT" },
+      select: {
+        reference: true,
+        destinationId: true,
+        dispatchedAt: true,
+        destination: { select: { code: true, name: true } },
+        lines: {
+          select: {
+            dispatchedQuantity: true,
+            product: { select: { itemCode: true, name: true } },
+          },
+          orderBy: { product: { itemCode: "asc" } },
+        },
+      },
+    }),
+  ]);
+
+  if (
+    !source ||
+    !transfer?.dispatchedAt ||
+    !canAccessTransferRecord(actor, source.id, transfer.destinationId)
+  ) {
+    return null;
+  }
+
+  return {
+    reference: transfer.reference,
+    source: { code: source.code, name: source.name },
+    destination: transfer.destination,
+    dispatchedAt: transfer.dispatchedAt.toISOString(),
+    lines: transfer.lines,
+  };
+}
+
 async function notifyUsersForTransfer(
   tx: Prisma.TransactionClient,
   transfer: {
@@ -290,17 +423,8 @@ export async function createTransfer(
     );
   return prisma.$transaction(
     async (tx) => {
-      const products = await tx.product.findMany({
-        where: { id: { in: productIds }, status: "ACTIVE" },
-        select: { id: true },
-      });
-      if (products.length !== productIds.length) {
-        throw new TransferError(
-          "INVALID_LINES",
-          "Every transfer product must be active",
-          400,
-        );
-      }
+      const sourceId = await stockRoomId(tx);
+      await assertDraftLinesAvailable(tx, sourceId, input.lines);
       const destination = await findActiveBranch(input.destinationId, tx);
       if (!destination)
         throw new TransferError(
@@ -381,6 +505,8 @@ export async function updateDraftTransfer(
           "Only draft transfers can be edited",
         );
       assertVersion(transfer.version, version);
+      const sourceId = await stockRoomId(tx);
+      await assertDraftLinesAvailable(tx, sourceId, lines);
       await tx.stockTransferLine.deleteMany({ where: { transferId: id } });
       await tx.stockTransferLine.createMany({
         data: lines.map((line) => ({

@@ -1,0 +1,3 @@
+ALTER TYPE "BranchMismatchResponse" ADD VALUE 'WRONG_RECEIPT_PHOTO';
+ALTER TYPE "BranchMismatchResponse" ADD VALUE 'SALE_ENCODED_INCORRECT';
+ALTER TYPE "AccountingResolutionAction" ADD VALUE 'VOIDED';

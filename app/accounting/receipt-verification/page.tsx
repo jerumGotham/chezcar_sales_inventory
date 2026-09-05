@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useEffectEvent, useMemo, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
@@ -26,9 +26,17 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   receiptComparisonSchema,
+  type AccountingResolutionActionDto,
+  type BranchMismatchResponseDto,
   type ReceiptComparison,
   type SaleCorrectionRequestDto,
 } from "@/lib/contracts/sales";
+import { cn } from "@/lib/utils";
+
+type NewBranchFinding = Extract<
+  BranchMismatchResponseDto,
+  "WRONG_RECEIPT_PHOTO" | "SALE_ENCODED_INCORRECT"
+>;
 
 type SaleLine = {
   itemCode: string;
@@ -54,10 +62,7 @@ type Sale = {
   mismatchCategory: string | null;
   reviewNotes: string | null;
   reportedComparison: ReceiptComparison | null;
-  branchResponse:
-    | "ORIGINAL_ENCODING_CORRECT"
-    | "RECEIPT_CORRECTION_NEEDED"
-    | null;
+  branchResponse: BranchMismatchResponseDto | null;
   branchResponseNote: string | null;
   branchReplacementReceiptNumber: string | null;
   branchRespondedAt: string | null;
@@ -83,7 +88,7 @@ type Sale = {
     }>;
   } | null;
   correctionOfId: string | null;
-  resolutionAction: string | null;
+  resolutionAction: AccountingResolutionActionDto | null;
   resolutionNote: string | null;
   resolvedAt: string | null;
   correctionRequest: SaleCorrectionRequestDto | null;
@@ -143,6 +148,21 @@ function formatPeso(value: number) {
   }).format(value);
 }
 
+function branchFindingSummary(sale: Sale) {
+  switch (sale.branchResponse) {
+    case "ORIGINAL_ENCODING_CORRECT":
+      return "Branch confirmed the original encoding is correct.";
+    case "RECEIPT_CORRECTION_NEEDED":
+      return `Branch confirmed a correction is needed. Replacement receipt: ${sale.branchReplacementReceiptNumber ?? "Not recorded"}`;
+    case "WRONG_RECEIPT_PHOTO":
+      return "Branch found that the wrong receipt photo was uploaded and submitted a replacement for Accounting re-review. Stock is unchanged.";
+    case "SALE_ENCODED_INCORRECT":
+      return "Branch found that the sale was encoded incorrectly. It is waiting for Admin to void the sale and restore the original stock quantities.";
+    default:
+      return "Waiting for the branch to double-check this mismatch.";
+  }
+}
+
 async function fetchReceipts(filters: ReceiptFilters) {
   const params = new URLSearchParams({
     page: String(filters.page),
@@ -197,11 +217,12 @@ function toComparison(draft: ComparisonDraft) {
 
 async function uploadPhoto(
   saleId: string,
-  file: File | null,
+  file: File,
+  purpose?: "branch-finding-replacement",
 ) {
-  if (!file) return;
   const formData = new FormData();
   formData.set("photo", file);
+  if (purpose) formData.set("purpose", purpose);
   const response = await fetch(`/api/accounting/receipts/${saleId}/photo`, {
     method: "POST",
     credentials: "same-origin",
@@ -215,6 +236,7 @@ async function uploadPhoto(
     throw new Error(json?.error?.message ?? "Unable to upload receipt photo");
   if (!json?.data?.key)
     throw new Error("Receipt photo upload returned an invalid response");
+  return json.data.key;
 }
 
 type ComparisonDifference = {
@@ -321,6 +343,7 @@ function ReceiptVerificationContent() {
   const canDeleteEvidence = useCan("sales:evidence:delete");
   const searchParams = useSearchParams();
   const linkedSaleId = searchParams.get("saleId") ?? "";
+  const handledLinkedSaleIdRef = useRef<string | null>(null);
   const queryClient = useQueryClient();
   const [searchDraft, setSearchDraft] = useState("");
   const [reviewStatusDraft, setReviewStatusDraft] =
@@ -345,6 +368,45 @@ function ReceiptVerificationContent() {
   const [category, setCategory] = useState("PRICE_MISMATCH");
   const [notes, setNotes] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [comparison, setComparison] = useState<ComparisonDraft>({
+    receiptBooklet: "",
+    receiptNumber: "",
+    paymentMethod: "CASH",
+    discountAmount: "0",
+    amountPaid: "0",
+    totalAmount: "0",
+    lines: [],
+  });
+  const [resolutionNote, setResolutionNote] = useState("");
+  const [correctionResolutionNote, setCorrectionResolutionNote] = useState("");
+  const [branchResponse, setBranchResponse] = useState<NewBranchFinding | null>(null);
+  const [branchResponseNote, setBranchResponseNote] = useState("");
+  const [branchReplacementPhotoFile, setBranchReplacementPhotoFile] =
+    useState<File | null>(null);
+  const [branchReplacementPhotoPreview, setBranchReplacementPhotoPreview] =
+    useState<string | null>(null);
+  const [branchReplacementEvidenceKey, setBranchReplacementEvidenceKey] =
+    useState<string | null>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+
+  function clearSelectedPhoto() {
+    setPhotoFile(null);
+    setPhotoPreview((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
+    });
+  }
+
+  function clearBranchReplacementPhoto() {
+    setBranchReplacementEvidenceKey(null);
+    setBranchReplacementPhotoFile(null);
+    setBranchReplacementPhotoPreview((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
+    });
+  }
+
   const { data, isLoading, isFetching, error } = useQuery({
     queryKey: ["accounting-receipts", filters],
     queryFn: () => fetchReceipts(filters),
@@ -421,10 +483,10 @@ function ReceiptVerificationContent() {
   });
 
   const resolveMutation = useMutation({
-    mutationFn: async (action: "CONFIRMED_CORRECT" | "VOIDED_REPLACED") => {
+    mutationFn: async (action: AccountingResolutionActionDto) => {
       if (
         (action === "CONFIRMED_CORRECT" && !canResolve) ||
-        (action === "VOIDED_REPLACED" && !canVoidReplace)
+        (action !== "CONFIRMED_CORRECT" && !canVoidReplace)
       ) {
         throw new Error("You do not have permission to resolve this receipt mismatch.");
       }
@@ -439,7 +501,9 @@ function ReceiptVerificationContent() {
           "Enter the new replacement receipt number before voiding the original sale.",
         );
       }
-      if (canUploadEvidence && photoFile) await uploadPhoto(selectedId, photoFile);
+      if (action === "VOIDED_REPLACED" && canUploadEvidence && photoFile) {
+        await uploadPhoto(selectedId, photoFile);
+      }
       const response = await fetch(
         `/api/accounting/receipts/${selectedId}/resolve`,
         {
@@ -495,6 +559,19 @@ function ReceiptVerificationContent() {
       setResolutionNote("");
       setFormError(null);
       queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] });
+      queryClient.invalidateQueries({ queryKey: ["accounting-receipt-linked"] });
+      if (action !== "CONFIRMED_CORRECT") {
+        queryClient.invalidateQueries({ queryKey: ["customer-direct-sales-list"] });
+        queryClient.invalidateQueries({ queryKey: ["pos-options"] });
+        queryClient.invalidateQueries({ queryKey: ["customer-order-options"] });
+        queryClient.invalidateQueries({ queryKey: ["inventory-locations"] });
+        queryClient.invalidateQueries({ queryKey: ["inventory-availability"] });
+        queryClient.invalidateQueries({ queryKey: ["inventory-movements"] });
+        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+        queryClient.invalidateQueries({ queryKey: ["customers"] });
+        queryClient.invalidateQueries({ queryKey: ["customer-history"] });
+        queryClient.invalidateQueries({ queryKey: ["reports"] });
+      }
     },
     onError: (mutationError) => setFormError((mutationError as Error).message),
   });
@@ -503,6 +580,24 @@ function ReceiptVerificationContent() {
     mutationFn: async () => {
       if (!canRespond) throw new Error("You do not have permission to respond to receipt mismatches.");
       if (!selectedId) throw new Error("Select a receipt first.");
+      if (!branchResponse) throw new Error("Select a branch finding.");
+      let replacementEvidenceKey = branchReplacementEvidenceKey;
+      if (branchResponse === "WRONG_RECEIPT_PHOTO") {
+        if (!canUploadEvidence) {
+          throw new Error("You do not have permission to upload replacement receipt evidence.");
+        }
+        if (!replacementEvidenceKey) {
+          if (!branchReplacementPhotoFile) {
+            throw new Error("Select the correct replacement receipt photo.");
+          }
+          replacementEvidenceKey = await uploadPhoto(
+            selectedId,
+            branchReplacementPhotoFile,
+            "branch-finding-replacement",
+          );
+          setBranchReplacementEvidenceKey(replacementEvidenceKey);
+        }
+      }
       const response = await fetch(
         `/api/accounting/receipts/${selectedId}/branch-response`,
         {
@@ -512,9 +607,9 @@ function ReceiptVerificationContent() {
           body: JSON.stringify({
             response: branchResponse,
             note: branchResponseNote,
-            replacementReceiptNumber:
-              branchResponse === "RECEIPT_CORRECTION_NEEDED"
-                ? branchReplacementReceiptNumber
+            replacementEvidenceKey:
+              branchResponse === "WRONG_RECEIPT_PHOTO"
+                ? replacementEvidenceKey
                 : undefined,
           }),
         },
@@ -530,8 +625,10 @@ function ReceiptVerificationContent() {
       return json?.data;
     },
     onSuccess: () => {
+      clearBranchReplacementPhoto();
       setFormError(null);
       queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] });
+      queryClient.invalidateQueries({ queryKey: ["accounting-receipt-linked"] });
     },
     onError: (mutationError) => setFormError((mutationError as Error).message),
   });
@@ -584,25 +681,6 @@ function ReceiptVerificationContent() {
   const selectedSale =
     sales.find((sale) => sale.id === selectedId) ??
     (linkedSale?.id === selectedId ? linkedSale : null);
-  const [comparison, setComparison] = useState<ComparisonDraft>({
-    receiptBooklet: "",
-    receiptNumber: "",
-    paymentMethod: "CASH",
-    discountAmount: "0",
-    amountPaid: "0",
-    totalAmount: "0",
-    lines: [],
-  });
-  const [resolutionNote, setResolutionNote] = useState("");
-  const [correctionResolutionNote, setCorrectionResolutionNote] = useState("");
-  const [branchResponse, setBranchResponse] = useState<
-    "ORIGINAL_ENCODING_CORRECT" | "RECEIPT_CORRECTION_NEEDED"
-  >("ORIGINAL_ENCODING_CORRECT");
-  const [branchResponseNote, setBranchResponseNote] = useState("");
-  const [branchReplacementReceiptNumber, setBranchReplacementReceiptNumber] =
-    useState("");
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const evidenceMutation = useMutation({
     mutationFn: async () => {
       if (!selectedId || !photoFile) throw new Error("Select a receipt photo first.");
@@ -735,22 +813,26 @@ function ReceiptVerificationContent() {
     setResolutionNote("");
     setCorrectionResolutionNote("");
     setBranchResponse(
-      sale.branchResponse ?? "ORIGINAL_ENCODING_CORRECT",
+      sale.branchResponse === "WRONG_RECEIPT_PHOTO" ||
+        sale.branchResponse === "SALE_ENCODED_INCORRECT"
+        ? sale.branchResponse
+        : null,
     );
     setBranchResponseNote(sale.branchResponseNote ?? "");
-    setBranchReplacementReceiptNumber(
-      sale.branchReplacementReceiptNumber ?? "",
-    );
     clearSelectedPhoto();
+    clearBranchReplacementPhoto();
   };
 
+  const selectLinkedSale = useEffectEvent(selectSale);
+
   useEffect(() => {
-    if (!linkedSaleId || selectedId === linkedSaleId) return;
-    if (!linkedSale) return;
+    if (!linkedSaleId || handledLinkedSaleIdRef.current === linkedSaleId) return;
+    if (!linkedSale || linkedSale.id !== linkedSaleId) return;
+    handledLinkedSaleIdRef.current = linkedSaleId;
     // Initialize the selected transaction after its linked notification query loads.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    selectSale(linkedSale);
-  }, [linkedSale, linkedSaleId, selectedId]);
+    selectLinkedSale(linkedSale);
+  }, [linkedSale, linkedSaleId]);
 
   const handlePhoto = (file: File | undefined) => {
     if (!file) return;
@@ -769,13 +851,23 @@ function ReceiptVerificationContent() {
     });
   };
 
-  function clearSelectedPhoto() {
-    setPhotoFile(null);
-    setPhotoPreview((current) => {
+  const handleBranchReplacementPhoto = (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setFormError("Receipt evidence must be an image file.");
+      return;
+    }
+    if (file.size > 6_000_000) {
+      setFormError("Receipt image must be 6 MB or smaller.");
+      return;
+    }
+    setBranchReplacementEvidenceKey(null);
+    setBranchReplacementPhotoFile(file);
+    setBranchReplacementPhotoPreview((current) => {
       if (current) URL.revokeObjectURL(current);
-      return null;
+      return URL.createObjectURL(file);
     });
-  }
+  };
 
   const parsedComparison = parseComparison(comparison);
   const comparisonError = parsedComparison.success
@@ -1311,13 +1403,7 @@ function ReceiptVerificationContent() {
                         {selectedSale.reviewNotes || "No notes recorded."}
                       </p>
                       <p className="mt-2 border-t border-rose-200 pt-2 font-medium">
-                        {selectedSale.branchResponse ===
-                        "ORIGINAL_ENCODING_CORRECT"
-                          ? "Branch confirmed the original encoding is correct."
-                          : selectedSale.branchResponse ===
-                              "RECEIPT_CORRECTION_NEEDED"
-                            ? `Branch confirmed a correction is needed. Replacement receipt: ${selectedSale.branchReplacementReceiptNumber}`
-                            : "Waiting for the branch to double-check this mismatch."}
+                        {branchFindingSummary(selectedSale)}
                       </p>
                       {selectedSale.branchResponseNote && (
                         <p className="mt-1">
@@ -1328,6 +1414,20 @@ function ReceiptVerificationContent() {
                     {reportedDifferences.length > 0 && (
                       <MismatchDetails differences={reportedDifferences} />
                     )}
+                  </div>
+                )}
+                {selectedSale.branchResponse === "WRONG_RECEIPT_PHOTO" &&
+                selectedSale.reviewStatus !== "MISMATCH_REPORTED" && (
+                  <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
+                    <p className="font-medium">Replacement photo submitted for Accounting re-review</p>
+                    <p className="mt-1">
+                      The previous mismatch was reopened as unverified. This photo correction did not change the sale or create any stock movement.
+                    </p>
+                    {selectedSale.branchResponseNote ? (
+                      <p className="mt-2 border-t border-sky-200 pt-2 dark:border-sky-800">
+                        Branch note: {selectedSale.branchResponseNote}
+                      </p>
+                    ) : null}
                   </div>
                 )}
                 {canRespond &&
@@ -1342,44 +1442,93 @@ function ReceiptVerificationContent() {
                           then tell Admin and Accounting what should happen next.
                         </p>
                       </div>
-                      <div className="grid gap-2">
-                        <Label htmlFor="branch-response">Branch finding</Label>
-                        <select
-                          id="branch-response"
-                          value={branchResponse}
-                          onChange={(event) =>
-                            setBranchResponse(
-                              event.target.value as
-                                | "ORIGINAL_ENCODING_CORRECT"
-                                | "RECEIPT_CORRECTION_NEEDED",
-                            )
-                          }
-                          className="h-10 rounded-md border bg-background px-3 text-sm"
+                      <fieldset className="space-y-2">
+                        <legend className="text-sm font-medium">Branch finding</legend>
+                        <label
+                          className={cn(
+                            "flex cursor-pointer gap-3 rounded-xl border bg-background p-4",
+                            branchResponse === "WRONG_RECEIPT_PHOTO" &&
+                              "border-sky-500 ring-2 ring-sky-200 dark:ring-sky-900",
+                          )}
                         >
-                          <option value="ORIGINAL_ENCODING_CORRECT">
-                            Original encoding is correct
-                          </option>
-                          <option value="RECEIPT_CORRECTION_NEEDED">
-                            Receipt correction is needed
-                          </option>
-                        </select>
-                      </div>
-                      {branchResponse === "RECEIPT_CORRECTION_NEEDED" && (
-                        <div className="grid gap-2">
-                          <Label htmlFor="branch-replacement-receipt">
-                            Replacement receipt number
-                          </Label>
-                          <Input
-                            id="branch-replacement-receipt"
-                            value={branchReplacementReceiptNumber}
-                            onChange={(event) =>
-                              setBranchReplacementReceiptNumber(
-                                event.target.value,
-                              )
-                            }
-                            placeholder="Enter the new receipt number"
+                          <input
+                            type="radio"
+                            name="branch-finding"
+                            value="WRONG_RECEIPT_PHOTO"
+                            checked={branchResponse === "WRONG_RECEIPT_PHOTO"}
+                            onChange={() => setBranchResponse("WRONG_RECEIPT_PHOTO")}
+                            className="mt-1 size-4"
                           />
+                          <span>
+                            <span className="block font-medium">Wrong receipt photo uploaded.</span>
+                            <span className="mt-1 block text-xs text-slate-600 dark:text-slate-300">
+                              Upload the correct replacement photo below. Accounting will re-review it, and no stock quantity changes.
+                            </span>
+                          </span>
+                        </label>
+                        <label
+                          className={cn(
+                            "flex cursor-pointer gap-3 rounded-xl border bg-background p-4",
+                            branchResponse === "SALE_ENCODED_INCORRECT" &&
+                              "border-sky-500 ring-2 ring-sky-200 dark:ring-sky-900",
+                          )}
+                        >
+                          <input
+                            type="radio"
+                            name="branch-finding"
+                            value="SALE_ENCODED_INCORRECT"
+                            checked={branchResponse === "SALE_ENCODED_INCORRECT"}
+                            onChange={() => setBranchResponse("SALE_ENCODED_INCORRECT")}
+                            className="mt-1 size-4"
+                          />
+                          <span>
+                            <span className="block font-medium">Sale was encoded incorrectly.</span>
+                            <span className="mt-1 block text-xs text-slate-600 dark:text-slate-300">
+                              Add a note for Admin. If Admin voids the sale, the original stock quantities will be restored.
+                            </span>
+                          </span>
+                        </label>
+                      </fieldset>
+                      {branchResponse === "WRONG_RECEIPT_PHOTO" && (
+                        <div className="space-y-3 rounded-xl border border-sky-200 bg-background p-4 dark:border-sky-800">
+                          <div>
+                            <Label htmlFor="branch-replacement-photo">Correct replacement receipt photo</Label>
+                            <p className="mt-1 text-xs text-slate-500">
+                              This image is uploaded first. The mismatch stays open if the finding cannot be submitted, so you can retry.
+                            </p>
+                          </div>
+                          <Input
+                            id="branch-replacement-photo"
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            capture="environment"
+                            disabled={!canUploadEvidence || branchResponseMutation.isPending}
+                            onChange={(event) => handleBranchReplacementPhoto(event.target.files?.[0])}
+                          />
+                          {branchReplacementPhotoPreview ? (
+                            <Image
+                              src={branchReplacementPhotoPreview}
+                              alt="Replacement receipt preview"
+                              width={800}
+                              height={600}
+                              unoptimized
+                              className="max-h-48 w-full rounded-xl border object-contain"
+                            />
+                          ) : null}
+                          {branchReplacementEvidenceKey ? (
+                            <p className="text-xs text-sky-700 dark:text-sky-300">
+                              Replacement photo uploaded. Submit again to retry the branch finding.
+                            </p>
+                          ) : null}
+                          {!canUploadEvidence ? (
+                            <p className="text-xs text-red-600">You do not have permission to upload the required replacement photo.</p>
+                          ) : null}
                         </div>
+                      )}
+                      {branchResponse === "SALE_ENCODED_INCORRECT" && (
+                        <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                          No replacement photo or receipt number is needed. Stock remains unchanged until Admin approves the void.
+                        </p>
                       )}
                       <div className="grid gap-2">
                         <Label htmlFor="branch-response-note">
@@ -1399,9 +1548,11 @@ function ReceiptVerificationContent() {
                         onClick={() => branchResponseMutation.mutate()}
                         disabled={
                           branchResponseMutation.isPending ||
+                          !branchResponse ||
                           !branchResponseNote.trim() ||
-                          (branchResponse === "RECEIPT_CORRECTION_NEEDED" &&
-                            !branchReplacementReceiptNumber.trim())
+                          (branchResponse === "WRONG_RECEIPT_PHOTO" &&
+                            (!canUploadEvidence ||
+                              (!branchReplacementPhotoFile && !branchReplacementEvidenceKey)))
                         }
                       >
                         {selectedSale.branchResponse
@@ -1417,7 +1568,8 @@ function ReceiptVerificationContent() {
                 ) : null}
                 {canUploadEvidence &&
                 selectedSale.status === "POSTED" &&
-                selectedSale.reviewStatus !== "VERIFIED" ? (
+                (selectedSale.reviewStatus === "UNVERIFIED" ||
+                  selectedSale.branchResponse === "RECEIPT_CORRECTION_NEEDED") ? (
                   <div className="space-y-3 rounded-xl border p-4">
                     <div>
                       <Label htmlFor="receipt-photo">
@@ -1752,17 +1904,31 @@ function ReceiptVerificationContent() {
                   )}
                 {(canResolve || canVoidReplace) &&
                   selectedSale.reviewStatus === "MISMATCH_REPORTED" &&
-                  selectedSale.branchResponse && (
+                  ((selectedSale.branchResponse === "ORIGINAL_ENCODING_CORRECT" && canResolve) ||
+                    ((selectedSale.branchResponse === "RECEIPT_CORRECTION_NEEDED" ||
+                      selectedSale.branchResponse === "SALE_ENCODED_INCORRECT") &&
+                      canVoidReplace)) && (
                     <div className="space-y-4 border-t pt-4">
+                      {selectedSale.branchResponse === "SALE_ENCODED_INCORRECT" ? (
+                        <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+                          Voiding restores every original sale line to branch inventory, records reversal movements, and creates no replacement sale.
+                        </p>
+                      ) : null}
                       <div className="grid gap-2">
-                        <Label htmlFor="resolution-note">Resolution note</Label>
+                        <Label htmlFor="resolution-note">
+                          {selectedSale.branchResponse === "SALE_ENCODED_INCORRECT"
+                            ? "Admin void note"
+                            : "Resolution note"}
+                        </Label>
                         <Textarea
                           id="resolution-note"
                           value={resolutionNote}
                           onChange={(event) =>
                             setResolutionNote(event.target.value)
                           }
-                          placeholder="Explain why this mismatch is being resolved"
+                          placeholder={selectedSale.branchResponse === "SALE_ENCODED_INCORRECT"
+                            ? "Explain why this incorrectly encoded sale must be voided"
+                            : "Explain why this mismatch is being resolved"}
                         />
                       </div>
                       {selectedSale.branchResponse ===
@@ -1798,15 +1964,39 @@ function ReceiptVerificationContent() {
                           Void and replace
                         </Button>
                       )}
-                      {selectedSale.branchResponse ===
-                        "RECEIPT_CORRECTION_NEEDED" && canResolve && !canVoidReplace && (
-                        <p className="rounded-lg bg-slate-100 p-3 text-sm text-slate-600">
-                          The branch confirmed a correction. You do not have
-                          permission to void and replace the original sale.
-                        </p>
+                      {selectedSale.branchResponse === "SALE_ENCODED_INCORRECT" && canVoidReplace && (
+                        <Button
+                          variant="destructive"
+                          onClick={() => {
+                            if (window.confirm("Void this sale and restore its original line quantities to branch inventory? This cannot be undone.")) {
+                              resolveMutation.mutate("VOIDED");
+                            }
+                          }}
+                          disabled={resolveMutation.isPending || !resolutionNote.trim()}
+                        >
+                          {resolveMutation.isPending
+                            ? "Voiding sale..."
+                            : "Void sale and restore inventory"}
+                        </Button>
                       )}
                     </div>
                   )}
+                {selectedSale.reviewStatus === "MISMATCH_REPORTED" &&
+                selectedSale.branchResponse === "RECEIPT_CORRECTION_NEEDED" &&
+                canResolve &&
+                !canVoidReplace ? (
+                  <p className="rounded-lg bg-slate-100 p-3 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+                    The branch confirmed a correction. You do not have permission to void and replace the original sale.
+                  </p>
+                ) : null}
+                {selectedSale.reviewStatus === "MISMATCH_REPORTED" &&
+                selectedSale.branchResponse === "SALE_ENCODED_INCORRECT" &&
+                canResolve &&
+                !canVoidReplace ? (
+                  <p className="rounded-lg bg-slate-100 p-3 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+                    This finding requires Admin permission to void the sale and restore its original inventory quantities.
+                  </p>
+                ) : null}
                 {formError && (
                   <p className="text-sm text-red-600">{formError}</p>
                 )}

@@ -5,6 +5,8 @@ import { Prisma, type CustomerOrderStatus, type CustomerOrderType, type PaymentM
 import { z } from "zod";
 
 import {
+  ACCOUNTING_RESOLUTION_ACTIONS,
+  BRANCH_MISMATCH_RESPONSES,
   branchSaleCorrectionRequestSchema,
   receiptComparisonSchema,
   saleCorrectionResolutionSchema,
@@ -111,9 +113,10 @@ export const accountingReviewSchema = z.object({
 });
 
 export const branchMismatchResponseSchema = z.object({
-  response: z.enum(["ORIGINAL_ENCODING_CORRECT", "RECEIPT_CORRECTION_NEEDED"]),
+  response: z.enum(BRANCH_MISMATCH_RESPONSES),
   note: z.string().trim().min(1).max(5_000),
   replacementReceiptNumber: z.string().trim().min(1).max(100).optional(),
+  replacementEvidenceKey: z.string().trim().min(1).max(100).optional(),
 }).superRefine((input, context) => {
   if (input.response === "RECEIPT_CORRECTION_NEEDED" && !input.replacementReceiptNumber) {
     context.addIssue({
@@ -122,10 +125,17 @@ export const branchMismatchResponseSchema = z.object({
       message: "Replacement receipt number is required when correction is needed",
     });
   }
+  if (input.response === "WRONG_RECEIPT_PHOTO" && !input.replacementEvidenceKey) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["replacementEvidenceKey"],
+      message: "A newly uploaded replacement receipt photo is required",
+    });
+  }
 });
 
 export const accountingResolutionSchema = z.object({
-  action: z.enum(["CONFIRMED_CORRECT", "VOIDED_REPLACED"]),
+  action: z.enum(ACCOUNTING_RESOLUTION_ACTIONS),
   note: z.string().trim().min(1).max(5_000),
   replacement: receiptComparisonSchema.optional(),
 }).superRefine((input, context) => {
@@ -209,7 +219,7 @@ function assertUniqueComparisonLines(comparison: ReceiptComparison) {
   }
 }
 
-async function notifySaleParties(tx: Prisma.TransactionClient, sale: { id: string; reference: string; manualReceiptNumber: string; postedById: string; locationId: string }, title: string, description: string) {
+async function notifySaleParties(tx: Prisma.TransactionClient, sale: { id: string; reference: string; manualReceiptNumber: string; postedById: string; locationId: string }, title: string, description: string, additionalRecipientIds: readonly string[] = []) {
   const recipients = await tx.user.findMany({
     where: {
       status: "ACTIVE",
@@ -224,6 +234,7 @@ async function notifySaleParties(tx: Prisma.TransactionClient, sale: { id: strin
   });
   const recipientIds = new Set(recipients.map((recipient) => recipient.id));
   recipientIds.add(sale.postedById);
+  additionalRecipientIds.forEach((userId) => recipientIds.add(userId));
   await createNotifications(tx, Array.from(recipientIds).map((userId) => ({ userId, title, description, type: "WARNING" as const, relatedType: "SALE" as const, relatedId: sale.id, relatedReference: sale.reference })));
 }
 
@@ -987,7 +998,11 @@ export async function respondToSaleMismatch(actor: AuthContext, saleId: string, 
     const sale = await tx.sale.findUnique({ where: { id: saleId }, include: { accountingReview: true } });
     if (!sale) throw new CustomerSalesError("NOT_FOUND", "Sale not found", 404);
     assertOperationalResource(actor, sale.locationId);
-    if (sale.status !== "POSTED" || sale.accountingReview?.status !== "MISMATCH_REPORTED" || sale.accountingReview.resolvedAt) {
+    if (!sale.accountingReview) throw new CustomerSalesError("NOT_FOUND", "Accounting review not found", 404);
+    await tx.$queryRaw`SELECT id FROM "SaleAccountingReview" WHERE id = ${sale.accountingReview.id} FOR UPDATE`;
+    const currentReview = await tx.saleAccountingReview.findUnique({ where: { id: sale.accountingReview.id } });
+    if (!currentReview) throw new CustomerSalesError("NOT_FOUND", "Accounting review not found", 404);
+    if (sale.status !== "POSTED" || currentReview.status !== "MISMATCH_REPORTED" || currentReview.resolvedAt) {
       throw new CustomerSalesError("INVALID_STATE", "Only unresolved branch mismatches can receive a response", 409);
     }
     if (input.response === "RECEIPT_CORRECTION_NEEDED") {
@@ -1002,20 +1017,54 @@ export async function respondToSaleMismatch(actor: AuthContext, saleId: string, 
       });
       if (duplicate) throw new CustomerSalesError("DUPLICATE_RECEIPT", "Replacement receipt number already exists", 409);
     }
+    if (
+      input.response === "WRONG_RECEIPT_PHOTO" &&
+      (input.replacementEvidenceKey !== currentReview.receiptPhotoKey ||
+        !currentReview.reviewedAt ||
+        !currentReview.evidenceUploadedAt ||
+        currentReview.evidenceUploadedAt <= currentReview.reviewedAt)
+    ) {
+      throw new CustomerSalesError(
+        "REPLACEMENT_EVIDENCE_REQUIRED",
+        "Upload a new replacement receipt photo after the Accounting review before submitting this finding",
+        409,
+      );
+    }
+    const now = new Date();
+    const reopenForReplacementPhoto = input.response === "WRONG_RECEIPT_PHOTO";
     const review = await tx.saleAccountingReview.update({
-      where: { id: sale.accountingReview.id },
+      where: { id: currentReview.id },
       data: {
+        ...(reopenForReplacementPhoto
+          ? {
+              status: "UNVERIFIED" as const,
+              mismatchCategory: null,
+              notes: null,
+              comparisonJson: null,
+              reviewedById: null,
+              reviewedAt: null,
+              resolutionAction: null,
+              resolutionNote: null,
+              resolvedById: null,
+              resolvedAt: null,
+            }
+          : {}),
         branchResponse: input.response,
         branchResponseNote: input.note,
         branchReplacementReceiptNumber: input.response === "RECEIPT_CORRECTION_NEEDED" ? input.replacementReceiptNumber : null,
         branchRespondedById: actor.userId,
-        branchRespondedAt: new Date(),
+        branchRespondedAt: now,
       },
     });
+    const recipientCapability = input.response === "WRONG_RECEIPT_PHOTO"
+      ? "sales:verify"
+      : input.response === "SALE_ENCODED_INCORRECT"
+        ? "sales:void-replace"
+        : "sales:resolve";
     const reviewers = await tx.user.findMany({
       where: {
         status: "ACTIVE",
-        accessRole: { OR: [{ isOwner: true }, { permissions: { has: "sales:resolve" } }] },
+        accessRole: { OR: [{ isOwner: true }, { permissions: { has: recipientCapability } }] },
         OR: [
           { accessRole: { isOwner: true } },
           { accessRole: { permissions: { has: "locations:all" } } },
@@ -1024,10 +1073,20 @@ export async function respondToSaleMismatch(actor: AuthContext, saleId: string, 
       },
       select: { id: true },
     });
-    const responseLabel = input.response === "ORIGINAL_ENCODING_CORRECT" ? "confirmed the original encoding" : "confirmed that receipt correction is needed";
+    const responseLabel = input.response === "ORIGINAL_ENCODING_CORRECT"
+      ? "confirmed the original encoding"
+      : input.response === "RECEIPT_CORRECTION_NEEDED"
+        ? "confirmed that receipt correction is needed"
+        : input.response === "WRONG_RECEIPT_PHOTO"
+          ? "uploaded the replacement receipt photo for Accounting re-review"
+          : "reported that the sale was encoded incorrectly";
     await createNotifications(tx, reviewers.map((reviewer) => ({
       userId: reviewer.id,
-      title: "Branch reviewed receipt mismatch",
+      title: input.response === "WRONG_RECEIPT_PHOTO"
+        ? "Replacement receipt ready for re-review"
+        : input.response === "SALE_ENCODED_INCORRECT"
+          ? "Incorrect sale encoding needs Admin action"
+          : "Branch reviewed receipt mismatch",
       description: `${sale.manualReceiptNumber}: Branch ${responseLabel}.`,
       type: "INFO" as const,
       relatedType: "SALE" as const,
@@ -1044,7 +1103,7 @@ export async function respondToSaleMismatch(actor: AuthContext, saleId: string, 
 }
 
 export async function resolveSale(actor: AuthContext, saleId: string, input: z.infer<typeof accountingResolutionSchema>) {
-  assertCapability(actor, input.action === "VOIDED_REPLACED" ? "sales:void-replace" : "sales:resolve");
+  assertCapability(actor, input.action === "CONFIRMED_CORRECT" ? "sales:resolve" : "sales:void-replace");
   assertAccounting(actor);
   try {
     return await prisma.$transaction(async (tx) => {
@@ -1052,16 +1111,52 @@ export async function resolveSale(actor: AuthContext, saleId: string, input: z.i
     const sale = await tx.sale.findUnique({ where: { id: saleId }, include: { accountingReview: true, lines: true } });
     if (!sale) throw new CustomerSalesError("NOT_FOUND", "Sale not found", 404);
     assertOperationalResource(actor, sale.locationId);
-    if (sale.status !== "POSTED" || sale.accountingReview?.status !== "MISMATCH_REPORTED") throw new CustomerSalesError("INVALID_STATE", "Only reported mismatches can be resolved", 409);
-    const review = sale.accountingReview;
+    if (!sale.accountingReview) throw new CustomerSalesError("NOT_FOUND", "Accounting review not found", 404);
+    await tx.$queryRaw`SELECT id FROM "SaleAccountingReview" WHERE id = ${sale.accountingReview.id} FOR UPDATE`;
+    const review = await tx.saleAccountingReview.findUnique({ where: { id: sale.accountingReview.id } });
+    if (!review) throw new CustomerSalesError("NOT_FOUND", "Accounting review not found", 404);
+    if (sale.status !== "POSTED" || review.status !== "MISMATCH_REPORTED" || review.resolvedAt) throw new CustomerSalesError("INVALID_STATE", "Only reported mismatches can be resolved", 409);
     if (!review.branchResponse) throw new CustomerSalesError("BRANCH_RESPONSE_REQUIRED", "Wait for the branch to review the mismatch", 409);
     if (input.action === "CONFIRMED_CORRECT" && review.branchResponse !== "ORIGINAL_ENCODING_CORRECT") throw new CustomerSalesError("INVALID_RESOLUTION", "Branch did not confirm the original encoding", 409);
     if (input.action === "VOIDED_REPLACED" && review.branchResponse !== "RECEIPT_CORRECTION_NEEDED") throw new CustomerSalesError("INVALID_RESOLUTION", "Branch did not confirm that receipt correction is needed", 409);
+    if (input.action === "VOIDED" && review.branchResponse !== "SALE_ENCODED_INCORRECT") throw new CustomerSalesError("INVALID_RESOLUTION", "Only an incorrectly encoded sale can be voided without a replacement", 409);
     const now = new Date();
     if (input.action === "CONFIRMED_CORRECT") {
       const updated = await tx.saleAccountingReview.update({ where: { id: review.id }, data: { status: "VERIFIED", resolutionAction: "CONFIRMED_CORRECT", resolutionNote: input.note, resolvedById: actor.userId, resolvedAt: now } });
       await notifySaleParties(tx, sale, "Receipt mismatch resolved", `${sale.manualReceiptNumber} was confirmed correct.`);
       return { action: input.action, review: updated };
+    }
+    if (input.action === "VOIDED") {
+      await updateSaleInventory(
+        tx,
+        sale.locationId,
+        sale.lines.map((line) => ({ productId: line.productId, quantity: line.quantity })),
+        "reverse",
+        actor.userId,
+        `VOID-${sale.reference}`,
+        `Admin voided incorrectly encoded sale ${sale.reference}`,
+      );
+      await tx.sale.update({
+        where: { id: sale.id },
+        data: { status: "VOIDED", correctedById: actor.userId, correctedAt: now },
+      });
+      const updated = await tx.saleAccountingReview.update({
+        where: { id: review.id },
+        data: {
+          resolutionAction: "VOIDED",
+          resolutionNote: input.note,
+          resolvedById: actor.userId,
+          resolvedAt: now,
+        },
+      });
+      await notifySaleParties(
+        tx,
+        sale,
+        "Incorrectly encoded sale voided",
+        `${sale.manualReceiptNumber} was voided and its original inventory quantities were restored.`,
+        review.reviewedById ? [review.reviewedById] : [],
+      );
+      return { action: input.action, saleId: sale.id, saleStatus: "VOIDED" as const, review: updated };
     }
 
     const replacement = input.replacement;

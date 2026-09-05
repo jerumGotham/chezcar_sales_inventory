@@ -10,8 +10,10 @@ import { useShellAccess } from "@/components/shell-access-context";
 export function AppLayoutShellClient({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const access = useShellAccess();
+  const isTransferPrintView =
+    /^\/stock-transfers\/[^/]+\/print$/.test(pathname);
 
-  if (pathname.startsWith("/sign-in")) {
+  if (pathname.startsWith("/sign-in") || isTransferPrintView) {
     return children;
   }
 

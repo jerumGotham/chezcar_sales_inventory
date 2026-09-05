@@ -1,5 +1,6 @@
 import {
   AuthorizationError,
+  assertCapability,
   authorizationErrorResponse,
   requireCapability,
   type AuthContext,
@@ -36,7 +37,7 @@ export async function POST(request: Request, context: Context) {
     await assertEvidenceScope(actor, saleId);
     const review = await prisma.saleAccountingReview.findUnique({
       where: { saleId },
-      select: { id: true, status: true, resolvedAt: true, receiptPhotoKey: true },
+      select: { id: true, status: true, reviewedAt: true, resolvedAt: true, receiptPhotoKey: true },
     });
     if (!review) throw new CustomerSalesError("NOT_FOUND", "Accounting review not found", 404);
     if (review.status === "VERIFIED" || review.resolvedAt) {
@@ -45,6 +46,25 @@ export async function POST(request: Request, context: Context) {
     const formData = await request.formData();
     const file = formData.get("photo");
     if (!(file instanceof File)) throw new CustomerSalesError("INVALID_INPUT", "Receipt photo is required", 400);
+    const purpose = formData.get("purpose");
+    if (purpose !== null && purpose !== "branch-finding-replacement") {
+      throw new CustomerSalesError(
+        "INVALID_INPUT",
+        "Receipt photo purpose is invalid",
+        400,
+      );
+    }
+    const isBranchFindingReplacement = purpose === "branch-finding-replacement";
+    if (isBranchFindingReplacement) {
+      assertCapability(actor, "sales:mismatch:respond");
+      if (review.status !== "MISMATCH_REPORTED") {
+        throw new CustomerSalesError(
+          "INVALID_STATE",
+          "A Branch Finding replacement photo requires an unresolved receipt mismatch",
+          409,
+        );
+      }
+    }
     const evidence = await saveReceiptEvidence(file);
     const updated = await prisma.saleAccountingReview.updateMany({
       where: {
@@ -55,10 +75,20 @@ export async function POST(request: Request, context: Context) {
       data: {
         receiptPhotoKey: evidence.key,
         receiptPhotoType: evidence.contentType,
+        evidenceUploadedAt: new Date(Math.max(Date.now(), (review.reviewedAt?.getTime() ?? 0) + 1)),
         receiptOcrStatus: "PENDING",
         receiptOcrJson: null,
         receiptOcrError: null,
         receiptOcrAt: null,
+        ...(isBranchFindingReplacement
+          ? {
+              branchResponse: null,
+              branchResponseNote: null,
+              branchReplacementReceiptNumber: null,
+              branchRespondedById: null,
+              branchRespondedAt: null,
+            }
+          : {}),
       },
     });
     if (updated.count !== 1) {
@@ -108,7 +138,9 @@ export async function POST(request: Request, context: Context) {
         },
       });
     }
-    await notifyReceiptEvidenceUploaded(saleId);
+    if (review.status === "UNVERIFIED") {
+      await notifyReceiptEvidenceUploaded(saleId);
+    }
     return Response.json({ data: evidence });
   } catch (error) {
     if (error instanceof CustomerSalesError) return Response.json({ error: { code: error.code, message: error.message } }, { status: error.status });

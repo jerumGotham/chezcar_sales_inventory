@@ -1044,6 +1044,7 @@ function PosTab() {
                 onChange={(option) => setSelectedCustomer(option)}
                 isSearchable
                 placeholder="Search customer..."
+                noOptionsMessage={() => "No customers found"}
                 styles={selectStyles}
               />
             </div>

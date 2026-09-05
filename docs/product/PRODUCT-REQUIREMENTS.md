@@ -104,7 +104,7 @@ All MVP replenishment enters `SR`. Transfers are `SR` to branch only. Branch-to-
 - View stock and incoming transfers for the assigned branch
 - Encode a completed handwritten-receipt sale
 - Report an accidental, duplicate, nonexistent, or incorrectly submitted own-branch direct sale without editing, deleting, voiding, or restoring stock
-- Double-check own-branch receipt mismatches and confirm either the original encoding or the need for correction with a replacement receipt number
+- Double-check own-branch receipt mismatches, replace a wrong receipt photo for Accounting re-review, or report an incorrectly encoded sale for Admin resolution without changing stock directly
 - Confirm a transfer when every physical item and quantity matches
 - Submit a discrepancy form when any item or quantity does not match
 - Cannot directly set, adjust, or overwrite stock

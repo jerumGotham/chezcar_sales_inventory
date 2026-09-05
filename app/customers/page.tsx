@@ -254,6 +254,12 @@ export default function CustomersPage() {
     activeJobOrders: 0,
   };
 
+  const invalidateCustomerQueries = () => {
+    ["customers", "pos-options", "customer-order-options", "customer-history"].forEach((key) => {
+      void queryClient.invalidateQueries({ queryKey: [key] });
+    });
+  };
+
   const saveCustomerMutation = useMutation({
     mutationFn: async () => {
       if (selectedCustomer ? !canUpdateCustomer : !canCreateCustomer) {
@@ -275,7 +281,7 @@ export default function CustomersPage() {
     onSuccess: () => {
       setIsAddCustomerOpen(false);
       setSelectedCustomer(null);
-      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      invalidateCustomerQueries();
     },
   });
 
@@ -287,7 +293,7 @@ export default function CustomersPage() {
       if (!response.ok) throw new Error(json.error?.message ?? "Unable to deactivate customer");
       return json.data;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["customers"] }),
+    onSuccess: invalidateCustomerQueries,
   });
 
   const showingFrom = useMemo(() => {

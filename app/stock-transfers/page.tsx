@@ -26,16 +26,15 @@ export default async function StockTransfersPage({
   const canManageSource = Boolean(
     stockRoom && canAccessLocation(actor, stockRoom.id),
   );
-  const [branches, products] = await Promise.all([
-    canManageSource ? listActiveBranches() : listAccessibleActiveBranches(actor),
-    canManageSource && stockRoom ? prisma.product.findMany({ where: { status: "ACTIVE" }, select: { id: true, itemCode: true, name: true, inventoryBalances: { where: { locationId: stockRoom.id }, select: { onHand: true, reserved: true } } }, orderBy: { itemCode: "asc" }, take: 500 }).then((rows) => rows.map((product) => ({ id: product.id, itemCode: product.itemCode, name: product.name, availableQuantity: Math.max(0, (product.inventoryBalances[0]?.onHand ?? 0) - (product.inventoryBalances[0]?.reserved ?? 0)) }))) : Promise.resolve([]),
-  ]);
+  const branches = canManageSource
+    ? await listActiveBranches()
+    : await listAccessibleActiveBranches(actor);
   const { transferId } = await searchParams;
   return (
     <StockTransfersClient
       capabilities={access.capabilities}
       branches={branches}
-      products={products}
+      canManageSource={canManageSource}
       initialTransferId={transferId}
       isAdmin={access.identity.isOwner}
     />

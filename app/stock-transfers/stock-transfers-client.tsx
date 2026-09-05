@@ -2,23 +2,28 @@
 
 import { useState, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import Select from "react-select";
+import type { StylesConfig } from "react-select";
 import {
   AlertTriangle,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Printer,
   Trash2,
   X,
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { CapabilityId } from "@/lib/contracts/roles";
+import type { TransferProductOptionDto } from "@/lib/contracts/stock-transfers";
 
 type TransferLine = {
   id: string;
@@ -66,11 +71,8 @@ type Transfer = {
 };
 
 type Option = { id: string; code: string; name: string };
-type Product = {
-  id: string;
-  itemCode: string;
-  name: string;
-  availableQuantity: number;
+type Product = Omit<TransferProductOptionDto, "availableQuantity"> & {
+  availableQuantity: number | null;
 };
 type DraftLine = { productId: string; quantity: number };
 type ShortageResolution = "loss" | "restore";
@@ -83,6 +85,76 @@ type TransferPage = {
     totalPages: number;
   };
 };
+
+const productSelectStyles: StylesConfig<Product, false> = {
+  control: (base, state) => ({
+    ...base,
+    minHeight: "40px",
+    borderColor: state.isFocused ? "var(--ring)" : "var(--input)",
+    backgroundColor: "var(--background)",
+    boxShadow: "none",
+    "&:hover": { borderColor: "var(--ring)" },
+  }),
+  input: (base) => ({ ...base, color: "var(--foreground)" }),
+  singleValue: (base) => ({ ...base, color: "var(--foreground)" }),
+  placeholder: (base) => ({ ...base, color: "var(--muted-foreground)" }),
+  menu: (base) => ({
+    ...base,
+    zIndex: 50,
+    backgroundColor: "var(--popover)",
+  }),
+  option: (base, state) => ({
+    ...base,
+    cursor: "pointer",
+    color: state.isSelected
+      ? "var(--primary-foreground)"
+      : "var(--popover-foreground)",
+    backgroundColor: state.isSelected
+      ? "var(--primary)"
+      : state.isFocused
+        ? "var(--accent)"
+        : "var(--popover)",
+  }),
+};
+
+function productLabel(product: Product) {
+  const availability =
+    product.availableQuantity === null
+      ? "Unavailable for transfer"
+      : `${product.availableQuantity} available`;
+  return `${product.itemCode} - ${product.name} (${availability})`;
+}
+
+function ProductSelect({
+  inputId,
+  products,
+  value,
+  isLoading,
+  onChange,
+}: {
+  inputId: string;
+  products: Product[];
+  value: Product | null;
+  isLoading: boolean;
+  onChange: (productId: string) => void;
+}) {
+  return (
+    <Select<Product, false>
+      aria-label="Product"
+      inputId={inputId}
+      getOptionLabel={productLabel}
+      getOptionValue={(product) => product.id}
+      isClearable
+      isLoading={isLoading}
+      noOptionsMessage={() => "No available Stock Room products"}
+      onChange={(product) => onChange(product?.id ?? "")}
+      options={products}
+      placeholder="Search by item code or product name"
+      styles={productSelectStyles}
+      value={value}
+    />
+  );
+}
 
 function getTransferStatusLabel(status: string) {
   if (status === "FOR_DISPATCH") return "Ready for dispatch";
@@ -151,23 +223,39 @@ async function fetchTransferPage(
   return json as TransferPage;
 }
 
+async function fetchTransferProductOptions(): Promise<Product[]> {
+  const response = await fetch("/api/stock-transfers/options", {
+    cache: "no-store",
+    credentials: "same-origin",
+  });
+  const json = await response.json();
+  if (!response.ok) {
+    throw new Error(
+      json.error?.message ?? "Unable to load Stock Room products",
+    );
+  }
+  return json.data as Product[];
+}
+
 export function StockTransfersClient({
   capabilities,
   branches,
-  products,
+  canManageSource,
   initialTransferId,
   isAdmin,
 }: {
   capabilities: ReadonlyArray<CapabilityId>;
   branches: Option[];
-  products: Product[];
+  canManageSource: boolean;
   initialTransferId?: string;
   isAdmin: boolean;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const canCreate = capabilities.includes("stock-transfers:create");
-  const canUpdate = capabilities.includes("stock-transfers:update");
+  const canCreate =
+    canManageSource && capabilities.includes("stock-transfers:create");
+  const canUpdate =
+    canManageSource && capabilities.includes("stock-transfers:update");
   const canDelete = capabilities.includes("stock-transfers:delete");
   const canFinalize = capabilities.includes("stock-transfers:finalize");
   const canDispatch = capabilities.includes("stock-transfers:dispatch");
@@ -186,7 +274,6 @@ export function StockTransfersClient({
   const [page, setPage] = useState(1);
   const pageSize = 10;
   const [destinationId, setDestinationId] = useState("");
-  const [sourceProducts, setSourceProducts] = useState(products);
   const [replacementForTransferId, setReplacementForTransferId] = useState("");
   const [draftLines, setDraftLines] = useState<DraftLine[]>([
     { productId: "", quantity: 1 },
@@ -218,6 +305,14 @@ export function StockTransfersClient({
     queryFn: () => fetchTransferPage(page, pageSize, transferIdFilter),
     placeholderData: (previousData) => previousData,
   });
+  const productOptions = useQuery({
+    queryKey: ["stock-transfer-product-options"],
+    queryFn: fetchTransferProductOptions,
+    enabled: canCreate || canUpdate,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+  });
+  const sourceProducts = productOptions.data ?? [];
   const selected = selectedTransferId
     ? (transfers.data?.data.find((transfer) => transfer.id === selectedTransferId) ??
       null)
@@ -321,6 +416,9 @@ export function StockTransfersClient({
             : current,
       );
       queryClient.invalidateQueries({ queryKey: ["stock-transfers"] });
+      queryClient.invalidateQueries({
+        queryKey: ["stock-transfer-product-options"],
+      });
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     },
     onError: (error: Error) => notify(error.message, "error"),
@@ -366,23 +464,10 @@ export function StockTransfersClient({
       setReplacementForTransferId("");
       setDraftLines([{ productId: "", quantity: 1 }]);
       setCancellationReason("");
-      if (action === "dispatch" || action === "cancel") {
-        setSourceProducts((current) =>
-          current.map((product) => {
-            const line = transfer.lines.find((item) => item.product.id === product.id);
-            if (!line) return product;
-            return {
-              ...product,
-              availableQuantity:
-                action === "dispatch"
-                  ? Math.max(0, product.availableQuantity - line.dispatchedQuantity)
-                  : product.availableQuantity + line.dispatchedQuantity,
-            };
-          }),
-        );
-        router.refresh();
-      }
       queryClient.invalidateQueries({ queryKey: ["stock-transfers"] });
+      queryClient.invalidateQueries({
+        queryKey: ["stock-transfer-product-options"],
+      });
       queryClient.invalidateQueries({ queryKey: ["inventory-locations"] });
       queryClient.invalidateQueries({ queryKey: ["inventory-availability"] });
       queryClient.invalidateQueries({ queryKey: ["inventory-movements"] });
@@ -436,7 +521,13 @@ export function StockTransfersClient({
       }
 
       const product = sourceProducts.find((item) => item.id === line.productId);
-      if (product && line.quantity > product.availableQuantity) {
+      if (line.productId && !product) {
+        errors.push(`The product on line ${index + 1} is no longer available.`);
+      } else if (
+        product &&
+        product.availableQuantity !== null &&
+        line.quantity > product.availableQuantity
+      ) {
         errors.push(
           `${product.itemCode} has only ${product.availableQuantity} available in Stock Room.`,
         );
@@ -598,6 +689,11 @@ export function StockTransfersClient({
         <Card className="mb-6 min-w-0">
           <CardContent className="grid min-w-0 gap-3 p-5">
             <h2 className="font-semibold">Create Stock Room Transfer</h2>
+            {productOptions.isError && (
+              <p className="text-sm text-red-600">
+                {productOptions.error.message}
+              </p>
+            )}
             <select
               className="h-10 min-w-0 rounded-md border px-3"
               value={destinationId}
@@ -614,36 +710,28 @@ export function StockTransfersClient({
               ))}
             </select>
             {draftLines.map((line, index) => (
-              <div className="flex min-w-0 gap-2" key={`${line.productId}-${index}`}>
-                <select
-                  className="h-10 min-w-0 flex-1 rounded-md border px-3"
-                  value={line.productId}
-                  onChange={(event) =>
-                    updateDraftProduct(index, event.target.value)
-                  }
-                >
-                  <option value="">Product</option>
-                  {sourceProducts
-                    .filter((product) => {
-                      const selectedInAnotherLine = draftLines.some(
+              <div className="flex min-w-0 flex-col gap-2 sm:flex-row" key={`${line.productId}-${index}`}>
+                <div className="min-w-0 flex-1">
+                  <ProductSelect
+                    inputId={`create-transfer-product-${index}`}
+                    isLoading={productOptions.isLoading || productOptions.isFetching}
+                    onChange={(productId) => updateDraftProduct(index, productId)}
+                    products={sourceProducts.filter((product) =>
+                      draftLines.every(
                         (otherLine, otherIndex) =>
-                          otherIndex !== index &&
-                          otherLine.productId === product.id,
-                      );
-
-                      return (
-                        product.id === line.productId || !selectedInAnotherLine
-                      );
-                    })
-                    .map((product) => (
-                      <option key={product.id} value={product.id}>
-                        {product.itemCode} - {product.name} (Available:{" "}
-                        {product.availableQuantity})
-                      </option>
-                    ))}
-                </select>
+                          otherIndex === index || otherLine.productId !== product.id,
+                      ),
+                    )}
+                    value={
+                      sourceProducts.find(
+                        (product) => product.id === line.productId,
+                      ) ?? null
+                    }
+                  />
+                </div>
                 <Input
-                  className="w-24"
+                  aria-label={`Quantity for product line ${index + 1}`}
+                  className="w-full sm:w-24"
                   type="number"
                   min="1"
                   value={line.quantity}
@@ -713,45 +801,65 @@ export function StockTransfersClient({
             </div>
             {canUpdate && editLines.length > 0 && (
               <div className="space-y-3">
+                {productOptions.isError && (
+                  <p className="text-sm text-red-600">
+                    {productOptions.error.message}
+                  </p>
+                )}
                 {editLines.map((line, index) => (
                   <div
-                    className="flex gap-2"
+                    className="flex min-w-0 flex-col gap-2 sm:flex-row"
                     key={`${line.productId}-${index}`}
                   >
-                    <select
-                      className="h-10 flex-1 rounded-md border px-3"
-                      value={line.productId}
-                      onChange={(event) => {
-                        const val = event.target.value;
-                        setEditLines((current) => {
-                          const dup = current.some(
-                            (l, i) => i !== index && l.productId === val,
-                          );
-                          return current.map((item, i) =>
-                            i === index
-                              ? { ...item, productId: dup ? "" : val }
-                              : item,
-                          );
-                        });
-                      }}
-                    >
-                      <option value="">Product</option>
-                      {sourceProducts
-                        .filter(
-                          (p) =>
-                            p.id === line.productId ||
-                            !editLines.some(
-                              (l, i) => i !== index && l.productId === p.id,
-                            ),
-                        )
-                        .map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.itemCode} - {p.name}
-                          </option>
-                        ))}
-                    </select>
+                    <div className="min-w-0 flex-1">
+                      <ProductSelect
+                        inputId={`edit-transfer-product-${index}`}
+                        isLoading={productOptions.isLoading || productOptions.isFetching}
+                        onChange={(productId) => {
+                          setEditLines((current) => {
+                            const dup = current.some(
+                              (item, itemIndex) =>
+                                itemIndex !== index &&
+                                item.productId === productId,
+                            );
+                            return current.map((item, itemIndex) =>
+                              itemIndex === index
+                                ? {
+                                    ...item,
+                                    productId: dup ? "" : productId,
+                                  }
+                                : item,
+                            );
+                          });
+                        }}
+                        products={sourceProducts.filter((product) =>
+                          editLines.every(
+                            (otherLine, otherIndex) =>
+                              otherIndex === index ||
+                              otherLine.productId !== product.id,
+                          ),
+                        )}
+                        value={
+                          sourceProducts.find(
+                            (product) => product.id === line.productId,
+                          ) ??
+                          (() => {
+                            const existingLine = selected.lines.find(
+                              (item) => item.product.id === line.productId,
+                            );
+                            return existingLine
+                              ? {
+                                  ...existingLine.product,
+                                  availableQuantity: null,
+                                }
+                              : null;
+                          })()
+                        }
+                      />
+                    </div>
                     <Input
-                      className="w-24"
+                      aria-label={`Quantity for product line ${index + 1}`}
+                      className="w-full sm:w-24"
                       type="number"
                       min="1"
                       value={line.quantity}
@@ -821,6 +929,26 @@ export function StockTransfersClient({
                         )
                       )
                         errs.push("Each product can appear only once.");
+                      for (const line of editLines) {
+                        const product = sourceProducts.find(
+                          (item) => item.id === line.productId,
+                        );
+                        if (line.productId && !product) {
+                          errs.push(
+                            "Remove or replace products that are no longer available for transfer.",
+                          );
+                          break;
+                        }
+                        if (
+                          product &&
+                          product.availableQuantity !== null &&
+                          line.quantity > product.availableQuantity
+                        ) {
+                          errs.push(
+                            `${product.itemCode} has only ${product.availableQuantity} available in Stock Room.`,
+                          );
+                        }
+                      }
                       if (errs.length > 0) {
                         notify(errs.join(" "), "error");
                         return;
@@ -891,11 +1019,27 @@ export function StockTransfersClient({
       {selected && selected.status !== "DRAFT" && (
         <Card className="mt-6">
           <CardContent className="space-y-4 p-5">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-semibold">{selected.reference}</h2>
-              <Badge className={getTransferStatusClass(selected.status)}>
-                {getTransferStatusLabel(selected.status)}
-              </Badge>
+              <div className="flex flex-wrap items-center gap-2">
+                {selected.status === "IN_TRANSIT" && (
+                  <Link
+                    className={buttonVariants({ variant: "outline" })}
+                    href={{
+                      pathname: "/stock-transfers/[transferId]/print",
+                      query: { transferId: selected.id },
+                    }}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    <Printer className="h-4 w-4" />
+                    Print checklist
+                  </Link>
+                )}
+                <Badge className={getTransferStatusClass(selected.status)}>
+                  {getTransferStatusLabel(selected.status)}
+                </Badge>
+              </div>
             </div>
             <p className="text-sm text-slate-500">
               {selected.status === "CANCELLED"

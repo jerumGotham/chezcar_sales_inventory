@@ -49,3 +49,10 @@ export type CancelTransferInput = z.infer<typeof cancelTransferSchema>;
 export type DiscrepancyInput = z.infer<typeof discrepancySchema>;
 export type InvestigationInput = z.infer<typeof investigationSchema>;
 export type ResolutionInput = z.infer<typeof resolutionSchema>;
+
+export type TransferProductOptionDto = {
+  id: string;
+  itemCode: string;
+  name: string;
+  availableQuantity: number;
+};

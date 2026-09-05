@@ -15,6 +15,7 @@ import {
   Ban,
   ImagePlus,
   Trash2,
+  X,
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
@@ -36,6 +37,7 @@ import {
   type ProductRow,
   type ProductStatus,
 } from "@/lib/catalog";
+import { cn } from "@/lib/utils";
 import { useCan } from "@/components/shell-access-context";
 
 type SelectOption = {
@@ -90,10 +92,16 @@ const EMPTY_PRODUCT_FORM: ProductForm = {
 
 type ProductMutationResponse = { data: { id: string } };
 
+type ProductBanner = {
+  type: "success" | "error";
+  message: string;
+};
+
 async function productRequest<T = ProductMutationResponse>(
   path: string,
   method: string,
   body?: unknown,
+  fallbackMessage = "Unable to save product",
 ): Promise<T> {
   const response = await fetch(path, {
     method,
@@ -104,7 +112,7 @@ async function productRequest<T = ProductMutationResponse>(
   const json = await response.json().catch(() => null) as { error?: { message?: string } } | null;
 
   if (!response.ok) {
-    throw new Error(json?.error?.message ?? "Unable to save product");
+    throw new Error(json?.error?.message ?? fallbackMessage);
   }
 
   return json as T;
@@ -221,6 +229,7 @@ export default function ProductsPage() {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [form, setForm] = useState<ProductForm>(EMPTY_PRODUCT_FORM);
   const [formError, setFormError] = useState("");
+  const [banner, setBanner] = useState<ProductBanner | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [removeImage, setRemoveImage] = useState(false);
@@ -290,6 +299,19 @@ export default function ProductsPage() {
       ...(data?.filterOptions.brands ?? []).map((value) => ({ value, label: value })),
     ];
   }, [data?.filterOptions.brands]);
+  const invalidateProductQueries = () => {
+    [
+      "products-master-list",
+      "pos-options",
+      "customer-order-options",
+      "stock-transfer-product-options",
+      "inventory-locations",
+      "inventory-availability",
+      "inventory-movements",
+    ].forEach((key) => {
+      void queryClient.invalidateQueries({ queryKey: [key] });
+    });
+  };
   const saveMutation = useMutation({
     mutationFn: async () => {
       const payload = {
@@ -325,30 +347,38 @@ export default function ProductsPage() {
       } else if (canUpdateImage && removeImage) {
         await productImageRequest(productId, "DELETE");
       }
-      return response;
+      return selectedProduct ? "updated" : "added";
     },
-    onSuccess: () => {
+    onSuccess: (operation) => {
       setIsEditOpen(false);
       setSelectedProduct(null);
       setForm(EMPTY_PRODUCT_FORM);
       setFormError("");
+      setBanner({
+        type: "success",
+        message: operation === "updated" ? "Product updated." : "Product added.",
+      });
       replaceImageFile(null);
       setRemoveImage(false);
       setPersistedProductId(null);
-      queryClient.invalidateQueries({ queryKey: ["products-master-list"] });
+      invalidateProductQueries();
     },
     onError: (error: Error) => {
       setFormError(error.message);
-      queryClient.invalidateQueries({ queryKey: ["products-master-list"] });
+      setBanner({ type: "error", message: error.message });
+      invalidateProductQueries();
     },
   });
   const deleteMutation = useMutation({
     mutationFn: (productId: string) => {
       if (!canDelete) throw new Error("You do not have permission to delete products.");
-      return productRequest(`/api/products/${productId}`, "DELETE");
+      return productRequest(`/api/products/${productId}`, "DELETE", undefined, "Unable to delete product");
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["products-master-list"] }),
-    onError: (error: Error) => setFormError(error.message),
+    onSuccess: () => {
+      setBanner({ type: "success", message: "Product deleted." });
+      invalidateProductQueries();
+    },
+    onError: (error: Error) => setBanner({ type: "error", message: error.message }),
   });
   const meta = useMemo(() => data?.meta ?? {
     page: 1,
@@ -440,6 +470,7 @@ export default function ProductsPage() {
     const isUpdate = Boolean(selectedProduct || persistedProductId);
     if (isUpdate ? !canUpdate && !canUpdateImage : !canCreate) return;
     setFormError("");
+    setBanner(null);
     saveMutation.mutate();
   };
 
@@ -458,6 +489,27 @@ export default function ProductsPage() {
           ) : null
         }
       >
+        {banner && (
+          <div
+            role={banner.type === "error" ? "alert" : "status"}
+            className={cn(
+              "mb-6 flex items-start justify-between gap-3 rounded-xl border px-4 py-3",
+              banner.type === "error"
+                ? "border-destructive/30 bg-destructive/10 text-destructive"
+                : "border-primary/30 bg-primary/10 text-primary",
+            )}
+          >
+            <p className="break-words text-sm">{banner.message}</p>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Dismiss notification"
+              onClick={() => setBanner(null)}
+            >
+              <X aria-hidden />
+            </Button>
+          </div>
+        )}
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Card>
             <CardContent className="flex items-start justify-between p-5">
@@ -772,7 +824,10 @@ export default function ProductsPage() {
                                 size="sm"
                                 variant="destructive"
                                 disabled={!product.canDelete || deleteMutation.isPending}
-                                onClick={() => deleteMutation.mutate(product.id)}
+                                onClick={() => {
+                                  setBanner(null);
+                                  deleteMutation.mutate(product.id);
+                                }}
                                 title={product.canDelete ? "Delete unused product" : "Products with balances or history cannot be deleted"}
                               >
                                 Delete
@@ -1032,7 +1087,7 @@ export default function ProductsPage() {
             )}
 
             {formError && (
-              <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                 {formError}
               </div>
             )}

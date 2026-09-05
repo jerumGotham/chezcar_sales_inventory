@@ -52,6 +52,23 @@ export type ReceiptComparison = z.infer<typeof receiptComparisonSchema>;
 export const REVIEW_STATUSES = ["UNVERIFIED", "VERIFIED", "MISMATCH_REPORTED"] as const;
 export type ReviewStatusDto = (typeof REVIEW_STATUSES)[number];
 
+export const BRANCH_MISMATCH_RESPONSES = [
+  "ORIGINAL_ENCODING_CORRECT",
+  "RECEIPT_CORRECTION_NEEDED",
+  "WRONG_RECEIPT_PHOTO",
+  "SALE_ENCODED_INCORRECT",
+] as const;
+export type BranchMismatchResponseDto =
+  (typeof BRANCH_MISMATCH_RESPONSES)[number];
+
+export const ACCOUNTING_RESOLUTION_ACTIONS = [
+  "CONFIRMED_CORRECT",
+  "VOIDED_REPLACED",
+  "VOIDED",
+] as const;
+export type AccountingResolutionActionDto =
+  (typeof ACCOUNTING_RESOLUTION_ACTIONS)[number];
+
 // Placeholder mismatch enum for 02-02 — re-exported so later plans can import centrally
 export const MISMATCH_CATEGORIES = [
   "PRICE_MISMATCH",
@@ -165,9 +182,14 @@ export type SaleDto = {
   reviewStatus: ReviewStatusDto;
   mismatchCategory: string | null;
   reviewNotes: string | null;
+  reportedComparison: ReceiptComparison | null;
+  branchResponse: BranchMismatchResponseDto | null;
+  branchResponseNote: string | null;
+  branchReplacementReceiptNumber: string | null;
+  branchRespondedAt: string | null;
   receiptPhotoUrl: string | null;
   reviewedAt: string | null;
-  resolutionAction: string | null;
+  resolutionAction: AccountingResolutionActionDto | null;
   resolutionNote: string | null;
   resolvedAt: string | null;
   correctionRequest: SaleCorrectionRequestDto | null;

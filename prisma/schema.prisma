@@ -104,11 +104,14 @@ enum AccountingReviewStatus {
 enum AccountingResolutionAction {
   CONFIRMED_CORRECT
   VOIDED_REPLACED
+  VOIDED
 }
 
 enum BranchMismatchResponse {
   ORIGINAL_ENCODING_CORRECT
   RECEIPT_CORRECTION_NEEDED
+  WRONG_RECEIPT_PHOTO
+  SALE_ENCODED_INCORRECT
 }
 
 enum SaleCorrectionRequestStatus {

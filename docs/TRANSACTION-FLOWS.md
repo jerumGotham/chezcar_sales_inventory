@@ -215,7 +215,7 @@ No Inventory Movement is created. Cancelling a waiting-stock order also has no i
 
 #### Create, Edit, Delete, or Finalize Draft
 
-No inventory effect. These actions prepare the transfer document.
+No inventory effect. These actions prepare the transfer document. Create and edit options expose only active products with positive server-derived `SR` availability, and the server revalidates the selected quantities before saving the draft.
 
 #### Dispatch from Stock Room
 
@@ -226,6 +226,8 @@ In Transit = Dispatch Quantity
 ```
 
 Writes `TRANSFER_DISPATCH -quantity` at Stock Room.
+
+The in-transit receiving checklist is a read-only print view for authorized source or assigned-destination users. Opening or printing it does not confirm receipt or change inventory.
 
 #### Exact Branch Receipt
 
@@ -268,9 +270,12 @@ The complete allocation posts atomically and clears In Transit.
 | Verify receipt | None |
 | Report mismatch | None |
 | Branch response | None |
+| Branch replaces a wrong receipt photo | None; review reopens as `UNVERIFIED` |
+| Branch reports an incorrectly encoded sale | None; sale remains posted and stock remains deducted |
 | Branch reports wrong submission | None; sale remains posted and stock remains deducted |
 | Admin keeps reported sale | None |
 | Admin approves void-only request | Reverse original quantities |
+| Admin voids an incorrectly encoded sale | Reverse original quantities; no replacement sale |
 | Confirm original encoding correct | None |
 | Void and replace sale | Reverse original quantities, then deduct replacement quantities |
 
@@ -290,7 +295,7 @@ Final On Hand = Current On Hand + Original Quantity
 Reserved = unchanged
 ```
 
-The Branch request itself writes no movement. Approval marks the direct sale `VOIDED` and writes `SALE_CORRECTION_REVERSAL +original`; dismissing the request keeps the sale and inventory unchanged.
+The Branch request or incorrectly-encoded Branch Finding itself writes no movement. Approval marks the direct sale `VOIDED` and writes `SALE_CORRECTION_REVERSAL +original`; dismissing a separate correction request keeps the sale and inventory unchanged. A wrong-photo finding only attaches fresh evidence and reopens Accounting review.
 
 ### Inventory Quantity Correction
 

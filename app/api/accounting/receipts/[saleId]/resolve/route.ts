@@ -23,8 +23,8 @@ export async function POST(request: Request, context: Context) {
     const rawInput: unknown = await request.json();
     if (rawInput && typeof rawInput === "object" && "action" in rawInput) {
       const action = rawInput.action;
-      if (action === "VOIDED_REPLACED" || action === "CONFIRMED_CORRECT") {
-        assertCapability(actor, action === "VOIDED_REPLACED" ? "sales:void-replace" : "sales:resolve");
+      if (action === "VOIDED_REPLACED" || action === "VOIDED" || action === "CONFIRMED_CORRECT") {
+        assertCapability(actor, action === "CONFIRMED_CORRECT" ? "sales:resolve" : "sales:void-replace");
       }
     }
     const input = accountingResolutionSchema.parse(rawInput);

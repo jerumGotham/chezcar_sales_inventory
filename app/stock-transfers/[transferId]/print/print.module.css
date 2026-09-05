@@ -1,0 +1,39 @@
+@page {
+  size: A4 portrait;
+  margin: 12mm;
+}
+
+@media print {
+  .screenOnly {
+    display: none !important;
+  }
+
+  .page {
+    min-height: auto;
+    background: #fff;
+    color: #000;
+    padding: 0;
+  }
+
+  .sheet {
+    border: 0;
+    border-radius: 0;
+    background: #fff !important;
+    color: #000 !important;
+    box-shadow: none;
+    padding: 0;
+  }
+
+  .sheet * {
+    background-color: transparent !important;
+    color: #000 !important;
+  }
+
+  .tableWrap {
+    overflow: visible;
+  }
+
+  .table {
+    min-width: 0;
+  }
+}
