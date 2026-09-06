@@ -285,7 +285,7 @@ export async function listTransferProductOptions(
     .filter((product) => product.availableQuantity > 0);
 }
 
-export async function getInTransitTransferChecklist(
+export async function getTransferChecklist(
   actor: AuthContext,
   id: string,
 ) {
@@ -296,14 +296,17 @@ export async function getInTransitTransferChecklist(
       select: { id: true, code: true, name: true },
     }),
     prisma.stockTransfer.findFirst({
-      where: { id, status: "IN_TRANSIT" },
+      where: { id },
       select: {
         reference: true,
+        status: true,
         destinationId: true,
+        createdAt: true,
         dispatchedAt: true,
         destination: { select: { code: true, name: true } },
         lines: {
           select: {
+            requestedQuantity: true,
             dispatchedQuantity: true,
             product: { select: { itemCode: true, name: true } },
           },
@@ -315,7 +318,7 @@ export async function getInTransitTransferChecklist(
 
   if (
     !source ||
-    !transfer?.dispatchedAt ||
+    !transfer ||
     !canAccessTransferRecord(actor, source.id, transfer.destinationId)
   ) {
     return null;
@@ -323,9 +326,11 @@ export async function getInTransitTransferChecklist(
 
   return {
     reference: transfer.reference,
+    status: transfer.status,
     source: { code: source.code, name: source.name },
     destination: transfer.destination,
-    dispatchedAt: transfer.dispatchedAt.toISOString(),
+    createdAt: transfer.createdAt.toISOString(),
+    dispatchedAt: transfer.dispatchedAt?.toISOString() ?? null,
     lines: transfer.lines,
   };
 }

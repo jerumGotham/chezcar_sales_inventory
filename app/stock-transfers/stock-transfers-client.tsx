@@ -809,11 +809,22 @@ export function StockTransfersClient({
       {selected && selected.status === "DRAFT" && (
         <Card className="mt-6">
           <CardContent className="space-y-4 p-5">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-semibold">{selected.reference}</h2>
-              <Badge className={getTransferStatusClass(selected.status)}>
-                {getTransferStatusLabel(selected.status)}
-              </Badge>
+              <div className="flex flex-wrap items-center gap-2">
+                <Link
+                  className={buttonVariants({ variant: "outline" })}
+                  href={`/stock-transfers/${selected.id}/print` as Route}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  <Printer className="h-4 w-4" />
+                  Print checklist
+                </Link>
+                <Badge className={getTransferStatusClass(selected.status)}>
+                  {getTransferStatusLabel(selected.status)}
+                </Badge>
+              </div>
             </div>
             {canUpdate && editLines.length > 0 && (
               <div className="space-y-3">
@@ -1040,17 +1051,15 @@ export function StockTransfersClient({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-semibold">{selected.reference}</h2>
               <div className="flex flex-wrap items-center gap-2">
-                {selected.status === "IN_TRANSIT" && (
-                  <Link
-                    className={buttonVariants({ variant: "outline" })}
-                    href={`/stock-transfers/${selected.id}/print` as Route}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    <Printer className="h-4 w-4" />
-                    Print checklist
-                  </Link>
-                )}
+                <Link
+                  className={buttonVariants({ variant: "outline" })}
+                  href={`/stock-transfers/${selected.id}/print` as Route}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  <Printer className="h-4 w-4" />
+                  Print checklist
+                </Link>
                 <Badge className={getTransferStatusClass(selected.status)}>
                   {getTransferStatusLabel(selected.status)}
                 </Badge>

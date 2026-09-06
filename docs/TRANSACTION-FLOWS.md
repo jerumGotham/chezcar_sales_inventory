@@ -227,7 +227,7 @@ In Transit = Dispatch Quantity
 
 Writes `TRANSFER_DISPATCH -quantity` at Stock Room.
 
-The in-transit receiving checklist is a read-only print view for authorized source or assigned-destination users. Opening or printing it does not confirm receipt or change inventory.
+The transfer checklist is a read-only print view available at every transfer status to authorized source or assigned-destination users. Pre-dispatch records show requested quantities and no dispatch time; dispatched and completed records also show the dispatched quantities. Opening or printing it does not change workflow state or inventory.
 
 #### Exact Branch Receipt
 

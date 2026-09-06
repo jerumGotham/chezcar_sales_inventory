@@ -4,12 +4,12 @@ import { notFound, redirect } from "next/navigation";
 
 import { loadShellAccess } from "@/lib/server/shell";
 import { requireCapability } from "@/lib/server/authorization";
-import { getInTransitTransferChecklist } from "@/lib/server/services/stock-transfers";
+import { getTransferChecklist } from "@/lib/server/services/stock-transfers";
 
 import { PrintChecklistButton } from "./print-button";
 import styles from "./print.module.css";
 
-const dispatchTimeFormatter = new Intl.DateTimeFormat("en-PH", {
+const dateTimeFormatter = new Intl.DateTimeFormat("en-PH", {
   dateStyle: "medium",
   timeStyle: "short",
   timeZone: "Asia/Manila",
@@ -32,7 +32,7 @@ export default async function StockTransferPrintPage({
     "stock-transfers:view",
   );
   const { transferId } = await params;
-  const checklist = await getInTransitTransferChecklist(actor, transferId);
+  const checklist = await getTransferChecklist(actor, transferId);
   if (!checklist) notFound();
 
   return (
@@ -60,11 +60,11 @@ export default async function StockTransferPrintPage({
               Chezcar Auto Care
             </p>
             <h1 className="mt-1 text-2xl font-bold sm:text-3xl">
-              Stock Transfer Receiving Checklist
+              Stock Transfer Checklist
             </h1>
             <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-              Use this sheet for a manual count before recording receipt in the
-              system.
+              Review the current transfer quantities and use this sheet for a
+              manual count when needed.
             </p>
           </header>
 
@@ -79,12 +79,28 @@ export default async function StockTransferPrintPage({
             </div>
             <div>
               <dt className="font-medium text-slate-500 dark:text-slate-400">
+                Status
+              </dt>
+              <dd className="mt-1 text-base font-semibold">
+                {formatTransferStatus(checklist.status)}
+              </dd>
+            </div>
+            <div>
+              <dt className="font-medium text-slate-500 dark:text-slate-400">
+                Created at
+              </dt>
+              <dd className="mt-1 text-base font-semibold">
+                {dateTimeFormatter.format(new Date(checklist.createdAt))}
+              </dd>
+            </div>
+            <div>
+              <dt className="font-medium text-slate-500 dark:text-slate-400">
                 Dispatched at
               </dt>
               <dd className="mt-1 text-base font-semibold">
-                {dispatchTimeFormatter.format(
-                  new Date(checklist.dispatchedAt),
-                )}
+                {checklist.dispatchedAt
+                  ? dateTimeFormatter.format(new Date(checklist.dispatchedAt))
+                  : "Not dispatched"}
               </dd>
             </div>
             <div className="sm:col-span-2">
@@ -102,7 +118,7 @@ export default async function StockTransferPrintPage({
             className={`${styles.tableWrap} mt-6 overflow-x-auto rounded-lg border border-slate-300 dark:border-slate-700`}
           >
             <table
-              className={`${styles.table} w-full min-w-[760px] border-collapse text-sm`}
+              className={`${styles.table} w-full min-w-[860px] border-collapse text-sm`}
             >
               <thead>
                 <tr className="bg-slate-100 text-left dark:bg-slate-800">
@@ -111,6 +127,9 @@ export default async function StockTransferPrintPage({
                   </th>
                   <th className="border-b border-r border-slate-300 p-3 dark:border-slate-700">
                     Product name
+                  </th>
+                  <th className="w-24 border-b border-r border-slate-300 p-3 text-center dark:border-slate-700">
+                    Requested
                   </th>
                   <th className="w-24 border-b border-r border-slate-300 p-3 text-center dark:border-slate-700">
                     Dispatched
@@ -136,7 +155,10 @@ export default async function StockTransferPrintPage({
                       {line.product.name}
                     </td>
                     <td className="border-r border-t border-slate-300 p-3 text-center font-semibold dark:border-slate-700">
-                      {line.dispatchedQuantity}
+                      {line.requestedQuantity}
+                    </td>
+                    <td className="border-r border-t border-slate-300 p-3 text-center font-semibold dark:border-slate-700">
+                      {checklist.dispatchedAt ? line.dispatchedQuantity : "-"}
                     </td>
                     <td className="h-14 border-r border-t border-slate-300 p-3 dark:border-slate-700" />
                     <td className="h-14 border-t border-slate-300 p-3 dark:border-slate-700" />
@@ -147,14 +169,14 @@ export default async function StockTransferPrintPage({
           </div>
 
           <p className="mt-5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-medium text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
-            Printing or completing this checklist does not post receipt or alter
-            stock. An authorized user must record the receiving result in the
-            Stock Transfers screen.
+            Printing or completing this checklist does not change the transfer
+            status or alter stock. All workflow actions must still be recorded
+            in the Stock Transfers screen.
           </p>
 
           <section className="mt-10 grid gap-x-8 gap-y-10 text-sm sm:grid-cols-3">
             {[
-              "Dispatched by",
+              "Prepared by",
               "Counted by",
               "Branch signoff",
             ].map((label) => (
@@ -171,4 +193,14 @@ export default async function StockTransferPrintPage({
       </div>
     </main>
   );
+}
+
+function formatTransferStatus(status: string) {
+  if (status === "FOR_DISPATCH") return "Ready for dispatch";
+  if (status === "DISCREPANCY_REPORTED") return "Receiving issue";
+  if (status === "UNDER_REVIEW") return "Under investigation";
+  return status
+    .replaceAll("_", " ")
+    .toLowerCase()
+    .replace(/^./, (character) => character.toUpperCase());
 }
