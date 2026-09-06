@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowUpRight, CheckCircle2, Info } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
-import { useCan } from "@/components/shell-access-context";
+import { useCan, useShellAccess } from "@/components/shell-access-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -70,13 +70,15 @@ function TypeIcon({ type }: { type: Notification["type"] }) {
 }
 
 export default function NotificationsPage() {
+  const access = useShellAccess();
   const canViewNotifications = useCan("notifications:view");
   const canMarkRead = useCan("notifications:mark-read");
+  const identityEmail = access.authenticated ? access.identity.email : null;
   const router = useRouter();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("all");
   const notificationsQuery = useQuery({
-    queryKey: ["notifications"],
+    queryKey: ["notifications", identityEmail],
     queryFn: fetchNotifications,
     enabled: canViewNotifications,
     refetchInterval: 30_000,
@@ -94,7 +96,7 @@ export default function NotificationsPage() {
       return destination;
     },
     onSuccess: (destination) => {
-      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      void queryClient.invalidateQueries({ queryKey: ["notifications", identityEmail] });
       if (destination) router.push(destination as Route);
     },
   });
@@ -104,7 +106,7 @@ export default function NotificationsPage() {
       return markNotificationsRead();
     },
     onSuccess: (notifications) =>
-      queryClient.setQueryData(["notifications"], notifications),
+      queryClient.setQueryData(["notifications", identityEmail], notifications),
   });
   const activateNotification = (
     notification: Notification,

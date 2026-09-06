@@ -123,6 +123,8 @@ Stock-transfer transitions create persisted per-user notifications in the same d
 
 Direct sales, stock reservations, and Admin actual-quantity adjustments create durable warning notifications when a branch balance crosses from In Stock to Low Stock, or from Low Stock to Out of Stock. Recipients are active Admin users and active users assigned to that exact branch. The normal notification cursor/SSE/polling pipeline delivers the alert in realtime and avoids repeating alerts while the balance remains in the same threshold state.
 
+Header notification popups track their last displayed cursor per signed-in email so the first unread notification is not treated as an already-seen baseline after login or page remount. Activating an in-app or browser notification popup opens `/notifications`; transaction deep links remain on each row's `Open` action inside that list. A mark-read failure does not block popup navigation.
+
 ## Offline branch sales
 
 The offline endpoints remain implemented, but the customer-facing POS queue/banner and Admin navigation are temporarily disabled. Current POS operation is online-only while the offline operating workflow is deferred.

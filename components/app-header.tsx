@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { useCan, useShellAccess } from "@/components/shell-access-context";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth-client";
-import { notificationDestination } from "@/lib/notification-links";
 import { markHeaderNotificationRead } from "@/lib/header-notifications";
 
 const THEME_KEY = "chezcar-theme";
@@ -53,6 +52,14 @@ function applyTheme(theme: "light" | "dark") {
   document.documentElement.style.colorScheme = theme;
 }
 
+function notificationCursor(value: string | null) {
+  try {
+    return BigInt(value ?? "0");
+  } catch {
+    return BigInt(0);
+  }
+}
+
 export function AppHeader({
   title,
   subtitle,
@@ -71,13 +78,10 @@ export function AppHeader({
   const [isReady, setIsReady] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [toast, setToast] = useState<HeaderNotification | null>(null);
-  const [toastError, setToastError] = useState("");
   const [pushState, setPushState] = useState<"unsupported" | "unavailable" | "default" | "denied" | "subscribed" | "pending">("unavailable");
   const menuRef = useRef<HTMLDivElement>(null);
-  const seenNotificationIds = useRef(new Set<string>());
-  const notificationsInitialized = useRef(false);
   const notificationsQuery = useQuery({
-    queryKey: ["notifications"],
+    queryKey: ["notifications", identityEmail],
     queryFn: fetchHeaderNotifications,
     enabled: canViewNotifications,
     refetchInterval: 30_000,
@@ -159,7 +163,7 @@ export function AppHeader({
     const handleNotification = (event: MessageEvent<string>) => {
       const notification = JSON.parse(event.data) as HeaderNotification;
       window.localStorage.setItem(cursorKey, notification.cursor);
-      queryClient.setQueryData<HeaderNotification[]>(["notifications"], (current = []) => {
+      queryClient.setQueryData<HeaderNotification[]>(["notifications", identityEmail], (current = []) => {
         const merged = new Map(current.map((item) => [item.id, item]));
         merged.set(notification.id, notification);
         return Array.from(merged.values()).sort((a, b) => {
@@ -171,7 +175,7 @@ export function AppHeader({
     };
 
     const handleError = () => {
-      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      void queryClient.invalidateQueries({ queryKey: ["notifications", identityEmail] });
     };
 
     events.addEventListener("notification", handleNotification);
@@ -186,29 +190,28 @@ export function AppHeader({
 
   useEffect(() => {
     const notifications = notificationsQuery.data;
-    if (!notifications) return;
+    if (!notifications || !identityEmail) return;
 
-    if (!notificationsInitialized.current) {
-      notifications.forEach((notification) => seenNotificationIds.current.add(notification.id));
-      notificationsInitialized.current = true;
-      return;
-    }
-
-    const newNotification = notifications.find(
-      (notification) => !notification.read && !seenNotificationIds.current.has(notification.id),
+    const popupCursorKey = `chezcar-notification-popup-cursor:${identityEmail}`;
+    const lastPopupCursor = notificationCursor(
+      window.localStorage.getItem(popupCursorKey),
     );
-    notifications.forEach((notification) => seenNotificationIds.current.add(notification.id));
+    const newNotification = notifications.find(
+      (notification) =>
+        !notification.read &&
+        notificationCursor(notification.cursor) > lastPopupCursor,
+    );
     if (newNotification) {
-      setToastError("");
+      window.localStorage.setItem(popupCursorKey, newNotification.cursor);
       setToast(newNotification);
     }
-  }, [notificationsQuery.data]);
+  }, [identityEmail, notificationsQuery.data]);
 
   useEffect(() => {
-    if (!toast || toastError) return;
+    if (!toast) return;
     const timer = window.setTimeout(() => setToast(null), 7_000);
     return () => window.clearTimeout(timer);
-  }, [toast, toastError]);
+  }, [toast]);
 
   useEffect(() => {
     const storedTheme = window.localStorage.getItem(THEME_KEY);
@@ -251,25 +254,26 @@ export function AppHeader({
 
   const openToastNotification = async () => {
     if (!toast) return;
+    const notification = toast;
+    setToast(null);
+    router.push("/notifications" as Route);
+
+    if (!canMarkNotificationsRead || notification.read) return;
     try {
-      if (canMarkNotificationsRead && !toast.read) await markHeaderNotificationRead(toast.id);
-      if (canMarkNotificationsRead) {
-        queryClient.setQueryData<HeaderNotification[]>(
-          ["notifications"],
-          (current = []) =>
-            current.map((notification) =>
-              notification.id === toast.id
-                ? { ...notification, read: true }
-                : notification,
-            ),
-        );
-      }
-      const destination = notificationDestination(toast) ?? "/notifications";
-      setToastError("");
-      setToast(null);
-      router.push(destination as Route);
-    } catch (error) {
-      setToastError(error instanceof Error ? error.message : "Unable to open notification.");
+      await markHeaderNotificationRead(notification.id);
+      queryClient.setQueryData<HeaderNotification[]>(
+        ["notifications", identityEmail],
+        (current = []) =>
+          current.map((currentNotification) =>
+            currentNotification.id === notification.id
+              ? { ...currentNotification, read: true }
+              : currentNotification,
+          ),
+      );
+    } catch {
+      void queryClient.invalidateQueries({
+        queryKey: ["notifications", identityEmail],
+      });
     }
   };
 
@@ -435,9 +439,8 @@ export function AppHeader({
               <p className="text-xs font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">New notification</p>
               <p className="mt-1 font-semibold text-foreground">{toast.title}</p>
               <p className="mt-1 line-clamp-2 text-sm text-slate-500 dark:text-slate-400">{toast.description}</p>
-              {toastError ? <p className="mt-2 text-sm font-medium text-red-600 dark:text-red-400">{toastError}</p> : null}
             </button>
-            <button type="button" className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => { setToastError(""); setToast(null); }} aria-label="Dismiss notification">
+            <button type="button" className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => setToast(null)} aria-label="Dismiss notification">
               <X className="h-4 w-4" />
             </button>
           </div>
