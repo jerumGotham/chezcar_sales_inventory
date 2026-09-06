@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { Route } from "next";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Select from "react-select";
@@ -16,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 
+import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -76,6 +78,18 @@ type Product = Omit<TransferProductOptionDto, "availableQuantity"> & {
 };
 type DraftLine = { productId: string; quantity: number };
 type ShortageResolution = "loss" | "restore";
+type TransferConfirmation =
+  | {
+      kind: "delete";
+      transferId: string;
+      version: number;
+      reference: string;
+    }
+  | {
+      kind: "cancel";
+      reference: string;
+      reason: string;
+    };
 type TransferPage = {
   data: Transfer[];
   meta: {
@@ -294,6 +308,8 @@ export function StockTransfersClient({
     "success",
   );
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [confirmation, setConfirmation] =
+    useState<TransferConfirmation | null>(null);
 
   function notify(text: string, kind: "success" | "error" = "success") {
     setMessage(text);
@@ -1001,9 +1017,11 @@ export function StockTransfersClient({
                     variant="destructive"
                     disabled={deleteDraftMutation.isPending}
                     onClick={() =>
-                      deleteDraftMutation.mutate({
+                      setConfirmation({
+                        kind: "delete",
                         transferId: selected.id,
                         version: selected.version,
+                        reference: selected.reference,
                       })
                     }
                   >
@@ -1025,10 +1043,7 @@ export function StockTransfersClient({
                 {selected.status === "IN_TRANSIT" && (
                   <Link
                     className={buttonVariants({ variant: "outline" })}
-                    href={{
-                      pathname: "/stock-transfers/[transferId]/print",
-                      query: { transferId: selected.id },
-                    }}
+                    href={`/stock-transfers/${selected.id}/print` as Route}
                     rel="noreferrer"
                     target="_blank"
                   >
@@ -1181,9 +1196,11 @@ export function StockTransfersClient({
                     variant="destructive"
                     disabled={deleteDraftMutation.isPending}
                     onClick={() =>
-                      deleteDraftMutation.mutate({
+                      setConfirmation({
+                        kind: "delete",
                         transferId: selected.id,
                         version: selected.version,
+                        reference: selected.reference,
                       })
                     }
                   >
@@ -1360,11 +1377,13 @@ export function StockTransfersClient({
                 <Button
                   variant="destructive"
                   disabled={mutation.isPending || !cancellationReason.trim()}
-                  onClick={() => {
-                    if (window.confirm("Cancel this transfer and restore all in-transit stock to Stock Room?")) {
-                      act("cancel", { reason: cancellationReason.trim() });
-                    }
-                  }}
+                  onClick={() =>
+                    setConfirmation({
+                      kind: "cancel",
+                      reference: selected.reference,
+                      reason: cancellationReason.trim(),
+                    })
+                  }
                 >
                   Cancel transfer and restore stock
                 </Button>
@@ -1630,9 +1649,11 @@ export function StockTransfersClient({
                                 aria-label={`Delete transfer ${transfer.reference}`}
                                 disabled={deleteDraftMutation.isPending}
                                 onClick={() =>
-                                  deleteDraftMutation.mutate({
+                                  setConfirmation({
+                                    kind: "delete",
                                     transferId: transfer.id,
                                     version: transfer.version,
+                                    reference: transfer.reference,
                                   })
                                 }
                               >
@@ -1690,6 +1711,40 @@ export function StockTransfersClient({
           </div>
         </CardContent>
       </Card>
+      <ConfirmationDialog
+        open={Boolean(confirmation)}
+        title={
+          confirmation?.kind === "cancel"
+            ? "Cancel transfer and restore stock?"
+            : "Delete transfer draft?"
+        }
+        description={
+          confirmation?.kind === "cancel"
+            ? `${confirmation.reference} will be cancelled and all in-transit quantities will be restored to Stock Room. This action cannot be undone.`
+            : `${confirmation?.reference ?? "This draft"} will be permanently deleted. This action cannot be undone.`
+        }
+        confirmLabel={
+          confirmation?.kind === "cancel"
+            ? "Cancel transfer and restore stock"
+            : "Delete draft"
+        }
+        cancelLabel={
+          confirmation?.kind === "cancel" ? "Keep transfer" : "Keep draft"
+        }
+        onOpenChange={(open) => {
+          if (!open) setConfirmation(null);
+        }}
+        onConfirm={() => {
+          if (confirmation?.kind === "delete") {
+            deleteDraftMutation.mutate({
+              transferId: confirmation.transferId,
+              version: confirmation.version,
+            });
+          } else if (confirmation?.kind === "cancel") {
+            act("cancel", { reason: confirmation.reason });
+          }
+        }}
+      />
     </PageShell>
   );
 }

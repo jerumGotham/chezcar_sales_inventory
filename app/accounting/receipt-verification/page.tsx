@@ -16,8 +16,9 @@ import {
   Upload,
 } from "lucide-react";
 
-import { useCan } from "@/components/shell-access-context";
+import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { PageShell } from "@/components/page-shell";
+import { useCan } from "@/components/shell-access-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -37,6 +38,35 @@ type NewBranchFinding = Extract<
   BranchMismatchResponseDto,
   "WRONG_RECEIPT_PHOTO" | "SALE_ENCODED_INCORRECT"
 >;
+
+const RECEIPT_CONFIRMATIONS = {
+  VOID_CORRECTION_REQUEST: {
+    title: "Approve and void sale?",
+    description:
+      "This approves the Branch correction request, voids the sale, and restores every original inventory deduction. This action cannot be undone.",
+    confirmLabel: "Approve and void sale",
+  },
+  DELETE_EVIDENCE: {
+    title: "Delete receipt photo?",
+    description:
+      "This permanently deletes the uploaded receipt photo and its OCR result. A new photo must be attached before Accounting can review the sale.",
+    confirmLabel: "Delete receipt photo",
+  },
+  VOID_AND_REPLACE: {
+    title: "Void and replace sale?",
+    description:
+      "This voids the original sale, restores its inventory, and posts the replacement details currently entered. Review all replacement values before continuing.",
+    confirmLabel: "Void and replace",
+  },
+  VOID_INCORRECT_SALE: {
+    title: "Void sale and restore inventory?",
+    description:
+      "This voids the incorrectly encoded sale and restores every original line quantity to Branch inventory without creating a replacement sale. This action cannot be undone.",
+    confirmLabel: "Void sale and restore inventory",
+  },
+} as const;
+
+type ReceiptConfirmationAction = keyof typeof RECEIPT_CONFIRMATIONS;
 
 type SaleLine = {
   itemCode: string;
@@ -389,6 +419,8 @@ function ReceiptVerificationContent() {
     useState<string | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [confirmationAction, setConfirmationAction] =
+    useState<ReceiptConfirmationAction | null>(null);
 
   function clearSelectedPhoto() {
     setPhotoFile(null);
@@ -1257,11 +1289,9 @@ function ReceiptVerificationContent() {
                           {["ACCIDENTAL_SUBMISSION", "DUPLICATE_SUBMISSION", "SALE_DID_NOT_HAPPEN"].includes(selectedSale.correctionRequest.reason) ? (
                             <Button
                               variant="destructive"
-                              onClick={() => {
-                                if (window.confirm("Approve this request and reverse the original inventory deduction?")) {
-                                  correctionResolutionMutation.mutate("VOID_SALE");
-                                }
-                              }}
+                              onClick={() =>
+                                setConfirmationAction("VOID_CORRECTION_REQUEST")
+                              }
                               disabled={correctionResolutionMutation.isPending || !correctionResolutionNote.trim()}
                             >
                               {correctionResolutionMutation.isPending ? "Resolving..." : "Approve and void sale"}
@@ -1321,11 +1351,9 @@ function ReceiptVerificationContent() {
                         variant="destructive"
                         size="sm"
                         disabled={deleteEvidenceMutation.isPending || evidenceMutation.isPending || reviewMutation.isPending}
-                        onClick={() => {
-                          if (window.confirm("Delete this receipt photo and its OCR result?")) {
-                            deleteEvidenceMutation.mutate();
-                          }
-                        }}
+                        onClick={() =>
+                          setConfirmationAction("DELETE_EVIDENCE")
+                        }
                       >
                         <Trash2 className="mr-2 size-4" />
                         {deleteEvidenceMutation.isPending ? "Deleting..." : "Delete receipt photo"}
@@ -1952,7 +1980,7 @@ function ReceiptVerificationContent() {
                         <Button
                           variant="destructive"
                           onClick={() =>
-                            resolveMutation.mutate("VOIDED_REPLACED")
+                            setConfirmationAction("VOID_AND_REPLACE")
                           }
                           disabled={
                             resolveMutation.isPending ||
@@ -1967,11 +1995,9 @@ function ReceiptVerificationContent() {
                       {selectedSale.branchResponse === "SALE_ENCODED_INCORRECT" && canVoidReplace && (
                         <Button
                           variant="destructive"
-                          onClick={() => {
-                            if (window.confirm("Void this sale and restore its original line quantities to branch inventory? This cannot be undone.")) {
-                              resolveMutation.mutate("VOIDED");
-                            }
-                          }}
+                          onClick={() =>
+                            setConfirmationAction("VOID_INCORRECT_SALE")
+                          }
                           disabled={resolveMutation.isPending || !resolutionNote.trim()}
                         >
                           {resolveMutation.isPending
@@ -2005,6 +2031,36 @@ function ReceiptVerificationContent() {
           </CardContent>
         </Card>
       </div>
+      <ConfirmationDialog
+        open={Boolean(confirmationAction)}
+        title={
+          confirmationAction ? RECEIPT_CONFIRMATIONS[confirmationAction].title : "Confirm action"
+        }
+        description={
+          confirmationAction
+            ? RECEIPT_CONFIRMATIONS[confirmationAction].description
+            : "Review this action before continuing."
+        }
+        confirmLabel={
+          confirmationAction
+            ? RECEIPT_CONFIRMATIONS[confirmationAction].confirmLabel
+            : "Confirm"
+        }
+        onOpenChange={(open) => {
+          if (!open) setConfirmationAction(null);
+        }}
+        onConfirm={() => {
+          if (confirmationAction === "VOID_CORRECTION_REQUEST") {
+            correctionResolutionMutation.mutate("VOID_SALE");
+          } else if (confirmationAction === "DELETE_EVIDENCE") {
+            deleteEvidenceMutation.mutate();
+          } else if (confirmationAction === "VOID_AND_REPLACE") {
+            resolveMutation.mutate("VOIDED_REPLACED");
+          } else if (confirmationAction === "VOID_INCORRECT_SALE") {
+            resolveMutation.mutate("VOIDED");
+          }
+        }}
+      />
     </PageShell>
   );
 }

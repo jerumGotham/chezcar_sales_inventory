@@ -3,8 +3,12 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
-import Select from "react-select";
-import type { StylesConfig } from "react-select";
+import ReactSelect from "react-select";
+import type {
+  GroupBase,
+  Props as ReactSelectProps,
+  StylesConfig,
+} from "react-select";
 
 import { PageShell } from "@/components/page-shell";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -31,6 +35,7 @@ const productSelectStyles: StylesConfig<ProductSelectOption, false> = {
   singleValue: (base) => ({ ...base, color: "var(--foreground)" }),
   placeholder: (base) => ({ ...base, color: "var(--muted-foreground)" }),
   menu: (base) => ({ ...base, backgroundColor: "var(--popover)", zIndex: 50 }),
+  menuPortal: (base) => ({ ...base, zIndex: 100 }),
   option: (base, state) => ({
     ...base,
     backgroundColor: state.isSelected
@@ -42,6 +47,22 @@ const productSelectStyles: StylesConfig<ProductSelectOption, false> = {
     cursor: "pointer",
   }),
 };
+
+function Select<
+  Option,
+  IsMulti extends boolean = false,
+  Group extends GroupBase<Option> = GroupBase<Option>,
+>(props: ReactSelectProps<Option, IsMulti, Group>) {
+  return (
+    <ReactSelect<Option, IsMulti, Group>
+      {...props}
+      menuPortalTarget={
+        typeof document === "undefined" ? undefined : document.body
+      }
+      menuPosition="fixed"
+    />
+  );
+}
 
 export function ReceiveStockForm({ products }: { products: readonly ProductOption[] }) {
   const [state, formAction, isPending] = useActionState<ReceiptFormState, FormData>(postStockReceiptAction, null);

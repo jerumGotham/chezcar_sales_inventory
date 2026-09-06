@@ -18,7 +18,9 @@ import {
   X,
 } from "lucide-react";
 
+import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { PageShell } from "@/components/page-shell";
+import { useCan } from "@/components/shell-access-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -38,7 +40,6 @@ import {
   type ProductStatus,
 } from "@/lib/catalog";
 import { cn } from "@/lib/utils";
-import { useCan } from "@/components/shell-access-context";
 
 type SelectOption = {
   value: string;
@@ -234,6 +235,7 @@ export default function ProductsPage() {
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [removeImage, setRemoveImage] = useState(false);
   const [persistedProductId, setPersistedProductId] = useState<string | null>(null);
+  const [productToDelete, setProductToDelete] = useState<ProductRow | null>(null);
   const imagePreviewUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -826,7 +828,7 @@ export default function ProductsPage() {
                                 disabled={!product.canDelete || deleteMutation.isPending}
                                 onClick={() => {
                                   setBanner(null);
-                                  deleteMutation.mutate(product.id);
+                                  setProductToDelete(product);
                                 }}
                                 title={product.canDelete ? "Delete unused product" : "Products with balances or history cannot be deleted"}
                               >
@@ -1117,6 +1119,19 @@ export default function ProductsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmationDialog
+        open={Boolean(productToDelete)}
+        title="Delete product?"
+        description={`${productToDelete?.itemCode ?? "This product"} - ${productToDelete?.name ?? "Selected product"} will be permanently deleted. This action cannot be undone.`}
+        confirmLabel="Delete product"
+        cancelLabel="Keep product"
+        onOpenChange={(open) => {
+          if (!open) setProductToDelete(null);
+        }}
+        onConfirm={() => {
+          if (productToDelete) deleteMutation.mutate(productToDelete.id);
+        }}
+      />
     </>
   );
 }

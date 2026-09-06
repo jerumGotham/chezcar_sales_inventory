@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Select from "react-select";
 import type { StylesConfig } from "react-select";
 
+import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { PageShell } from "@/components/page-shell";
 import { useCan } from "@/components/shell-access-context";
 import { Badge } from "@/components/ui/badge";
@@ -204,6 +205,8 @@ export default function CustomersPage() {
   const [customerForm, setCustomerForm] = useState<CustomerFormState>(EMPTY_CUSTOMER_FORM);
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [customerToDeactivate, setCustomerToDeactivate] =
+    useState<CustomerRow | null>(null);
 
   const openCustomerForm = (customer: CustomerRow | null) => {
     setSelectedCustomer(customer);
@@ -548,9 +551,8 @@ export default function CustomersPage() {
                               <Button
                                 size="sm"
                                 variant="destructive"
-                                 onClick={() => {
-                                   if (window.confirm(`Deactivate ${customer.name}?`)) deleteCustomerMutation.mutate(customer.id);
-                                 }}
+                                disabled={deleteCustomerMutation.isPending}
+                                onClick={() => setCustomerToDeactivate(customer)}
                               >
                                 Delete
                               </Button>
@@ -816,6 +818,21 @@ export default function CustomersPage() {
           </div>
         </SheetContent>
       </Sheet>
+      <ConfirmationDialog
+        open={Boolean(customerToDeactivate)}
+        title="Deactivate customer?"
+        description={`${customerToDeactivate?.name ?? "This customer"} will no longer be available for new transactions. Existing history will remain available.`}
+        confirmLabel="Deactivate customer"
+        cancelLabel="Keep customer active"
+        onOpenChange={(open) => {
+          if (!open) setCustomerToDeactivate(null);
+        }}
+        onConfirm={() => {
+          if (customerToDeactivate) {
+            deleteCustomerMutation.mutate(customerToDeactivate.id);
+          }
+        }}
+      />
     </>
   );
 }
