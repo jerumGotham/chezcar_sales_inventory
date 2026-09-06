@@ -1,19 +1,46 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import type { Route } from "next";
-import { AlertTriangle, ArrowLeftRight, Bell, ClipboardList, Loader2, Package, ReceiptText, ShieldCheck, TrendingUp, Warehouse } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, Bell, CalendarDays, ClipboardList, Loader2, MapPin, Package, ReceiptText, ShieldCheck, TrendingUp, Warehouse } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+
+type SalesPeriod = "today" | "last7Days" | "monthToDate";
+type SalesBranch = { id: string; code: string; name: string };
+
+const SALES_PERIOD_OPTIONS: Array<{ value: SalesPeriod; label: string }> = [
+  { value: "today", label: "Today" },
+  { value: "last7Days", label: "Last 7 Days" },
+  { value: "monthToDate", label: "Month to Date" },
+];
 
 type DashboardResponse = {
   summary: {
     capabilities: string[];
+    canFilterSales: boolean;
+    salesFilter: {
+      period: SalesPeriod | "last30Days";
+      periodLabel: string;
+      branchId: string;
+      branchLabel: string;
+    };
+    salesBranches: SalesBranch[];
+    filteredSales: number;
+    filteredTransactions: number;
     todaySales: number;
     todayTransactions: number;
     monthSales: number;
@@ -35,7 +62,7 @@ type DashboardResponse = {
     inTransitTransfers: number;
     discrepanciesNeedingAction: number;
     incomingTransfers: number;
-    salesTrend: Array<{ date: string; sales: number; transactions: number }>;
+    salesTrend: Array<{ label: string; sales: number; transactions: number }>;
     branchPerformance: Array<{ branch: string; sales: number; transactions: number }>;
     lowStock: Array<{ itemCode: string; name: string; location: string; available: number; reorderLevel: number }>;
   };
@@ -46,16 +73,26 @@ function formatPeso(value: number) {
   return new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 }
 
-async function fetchDashboard() {
-  const response = await fetch("/api/dashboard", { credentials: "same-origin" });
+async function fetchDashboard(
+  salesPeriod: SalesPeriod,
+  salesBranchId: string,
+) {
+  const params = new URLSearchParams();
+  if (salesPeriod !== "today") params.set("salesPeriod", salesPeriod);
+  if (salesBranchId !== "all") params.set("salesBranchId", salesBranchId);
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  const response = await fetch(`/api/dashboard${query}`, { credentials: "same-origin" });
   if (!response.ok) throw new Error("Unable to load dashboard");
   return (await response.json()) as DashboardResponse;
 }
 
 export default function DashboardPage() {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["dashboard-summary"],
-    queryFn: fetchDashboard,
+  const [salesPeriod, setSalesPeriod] = useState<SalesPeriod>("today");
+  const [salesBranchId, setSalesBranchId] = useState("all");
+  const { data, isLoading, isFetching, error } = useQuery({
+    queryKey: ["dashboard-summary", salesPeriod, salesBranchId],
+    queryFn: () => fetchDashboard(salesPeriod, salesBranchId),
+    placeholderData: (previous) => previous,
     refetchInterval: 30_000,
     refetchOnWindowFocus: true,
   });
@@ -70,13 +107,24 @@ export default function DashboardPage() {
         <Card><CardContent className="p-6 text-sm text-red-600">{error?.message ?? "Dashboard unavailable"}</CardContent></Card>
       ) : (
         <div className="space-y-6">
+           {summary.canFilterSales ? (
+             <AdminSalesFilters
+               period={salesPeriod}
+               branchId={salesBranchId}
+               branches={summary.salesBranches}
+               isFetching={isFetching}
+               onPeriodChange={setSalesPeriod}
+               onBranchChange={setSalesBranchId}
+             />
+           ) : null}
+
            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-             {summary.capabilities.includes("locations:all") && summary.capabilities.includes("sales:post") ? (
+             {summary.canFilterSales ? (
                <>
-                  <MetricCard href="/customer-orders?view=sales" icon={<TrendingUp className="h-5 w-5 text-emerald-600" />} label="Today Sales" value={formatPeso(summary.todaySales)} hint={`${summary.todayTransactions} transaction(s) today`} />
-                  <MetricCard href="/customer-orders?view=sales" icon={<ReceiptText className="h-5 w-5 text-sky-600" />} label="Today Transactions" value={String(summary.todayTransactions)} hint="Posted sales today" />
-                  <MetricCard href="/reports" icon={<TrendingUp className="h-5 w-5 text-indigo-600" />} label="Month-to-Date Sales" value={formatPeso(summary.monthSales)} hint={`${summary.monthTransactions} posted transaction(s)`} />
-                  <MetricCard href="/inventory" icon={<AlertTriangle className="h-5 w-5 text-amber-600" />} label="Low-Stock Branches" value={String(summary.lowStockBranchCount)} hint={`${summary.lowStockCount} low-stock item-location row(s)`} />
+                  <MetricCard href="/customer-orders?view=sales" icon={<TrendingUp className="h-5 w-5 text-emerald-600" />} label="Sales" value={formatPeso(summary.filteredSales)} hint={`${summary.salesFilter.periodLabel} - ${summary.salesFilter.branchLabel}`} />
+                  <MetricCard href="/customer-orders?view=sales" icon={<ReceiptText className="h-5 w-5 text-sky-600" />} label="Transactions" value={String(summary.filteredTransactions)} hint={`${summary.filteredTransactions} posted sale(s) in scope`} />
+                  <MetricCard href="/reports" icon={<TrendingUp className="h-5 w-5 text-indigo-600" />} label="Average per Transaction" value={formatPeso(summary.filteredTransactions > 0 ? summary.filteredSales / summary.filteredTransactions : 0)} hint={`${summary.salesFilter.periodLabel} - ${summary.salesFilter.branchLabel}`} />
+                  <MetricCard href="/inventory" icon={<AlertTriangle className="h-5 w-5 text-amber-600" />} label="Low-Stock Branches" value={String(summary.lowStockBranchCount)} hint={`${summary.lowStockCount} live low-stock row(s), not sales-filtered`} />
                </>
               ) : summary.capabilities.includes("inventory-receiving:create") && !summary.capabilities.includes("sales:post") ? (
                <>
@@ -107,17 +155,19 @@ export default function DashboardPage() {
                <Card>
                  <CardContent className="p-5">
                    <div className="flex items-center justify-between gap-3">
-                     <div>
-                       <h2 className="text-base font-semibold">Sales Trend</h2>
-                       <p className="text-sm text-slate-500">Posted sales over the last 30 days.</p>
-                     </div>
-                     <Badge variant="outline">30 days</Badge>
+                      <div>
+                        <h2 className="text-base font-semibold">Sales Trend</h2>
+                        <p className="text-sm text-slate-500">
+                          Posted sales for {summary.salesFilter.periodLabel.toLowerCase()} in {summary.salesFilter.branchLabel}.
+                        </p>
+                      </div>
+                      <Badge variant="outline">{summary.salesFilter.periodLabel}</Badge>
                    </div>
                    <div className="mt-5 h-[280px]">
                      <ResponsiveContainer width="100%" height="100%">
                        <LineChart data={summary.salesTrend} margin={{ top: 8, right: 12, left: 8, bottom: 8 }}>
                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                         <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} tickFormatter={(value) => String(value).slice(5)} />
+                          <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} tickFormatter={(value) => summary.salesFilter.period === "today" ? String(value) : String(value).slice(5)} />
                          <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11 }} tickFormatter={(value) => `₱${Math.round(Number(value) / 1000)}k`} width={52} />
                          <Tooltip formatter={(value) => formatPeso(Number(value))} />
                          <Line type="monotone" dataKey="sales" name="Sales" stroke="#059669" strokeWidth={3} dot={false} />
@@ -129,11 +179,13 @@ export default function DashboardPage() {
                <Card>
                  <CardContent className="p-5">
                    <div className="flex items-center justify-between gap-3">
-                     <div>
-                       <h2 className="text-base font-semibold">Branch Performance</h2>
-                       <p className="text-sm text-slate-500">Posted sales over the last 30 days.</p>
-                     </div>
-                     <Badge variant="outline">Sales</Badge>
+                      <div>
+                        <h2 className="text-base font-semibold">Branch Performance</h2>
+                        <p className="text-sm text-slate-500">
+                          Branch sales ranking for {summary.salesFilter.periodLabel.toLowerCase()}.
+                        </p>
+                      </div>
+                      <Badge variant="outline">{summary.salesFilter.branchLabel}</Badge>
                    </div>
                    <div className="mt-5 h-[280px]">
                      {summary.branchPerformance.length === 0 ? <p className="flex h-full items-center justify-center text-sm text-slate-500">No sales data yet.</p> : (
@@ -204,6 +256,106 @@ export default function DashboardPage() {
         </div>
       )}
     </PageShell>
+  );
+}
+
+function AdminSalesFilters({
+  period,
+  branchId,
+  branches,
+  isFetching,
+  onPeriodChange,
+  onBranchChange,
+}: {
+  period: SalesPeriod;
+  branchId: string;
+  branches: SalesBranch[];
+  isFetching: boolean;
+  onPeriodChange: (period: SalesPeriod) => void;
+  onBranchChange: (branchId: string) => void;
+}) {
+  const branchOptions = [
+    { value: "all", label: "All Branches" },
+    ...branches.map((branch) => ({
+      value: branch.id,
+      label: `${branch.code} - ${branch.name}`,
+    })),
+  ];
+
+  return (
+    <Card className="overflow-hidden border-emerald-200 dark:border-emerald-900">
+      <CardContent className="grid p-0 lg:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="flex items-start gap-3 p-5">
+          <div className="rounded-xl bg-emerald-100 p-2.5 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+            <TrendingUp className="size-5" aria-hidden="true" />
+          </div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-semibold">Admin Sales View</h2>
+              <Badge variant="outline">Sales only</Badge>
+              {isFetching ? (
+                <span className="flex items-center gap-1 text-xs text-slate-500">
+                  <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+                  Updating
+                </span>
+              ) : null}
+            </div>
+            <p className="mt-1 max-w-2xl text-sm text-slate-500">
+              Period and branch apply to sales, transactions, trend, and branch
+              performance. Inventory and alerts stay live across all branches.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-4 border-t bg-slate-50/70 p-4 sm:grid-cols-[auto_minmax(12rem,1fr)] lg:border-t-0 lg:border-l dark:bg-slate-950/30">
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+              <CalendarDays className="size-3.5" aria-hidden="true" />
+              Period
+            </div>
+            <div className="flex flex-wrap gap-1 rounded-lg border bg-background p-1">
+              {SALES_PERIOD_OPTIONS.map((option) => (
+                <Button
+                  key={option.value}
+                  type="button"
+                  size="sm"
+                  variant={period === option.value ? "default" : "ghost"}
+                  aria-pressed={period === option.value}
+                  onClick={() => onPeriodChange(option.value)}
+                >
+                  {option.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+              <MapPin className="size-3.5" aria-hidden="true" />
+              Branch
+            </div>
+            <Select<string>
+              items={branchOptions}
+              value={branchId}
+              onValueChange={(value) => {
+                if (value !== null) onBranchChange(value);
+              }}
+            >
+              <SelectTrigger className="w-full sm:min-w-56" aria-label="Sales branch">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {branchOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

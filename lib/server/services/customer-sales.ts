@@ -19,7 +19,7 @@ import {
   type AuthContext,
 } from "../authorization";
 import { prisma } from "../prisma";
-import { findActiveBranch } from "../locations";
+import { findActiveBranch, listActiveBranches } from "../locations";
 import { canAccessLocation, hasAllLocationAccess } from "../policy/access";
 import { createNotifications, notifyInventoryThresholdChange } from "./notifications";
 import { parseReceiptOcrDraft } from "./receipt-ocr";
@@ -133,6 +133,24 @@ export const branchMismatchResponseSchema = z.object({
     });
   }
 });
+
+export const dashboardSalesFiltersSchema = z.object({
+  salesPeriod: z
+    .enum(["today", "last7Days", "monthToDate"])
+    .optional(),
+  salesBranchId: z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim() === "" ? undefined : value,
+    z.string().trim().max(100).optional(),
+  ),
+});
+
+export type DashboardSalesFilters = z.infer<
+  typeof dashboardSalesFiltersSchema
+>;
+type DashboardSalesPeriod = NonNullable<
+  DashboardSalesFilters["salesPeriod"]
+> | "last30Days";
 
 export const accountingResolutionSchema = z.object({
   action: z.enum(ACCOUNTING_RESOLUTION_ACTIONS),
@@ -1213,16 +1231,92 @@ export async function resolveSale(actor: AuthContext, saleId: string, input: z.i
   }
 }
 
+const MANILA_OFFSET_MS = 8 * 60 * 60 * 1_000;
+const DAY_MS = 24 * 60 * 60 * 1_000;
+
+function manilaDate(date: Date) {
+  return new Date(date.getTime() + MANILA_OFFSET_MS);
+}
+
 function dayStart(date = new Date()) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const manila = manilaDate(date);
+  return new Date(
+    Date.UTC(
+      manila.getUTCFullYear(),
+      manila.getUTCMonth(),
+      manila.getUTCDate(),
+    ) - MANILA_OFFSET_MS,
+  );
 }
 
 function monthStart(date = new Date()) {
-  return new Date(date.getFullYear(), date.getMonth(), 1);
+  const manila = manilaDate(date);
+  return new Date(
+    Date.UTC(manila.getUTCFullYear(), manila.getUTCMonth(), 1) -
+      MANILA_OFFSET_MS,
+  );
 }
 
 function dateKey(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  const manila = manilaDate(date);
+  return `${manila.getUTCFullYear()}-${String(manila.getUTCMonth() + 1).padStart(2, "0")}-${String(manila.getUTCDate()).padStart(2, "0")}`;
+}
+
+function hourKey(date: Date) {
+  return String(manilaDate(date).getUTCHours()).padStart(2, "0");
+}
+
+function dashboardSalesWindow(
+  period: DashboardSalesPeriod,
+  now: Date,
+) {
+  if (period === "last7Days") {
+    return { start: new Date(dayStart(now).getTime() - 6 * DAY_MS), label: "Last 7 Days" };
+  }
+
+  if (period === "monthToDate") {
+    return { start: monthStart(now), label: "Month to Date" };
+  }
+
+  if (period === "last30Days") {
+    return { start: new Date(dayStart(now).getTime() - 29 * DAY_MS), label: "Last 30 Days" };
+  }
+
+  return { start: dayStart(now), label: "Today" };
+}
+
+function dashboardTrendBuckets(
+  period: DashboardSalesPeriod,
+  start: Date,
+  now: Date,
+) {
+  const buckets = new Map<
+    string,
+    { label: string; sales: number; transactions: number }
+  >();
+
+  if (period === "today") {
+    for (let hour = 0; hour <= manilaDate(now).getUTCHours(); hour += 1) {
+      const key = String(hour).padStart(2, "0");
+      buckets.set(key, {
+        label: `${key}:00`,
+        sales: 0,
+        transactions: 0,
+      });
+    }
+    return buckets;
+  }
+
+  const lastDay = dayStart(now);
+  for (
+    let date = new Date(start);
+    date <= lastDay;
+    date = new Date(date.getTime() + DAY_MS)
+  ) {
+    const key = dateKey(date);
+    buckets.set(key, { label: key, sales: 0, transactions: 0 });
+  }
+  return buckets;
 }
 
 function saleScope(actor: AuthContext): Prisma.SaleWhereInput {
@@ -1233,22 +1327,51 @@ function orderScope(actor: AuthContext): Prisma.CustomerOrderWhereInput {
   return { locationId: locationIdFilter(actor) };
 }
 
-export async function getDashboardSummary(actor: AuthContext) {
+export async function getDashboardSummary(
+  actor: AuthContext,
+  requestedFilters: unknown = {},
+) {
   assertCapability(actor, "dashboard:view");
+  const filters = dashboardSalesFiltersSchema.parse(requestedFilters);
+  const salesPeriod =
+    filters.salesPeriod ?? (actor.isOwner ? "today" : "last30Days");
+  if (
+    !actor.isOwner &&
+    (filters.salesPeriod || filters.salesBranchId)
+  ) {
+    throw new AuthorizationError("Sales dashboard filters are Admin-only");
+  }
+
+  const salesBranches = actor.isOwner ? await listActiveBranches() : [];
+  const selectedSalesBranch = filters.salesBranchId
+    ? salesBranches.find((branch) => branch.id === filters.salesBranchId)
+    : null;
+  if (filters.salesBranchId && !selectedSalesBranch) {
+    throw new CustomerSalesError(
+      "INVALID_BRANCH",
+      "Select an active sales branch",
+      400,
+    );
+  }
+
   const scopedSales = saleScope(actor);
   const scopedOrders = orderScope(actor);
   const inventoryScope: Prisma.InventoryBalanceWhereInput = { locationId: locationIdFilter(actor) };
   const transferScope: Prisma.StockTransferWhereInput = {
     destinationId: locationIdFilter(actor),
   };
-  const today = dayStart();
-  const month = monthStart();
-  const trendStart = dayStart();
-  trendStart.setDate(trendStart.getDate() - 29);
+  const now = new Date();
+  const today = dayStart(now);
+  const month = monthStart(now);
+  const salesWindow = dashboardSalesWindow(salesPeriod, now);
+  const filteredSalesScope: Prisma.SaleWhereInput = {
+    locationId: selectedSalesBranch?.id ?? locationIdFilter(actor),
+  };
   const agedOrderDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1_000);
-  const [todaySales, mtdSales, openOrders, readyOrders, flagged, unverified, verifiedToday, agedOrders, lowBalances, supplierReceiptsToday, transferDrafts, transfersForDispatch, inTransitTransfers, discrepanciesNeedingAction, incomingTransfers, chartSales] = await Promise.all([
+  const [todaySales, mtdSales, filteredSales, openOrders, readyOrders, flagged, unverified, verifiedToday, agedOrders, lowBalances, supplierReceiptsToday, transferDrafts, transfersForDispatch, inTransitTransfers, discrepanciesNeedingAction, incomingTransfers, chartSales] = await Promise.all([
     prisma.sale.aggregate({ where: { ...scopedSales, status: "POSTED", postedAt: { gte: today } }, _sum: { totalAmount: true }, _count: true }),
     prisma.sale.aggregate({ where: { ...scopedSales, status: "POSTED", postedAt: { gte: month } }, _sum: { totalAmount: true }, _count: true }),
+    prisma.sale.aggregate({ where: { ...filteredSalesScope, status: "POSTED", postedAt: { gte: salesWindow.start, lte: now } }, _sum: { totalAmount: true }, _count: true }),
     prisma.customerOrder.count({ where: { ...scopedOrders, status: { in: ["RESERVED", "WAITING_STOCK", "READY_FOR_RELEASE"] } } }),
     prisma.customerOrder.count({ where: { ...scopedOrders, status: "READY_FOR_RELEASE" } }),
     prisma.saleAccountingReview.count({ where: { status: "MISMATCH_REPORTED", sale: { ...scopedSales, status: "POSTED" } } }),
@@ -1265,7 +1388,7 @@ export async function getDashboardSummary(actor: AuthContext) {
     prisma.stockTransfer.count({ where: { ...transferScope, status: "IN_TRANSIT" } }),
     prisma.stockTransfer.count({ where: { ...transferScope, status: { in: ["DISCREPANCY_REPORTED", "UNDER_REVIEW"] } } }),
     prisma.stockTransfer.count({ where: { ...transferScope, status: "IN_TRANSIT" } }),
-    prisma.sale.findMany({ where: { ...scopedSales, status: "POSTED", postedAt: { gte: trendStart } }, select: { postedAt: true, totalAmount: true, location: { select: { name: true } } } }),
+    prisma.sale.findMany({ where: { ...filteredSalesScope, status: "POSTED", postedAt: { gte: salesWindow.start, lte: now } }, select: { postedAt: true, totalAmount: true, location: { select: { name: true } } } }),
   ]);
   const lowStock = lowBalances
     .filter((balance) => balance.onHand - balance.reserved <= balance.product.reorderLevel)
@@ -1284,15 +1407,16 @@ export async function getDashboardSummary(actor: AuthContext) {
   ).size;
   const outOfStockCount = lowBalances.filter((balance) => balance.onHand - balance.reserved <= 0).length;
   const inactiveWithStockCount = lowBalances.filter((balance) => balance.product.status === "INACTIVE" && balance.onHand > 0).length;
-  const trendByDate = new Map<string, { date: string; sales: number; transactions: number }>();
-  for (let index = 0; index < 30; index += 1) {
-    const date = new Date(trendStart);
-    date.setDate(trendStart.getDate() + index);
-    trendByDate.set(dateKey(date), { date: dateKey(date), sales: 0, transactions: 0 });
-  }
+  const trendByDate = dashboardTrendBuckets(
+    salesPeriod,
+    salesWindow.start,
+    now,
+  );
   const branchByName = new Map<string, { branch: string; sales: number; transactions: number }>();
   for (const sale of chartSales) {
-    const key = dateKey(sale.postedAt);
+    const key = salesPeriod === "today"
+      ? hourKey(sale.postedAt)
+      : dateKey(sale.postedAt);
     const daily = trendByDate.get(key);
     if (daily) {
       daily.sales += sale.totalAmount.toNumber();
@@ -1306,6 +1430,16 @@ export async function getDashboardSummary(actor: AuthContext) {
 
   return {
     capabilities: actor.capabilities,
+    canFilterSales: actor.isOwner,
+    salesFilter: {
+      period: salesPeriod,
+      periodLabel: salesWindow.label,
+      branchId: selectedSalesBranch?.id ?? "all",
+      branchLabel: selectedSalesBranch?.name ?? "All Branches",
+    },
+    salesBranches,
+    filteredSales: filteredSales._sum.totalAmount?.toNumber() ?? 0,
+    filteredTransactions: filteredSales._count,
     todaySales: todaySales._sum.totalAmount?.toNumber() ?? 0,
     todayTransactions: todaySales._count,
     monthSales: mtdSales._sum.totalAmount?.toNumber() ?? 0,
