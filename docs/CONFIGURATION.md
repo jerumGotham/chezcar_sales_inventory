@@ -1,6 +1,8 @@
 <!-- generated-by: gsd-doc-writer -->
 # Configuration
 
+Private workflow evidence may use `BACKJOB_EVIDENCE_STORAGE_PATH`, `WARRANTY_EVIDENCE_STORAGE_PATH`, and `SUPPLIER_CLAIM_STORAGE_PATH`. Defaults are under `data/`; production must mount persistent private storage and include it in backup/restore procedures.
+
 This project uses checked-in configuration for Next.js, Better Auth, TypeScript, Tailwind CSS, PostCSS, React Query, Prisma, ESLint, Vitest, read-only SheetJS workbook profiling, and local PostgreSQL. Authentication and implemented product, inventory, customer, order, sales, accounting, notification, user, role, and branch workflows use PostgreSQL; Job Orders and supporting panels remain mock-backed.
 
 ## Environment variables

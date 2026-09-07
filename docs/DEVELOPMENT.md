@@ -1,7 +1,8 @@
 <!-- generated-by: gsd-doc-writer -->
+
 # Development
 
-This guide covers development of the Chezcar Sales & Inventory UI prototype. The repository is hybrid: documented workflows use authenticated Prisma/PostgreSQL APIs, while Job Orders and some supporting panels remain mock/local. Preserve that distinction when changing or reviewing the code.
+This guide covers development of the Chezcar Sales & Monitoring UI prototype. The repository is hybrid: documented workflows use authenticated Prisma/PostgreSQL APIs, while Job Orders and some supporting panels remain mock/local. Preserve that distinction when changing or reviewing the code.
 
 ## Local setup
 
@@ -158,20 +159,20 @@ When adding a shared shadcn-style primitive, keep `components.json` aliases and 
 
 ## Commands
 
-| Command | Description |
-| --- | --- |
-| `npm install` | Install dependencies and update the npm lockfile when package requirements change. |
-| `npm run dev` | Start the Next.js development server. |
-| `npm run build` | Create an optimized production build and run Next.js build-time checks. |
-| `npm run start` | Serve an existing production build; run `npm run build` first. |
-| `npm run lint` | Run deterministic ESLint. It currently passes with existing warnings. |
-| `npm run typecheck` | Run standalone strict TypeScript checking without emitting files. |
-| `npm test` | Run the Vitest Node unit project once. |
-| `npm run test:integration` | Run serial integration tests against the fixed disposable PostgreSQL container. |
-| `npm run prisma:generate` | Regenerate Prisma Client. |
-| `npm run db:migrate` | Create/apply development migrations. |
-| `npm run db:seed` | Seed reference catalog data and the environment-supplied Admin. |
-| `npm run db:data:reset` | Clear local Compose operational data while preserving users/auth, products, and locations; requires `ALLOW_OPERATIONAL_DATA_RESET=true`. |
+| Command                    | Description                                                                                                                              |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm install`              | Install dependencies and update the npm lockfile when package requirements change.                                                       |
+| `npm run dev`              | Start the Next.js development server.                                                                                                    |
+| `npm run build`            | Create an optimized production build and run Next.js build-time checks.                                                                  |
+| `npm run start`            | Serve an existing production build; run `npm run build` first.                                                                           |
+| `npm run lint`             | Run deterministic ESLint. Current verification passes with 23 warnings.                                                                   |
+| `npm run typecheck`        | Run standalone strict TypeScript checking without emitting files.                                                                        |
+| `npm test`                 | Run the Vitest Node unit project once.                                                                                                   |
+| `npm run test:integration` | Run serial integration tests against the fixed disposable PostgreSQL container.                                                          |
+| `npm run prisma:generate`  | Regenerate Prisma Client.                                                                                                                |
+| `npm run db:migrate`       | Create/apply development migrations.                                                                                                     |
+| `npm run db:seed`          | Seed reference catalog data and the environment-supplied Admin.                                                                          |
+| `npm run db:data:reset`    | Clear local Compose operational data while preserving users/auth, products, and locations; requires `ALLOW_OPERATIONAL_DATA_RESET=true`. |
 
 There is no formatting script, browser-test script, or coverage script.
 

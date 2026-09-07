@@ -11,7 +11,7 @@ export function parseReceiptFormData(formData: FormData): ReceiptFormParseResult
   }
 
   for (const key of formData.keys()) {
-    const match = /^(?:productId|quantity|unitCost)-(\d+)$/.exec(key);
+    const match = /^(?:productId|expectedQuantity|acceptedQuantity|quarantinedQuantity|missingQuantity|claimReason|claimNotes|unitCost)-(\d+)$/.exec(key);
     if (match && Number(match[1]) >= lineCount) {
       return { ok: false, message: "Receipt line count does not match the submitted lines." };
     }
@@ -19,11 +19,16 @@ export function parseReceiptFormData(formData: FormData): ReceiptFormParseResult
 
   const result = createStockReceiptSchema.safeParse({
     reference: String(formData.get("reference") ?? ""),
-    supplier: String(formData.get("supplier") ?? ""),
+    supplierId: String(formData.get("supplierId") ?? ""),
     notes: String(formData.get("notes") ?? "").trim() || undefined,
     lines: Array.from({ length: lineCount }, (_, index) => ({
       productId: String(formData.get(`productId-${index}`) ?? ""),
-      quantity: Number(formData.get(`quantity-${index}`)),
+      expectedQuantity: Number(formData.get(`expectedQuantity-${index}`)),
+      acceptedQuantity: Number(formData.get(`acceptedQuantity-${index}`)),
+      quarantinedQuantity: Number(formData.get(`quarantinedQuantity-${index}`)),
+      missingQuantity: Number(formData.get(`missingQuantity-${index}`)),
+      claimReason: String(formData.get(`claimReason-${index}`) ?? "") || undefined,
+      claimNotes: String(formData.get(`claimNotes-${index}`) ?? "").trim() || undefined,
       unitCost: Number(formData.get(`unitCost-${index}`)),
     })),
   });

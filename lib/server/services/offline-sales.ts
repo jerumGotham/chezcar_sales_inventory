@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { availableStock } from "@/lib/inventory-quantity";
 
 import {
   assertCapability,
@@ -82,6 +83,11 @@ export async function getOfflineSnapshot(actor: AuthContext, rawInput: unknown) 
     orderBy: { product: { itemCode: "asc" } },
     take: 500,
   });
+  const salespersons = await prisma.personnel.findMany({
+    where: { locationId, status: "ACTIVE", type: { in: ["SALESPERSON", "BOTH"] } },
+    select: { id: true, fullName: true, locationId: true },
+    orderBy: { fullName: "asc" },
+  });
 
   return {
     deviceId: input.deviceId,
@@ -93,9 +99,10 @@ export async function getOfflineSnapshot(actor: AuthContext, rawInput: unknown) 
       itemCode: balance.product.itemCode,
       name: balance.product.name,
       price: balance.product.price?.toNumber() ?? 0,
-      available: Math.max(0, balance.onHand - balance.reserved),
+      available: availableStock(balance),
       balanceVersion: balance.version,
     })),
+    salespersons,
   };
 }
 
@@ -124,7 +131,17 @@ export async function syncOfflineSale(actor: AuthContext, rawInput: unknown) {
   });
 
   const parsedSale = directSaleSchema.safeParse(input.payload);
-  if (!parsedSale.success || parsedSale.data.customer) {
+  if (!parsedSale.success) {
+    const isLegacyWithoutSalesperson = typeof input.payload === "object" && input.payload !== null && !("salespersonId" in input.payload);
+    return updateOfflineResult(
+      operation.id,
+      submission.id,
+      isLegacyWithoutSalesperson ? "NEEDS_REVIEW" : "REJECTED",
+      isLegacyWithoutSalesperson ? "Assign a salesperson before this legacy offline sale can be posted" : "Offline sale payload is invalid",
+      null,
+    );
+  }
+  if (parsedSale.data.customer) {
     return updateOfflineResult(operation.id, submission.id, "REJECTED", "Offline sale payload is invalid or contains new customer details", null);
   }
 

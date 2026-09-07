@@ -17,6 +17,7 @@ export type InventoryRow = {
   location: string;
   onHand: number;
   reserved: number;
+  quarantined: number;
   reorderLevel: number;
   unitCost: number;
   lastUpdated: string;
@@ -29,6 +30,7 @@ export type ProductGroupRow = {
   category: string;
   totalOnHand: number;
   totalReserved: number;
+  totalQuarantined: number;
   totalAvailable: number;
   reorderLevel: number;
   unitCost: number;
@@ -65,6 +67,7 @@ export type BranchAvailabilityRow = {
   location: string;
   onHand: number;
   reserved: number;
+  quarantined: number;
   available: number;
   status: InventoryStatus;
 };
@@ -156,7 +159,7 @@ export const MOVEMENT_TYPE_OPTIONS: SelectOption[] = [
   { value: "Job Order Usage", label: "Job Order Usage" },
 ];
 
-export const MOCK_INVENTORY: InventoryRow[] = [
+export const MOCK_INVENTORY: InventoryRow[] = ([
   {
     id: "INV-1001",
     itemCode: "ITM-0001",
@@ -313,7 +316,7 @@ export const MOCK_INVENTORY: InventoryRow[] = [
     lastUpdated: "2026-04-03 12:00 PM",
     status: "Low Stock",
   },
-];
+] satisfies Array<Omit<InventoryRow, "quarantined">>).map((row) => ({ ...row, quarantined: 0 }));
 
 export const MOCK_STOCK_MOVEMENTS: StockMovement[] = [
   {
@@ -385,7 +388,7 @@ export const MOCK_STOCK_MOVEMENTS: StockMovement[] = [
 ];
 
 export function getAvailableStock(row: InventoryRow) {
-  return Math.max(row.onHand - row.reserved, 0);
+  return row.onHand - row.reserved - row.quarantined;
 }
 
 export function formatPeso(value: number) {

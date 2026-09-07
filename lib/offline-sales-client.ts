@@ -1,6 +1,7 @@
 export type OfflineSalePayload = {
   customerId?: string;
   locationId?: string;
+  salespersonId: string;
   receiptBooklet?: string;
   manualReceiptNumber: string;
   paymentMethod: string;
@@ -26,6 +27,7 @@ export type OfflineSnapshot = {
   authorizedAt: string;
   expiresAt: string;
   products: Array<{ id: string; itemCode: string; name: string; price: number; available: number; balanceVersion: number }>;
+  salespersons: Array<{ id: string; fullName: string; locationId: string }>;
 };
 
 type OfflineSyncServerStatus = "ACCEPTED" | "ALREADY_ACCEPTED" | "REJECTED" | "NEEDS_REVIEW" | "CONFLICT" | "PENDING";

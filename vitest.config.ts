@@ -7,9 +7,11 @@ const rootAlias = {
 };
 
 export default defineConfig({
+  resolve: { alias: rootAlias },
   test: {
     projects: [
       {
+        resolve: { alias: rootAlias },
         test: {
           name: "unit",
           environment: "node",

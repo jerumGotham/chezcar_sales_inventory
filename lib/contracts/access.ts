@@ -20,6 +20,9 @@ export type ShellMenuIcon =
   | "users"
   | "roles"
   | "branches"
+  | "suppliers"
+  | "personnel"
+  | "returns-warranty"
   | "stock-transfers"
   | "offline-devices";
 
@@ -35,6 +38,9 @@ export type ShellMenuHref =
    | "/users"
   | "/users/roles"
   | "/branches"
+  | "/suppliers"
+  | "/personnel"
+  | "/inventory/returns-warranty"
   | "/stock-transfers"
   | "/offline";
 

@@ -230,7 +230,17 @@ describe("canonical opening seed", () => {
       });
       expect(seededRoles.find((role) => role.id === "role-admin")).toMatchObject({
         isOwner: true,
-        permissions: expect.arrayContaining(["locations:all"]),
+        permissions: expect.arrayContaining([
+          "locations:all",
+          "suppliers:view",
+          "suppliers:create",
+          "suppliers:update",
+          "suppliers:deactivate",
+          "personnel:view",
+          "personnel:create",
+          "personnel:update",
+          "personnel:deactivate",
+        ]),
       });
       expect(
         seededRoles.find((role) => role.id === "role-accounting-staff")?.permissions,
@@ -238,6 +248,12 @@ describe("canonical opening seed", () => {
       expect(
         seededRoles.find((role) => role.id === "role-stock-staff")?.permissions,
       ).not.toContain("locations:all");
+      expect(
+        seededRoles.find((role) => role.id === "role-stock-staff")?.permissions,
+      ).not.toContain("suppliers:view");
+      expect(
+        seededRoles.find((role) => role.id === "role-stock-staff")?.permissions,
+      ).not.toContain("personnel:view");
 
       const beforeFailure = await canonicalRows(prisma);
       await expect(

@@ -14,6 +14,9 @@ import {
   Building2,
   Users,
   ShoppingCart,
+  Truck,
+  Contact,
+  RotateCcw,
   type LucideIcon,
 } from "lucide-react";
 
@@ -78,6 +81,13 @@ export const menus = [
     capability: "inventory:view",
   },
   {
+    label: "Returns & Warranty",
+    href: "/inventory/returns-warranty",
+    icon: RotateCcw,
+    iconId: "returns-warranty",
+    capability: ["backjobs:view", "customer-warranties:view", "supplier-claims:view"],
+  },
+  {
     label: "Stock Transfers",
     href: "/stock-transfers",
     icon: ArrowLeftRight,
@@ -97,6 +107,20 @@ export const menus = [
     icon: Building2,
     iconId: "branches",
     capability: "branches:view",
+  },
+  {
+    label: "Supplier Maintenance",
+    href: "/suppliers",
+    icon: Truck,
+    iconId: "suppliers",
+    capability: "suppliers:view",
+  },
+  {
+    label: "Personnel Maintenance",
+    href: "/personnel",
+    icon: Contact,
+    iconId: "personnel",
+    capability: "personnel:view",
   },
   {
     label: "Role Maintenance",

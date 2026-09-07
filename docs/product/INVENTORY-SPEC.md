@@ -1,16 +1,18 @@
 # Inventory Production Spec
 
 **Status:** Accepted scope for inventory balance/correction phase
-**Last updated:** 2026-08-26
-**Source:** Grill-with-docs inventory decisions; ADR 0011
+**Last updated:** 2026-09-07
+**Source:** Grill-with-docs inventory decisions; ADR 0011 and ADR 0016
+
+The quarantine balance, database invariants, read surfaces, availability calculations, and authorized Returns/Warranty physical actions are implemented. Arbitrary direct quarantine editing remains prohibited.
 
 ## Purpose
 
-Make inventory reliable for production by preserving business-workflow stock movements, exposing reservation-aware balances, adding Admin-only correction, and generating low-stock notifications from available stock.
+Make inventory reliable for production by preserving business-workflow stock movements, exposing reservation- and quarantine-aware balances, adding Admin-only correction, and generating low-stock notifications from available stock.
 
 ## In Scope
 
-- Role-scoped inventory balance views with `onHand`, `reserved`, and `available`.
+- Role-scoped inventory balance views with `onHand`, `reserved`, `quarantined`, and `available`.
 - Admin all-location inventory visibility.
 - Branch Staff assigned-branch current balances.
 - Stock Staff `SR` and transfer-relevant branch inventory visibility.
@@ -21,13 +23,15 @@ Make inventory reliable for production by preserving business-workflow stock mov
 - Low available / out-of-stock notifications based on available quantity.
 - Admin-only reorder level editing.
 - Admin-only CSV export.
+- Per-location quarantined quantity for physically received non-sellable stock.
+- Returns/Warranty movements for Backjob parts, customer returns/replacements, supplier returns/replacements, repairs, and write-offs.
 
 ## Out Of Scope
 
 - Branch Staff stock card/history.
 - Branch Staff or Stock Staff arbitrary manual corrections.
 - Automatic reorder purchase orders.
-- Damaged/return physical locations.
+- Dedicated damaged/return Location records; quarantine is a balance bucket at the existing location.
 - General inventory cycle-count workflow.
 - Accounting inventory screens outside sale/order reconciliation.
 
@@ -35,7 +39,8 @@ Make inventory reliable for production by preserving business-workflow stock mov
 
 - `onHand`: physical stock recorded at a location.
 - `reserved`: stock held for customer orders and unavailable for new sale.
-- `available`: `onHand - reserved`.
+- `quarantined`: physically on-hand stock that is unavailable pending assessment, repair, supplier return, replacement, or write-off.
+- `available`: `onHand - reserved - quarantined`.
 - In-transit transfer stock is accountable but not sellable at source or destination.
 
 ## Status Labels
@@ -44,7 +49,7 @@ Make inventory reliable for production by preserving business-workflow stock mov
 | --- | --- |
 | Available | Active product with available quantity above reorder level. |
 | Low Available | Active product with available quantity greater than zero and at/below reorder level. |
-| Fully Reserved | Active product with `onHand > 0` and `available = 0` because reservations consume stock. |
+| Fully Allocated | Active product with `onHand > 0` and `available = 0` because reservations and/or quarantine consume stock. |
 | Out of Stock | Active product with no available stock. |
 | Inactive With Stock | Inactive product with `onHand > 0` or `reserved > 0`. |
 | In Transit | Incoming transfer quantity exists for the product/location context. |
@@ -54,14 +59,14 @@ Make inventory reliable for production by preserving business-workflow stock mov
 1. Admin selects product, location, quantity delta, and required reason/note.
 2. Positive delta increases `onHand`.
 3. Negative delta decreases `onHand`.
-4. Negative delta is blocked if resulting `onHand < reserved`.
+4. Negative delta is blocked if resulting `onHand < reserved + quarantined` unless the authorized action is explicitly disposing of quarantined stock in the same transaction.
 5. Correction writes an inventory movement and updates balance in the same transaction.
 6. Branch Staff and Stock Staff cannot create manual corrections.
 7. Correction notifies affected staff based on corrected location.
 
 ## Low-Stock Notification Rules
 
-1. Low-stock state uses `available`, not `onHand`.
+1. Low-stock state uses `available = onHand - reserved - quarantined`, not `onHand`.
 2. Notify when product/location crosses into `Low Available`.
 3. Notify when product/location crosses into `Out of Stock`.
 4. Do not create separate notifications for `Fully Reserved` in the first implementation.
@@ -90,17 +95,17 @@ Make inventory reliable for production by preserving business-workflow stock mov
 
 - Admin-only.
 - Exports current filtered balance rows.
-- Includes product identity, category, brand, status, location, `onHand`, `reserved`, `available`, reorder level, and stock status.
+- Includes product identity, category, brand, status, location, `onHand`, `reserved`, `quarantined`, `available`, reorder level, and stock status.
 
 ## Acceptance Criteria
 
-1. All inventory views calculate and display `onHand`, `reserved`, and `available` for authorized scopes.
+1. All inventory views calculate and display `onHand`, `reserved`, `quarantined`, and `available` for authorized scopes.
 2. Branch Staff cannot view other branch balances.
 3. Branch Staff cannot access stock card/history.
 4. Admin can view stock card/history across all locations.
 5. Stock Staff sees only allowed `SR` and transfer/receiving history.
 6. Admin correction requires reason/note and creates movement plus balance update atomically.
-7. Negative correction that would make `onHand < reserved` is rejected.
+7. Negative correction that would make `onHand < reserved + quarantined` is rejected unless a linked authorized quarantine disposition reduces both values atomically.
 8. Low/out notifications are created only on status crossing.
 9. Reorder level editing is Admin-only.
 10. CSV export is Admin-only and respects current filters.

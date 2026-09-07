@@ -10,7 +10,7 @@ Vitest `4.1.11` is configured with Node unit and serial integration projects. Th
 | Unit tests | Vitest Node project; 26 suite files currently checked in |
 | Component tests | Not configured |
 | Route-handler tests | Unit-project direct-handler authorization suites (`tests/routes/authorization.test.ts`, `proxy.test.ts`); no DOM/browser runner |
-| Database integration tests | Serial Vitest project with fixed-identity disposable PostgreSQL 17 harness; 19 integration suite files currently checked in |
+| Database integration tests | Serial Vitest project with fixed-identity disposable PostgreSQL 17 harness; 25 integration suite files and 83 tests currently pass |
 | End-to-end tests | Not configured |
 | Coverage reporting or thresholds | Not configured |
 | CI test execution | `.github/workflows/ci.yml` runs on pull requests and pushes to `main` |
@@ -55,7 +55,7 @@ The current scripts provide these verification paths:
 | `npm run verify:phase-01 -- --validate-evidence` | Phase 1 evidence gate: asserts the disposable test target plus seed/reset environment, then records fresh migration deploy, seed, two hash-equivalent catalog reloads, full unit/integration suites, typecheck, and build in `docs/verification/phase-01-evidence.md`; captures lint's expected failure baseline separately and preserves completed manual UAT rows across reruns. |
 | `npm run build` | Creates a production Next.js build. A clean Node.js `20.20.2` isolated run passes on 2026-08-24, with existing Recharts zero-size prerender warnings. It is not a behavioral test suite. |
 | `npm run typecheck` | Runs strict TypeScript with `tsc --noEmit`. A clean Node.js `20.20.2` isolated run passes on 2026-08-24. |
-| `npm run lint` | Runs the checked-in ESLint flat configuration. It currently passes with existing warnings; report the exact result of the current run. |
+| `npm run lint` | Runs the checked-in ESLint flat configuration. Current verification passes with 23 warnings and zero errors. |
 | `npm audit --omit=dev` | Reports zero known production dependency findings as of 2026-08-24. The full development tree still reports one high and one low transitive tooling finding. |
 
 ## Checked-in suites
@@ -73,6 +73,8 @@ Unit project (`npm run test`):
 | `lib/permissions.test.ts` | Granular authorization | Action-to-view implications and sibling-action isolation |
 | `lib/customer-order-actions.test.ts` | Customer Orders | Capability-specific action visibility across order states and paid cancellation |
 | `tests/routes/branches.test.ts` | Branch Maintenance | Exact view/create/update authorization order, uppercase create input, and immutable PATCH code handling |
+| `tests/routes/suppliers.test.ts` | Supplier Maintenance routes | Exact view/create/update/status authorization and authorization-before-parse behavior |
+| `tests/routes/personnel.test.ts` | Personnel Maintenance routes | Exact view/create/update/status authorization and authorization-before-parse behavior |
 | `tests/routes/roles.test.ts` | Role Maintenance | Capability authorization order, actor propagation, and create/update contract parsing |
 | `lib/server/shell.test.ts` | 01-08 | Four-role shell DTOs and scope feedback |
 | `proxy.test.ts` | 01-15 | Page session routing, capability denial, safe callbacks |
@@ -92,6 +94,12 @@ Integration project (`npm run test:integration`, serial over disposable PostgreS
 | `tests/integration/auth-admin-surface.test.ts` | 01-17 | Internal credential engine; public sign-up and generic admin operations unroutable |
 | `tests/integration/user-management.test.ts` | 01-09 | Delegated location-constrained filters, summaries, options, lifecycle writes, and error envelopes |
 | `tests/integration/branch-maintenance.test.ts` | Branch Maintenance slice | Persisted active-branch add/edit, uppercase unique immutable codes, and shared active-location sources |
+| `tests/integration/supplier-maintenance.test.ts` | Supplier Maintenance slice | Normalized create/update, duplicate conflict, deactivate/reactivate, history visibility, and active receiving options |
+| `tests/integration/personnel-maintenance.test.ts` | Personnel Maintenance slice | Non-login identity, active-branch validation, effective-location scope, reassignment denial, lifecycle, and audit actors |
+| `tests/integration/salesperson-attribution.test.ts` | Salesperson attribution | Direct Sale and Customer Order snapshots, encoder separation, eligibility rejection, order reassignment, and release revalidation |
+| `tests/integration/inventory-quarantine.test.ts` | Quarantine foundation | Database nonnegative/allocation constraints and sale rejection when stock is quarantined |
+| `tests/integration/customer-warranties.test.ts` | Customer Warranty | Verified sale linkage, evidence, cumulative quantity, quarantine intake, approvals, and release movements |
+| `tests/integration/salesperson-attribution.test.ts` | Salesperson attribution | Direct Sale and Customer Order snapshots, encoder separation, eligibility rejection, order reassignment, and release revalidation |
 | `tests/integration/role-maintenance.test.ts` | Role Maintenance | Case-insensitive names, current/requested delegated grant ceilings, superior-role and self-edit refusal, safe all-location removal, optimistic conflict, assignment concurrency, immutable owner, and session revocation |
 | `tests/integration/user-management.test.ts` | User Management | Safe DTOs, complete-target location authority, all-location target refusal, provisioning cleanup failures, lifecycle writes, and session revocation |
 | `tests/integration/migration.test.ts`, `tests/integration/seed.test.ts` | Authorization migration/seed | Exact SQL legacy backfill, owner-role/user singleton constraints, multi-location preservation, owner marker, and expected `locations:all` grants |

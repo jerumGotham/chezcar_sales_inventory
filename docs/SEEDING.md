@@ -52,7 +52,9 @@ Rerun the same command when the reviewed fixture or local Admin credential needs
 npm run db:seed
 ```
 
-A repeat seed preserves the existing Admin, account, sessions, canonical product IDs, additional products, additional Branch Maintenance locations, and assigned users. It updates canonical product fields and the Admin password hash from the current environment, then replaces all opening inventory balances with the fixture values. Preserving product IDs keeps existing operational foreign-key references valid.
+A repeat seed preserves the existing Admin, account, sessions, canonical product IDs, additional products, Suppliers, Personnel, additional Branch Maintenance locations, and assigned users. It updates canonical product fields and the Admin password hash from the current environment, then replaces all opening inventory balances with the fixture values. Preserving product IDs keeps existing operational foreign-key references valid; no Supplier or Personnel records are fabricated from the catalog fixture.
+
+Opening inventory fixtures do not contain quarantine quantities. Replacement balance rows use the database default `quarantined = 0`; catalog reload intentionally resets quarantine with the complete opening-balance replacement and must not be used as an operational quarantine adjustment.
 
 ## Catalog-Only Reload
 

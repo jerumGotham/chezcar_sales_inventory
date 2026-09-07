@@ -14,68 +14,68 @@ Workbook fixture generation is gated: do not produce an approved canonical fixtu
 
 ## File Classification
 
-| New/Modified File | Role | Data Flow | Closest Analog | Match Quality |
-|---|---|---|---|---|
-| `package.json` | config | batch | `package.json` scripts/dependency blocks | exact-modification |
-| `package-lock.json` | config | batch | existing npm lockfile | generated |
-| `vitest.config.ts` | config | batch | none | no analog |
-| `scripts/data-onboarding/workbook-profile.mjs` / `.d.mts` | utility | file-I/O/transform | `prisma/seed.mjs` | partial |
-| `scripts/data-onboarding/canonicalize.mjs` / `.d.mts` | utility | transform | `lib/server/catalog.ts` Zod boundary | partial |
-| `scripts/data-onboarding/generate-seed.mjs` / `.d.mts` | utility | file-I/O/transform | `prisma/seed.mjs` | partial |
-| `scripts/data-onboarding/resolutions.json` | config | file-I/O | none | no analog |
-| `scripts/data-onboarding/source-mapping.json` | config | transform | none | no analog |
-| `prisma/fixtures/opening-catalog.json` | config/fixture | batch | `prisma/seed.mjs:6-39` | role-match |
-| `prisma/schema.prisma` | model | CRUD | current `prisma/schema.prisma` | exact-modification |
-| `prisma/migrations/<timestamp>_trusted_foundation/migration.sql` | migration | batch | initial foundation migration | exact |
-| `prisma/seed.mjs` | utility | batch/CRUD | current `prisma/seed.mjs` | exact-modification |
-| `lib/server/services/catalog-reset.ts` | service | batch/CRUD | `prisma/seed.mjs` + `lib/server/catalog.ts` | role-match |
-| `lib/contracts/users.ts` | model/contract | transform | `lib/catalog.ts` | exact-role |
-| `lib/contracts/access.ts` | model/contract | transform | `lib/catalog.ts` | exact-role |
-| `lib/server/policy/access.ts` | utility/policy | request-response | `lib/server/authorization.ts` | role-match |
-| `lib/server/authorization.ts` | middleware | request-response | current authorization module | exact-modification |
-| `lib/server/auth.ts` | config/provider | request-response | current Better Auth config | exact-modification |
-| `lib/server/internal-user-auth.ts` | server-only provider | request-response | `lib/server/auth.ts` | role-match |
-| `lib/server/shell.ts` | server loader | request-response/transform | `lib/server/authorization.ts` | role-match |
-| `lib/server/shell.test.ts` | test | transform/policy | none | no analog |
-| `lib/server/services/users.ts` | service | CRUD | `lib/server/catalog.ts` | role-match |
-| `app/api/users/route.ts` | route/controller | request-response/CRUD | `app/api/inventory/route.ts` | exact-role |
-| `app/api/users/[userId]/route.ts` | route/controller | request-response/CRUD | `app/api/inventory/route.ts` | role-match |
-| `app/api/users/[userId]/status/route.ts` | route/controller | request-response/CRUD | `app/api/inventory/route.ts` | role-match |
-| `app/api/users/[userId]/password/route.ts` | route/controller | request-response/CRUD | `app/api/inventory/route.ts` | role-match |
-| `app/api/credential-setup/route.ts` | route/controller | request-response/CRUD | auth handler + inventory route | partial |
-| `proxy.ts` | middleware | request-response | current `proxy.ts` | exact-modification |
-| `proxy.test.ts` | test | request-response | none | no analog |
-| `lib/menu.ts` | config | transform | current `lib/menu.ts` | exact-modification |
-| `components/app-sidebar.tsx` | component | transform/event-driven | current sidebar | exact-modification |
-| `components/app-layout-shell-client.tsx` | component | transform/event-driven | current client `app-layout-shell.tsx` | extraction |
-| `components/shell-access-context.tsx` | component/context | server-data hydration | providers pattern | partial |
-| `app/access-denied/page.tsx` | component/page | request-response | `app/sign-in/page.tsx` + `PageShell` | role-match |
-| `app/users/page.tsx` | component/page | request-response | current users page shell | exact-modification |
-| `app/users/users-client.tsx` | component | request-response/event-driven | `app/products/page.tsx` | exact-role |
-| `app/inventory/inventory-client.tsx` | component | request-response/event-driven | current `app/inventory/page.tsx` | extraction |
-| `app/sign-in/sign-in-form.tsx` | component | request-response/event-driven | current sign-in form | exact-modification |
-| `components/credential-setup-dialog.tsx` | component | request-response/event-driven | sign-in form + existing Dialog usage | role-match |
-| `scripts/data-onboarding/workbook-profile.test.ts` | test | file-I/O/transform | none | no analog |
-| `scripts/data-onboarding/canonicalize.test.ts` | test | transform | none | no analog |
-| `scripts/data-onboarding/generate-seed.test.ts` | test | file-I/O/transform | none | no analog |
-| `lib/server/services/catalog-reset.test.ts` | test | batch/CRUD | none | no analog |
-| `lib/server/authorization.test.ts` | test | request-response | none | no analog |
-| `tests/helpers/database.ts` | test utility | batch/CRUD | `lib/server/prisma.ts` | partial |
-| `tests/helpers/factories.ts` | test utility | CRUD | `prisma/seed.mjs` | partial |
-| `tests/helpers/requests.ts` | test utility | request-response | route `Request` construction | partial |
-| `tests/fixtures/workbook-edge-cases.xlsx` | test fixture | file-I/O | none | no analog |
-| `tests/integration/seed.test.ts` | test | batch/CRUD | none | no analog |
-| `tests/integration/inventory-scope.test.ts` | test | request-response/CRUD | none | no analog |
-| `tests/integration/user-management.test.ts` | test | request-response/CRUD | none | no analog |
-| `tests/integration/session-revocation.test.ts` | test | request-response/CRUD | none | no analog |
-| `tests/integration/auth-admin-surface.test.ts` | test | request-response/auth | auth catch-all | partial |
-| `tests/integration/credential-setup.test.ts` | test | request-response/CRUD | none | no analog |
-| `docs/API.md` | config/documentation | transform | current API document | exact-modification |
-| `docs/DATABASE.md` | config/documentation | transform | current database document | exact-modification |
-| `docs/TESTING.md` | config/documentation | transform | current testing document | exact-modification |
-| `docs/ARCHITECTURE.md` / `docs/CONFIGURATION.md` | config/documentation | transform | current documents | exact-modification |
-| `docs/verification/phase-01-evidence.md` | verification evidence | batch/manual | none | no analog |
-| `scripts/verify-phase-01.mjs` | verification runner | batch/process | `prisma/seed.mjs` exit handling | partial |
+| New/Modified File                                                | Role                  | Data Flow                     | Closest Analog                              | Match Quality      |
+| ---------------------------------------------------------------- | --------------------- | ----------------------------- | ------------------------------------------- | ------------------ |
+| `package.json`                                                   | config                | batch                         | `package.json` scripts/dependency blocks    | exact-modification |
+| `package-lock.json`                                              | config                | batch                         | existing npm lockfile                       | generated          |
+| `vitest.config.ts`                                               | config                | batch                         | none                                        | no analog          |
+| `scripts/data-onboarding/workbook-profile.mjs` / `.d.mts`        | utility               | file-I/O/transform            | `prisma/seed.mjs`                           | partial            |
+| `scripts/data-onboarding/canonicalize.mjs` / `.d.mts`            | utility               | transform                     | `lib/server/catalog.ts` Zod boundary        | partial            |
+| `scripts/data-onboarding/generate-seed.mjs` / `.d.mts`           | utility               | file-I/O/transform            | `prisma/seed.mjs`                           | partial            |
+| `scripts/data-onboarding/resolutions.json`                       | config                | file-I/O                      | none                                        | no analog          |
+| `scripts/data-onboarding/source-mapping.json`                    | config                | transform                     | none                                        | no analog          |
+| `prisma/fixtures/opening-catalog.json`                           | config/fixture        | batch                         | `prisma/seed.mjs:6-39`                      | role-match         |
+| `prisma/schema.prisma`                                           | model                 | CRUD                          | current `prisma/schema.prisma`              | exact-modification |
+| `prisma/migrations/<timestamp>_trusted_foundation/migration.sql` | migration             | batch                         | initial foundation migration                | exact              |
+| `prisma/seed.mjs`                                                | utility               | batch/CRUD                    | current `prisma/seed.mjs`                   | exact-modification |
+| `lib/server/services/catalog-reset.ts`                           | service               | batch/CRUD                    | `prisma/seed.mjs` + `lib/server/catalog.ts` | role-match         |
+| `lib/contracts/users.ts`                                         | model/contract        | transform                     | `lib/catalog.ts`                            | exact-role         |
+| `lib/contracts/access.ts`                                        | model/contract        | transform                     | `lib/catalog.ts`                            | exact-role         |
+| `lib/server/policy/access.ts`                                    | utility/policy        | request-response              | `lib/server/authorization.ts`               | role-match         |
+| `lib/server/authorization.ts`                                    | middleware            | request-response              | current authorization module                | exact-modification |
+| `lib/server/auth.ts`                                             | config/provider       | request-response              | current Better Auth config                  | exact-modification |
+| `lib/server/internal-user-auth.ts`                               | server-only provider  | request-response              | `lib/server/auth.ts`                        | role-match         |
+| `lib/server/shell.ts`                                            | server loader         | request-response/transform    | `lib/server/authorization.ts`               | role-match         |
+| `lib/server/shell.test.ts`                                       | test                  | transform/policy              | none                                        | no analog          |
+| `lib/server/services/users.ts`                                   | service               | CRUD                          | `lib/server/catalog.ts`                     | role-match         |
+| `app/api/users/route.ts`                                         | route/controller      | request-response/CRUD         | `app/api/inventory/route.ts`                | exact-role         |
+| `app/api/users/[userId]/route.ts`                                | route/controller      | request-response/CRUD         | `app/api/inventory/route.ts`                | role-match         |
+| `app/api/users/[userId]/status/route.ts`                         | route/controller      | request-response/CRUD         | `app/api/inventory/route.ts`                | role-match         |
+| `app/api/users/[userId]/password/route.ts`                       | route/controller      | request-response/CRUD         | `app/api/inventory/route.ts`                | role-match         |
+| `app/api/credential-setup/route.ts`                              | route/controller      | request-response/CRUD         | auth handler + inventory route              | partial            |
+| `proxy.ts`                                                       | middleware            | request-response              | current `proxy.ts`                          | exact-modification |
+| `proxy.test.ts`                                                  | test                  | request-response              | none                                        | no analog          |
+| `lib/menu.ts`                                                    | config                | transform                     | current `lib/menu.ts`                       | exact-modification |
+| `components/app-sidebar.tsx`                                     | component             | transform/event-driven        | current sidebar                             | exact-modification |
+| `components/app-layout-shell-client.tsx`                         | component             | transform/event-driven        | current client `app-layout-shell.tsx`       | extraction         |
+| `components/shell-access-context.tsx`                            | component/context     | server-data hydration         | providers pattern                           | partial            |
+| `app/access-denied/page.tsx`                                     | component/page        | request-response              | `app/sign-in/page.tsx` + `PageShell`        | role-match         |
+| `app/users/page.tsx`                                             | component/page        | request-response              | current users page shell                    | exact-modification |
+| `app/users/users-client.tsx`                                     | component             | request-response/event-driven | `app/products/page.tsx`                     | exact-role         |
+| `app/inventory/inventory-client.tsx`                             | component             | request-response/event-driven | current `app/inventory/page.tsx`            | extraction         |
+| `app/sign-in/sign-in-form.tsx`                                   | component             | request-response/event-driven | current sign-in form                        | exact-modification |
+| `components/credential-setup-dialog.tsx`                         | component             | request-response/event-driven | sign-in form + existing Dialog usage        | role-match         |
+| `scripts/data-onboarding/workbook-profile.test.ts`               | test                  | file-I/O/transform            | none                                        | no analog          |
+| `scripts/data-onboarding/canonicalize.test.ts`                   | test                  | transform                     | none                                        | no analog          |
+| `scripts/data-onboarding/generate-seed.test.ts`                  | test                  | file-I/O/transform            | none                                        | no analog          |
+| `lib/server/services/catalog-reset.test.ts`                      | test                  | batch/CRUD                    | none                                        | no analog          |
+| `lib/server/authorization.test.ts`                               | test                  | request-response              | none                                        | no analog          |
+| `tests/helpers/database.ts`                                      | test utility          | batch/CRUD                    | `lib/server/prisma.ts`                      | partial            |
+| `tests/helpers/factories.ts`                                     | test utility          | CRUD                          | `prisma/seed.mjs`                           | partial            |
+| `tests/helpers/requests.ts`                                      | test utility          | request-response              | route `Request` construction                | partial            |
+| `tests/fixtures/workbook-edge-cases.xlsx`                        | test fixture          | file-I/O                      | none                                        | no analog          |
+| `tests/integration/seed.test.ts`                                 | test                  | batch/CRUD                    | none                                        | no analog          |
+| `tests/integration/inventory-scope.test.ts`                      | test                  | request-response/CRUD         | none                                        | no analog          |
+| `tests/integration/user-management.test.ts`                      | test                  | request-response/CRUD         | none                                        | no analog          |
+| `tests/integration/session-revocation.test.ts`                   | test                  | request-response/CRUD         | none                                        | no analog          |
+| `tests/integration/auth-admin-surface.test.ts`                   | test                  | request-response/auth         | auth catch-all                              | partial            |
+| `tests/integration/credential-setup.test.ts`                     | test                  | request-response/CRUD         | none                                        | no analog          |
+| `docs/API.md`                                                    | config/documentation  | transform                     | current API document                        | exact-modification |
+| `docs/DATABASE.md`                                               | config/documentation  | transform                     | current database document                   | exact-modification |
+| `docs/TESTING.md`                                                | config/documentation  | transform                     | current testing document                    | exact-modification |
+| `docs/ARCHITECTURE.md` / `docs/CONFIGURATION.md`                 | config/documentation  | transform                     | current documents                           | exact-modification |
+| `docs/verification/phase-01-evidence.md`                         | verification evidence | batch/manual                  | none                                        | no analog          |
+| `scripts/verify-phase-01.mjs`                                    | verification runner   | batch/process                 | `prisma/seed.mjs` exit handling             | partial            |
 
 ## Pattern Assignments
 
@@ -146,7 +146,14 @@ for (const location of locations) {
   locationByCode.set(location.code, record.id);
 }
 
-for (const [itemCode, locationCode, onHand, reserved, reorderLevel, unitCost] of balances) {
+for (const [
+  itemCode,
+  locationCode,
+  onHand,
+  reserved,
+  reorderLevel,
+  unitCost,
+] of balances) {
   const productId = productByCode.get(itemCode);
   const locationId = locationByCode.get(locationCode);
 
@@ -375,7 +382,7 @@ Use 401 for missing/revoked/inactive sessions and 403 for an authenticated but u
 
 ```typescript
 const scopeLocationId =
-  user.role === "BRANCH_STAFF" ? user.locationId ?? "__unassigned__" : null;
+  user.role === "BRANCH_STAFF" ? (user.locationId ?? "__unassigned__") : null;
 
 const balanceWhere = {
   locationId: scopeLocationId ?? undefined,
@@ -456,7 +463,12 @@ export async function GET(request: Request) {
     } catch (unexpectedError) {
       console.error("Unable to complete operation", unexpectedError);
       return Response.json(
-        { error: { code: "INTERNAL_ERROR", message: "Unable to complete operation" } },
+        {
+          error: {
+            code: "INTERNAL_ERROR",
+            message: "Unable to complete operation",
+          },
+        },
         { status: 500 },
       );
     }
@@ -488,7 +500,7 @@ That excerpt is a boundary warning, not the analog to copy for user operations.
 
 ```typescript
 export const auth = betterAuth({
-  appName: "Chezcar Sales & Inventory",
+  appName: "Chezcar Sales & Monitoring",
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   disableSignUp: true,
   emailAndPassword: { enabled: true },
@@ -609,7 +621,9 @@ export function PageShell({ title, subtitle, actions, children }: Props) {
   return (
     <div>
       <AppHeader title={title} subtitle={subtitle} />
-      {actions ? <div className="mb-6 flex flex-wrap gap-3">{actions}</div> : null}
+      {actions ? (
+        <div className="mb-6 flex flex-wrap gap-3">{actions}</div>
+      ) : null}
       {children}
     </div>
   );
@@ -644,14 +658,15 @@ const { data, error, isLoading, isFetching } = useQuery({
       status: appliedStatus,
     },
   ],
-  queryFn: () => fetchProducts({
-    page,
-    pageSize,
-    itemCode: appliedItemCode,
-    name: appliedName,
-    category: appliedCategory,
-    status: appliedStatus,
-  }),
+  queryFn: () =>
+    fetchProducts({
+      page,
+      pageSize,
+      itemCode: appliedItemCode,
+      name: appliedName,
+      category: appliedCategory,
+      status: appliedStatus,
+    }),
   placeholderData: (previousData) => previousData,
 });
 ```
@@ -697,11 +712,17 @@ const handleResetFilters = () => {
       <table className="w-full min-w-[1150px]">
         <tbody>
           {isLoading ? (
-            <tr><td>Loading products...</td></tr>
+            <tr>
+              <td>Loading products...</td>
+            </tr>
           ) : error ? (
-            <tr><td>{error.message}</td></tr>
+            <tr>
+              <td>{error.message}</td>
+            </tr>
           ) : rows.length === 0 ? (
-            <tr><td>No products found.</td></tr>
+            <tr>
+              <td>No products found.</td>
+            </tr>
           ) : null}
         </tbody>
       </table>
@@ -906,13 +927,13 @@ Documentation must replace current-state claims only after implementation and ve
 
 ## No Analog Found
 
-| File/Family | Reason / Planner Direction |
-|---|---|
-| `vitest.config.ts` and all test files | No runner, config, test, or helper exists. Follow `01-VALIDATION.md` and Vitest Node-project guidance. |
-| `scripts/data-onboarding/*` | No workbook-processing code exists. Use Node 20-executable `.mjs` modules plus `.d.mts` declarations, SheetJS read-only parsing, and the profile → review → generate → load architecture from research. |
-| Review/mapping JSON artifacts | No traceability artifact exists. Preserve workbook hash, source sheet/row/column, raw/normalized values, finding, and explicit resolution. |
-| Synthetic XLSX fixture | No binary test fixtures exist. Generate a small deterministic fixture; do not use the owner workbook in quick tests. |
-| Atomic user/session lifecycle | No mutation service exists. Use one application boundary and prove postconditions against PostgreSQL/Better Auth sessions. |
+| File/Family                           | Reason / Planner Direction                                                                                                                                                                              |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vitest.config.ts` and all test files | No runner, config, test, or helper exists. Follow `01-VALIDATION.md` and Vitest Node-project guidance.                                                                                                  |
+| `scripts/data-onboarding/*`           | No workbook-processing code exists. Use Node 20-executable `.mjs` modules plus `.d.mts` declarations, SheetJS read-only parsing, and the profile → review → generate → load architecture from research. |
+| Review/mapping JSON artifacts         | No traceability artifact exists. Preserve workbook hash, source sheet/row/column, raw/normalized values, finding, and explicit resolution.                                                              |
+| Synthetic XLSX fixture                | No binary test fixtures exist. Generate a small deterministic fixture; do not use the owner workbook in quick tests.                                                                                    |
+| Atomic user/session lifecycle         | No mutation service exists. Use one application boundary and prove postconditions against PostgreSQL/Better Auth sessions.                                                                              |
 
 ## Explicit Anti-Patterns
 

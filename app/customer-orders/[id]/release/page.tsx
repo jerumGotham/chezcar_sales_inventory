@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle2, Loader2, PackageCheck } from "lucide-react";
 
@@ -26,6 +27,8 @@ type OrderDetail = {
   downpayment: number;
   balance: number;
   releaseDate: string;
+  locationId: string;
+  salesperson: { personnelId: string; name: string; branch: { id: string; code: string; name: string } } | null;
   lines: Array<{ itemCode: string; name: string; quantity: number; amount: number }>;
 };
 
@@ -48,10 +51,38 @@ export default function ReleaseCustomerOrderPage() {
   const capabilities = access.authenticated ? access.capabilities : [];
   const orderId = params.id;
   const { data: order, isLoading, error } = useQuery({ queryKey: ["customer-order", orderId], queryFn: () => fetchOrder(orderId), enabled: Boolean(orderId) });
+  const [salespersonId, setSalespersonId] = useState("");
+  const salespersonQuery = useQuery({
+    queryKey: ["customer-order-salespersons", order?.locationId],
+    queryFn: async () => {
+      const response = await fetch(`/api/customer-orders/options?locationId=${encodeURIComponent(order!.locationId)}&includeUnavailable=true`, { credentials: "same-origin" });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error?.message ?? "Unable to load salespersons");
+      return json.data.salespersons as Array<{ id: string; fullName: string }>;
+    },
+    enabled: Boolean(order?.locationId),
+  });
+  useEffect(() => {
+    if (!order || !salespersonQuery.data) return;
+    const currentIsValid = salespersonQuery.data.some((personnel) => personnel.id === order.salesperson?.personnelId);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSalespersonId(currentIsValid ? order.salesperson!.personnelId : "");
+  }, [order, salespersonQuery.data]);
   const releaseMutation = useMutation({
     mutationFn: async (formData: FormData) => {
       const finalReceiptNumber = String(formData.get("finalReceiptNumber") ?? "").trim();
       if (!finalReceiptNumber) throw new Error("Final receipt number is required.");
+      if (!salespersonId) throw new Error("Select an active salesperson.");
+      if (salespersonId !== order?.salesperson?.personnelId) {
+        const attributionResponse = await fetch(`/api/customer-orders/${orderId}`, {
+          method: "PATCH",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ salespersonId }),
+        });
+        const attributionJson = await attributionResponse.json();
+        if (!attributionResponse.ok) throw new Error(attributionJson.error?.message ?? "Unable to update salesperson");
+      }
       const response = await fetch(`/api/customer-orders/${orderId}/release`, {
         method: "POST",
         credentials: "same-origin",
@@ -98,6 +129,7 @@ export default function ReleaseCustomerOrderPage() {
                   <Info label="Order No." value={order.orderNo} />
                   <Info label="Customer" value={order.customer} />
                   <Info label="Branch" value={order.branch} />
+                  <Info label="Salesperson" value={order.salesperson?.name ?? "Not recorded (legacy)"} />
                   <Info label="Planned Release" value={order.releaseDate ? new Date(order.releaseDate).toLocaleDateString("en-PH") : "Not set"} />
                   <div><p className="text-sm text-slate-500">Status</p><Badge className="mt-1">{order.status}</Badge></div>
                   <div><p className="text-sm text-slate-500">Payment</p><Badge className="mt-1">{order.paymentStatus}</Badge></div>
@@ -125,10 +157,11 @@ export default function ReleaseCustomerOrderPage() {
                 <Summary label="Remaining Balance" value={formatPeso(order.balance)} strong />
               </div>
               {actions?.canRelease ? <form className="mt-6 space-y-4" action={(formData) => releaseMutation.mutate(formData)}>
+                <div className="space-y-2"><Label htmlFor="salespersonId">Salesperson</Label><select id="salespersonId" value={salespersonId} onChange={(event) => setSalespersonId(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" required><option value="">Select salesperson</option>{salespersonQuery.data?.map((personnel) => <option key={personnel.id} value={personnel.id}>{personnel.fullName}</option>)}</select>{salespersonQuery.data?.length === 0 ? <p className="text-xs text-amber-700">No active Salesperson is assigned to this branch.</p> : null}</div>
                 <div className="space-y-2"><Label htmlFor="finalReceiptNumber">Final Receipt Number</Label><Input id="finalReceiptNumber" name="finalReceiptNumber" placeholder="Handwritten receipt number" /></div>
                 <div className="space-y-2"><Label htmlFor="paymentMethod">Payment Method</Label><select id="paymentMethod" name="paymentMethod" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="CASH">Cash</option><option value="GCASH">GCash</option><option value="MAYA">Maya</option><option value="BANK_TRANSFER">Bank Transfer</option><option value="CREDIT_CARD">Credit Card</option><option value="SPLIT">Split</option></select></div>
                 <div className="space-y-2"><Label htmlFor="notes">Release Notes</Label><Input id="notes" name="notes" placeholder="Released by, remarks, etc." /></div>
-                <Button type="submit" variant="workflow" className="w-full" disabled={releaseMutation.isPending}>{releaseMutation.isPending ? "Releasing..." : "Confirm Release"}</Button>
+                <Button type="submit" variant="workflow" className="w-full" disabled={releaseMutation.isPending || salespersonQuery.isLoading || !salespersonId}>{releaseMutation.isPending ? "Releasing..." : "Confirm Release"}</Button>
               </form> : <p className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">This order cannot be released in its current state or with your capabilities.</p>}
             </CardContent>
           </Card>

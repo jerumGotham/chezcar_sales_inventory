@@ -1,6 +1,7 @@
 import {
   type Location,
   type LocationType,
+  type Personnel,
   type PrismaClient,
   type Session,
   type User,
@@ -95,6 +96,7 @@ type InvalidAssignmentUsers = {
 export type AuthFixture = {
   locations: LocationFixtures;
   users: CanonicalUsers;
+  salespersons: Record<BranchCode, Personnel>;
   sessions: {
     valid: SessionFixture;
     expired: SessionFixture;
@@ -352,6 +354,19 @@ export async function createAuthFixture(
 ): Promise<AuthFixture> {
   const locations = await createLocationFixtures(prisma);
   const users = await createCanonicalUsers(prisma, locations, options.namespace);
+  const salespersonEntries = await Promise.all(
+    BRANCH_CODES.map(async (code) => [
+      code,
+      await prisma.personnel.create({
+        data: {
+          fullName: `${code} Test Salesperson`,
+          locationId: locations.branches[code].id,
+          type: "SALESPERSON",
+        },
+      }),
+    ] as const),
+  );
+  const salespersons = Object.fromEntries(salespersonEntries) as Record<BranchCode, Personnel>;
   const [valid, expired, revoked] = await Promise.all([
     createSessionFixture(prisma, users.admin, {
       namespace: options.namespace,
@@ -376,6 +391,7 @@ export async function createAuthFixture(
   return {
     locations,
     users,
+    salespersons,
     sessions: { valid, expired, revoked },
     invalidAssignments,
   };
@@ -413,7 +429,7 @@ export async function createProductFixture(
 
 export async function createInventoryBalanceFixture(
   prisma: PrismaClient,
-  input: { locationId: string; productId: string; onHand: number; reserved?: number; reorderLevel?: number; unitCost?: number; version?: number },
+  input: { locationId: string; productId: string; onHand: number; reserved?: number; quarantined?: number; reorderLevel?: number; unitCost?: number; version?: number },
 ) {
   const balance = await prisma.inventoryBalance.create({
     data: {
@@ -421,6 +437,7 @@ export async function createInventoryBalanceFixture(
       productId: input.productId,
       onHand: input.onHand,
       reserved: input.reserved ?? 0,
+      quarantined: input.quarantined ?? 0,
       unitCost: input.unitCost ?? 10,
       version: input.version ?? 1,
     },

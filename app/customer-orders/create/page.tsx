@@ -85,6 +85,7 @@ type OrderOptions = {
   customers: Array<{ id: string; name: string }>;
   products: Array<{ id: string; itemCode: string; name: string; price: number; availableQuantity: number }>;
   branches: Array<{ id: string; code: string; name: string }>;
+  salespersons: Array<{ id: string; fullName: string; locationId: string }>;
 };
 
 async function fetchOrderOptions(locationId: string | null, includeUnavailable: boolean) {
@@ -114,6 +115,7 @@ export default function CreateCustomerOrderPage() {
     enabled: access.authenticated && canCreate,
   });
   const [customer, setCustomer] = useState<SelectOption | null>(null);
+  const [salesperson, setSalesperson] = useState<SelectOption | null>(null);
   const [downpayment, setDownpayment] = useState("0");
   const [downpaymentReceiptNumber, setDownpaymentReceiptNumber] = useState("");
   const [releaseDate, setReleaseDate] = useState("");
@@ -129,18 +131,21 @@ export default function CreateCustomerOrderPage() {
 
   const customerOptions = optionsQuery.data?.customers.map((item) => ({ value: item.id, label: item.name })) ?? [];
   const itemOptions = optionsQuery.data?.products.map((item) => ({ value: item.id, label: `${item.itemCode} - ${item.name} (${item.availableQuantity} available)` })) ?? [];
+  const salespersonOptions = optionsQuery.data?.salespersons.map((item) => ({ value: item.id, label: item.fullName })) ?? [];
   const productById = new Map((optionsQuery.data?.products ?? []).map((item) => [item.id, item]));
 
   useEffect(() => {
     // Location changes reset the draft to avoid carrying lines across branches.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setItems([{ item: null, quantity: 1, unitPrice: 0 }]);
+    setSalesperson(null);
   }, [activeLocationId]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!customer) throw new Error("Select a customer.");
       if (!activeLocationId) throw new Error("Select a branch.");
+      if (!salesperson) throw new Error("Select a salesperson.");
       if (items.some((item) => !item.item || item.quantity < 1)) throw new Error("Select a product and valid quantity for every line.");
       if (status.value === "RESERVED" && items.some((item) => item.item && item.quantity > (productById.get(item.item.value)?.availableQuantity ?? 0))) throw new Error("Order quantity cannot exceed available branch stock.");
       const orderType = status.value === "WAITING_STOCK"
@@ -157,6 +162,7 @@ export default function CreateCustomerOrderPage() {
         body: JSON.stringify({
           customer: { id: customer.value, name: customer.label },
           locationId: activeLocationId,
+          salespersonId: salesperson.value,
           type: orderType,
           expectedReleaseDate: releaseDate || undefined,
           notes: notes || undefined,
@@ -240,7 +246,7 @@ export default function CreateCustomerOrderPage() {
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Link>
-            {canCreate ? <Button onClick={() => { setErrorMessage(""); saveMutation.mutate(); }} disabled={saveMutation.isPending || optionsQuery.isLoading}>
+            {canCreate ? <Button onClick={() => { setErrorMessage(""); saveMutation.mutate(); }} disabled={saveMutation.isPending || optionsQuery.isLoading || !salesperson}>
              {saveMutation.isPending ? "Saving..." : "Save Order"}
            </Button> : null}
         </div>
@@ -285,6 +291,21 @@ export default function CreateCustomerOrderPage() {
                     value={releaseDate}
                     onChange={(e) => setReleaseDate(e.target.value)}
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Salesperson</Label>
+                  <Select
+                    instanceId="create-order-salesperson"
+                    options={salespersonOptions}
+                    value={salesperson}
+                    onChange={(option) => setSalesperson(option)}
+                    isSearchable
+                    placeholder="Select salesperson"
+                    noOptionsMessage={() => "No active salespersons for this branch"}
+                    styles={reactSelectStyles}
+                  />
+                  {activeLocationId && !optionsQuery.isLoading && salespersonOptions.length === 0 ? <p className="text-xs text-amber-700">No active Salesperson is assigned to this branch. Update Personnel Maintenance first.</p> : null}
                 </div>
 
                 <div className="space-y-2">

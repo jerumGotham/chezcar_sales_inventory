@@ -38,7 +38,17 @@ const ALL_CAPABILITIES = Object.freeze([
   "reports:view", "reports:export", "offline-sales:snapshot", "offline-sales:sync",
   "offline-sales:activate-device", "users:view", "users:create", "users:update",
   "users:set-status", "users:reset-password", "branches:view", "branches:create",
-  "branches:update", "roles:view", "roles:create", "roles:update",
+  "branches:update", "suppliers:view", "suppliers:create", "suppliers:update",
+  "suppliers:deactivate", "personnel:view", "personnel:create", "personnel:update",
+  "personnel:deactivate", "roles:view", "roles:create", "roles:update",
+  "backjobs:view", "backjobs:create", "backjobs:update", "backjobs:schedule",
+  "backjobs:complete", "backjobs:parts:issue", "backjobs:parts:return", "backjobs:print",
+  "customer-warranties:view", "customer-warranties:create", "customer-warranties:photos:add",
+  "customer-warranties:receive-quarantine", "customer-warranties:assess", "customer-warranties:approve",
+  "customer-warranties:release", "customer-warranties:complete", "customer-warranties:print",
+  "supplier-claims:view", "supplier-claims:create", "supplier-claims:manage", "supplier-claims:return-stock",
+  "supplier-claims:receive-replacement", "supplier-claims:repair-stock", "supplier-claims:record-monetary-resolution",
+  "supplier-claims:approve-writeoff", "supplier-claims:close", "supplier-claims:evidence", "supplier-claims:print",
 ]);
 const BUILT_IN_ROLES = Object.freeze([
   {
@@ -65,6 +75,9 @@ const BUILT_IN_ROLES = Object.freeze([
       "stock-transfers:audit:view", "stock-transfers:create", "stock-transfers:update",
       "stock-transfers:delete", "stock-transfers:finalize", "stock-transfers:dispatch", "stock-transfers:cancel",
       "stock-transfers:investigate",
+      "supplier-claims:view", "supplier-claims:create", "supplier-claims:manage",
+      "supplier-claims:return-stock", "supplier-claims:receive-replacement", "supplier-claims:repair-stock",
+      "supplier-claims:evidence", "supplier-claims:print",
     ],
   },
   {
@@ -83,6 +96,10 @@ const BUILT_IN_ROLES = Object.freeze([
       "sales:evidence:view", "sales:evidence:upload", "sales:evidence:delete", "inventory:view",
       "inventory-availability:view", "inventory-movements:view", "stock-transfers:view", "stock-transfers:receive",
       "stock-transfers:report-discrepancy", "offline-sales:snapshot", "offline-sales:sync",
+      "backjobs:view", "backjobs:create", "backjobs:update", "backjobs:schedule",
+      "backjobs:complete", "backjobs:parts:issue", "backjobs:parts:return", "backjobs:print",
+      "customer-warranties:view", "customer-warranties:create", "customer-warranties:photos:add",
+      "supplier-claims:view", "supplier-claims:create", "supplier-claims:evidence", "supplier-claims:print",
     ],
   },
   {
@@ -97,6 +114,7 @@ const BUILT_IN_ROLES = Object.freeze([
       "customers:view", "customer-orders:view", "sales:view", "sales:verify",
       "sales:verify:view", "sales:resolve", "sales:evidence:view", "sales:evidence:upload", "sales:evidence:delete",
       "reports:view", "reports:export",
+      "supplier-claims:view", "supplier-claims:record-monetary-resolution", "supplier-claims:print",
     ],
   },
 ]);

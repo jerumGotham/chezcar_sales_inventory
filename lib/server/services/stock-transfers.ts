@@ -2,6 +2,7 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 import { Prisma, type StockTransferStatus } from "@prisma/client";
+import { availableStock } from "@/lib/inventory-quantity";
 
 import {
   assertAnyCapability,
@@ -131,9 +132,9 @@ async function decreaseAvailableBalance(
 ) {
   const balance = await tx.inventoryBalance.findUnique({
     where: { locationId_productId: { locationId, productId } },
-    select: { onHand: true, reserved: true, version: true },
+    select: { onHand: true, reserved: true, quarantined: true, version: true },
   });
-  if (!balance || balance.onHand - balance.reserved < quantity) {
+  if (!balance || availableStock(balance) < quantity) {
     throw new TransferError(
       "INSUFFICIENT_STOCK",
       "Insufficient available source stock",
@@ -144,7 +145,7 @@ async function decreaseAvailableBalance(
       locationId,
       productId,
       version: balance.version,
-      onHand: { gte: balance.reserved + quantity },
+      onHand: { gte: balance.reserved + balance.quarantined + quantity },
     },
     data: { onHand: { decrement: quantity }, version: { increment: 1 } },
   });
@@ -222,7 +223,7 @@ async function assertDraftLinesAvailable(
       status: true,
       inventoryBalances: {
         where: { locationId: sourceId },
-        select: { onHand: true, reserved: true },
+        select: { onHand: true, reserved: true, quarantined: true },
       },
     },
   });
@@ -242,12 +243,12 @@ async function assertDraftLinesAvailable(
   for (const line of lines) {
     const product = productById.get(line.productId)!;
     const balance = product.inventoryBalances[0];
-    const available = (balance?.onHand ?? 0) - (balance?.reserved ?? 0);
+    const available = balance ? availableStock(balance) : 0;
 
     if (available < line.quantity) {
       throw new TransferError(
         "INSUFFICIENT_STOCK",
-        `${product.itemCode} has only ${Math.max(0, available)} available in Stock Room`,
+        `${product.itemCode} has only ${available} available in Stock Room`,
       );
     }
   }
@@ -270,6 +271,7 @@ export async function listTransferProductOptions(
     select: {
       onHand: true,
       reserved: true,
+      quarantined: true,
       product: { select: { id: true, itemCode: true, name: true } },
     },
     orderBy: { product: { itemCode: "asc" } },
@@ -280,7 +282,7 @@ export async function listTransferProductOptions(
       id: balance.product.id,
       itemCode: balance.product.itemCode,
       name: balance.product.name,
-      availableQuantity: balance.onHand - balance.reserved,
+      availableQuantity: availableStock(balance),
     }))
     .filter((product) => product.availableQuantity > 0);
 }

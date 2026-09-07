@@ -30,6 +30,7 @@ describe("customer orders, direct sales, accounting", () => {
 
       const order = await createCustomerOrder(branchActor, {
         locationId: fixture.locations.branches.QC.id,
+        salespersonId: fixture.salespersons.QC.id,
         customer: { name: "Reservation Customer", mobile: "09170000000" },
         type: "RESERVATION_WITH_DP",
         downpaymentAmount: 50,
@@ -45,6 +46,7 @@ describe("customer orders, direct sales, accounting", () => {
       await expect(prisma.inventoryBalance.findFirstOrThrow({ where: { productId: product.id } })).resolves.toMatchObject({ onHand: 5, reserved: 2 });
       await expect(createCustomerOrder(branchActor, {
         locationId: fixture.locations.branches.QC.id,
+        salespersonId: fixture.salespersons.QC.id,
         customer: { name: "Duplicate Receipt" },
         type: "RESERVATION_WITH_DP",
         downpaymentAmount: 10,
@@ -70,11 +72,11 @@ describe("customer orders, direct sales, accounting", () => {
       const branchActor = actor(fixture.users.branchStaff, fixture.locations.branches.QC);
       const adminActor = actor(fixture.users.admin, null);
 
-      const noDp = await createCustomerOrder(branchActor, { locationId: fixture.locations.branches.QC.id, customer: { name: "No DP" }, type: "RESERVATION_NO_DP", downpaymentAmount: 0, lines: [{ productId: product.id, quantity: 1 }] });
+      const noDp = await createCustomerOrder(branchActor, { locationId: fixture.locations.branches.QC.id, salespersonId: fixture.salespersons.QC.id, customer: { name: "No DP" }, type: "RESERVATION_NO_DP", downpaymentAmount: 0, lines: [{ productId: product.id, quantity: 1 }] });
       await expect(cancelCustomerOrder(branchActor, noDp.id, {})).resolves.toMatchObject({ status: "Cancelled" });
       await expect(prisma.inventoryBalance.findFirstOrThrow({ where: { productId: product.id } })).resolves.toMatchObject({ reserved: 0 });
 
-      const dp = await createCustomerOrder(branchActor, { locationId: fixture.locations.branches.QC.id, customer: { name: "DP" }, type: "RESERVATION_WITH_DP", downpaymentAmount: 10, downpaymentReceiptNumber: "DP-CANCEL-1", lines: [{ productId: product.id, quantity: 1 }] });
+      const dp = await createCustomerOrder(branchActor, { locationId: fixture.locations.branches.QC.id, salespersonId: fixture.salespersons.QC.id, customer: { name: "DP" }, type: "RESERVATION_WITH_DP", downpaymentAmount: 10, downpaymentReceiptNumber: "DP-CANCEL-1", lines: [{ productId: product.id, quantity: 1 }] });
       await expect(cancelCustomerOrder(branchActor, dp.id, {})).rejects.toMatchObject({ code: "DP_CANCEL_ADMIN_ONLY" });
       await expect(cancelCustomerOrder(adminActor, dp.id, {})).rejects.toMatchObject({ code: "CANCELLATION_NOTE_REQUIRED", status: 400 });
       await expect(cancelCustomerOrder(adminActor, dp.id, { note: "Refund approved" })).resolves.toMatchObject({ status: "Cancelled" });
@@ -90,7 +92,7 @@ describe("customer orders, direct sales, accounting", () => {
       const branchActor = actor(fixture.users.branchStaff, fixture.locations.branches.QC);
       const adminActor = actor(fixture.users.admin, null);
 
-      const sale = await createDirectSale(branchActor, { locationId: fixture.locations.branches.QC.id, receiptBooklet: "", manualReceiptNumber: "SALE-0001", amountPaid: 75, paymentMethod: "GCASH", lines: [{ productId: product.id, quantity: 1 }] });
+      const sale = await createDirectSale(branchActor, { locationId: fixture.locations.branches.QC.id, salespersonId: fixture.salespersons.QC.id, receiptBooklet: "", manualReceiptNumber: "SALE-0001", amountPaid: 75, paymentMethod: "GCASH", lines: [{ productId: product.id, quantity: 1 }] });
 
       expect(sale).toMatchObject({ manualReceiptNumber: "SALE-0001", totalAmount: 75, reviewStatus: "UNVERIFIED" });
       await expect(prisma.inventoryBalance.findFirstOrThrow({ where: { productId: product.id } })).resolves.toMatchObject({ onHand: 2, reserved: 1 });
@@ -98,7 +100,7 @@ describe("customer orders, direct sales, accounting", () => {
         expect.objectContaining({ userId: fixture.users.admin.id, title: "Low Stock: SALE-ITEM" }),
         expect.objectContaining({ userId: fixture.users.branchStaff.id, title: "Low Stock: SALE-ITEM" }),
       ]));
-      await expect(createDirectSale(branchActor, { locationId: fixture.locations.branches.QC.id, receiptBooklet: "", manualReceiptNumber: "SALE-0001", amountPaid: 75, paymentMethod: "GCASH", lines: [{ productId: product.id, quantity: 1 }] })).rejects.toMatchObject({ code: "DUPLICATE_RECEIPT" });
+      await expect(createDirectSale(branchActor, { locationId: fixture.locations.branches.QC.id, salespersonId: fixture.salespersons.QC.id, receiptBooklet: "", manualReceiptNumber: "SALE-0001", amountPaid: 75, paymentMethod: "GCASH", lines: [{ productId: product.id, quantity: 1 }] })).rejects.toMatchObject({ code: "DUPLICATE_RECEIPT" });
       await expect(reviewSale(adminActor, sale.id, { status: "VERIFIED", comparison: { receiptBooklet: "", receiptNumber: "SALE-0001", paymentMethod: "GCASH", discountAmount: 0, amountPaid: 75, totalAmount: 75, lines: [{ itemCode: "SALE-ITEM", quantity: 1, unitPrice: 75 }] } })).rejects.toMatchObject({ code: "RECEIPT_EVIDENCE_REQUIRED" });
       await prisma.saleAccountingReview.update({
         where: { saleId: sale.id },
@@ -127,6 +129,7 @@ describe("customer orders, direct sales, accounting", () => {
       const branchActor = actor(fixture.users.branchStaff, fixture.locations.branches.QC);
       const sale = await createDirectSale(branchActor, {
         locationId: fixture.locations.branches.QC.id,
+        salespersonId: fixture.salespersons.QC.id,
         manualReceiptNumber: "EVIDENCE-001",
         amountPaid: 25,
         paymentMethod: "CASH",
@@ -177,6 +180,7 @@ describe("customer orders, direct sales, accounting", () => {
       const branchActor = actor(fixture.users.branchStaff, fixture.locations.branches.QC);
       const order = await createCustomerOrder(branchActor, {
         locationId: fixture.locations.branches.QC.id,
+        salespersonId: fixture.salespersons.QC.id,
         customer: { name: "Waiting Customer" },
         type: "WAITING_STOCK",
         downpaymentAmount: 0,
@@ -291,6 +295,7 @@ describe("customer orders, direct sales, accounting", () => {
       );
       const posted = await createDirectSale(salesOnlyActor, {
         locationId: fixture.locations.branches.QC.id,
+        salespersonId: fixture.salespersons.QC.id,
         customerId: selectableCustomer.id,
         receiptBooklet: "",
         manualReceiptNumber: "SALES-ONLY-CUSTOMER-1",
@@ -308,6 +313,7 @@ describe("customer orders, direct sales, accounting", () => {
       await expect(
         createDirectSale(salesOnlyActor, {
           locationId: fixture.locations.branches.BL.id,
+          salespersonId: fixture.salespersons.BL.id,
           customerId: selectableCustomer.id,
           receiptBooklet: "",
           manualReceiptNumber: "SALES-ONLY-CROSS-LOCATION",
@@ -334,7 +340,8 @@ describe("customer orders, direct sales, accounting", () => {
       const accountingActor = actor(fixture.users.accountingStaff, null);
       const adminActor = actor(fixture.users.admin, null);
 
-      const original = await createDirectSale(branchActor, { locationId: fixture.locations.branches.QC.id, receiptBooklet: "", manualReceiptNumber: "ORIGINAL-001", amountPaid: 50, paymentMethod: "CASH", lines: [{ productId: product.id, quantity: 1 }] });
+      const original = await createDirectSale(branchActor, { locationId: fixture.locations.branches.QC.id, salespersonId: fixture.salespersons.QC.id, receiptBooklet: "", manualReceiptNumber: "ORIGINAL-001", amountPaid: 50, paymentMethod: "CASH", lines: [{ productId: product.id, quantity: 1 }] });
+      await prisma.saleAccountingReview.update({ where: { saleId: original.id }, data: { receiptPhotoKey: `${crypto.randomUUID()}.jpg`, receiptPhotoType: "image/jpeg" } });
       await reviewSale(accountingActor, original.id, { status: "MISMATCH_REPORTED", mismatchCategory: "QUANTITY_MISMATCH", notes: "Paper receipt shows two pieces", comparison: { receiptBooklet: "", receiptNumber: "ORIGINAL-001", paymentMethod: "CASH", discountAmount: 0, amountPaid: 100, totalAmount: 100, lines: [{ itemCode: product.itemCode, quantity: 2, unitPrice: 50 }] } });
       await expect(listNotifications(branchActor)).resolves.toEqual(expect.arrayContaining([
         expect.objectContaining({ title: "Receipt mismatch reported", relatedId: original.id }),
@@ -377,7 +384,8 @@ describe("customer orders, direct sales, accounting", () => {
       await expect(prisma.sale.findUniqueOrThrow({ where: { id: original.id } })).resolves.toMatchObject({ status: "VOIDED" });
       await expect(prisma.inventoryBalance.findFirstOrThrow({ where: { productId: product.id } })).resolves.toMatchObject({ onHand: 3 });
 
-      const branchConfirmedSale = await createDirectSale(branchActor, { locationId: fixture.locations.branches.QC.id, receiptBooklet: "", manualReceiptNumber: "BRANCH-CONFIRMED-001", amountPaid: 50, paymentMethod: "CASH", lines: [{ productId: product.id, quantity: 1 }] });
+      const branchConfirmedSale = await createDirectSale(branchActor, { locationId: fixture.locations.branches.QC.id, salespersonId: fixture.salespersons.QC.id, receiptBooklet: "", manualReceiptNumber: "BRANCH-CONFIRMED-001", amountPaid: 50, paymentMethod: "CASH", lines: [{ productId: product.id, quantity: 1 }] });
+      await prisma.saleAccountingReview.update({ where: { saleId: branchConfirmedSale.id }, data: { receiptPhotoKey: `${crypto.randomUUID()}.jpg`, receiptPhotoType: "image/jpeg" } });
       await reviewSale(accountingActor, branchConfirmedSale.id, { status: "MISMATCH_REPORTED", mismatchCategory: "OTHER", notes: "Needs branch confirmation", comparison: { receiptBooklet: "", receiptNumber: "BRANCH-CONFIRMED-001", paymentMethod: "CASH", discountAmount: 0, amountPaid: 50, totalAmount: 50, lines: [{ itemCode: product.itemCode, quantity: 1, unitPrice: 50 }] } });
       await respondToSaleMismatch(branchActor, branchConfirmedSale.id, { response: "ORIGINAL_ENCODING_CORRECT", note: "Checked the physical receipt; original encoding is correct." });
       await expect(resolveSale(accountingActor, branchConfirmedSale.id, { action: "CONFIRMED_CORRECT", note: "Closed after branch confirmation" })).resolves.toMatchObject({ action: "CONFIRMED_CORRECT", review: { status: "VERIFIED" } });
@@ -424,12 +432,14 @@ describe("customer orders, direct sales, accounting", () => {
       };
       const sale = await createDirectSale(branchActor, {
         locationId: fixture.locations.branches.QC.id,
+        salespersonId: fixture.salespersons.QC.id,
         receiptBooklet: "",
         manualReceiptNumber: "SCOPED-REVIEW-1",
         amountPaid: 50,
         paymentMethod: "CASH",
         lines: [{ productId: product.id, quantity: 1 }],
       });
+      await prisma.saleAccountingReview.update({ where: { saleId: sale.id }, data: { receiptPhotoKey: `${crypto.randomUUID()}.jpg`, receiptPhotoType: "image/jpeg" } });
       const comparison = {
         receiptBooklet: "",
         receiptNumber: "SCOPED-REVIEW-1",
@@ -486,6 +496,7 @@ describe("customer orders, direct sales, accounting", () => {
       ] as const) {
         await createDirectSale(branchActor, {
           locationId,
+          salespersonId: locationId === fixture.locations.branches.QC.id ? fixture.salespersons.QC.id : fixture.salespersons.BL.id,
           receiptBooklet: "",
           manualReceiptNumber: receipt,
           amountPaid: 25,
@@ -494,6 +505,7 @@ describe("customer orders, direct sales, accounting", () => {
         });
         await createCustomerOrder(branchActor, {
           locationId,
+          salespersonId: locationId === fixture.locations.branches.QC.id ? fixture.salespersons.QC.id : fixture.salespersons.BL.id,
           customer: { name: `${receipt} Customer` },
           type: "WAITING_STOCK",
           downpaymentAmount: 0,

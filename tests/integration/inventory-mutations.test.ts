@@ -103,7 +103,7 @@ describe("inventory corrections and reorder levels", () => {
         type: "decrease",
         quantity: 2,
         reason: "Too much",
-      })).rejects.toMatchObject({ code: "BELOW_RESERVED" });
+      })).rejects.toMatchObject({ code: "BELOW_ALLOCATED_STOCK" });
       await expect(prisma.inventoryBalance.findUniqueOrThrow({ where: { id: balance.id } })).resolves.toMatchObject({ onHand: 5, reserved: 4 });
     });
   }, 30_000);

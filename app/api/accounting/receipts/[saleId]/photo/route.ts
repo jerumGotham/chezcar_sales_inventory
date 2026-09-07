@@ -14,7 +14,6 @@ import {
   saveReceiptEvidence,
 } from "@/lib/server/services/receipt-evidence";
 import { notifyReceiptEvidenceUploaded } from "@/lib/server/services/receipt-evidence-notifications";
-import { extractReceiptOcrDraft } from "@/lib/server/services/receipt-ocr";
 
 type Context = { params: Promise<{ saleId: string }> };
 
@@ -76,7 +75,7 @@ export async function POST(request: Request, context: Context) {
         receiptPhotoKey: evidence.key,
         receiptPhotoType: evidence.contentType,
         evidenceUploadedAt: new Date(Math.max(Date.now(), (review.reviewedAt?.getTime() ?? 0) + 1)),
-        receiptOcrStatus: "PENDING",
+        receiptOcrStatus: null,
         receiptOcrJson: null,
         receiptOcrError: null,
         receiptOcrAt: null,
@@ -98,44 +97,6 @@ export async function POST(request: Request, context: Context) {
     if (review.receiptPhotoKey && review.receiptPhotoKey !== evidence.key) {
       await removeReceiptEvidence(review.receiptPhotoKey).catch((cleanupError) => {
         console.error("Unable to remove replaced receipt evidence", cleanupError);
-      });
-    }
-    try {
-      const sale = await prisma.sale.findUniqueOrThrow({
-        where: { id: saleId },
-        select: {
-          manualReceiptNumber: true,
-          totalAmount: true,
-          lines: {
-            select: {
-              productItemCode: true,
-              productName: true,
-              quantity: true,
-              unitPrice: true,
-            },
-          },
-        },
-      });
-      const draft = await extractReceiptOcrDraft(new Uint8Array(await file.arrayBuffer()), sale);
-      await prisma.saleAccountingReview.updateMany({
-        where: { id: review.id, receiptPhotoKey: evidence.key },
-        data: {
-          receiptOcrStatus: "COMPLETE",
-          receiptOcrJson: JSON.stringify(draft),
-          receiptOcrError: null,
-          receiptOcrAt: new Date(),
-        },
-      });
-    } catch (ocrError) {
-      console.error("Unable to read receipt evidence", ocrError);
-      await prisma.saleAccountingReview.updateMany({
-        where: { id: review.id, receiptPhotoKey: evidence.key },
-        data: {
-          receiptOcrStatus: "FAILED",
-          receiptOcrJson: null,
-          receiptOcrError: "The receipt could not be read automatically. Review the image manually.",
-          receiptOcrAt: new Date(),
-        },
       });
     }
     if (review.status === "UNVERIFIED") {

@@ -63,7 +63,7 @@ Custom non-owner roles may receive `products:view`, `products:create`, `products
 
 ## Required UI Behavior
 
-- Deactivation with on-hand/reserved stock shows a warning that product remains visible but cannot be newly selected.
+- Deactivation with on-hand, reserved, or quarantined stock shows a warning that product remains visible but cannot be newly selected.
 - Reactivation is blocked until price is present and greater than zero.
 - Item-code input is disabled or blocked when usage exists.
 - Delete action appears only when product is unused and has no inventory balances.

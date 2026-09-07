@@ -37,6 +37,11 @@ export const CAPABILITIES = {
   reportsView: "reports:view",
   usersView: "users:view",
   branchesView: "branches:view",
+  suppliersView: "suppliers:view",
+  personnelView: "personnel:view",
+  backjobsView: "backjobs:view",
+  customerWarrantiesView: "customer-warranties:view",
+  supplierClaimsView: "supplier-claims:view",
   rolesView: "roles:view",
   stockTransfersView: "stock-transfers:view",
 } as const satisfies Record<string, Capability>;

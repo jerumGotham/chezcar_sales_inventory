@@ -1,0 +1,2 @@
+ALTER TYPE "InventoryMovementType" ADD VALUE 'WARRANTY_RECEIPT';
+ALTER TYPE "InventoryMovementType" ADD VALUE 'WARRANTY_RELEASE';

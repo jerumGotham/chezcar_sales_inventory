@@ -18,6 +18,7 @@ export type InventoryAvailabilityRow = {
   };
   onHand: number;
   reserved: number;
+  quarantined: number;
   available: number;
   status: InventoryAvailabilityStatus;
 };

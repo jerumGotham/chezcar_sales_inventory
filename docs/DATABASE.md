@@ -3,7 +3,7 @@
 
 ## Current status
 
-PostgreSQL is now active for Better Auth, Products, Inventory, Stock Room supplier receiving, SR-to-branch Stock Transfers, Customers, Customer Orders, Direct Sales, Accounting review state, dashboards, notifications, and simple reports. Job Orders and advanced CRM/offline workflows remain mock/local or deferred behavior.
+PostgreSQL is now active for Better Auth, Products, Suppliers, Personnel master data, Salesperson attribution for Direct Sales and Customer Orders, Inventory, Stock Room supplier receiving, SR-to-branch Stock Transfers, Customers, Accounting review state, dashboards, notifications, and simple reports. Installer attribution, Job Orders, and advanced CRM/offline workflows remain mock/local or deferred behavior.
 
 The implemented database boundary consists of:
 
@@ -39,6 +39,8 @@ The implemented database boundary consists of:
 - `lib/server/services/stock-receipts.ts`: authorized serializable Stock Room supplier receipt posting.
 - `lib/server/services/customer-sales.ts`: customer/order/sale/accounting transactions plus dashboard/report summaries.
 - `lib/server/services/branches.ts`: capability-delegated, location-constrained active-branch add/edit workflow.
+- `lib/server/services/suppliers.ts`: capability-delegated Supplier lifecycle and narrow active receiving options.
+- `lib/server/services/personnel.ts`: capability-delegated, branch-scoped Personnel lifecycle and branch options.
 - `lib/server/services/roles.ts`: capability-delegated custom-role maintenance with optimistic concurrency and session revocation.
 - `tests/helpers/database.ts`: fixed-identity disposable PostgreSQL 17 integration lifecycle (container `chezcar_test_postgres_01_13`, port 55435, database `chezcar_test_01_13`, no bind mount).
 
@@ -58,7 +60,7 @@ The additive `20260826030000_product_management_audit` migration adds nullable a
 
 ### InventoryBalance
 
-Stores one balance per `(locationId, productId)` with `onHand`, `reserved`, Decimal `unitCost`, optimistic `version`, and timestamps. The shared reorder threshold is stored on Product and applies to every location. Inventory list status is computed from available stock (`onHand - reserved`) rather than gross on-hand stock.
+Stores one balance per `(locationId, productId)` with `onHand`, `reserved`, `quarantined`, Decimal `unitCost`, optimistic `version`, and timestamps. The shared reorder threshold is stored on Product and applies to every location. Inventory status is computed from `available = onHand - reserved - quarantined`.
 
 The initial SQL migration enforces non-negative reserved/reorder/cost values and a positive version, but it does not yet constrain `onHand` to be non-negative. The transfer service prevents source balances from becoming negative through conditional updates.
 
@@ -68,7 +70,15 @@ The additive `20260826000000_stock_transfers` migration introduces immutable tra
 
 ### Supplier receipt ledger
 
-The additive `20260826010000_stock_receipts` migration adds `StockReceipt`, immutable `StockReceiptLine` product snapshots, and the `SUPPLIER_RECEIPT` inventory movement type. A receipt is permanently tied to `SR`, its receipt reference is globally unique, and each movement belongs to exactly one transfer or receipt unless it is an Admin `MANUAL_ADJUSTMENT`. The posting service uses a serializable transaction to persist the receipt, upsert/increment SR balances, and write its audit movements. Branch supplier receiving remains unimplemented.
+The additive `20260826010000_stock_receipts` migration adds `StockReceipt`, immutable `StockReceiptLine` product snapshots, and the `SUPPLIER_RECEIPT` inventory movement type. `20260907090000_supplier_maintenance` adds Supplier master data, backfills normalized Suppliers from historical receipt text, links every receipt to one Supplier, and retains the original `supplier` column as the immutable name snapshot. A receipt is permanently tied to `SR`, its receipt reference is globally unique, and each movement belongs to exactly one transfer or receipt unless it is an Admin `MANUAL_ADJUSTMENT`. The posting service uses a serializable transaction to resolve an active Supplier, persist its ID/name snapshot, upsert/increment SR balances, and write audit movements. Branch supplier receiving remains unimplemented.
+
+`20260907100000_personnel_maintenance` adds independent `PersonnelType` and `PersonnelStatus` enums plus the location-owned Personnel master. Personnel references one branch Location and nullable User audit actors with restrictive location deletion and actor `SET NULL` behavior. Service validation enforces active-branch ownership and effective location scope because a foreign key alone cannot enforce Location type/status. Personnel survives operational reset and is not fabricated by the catalog seed.
+
+`20260907110000_salesperson_transaction_attribution` adds nullable Personnel references and complete name/branch snapshots to CustomerOrder and Sale. Nullable tuples preserve pre-migration records without inventing a Salesperson; services require complete attribution for every new order/direct sale and before order release. Open orders can replace attribution through an audited narrow update. Release copies the stored order snapshot, and sale correction copies the original Sale snapshot without consulting current Personnel state. Backjob Installer attribution remains unimplemented.
+
+`20260907120000_inventory_quarantine_foundation` adds `InventoryBalance.quarantined` with default zero. The migration aborts instead of rewriting data if an existing balance is negative or over-reserved, then validates checks for nonnegative on-hand/quarantine and `onHand - reserved - quarantined >= 0`. Available remains derived. Quarantine is visible and excluded from every sellable-stock calculation, but no direct mutation or Returns/Warranty disposition workflow exists yet.
+
+Migrations `20260907130000_backjob_workflow`, `20260907140000_customer_warranty`, and `20260907150000_supplier_claims_split_receiving` add the durable Returns/Warranty aggregates, audit/action records, movement sources, split receipt quantities, and physical quarantine/disposition actions. `20260907160000_report_dates` adds canonical sale verification time and inventory movement creation time for focused reporting.
 
 Admin manual corrections use `InventoryMovement.type = MANUAL_ADJUSTMENT` with optional `reference` and required reason stored in `remarks`. The additive `20260826040000_inventory_manual_adjustment_constraint` migration relaxes the movement source check only for source-less manual adjustment rows; transfer and receipt movements must still keep exactly one source.
 
@@ -94,7 +104,7 @@ JobOrder and advanced CRM/service models remain absent. The former draft Custome
 
 ### Customers, orders, sales, and Accounting
 
-The additive `20260826050000_customer_orders_sales_accounting` migration introduces `Customer`, `CustomerOrder`, `CustomerOrderLine`, `ManualReceipt`, `Sale`, `SaleLine`, and `SaleAccountingReview`. Manual receipt identity is unique per branch, booklet, and receipt number. Accounting reviews store `UNVERIFIED`, `VERIFIED`, or `MISMATCH_REPORTED` state, structured mismatch details, optional receipt-photo evidence, and a non-authoritative local OCR draft/status. `20260828020000_branch_receipt_mismatch_response` adds the assigned Branch Staff response, explanation, optional replacement receipt number, actor, and timestamp required before final mismatch resolution. `20260905130000_branch_sale_correction_requests` adds a separate `SaleCorrectionRequest` ledger with reason, note, requester, pending/resolved state, `KEPT`/`VOIDED` outcome, Admin resolver, and timestamps. A partial unique index permits at most one pending request per sale while retaining resolved history.
+The additive `20260826050000_customer_orders_sales_accounting` migration introduces `Customer`, `CustomerOrder`, `CustomerOrderLine`, `ManualReceipt`, `Sale`, `SaleLine`, and `SaleAccountingReview`. Manual receipt identity is unique per branch, booklet, and receipt number. Accounting reviews store `UNVERIFIED`, `VERIFIED`, or `MISMATCH_REPORTED` state, structured mismatch details, and optional receipt-photo evidence for manual comparison. `20260828020000_branch_receipt_mismatch_response` adds the assigned Branch Staff response, explanation, optional replacement receipt number, actor, and timestamp required before final mismatch resolution. `20260905130000_branch_sale_correction_requests` adds a separate `SaleCorrectionRequest` ledger with reason, note, requester, pending/resolved state, `KEPT`/`VOIDED` outcome, Admin resolver, and timestamps. A partial unique index permits at most one pending request per sale while retaining resolved history.
 
 Reservation orders increment `InventoryBalance.reserved` while keeping physical `onHand` unchanged. Final order release creates a posted sale, clears reservation, decrements `onHand`, and writes `CUSTOMER_ORDER_RELEASE` movements. Direct sales decrement available branch stock immediately and write `DIRECT_SALE` movements; direct-sale discounts are stored as `Sale.discountAmount` and cannot exceed the sale subtotal. Each sale starts with one `UNVERIFIED` Accounting review row; Admin or Accounting Staff may verify or report a mismatch without editing sale, payment, order, or stock facts. Mismatch reports notify active Admin and assigned Branch Staff users. Branch response is advisory and auditable; only Admin can execute the inventory-changing void-and-replace transaction. The original becomes an audit-only `VOIDED` sale excluded from active sales/report/dashboard counts, while the linked replacement starts `UNVERIFIED` and requires its own receipt evidence.
 

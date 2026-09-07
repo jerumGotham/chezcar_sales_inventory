@@ -28,7 +28,7 @@ describe("stock receipt route", () => {
     const response = await POST(new Request("http://localhost/api/stock-receipts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reference: "DR-1001", supplier: "Acme", lines }),
+      body: JSON.stringify({ reference: "DR-1001", supplierId: "supplier-1", lines }),
     }));
 
     expect(response.status).toBe(400);

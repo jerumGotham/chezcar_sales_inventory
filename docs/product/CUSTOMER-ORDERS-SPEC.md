@@ -6,6 +6,8 @@
 
 ## Purpose
 
+Every new Customer Order requires an active Salesperson from its branch. The order snapshots Personnel identity/name/branch separately from the authenticated creator. Open orders may update only this attribution through an audited narrow action; release revalidates eligibility and copies the stored snapshot to the posted Sale.
+
 Implement the production backend foundation for customer records and customer orders before direct POS sales and Accounting verification are built. The system records internal sales/order facts after Branch Staff writes the manual receipt or receives an order through walk-in, Messenger, Facebook, or messages.
 
 ## In Scope
@@ -76,7 +78,7 @@ Manual receipt numbers are globally unique. The implementation can enforce this 
 ## Inventory Rules
 
 1. Reservation creation with available branch stock:
-   - validate `onHand - reserved >= quantity`;
+   - validate `onHand - reserved - quarantined >= quantity`;
    - increment `reserved`;
    - leave `onHand` unchanged.
 2. Waiting-stock order creation:

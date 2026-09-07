@@ -129,7 +129,7 @@ The current `5435:5432` mapping publishes PostgreSQL on all host interfaces and 
 
 - `lib/server/prisma.ts` is the only shared runtime Prisma client.
 - Better Auth and all application reads require an active persisted User; public sign-up is disabled.
-- Products, Inventory and Availability, customers/orders/sales/accounting, stock receiving/transfers, notifications, and capability-delegated user/role/branch maintenance call protected Prisma-backed endpoints.
+- Products, Suppliers, Personnel master data, Inventory and Availability, customers/orders/sales/accounting, stock receiving/transfers, notifications, and capability-delegated user/role/branch/supplier/personnel maintenance call protected Prisma-backed endpoints.
 - Job Orders, stock cards, and explicitly labeled supporting panels still use mock/local data.
 - Checked-in additive migrations and one environment-driven development seed exist.
 - Vitest unit and serial PostgreSQL integration suites plus GitHub Actions CI are checked in; startup-time typed environment validation, browser coverage, and coverage tooling are not.

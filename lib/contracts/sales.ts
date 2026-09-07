@@ -89,6 +89,7 @@ export const directSaleLineSchema = z.object({
 export const directSaleRequestSchema = z.object({
   receiptBooklet: receiptBookletSchema,
   manualReceiptNumber: manualReceiptNumberSchema,
+  salespersonId: z.string().trim().min(1, "Select a salesperson."),
   paymentMethod: paymentMethodSchema.default("CASH"),
   amountPaid: z.number().min(0),
   notes: z.string().trim().max(1_000).optional(),
@@ -179,6 +180,7 @@ export type SaleDto = {
   status: "POSTED" | "VOIDED";
   postedAt: string;
   postedBy: string;
+  salesperson: import("./personnel").SalespersonSnapshotDto | null;
   reviewStatus: ReviewStatusDto;
   mismatchCategory: string | null;
   reviewNotes: string | null;

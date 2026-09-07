@@ -1,18 +1,19 @@
 <!-- generated-by: gsd-doc-writer -->
+
 # Agent Guide
 
 ## Project status
 
-Chezcar Sales & Inventory is a Next.js 16/React 19 **UI prototype**, not a production sales system. Most screens operate on page-local arrays or `lib/mock-data.ts`; interactions commonly update React state, navigate, close a dialog, or log a payload. Do not describe these actions as persistent or complete unless server and database behavior has actually been added.
+Chezcar Sales & Monitoring is a Next.js 16/React 19 **UI prototype**, not a production sales system. Most screens operate on page-local arrays or `lib/mock-data.ts`; interactions commonly update React state, navigate, close a dialog, or log a payload. Do not describe these actions as persistent or complete unless server and database behavior has actually been added.
 
 Current gaps are intentional and material:
 
 - Better Auth email/password sessions, active-account checks, action-only RoleDefinition grants, explicit owner identity, and UserLocation authorization are implemented. Public sign-up is disabled; `UserRole`, `User.locationId`, and `RoleDefinition.scope` remain compatibility storage only.
-- Products, Inventory and Availability, customers/orders/sales/accounting, stock receiving/transfers, notifications, users, roles, and branches use PostgreSQL through Prisma. Job Orders and some supporting panels remain mock/local behavior.
+- Products, Suppliers, Personnel master data, Salesperson attribution for Direct Sales/Customer Orders, quarantine-aware Inventory and Availability, customers/orders/sales/accounting, stock receiving/transfers, Backjobs, Customer Warranty, Supplier Claims, focused reports, notifications, users, roles, and branches use PostgreSQL through Prisma. General Job Orders and some supporting panels remain mock/local behavior.
 - Checked-in additive migrations and an environment-driven development seed exist. The seed provisions reference catalog data, deterministic built-in roles, and the first Admin without committed credentials.
 - Vitest unit and serial disposable-PostgreSQL integration suites run locally and in GitHub Actions CI. Coverage and automated browser tests do not exist.
 - A current Node.js 20 verification run passes `npm run build`, `npm run typecheck`, and both Vitest projects.
-- `npm run lint` passes with existing warnings; report the exact current warning count rather than calling the repository warning-free.
+- `npm run lint` passes with 23 existing warnings; do not call the repository warning-free.
 - `npm audit --omit=dev` reports zero production dependency findings; the full development tree currently reports one high and one low transitive tooling finding.
 
 ## Sources of truth
@@ -115,8 +116,8 @@ For production work, proceed incrementally:
 2. Extend the committed foundation migration additively as each canonical workflow is implemented.
 3. Add deterministic unit, route, and database integration tests plus dependable type-check/lint scripts.
 4. Expand the existing authentication, action-capability, and UserLocation authorization to each new server workflow.
-6. Implement transactional mutations one workflow at a time, with auditability and concurrency/idempotency protections.
-7. Add end-to-end coverage and CI only after local commands and durable workflows are reliable.
+5. Implement transactional mutations one workflow at a time, with auditability and concurrency/idempotency protections.
+6. Add end-to-end coverage and CI only after local commands and durable workflows are reliable.
 
 Do not begin with high-risk stock or payment mutations merely because their UI already exists.
 

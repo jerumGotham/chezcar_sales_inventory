@@ -1,5 +1,10 @@
-import { authorizationErrorResponse, requireCapability } from "@/lib/server/authorization";
-import { CustomerSalesError, getCustomerOrderById } from "@/lib/server/services/customer-sales";
+import { authorizationErrorResponse, requireAnyCapability, requireCapability } from "@/lib/server/authorization";
+import {
+  customerOrderSalespersonSchema,
+  CustomerSalesError,
+  getCustomerOrderById,
+  updateCustomerOrderSalesperson,
+} from "@/lib/server/services/customer-sales";
 
 type Context = { params: Promise<{ orderId: string }> };
 
@@ -13,6 +18,17 @@ export async function GET(request: Request, context: Context) {
     const actor = await requireCapability(request.headers, "customer-orders:view");
     const { orderId } = await context.params;
     return Response.json({ data: await getCustomerOrderById(actor, orderId) });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+export async function PATCH(request: Request, context: Context) {
+  try {
+    const actor = await requireAnyCapability(request.headers, ["customer-orders:create", "customer-orders:release"]);
+    const { orderId } = await context.params;
+    const input = customerOrderSalespersonSchema.parse(await request.json());
+    return Response.json({ data: await updateCustomerOrderSalesperson(actor, orderId, input) });
   } catch (error) {
     return errorResponse(error);
   }

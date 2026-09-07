@@ -2,6 +2,7 @@ import "server-only";
 
 import { Prisma, type InventoryMovementType } from "@prisma/client";
 import { z } from "zod";
+import { availableStock } from "@/lib/inventory-quantity";
 
 import type {
   InventoryApiResponse,
@@ -66,6 +67,7 @@ export const productMutationSchema = z.object({
   description: z.string().trim().max(2_000).optional(),
   price: z.union([positivePrice, z.null()]),
   reorderLevel: z.coerce.number().int().min(0).default(0),
+  warrantyDurationMonths: z.coerce.number().int().positive().max(120).nullable().optional(),
   status: z.enum(["ACTIVE", "INACTIVE"]),
   vehicleCompatibilities: z.array(vehicleCompatibilitySchema).max(100).default([]),
 });
@@ -283,6 +285,7 @@ export async function listProducts(
       brand: product.brand ?? "Unbranded",
       price: product.price?.toNumber() ?? null,
        reorderLevel: product.reorderLevel,
+       warrantyDurationMonths: product.warrantyDurationMonths,
       status: product.status === "ACTIVE" ? "Active" : "Inactive",
       description: product.description ?? undefined,
       vehicleCompatibilities: product.vehicleCompatibilities.map((compatibility) => ({
@@ -331,6 +334,7 @@ function normalizeProductInput(input: z.infer<typeof productMutationSchema>) {
     description: input.description || null,
     price: input.price === null ? null : new Prisma.Decimal(input.price),
     reorderLevel: input.reorderLevel,
+    warrantyDurationMonths: input.warrantyDurationMonths ?? null,
     status: input.status,
     vehicleCompatibilities: input.vehicleCompatibilities,
   };
@@ -433,8 +437,8 @@ export async function deleteProduct(actor: AuthContext, productId: string) {
   return { id: productId };
 }
 
-function stockStatus(onHand: number, reserved: number, reorderLevel: number): InventoryStatus {
-  const available = onHand - reserved;
+function stockStatus(onHand: number, reserved: number, quarantined: number, reorderLevel: number): InventoryStatus {
+  const available = availableStock({ onHand, reserved, quarantined });
   if (available <= 0) return "Out of Stock";
   if (available <= reorderLevel) return "Low Stock";
   return "In Stock";
@@ -480,7 +484,7 @@ export async function listInventory(
     }),
     prisma.inventoryBalance.findMany({
       where: { locationId: scopedLocation },
-      select: { productId: true, onHand: true, reserved: true, product: { select: { reorderLevel: true } } },
+      select: { productId: true, onHand: true, reserved: true, quarantined: true, product: { select: { reorderLevel: true } } },
     }),
     prisma.stockTransferLine.aggregate({
       where: {
@@ -498,7 +502,7 @@ export async function listInventory(
         .map((product) => ({
           ...product,
           inventoryBalances: product.inventoryBalances.filter(
-             (balance) => stockStatus(balance.onHand, balance.reserved, product.reorderLevel) === query.status,
+             (balance) => stockStatus(balance.onHand, balance.reserved, balance.quarantined, product.reorderLevel) === query.status,
           ),
         }))
         .filter((product) => product.inventoryBalances.length > 0);
@@ -513,10 +517,11 @@ export async function listInventory(
       location: balance.location.name,
       onHand: balance.onHand,
       reserved: balance.reserved,
+      quarantined: balance.quarantined,
        reorderLevel: product.reorderLevel,
       unitCost: balance.unitCost.toNumber(),
       lastUpdated: balance.updatedAt.toISOString(),
-       status: stockStatus(balance.onHand, balance.reserved, product.reorderLevel),
+       status: stockStatus(balance.onHand, balance.reserved, balance.quarantined, product.reorderLevel),
     })),
   );
   const totalUnits = summaryBalances.reduce(
@@ -524,7 +529,7 @@ export async function listInventory(
     0,
   );
   const needsRestock = summaryBalances.filter(
-     (balance) => stockStatus(balance.onHand, balance.reserved, balance.product.reorderLevel) !== "In Stock",
+     (balance) => stockStatus(balance.onHand, balance.reserved, balance.quarantined, balance.product.reorderLevel) !== "In Stock",
   ).length;
 
   return {
@@ -655,19 +660,25 @@ export async function correctInventoryBalance(
     }
     assertInventoryMutationScope(actor, balance.locationId);
 
-    const previousAvailable = balance.onHand - balance.reserved;
+    const previousAvailable = availableStock(balance);
     const nextOnHand = balance.onHand + delta;
-    if (nextOnHand < balance.reserved) {
-      throw new InventoryMutationError("BELOW_RESERVED", "Adjustment cannot reduce on-hand stock below reserved quantity", 409);
+    if (nextOnHand < balance.reserved + balance.quarantined) {
+      throw new InventoryMutationError("BELOW_ALLOCATED_STOCK", "Adjustment cannot reduce on-hand stock below reserved and quarantined quantities", 409);
     }
 
     const updateData: Prisma.InventoryBalanceUpdateInput = {
       onHand: nextOnHand,
       version: { increment: 1 },
     };
-    const updated = await tx.inventoryBalance.update({
-      where: { id: balance.id },
+    const updateResult = await tx.inventoryBalance.updateMany({
+      where: { id: balance.id, version: balance.version },
       data: updateData,
+    });
+    if (updateResult.count !== 1) {
+      throw new InventoryMutationError("INVENTORY_CONFLICT", "Inventory balance changed before adjustment", 409);
+    }
+    const updated = await tx.inventoryBalance.findUniqueOrThrow({
+      where: { id: balance.id },
       include: {
         product: { select: { itemCode: true, name: true, category: true, reorderLevel: true } },
         location: { select: { name: true } },
@@ -691,7 +702,7 @@ export async function correctInventoryBalance(
       },
     });
 
-    const nextStatus = stockStatus(updated.onHand, updated.reserved, updated.product.reorderLevel);
+    const nextStatus = stockStatus(updated.onHand, updated.reserved, updated.quarantined, updated.product.reorderLevel);
     await notifyInventoryThresholdChange(tx, {
       balanceId: balance.id,
       locationId: balance.locationId,
@@ -700,7 +711,7 @@ export async function correctInventoryBalance(
       productName: balance.product.name,
       reorderLevel: balance.product.reorderLevel,
       previousAvailable,
-      nextAvailable: updated.onHand - updated.reserved,
+      nextAvailable: availableStock(updated),
     });
 
     return serializeInventoryBalance(updated, nextStatus);
@@ -753,7 +764,7 @@ export async function updateInventoryUnitCost(
 
   return serializeInventoryBalance(
     updated,
-    stockStatus(updated.onHand, updated.reserved, updated.product.reorderLevel),
+    stockStatus(updated.onHand, updated.reserved, updated.quarantined, updated.product.reorderLevel),
   );
 }
 
@@ -762,6 +773,7 @@ function serializeInventoryBalance(
     id: string;
     onHand: number;
     reserved: number;
+    quarantined: number;
     unitCost: Prisma.Decimal;
     updatedAt: Date;
     product: { itemCode: string; name: string; category: string | null; reorderLevel: number };
@@ -777,6 +789,7 @@ function serializeInventoryBalance(
     location: balance.location.name,
     onHand: balance.onHand,
     reserved: balance.reserved,
+    quarantined: balance.quarantined,
     reorderLevel: balance.product.reorderLevel,
     unitCost: balance.unitCost.toNumber(),
     lastUpdated: balance.updatedAt.toISOString(),

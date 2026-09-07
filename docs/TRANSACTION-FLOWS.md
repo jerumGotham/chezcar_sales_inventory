@@ -36,6 +36,8 @@ Use one product named **Sample Oil** and the locations **Stock Room**, **QC**, a
 
 Post a supplier receipt for 100 units at PHP 50 unit cost.
 
+The user selects an active Supplier from Supplier Maintenance. The posted receipt keeps the Supplier ID and a historical name snapshot; inactive Suppliers cannot be used for new receipts.
+
 | Location | On Hand | Reserved | Available | Unit Cost |
 | --- | ---: | ---: | ---: | ---: |
 | Stock Room | 100 | 0 | 100 | 50 |
@@ -87,6 +89,8 @@ Payment and manual receipt records change. Inventory remains:
 | QC | 30 | 5 | 25 |
 
 ### 5. Release the Customer Order
+
+The Customer Order must have a currently eligible Salesperson from its branch. Release copies the order's stored Salesperson snapshot to the Sale while the authenticated user remains the release/encoding actor.
 
 | Location | On Hand | Reserved | Available |
 | --- | ---: | ---: | ---: |

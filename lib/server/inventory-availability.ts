@@ -1,4 +1,5 @@
 import "server-only";
+import { availableStock } from "@/lib/inventory-quantity";
 
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
@@ -164,7 +165,7 @@ export async function listInventoryAvailability(
   return {
     data: balances
       .map((balance) => {
-        const available = balance.onHand - balance.reserved;
+        const available = availableStock(balance);
         return {
           product: {
             id: balance.product.id,
@@ -175,6 +176,7 @@ export async function listInventoryAvailability(
           location: balance.location,
           onHand: balance.onHand,
           reserved: balance.reserved,
+          quarantined: balance.quarantined,
           available,
           status: availabilityStatus(available, balance.product.reorderLevel),
         };

@@ -1,9 +1,11 @@
 # ADR 0013: Admin and Accounting Simple Reports
 
-**Status:** Accepted
+**Status:** Superseded by ADR 0017
 **Date:** 2026-08-26
 
 ## Context
+
+> This decision records the earlier simple-report scope. ADR 0017 replaces its fixed-role access, Accounting/Orders report content, sales inclusion/date basis, and report set after the 2026-09-07 owner review.
 
 Reports are needed for owner review and Accounting reconciliation, but the first production reporting scope must stay simple. Branch and Stock Staff should use their operational pages and dashboards rather than broad report exports.
 

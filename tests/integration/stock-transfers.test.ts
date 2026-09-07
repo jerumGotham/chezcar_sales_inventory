@@ -284,7 +284,7 @@ describe("stock transfer posting", () => {
       );
       await expect(listNotifications(stockActor)).resolves.toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ title: "Replacement transfer draft created", read: false, relatedId: replacement.id }),
+          expect.objectContaining({ title: "Discrepancy needs investigation", read: false, relatedId: draft.id }),
         ]),
       );
     });

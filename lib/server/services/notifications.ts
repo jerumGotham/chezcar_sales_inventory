@@ -77,7 +77,7 @@ export async function createNotifications(
     title: string;
     description: string;
     type: NotificationType;
-    relatedType?: "STOCK_TRANSFER" | "INVENTORY_BALANCE" | "SALE";
+    relatedType?: "STOCK_TRANSFER" | "INVENTORY_BALANCE" | "SALE" | "BACKJOB" | "CUSTOMER_WARRANTY" | "SUPPLIER_CLAIM";
     relatedId?: string;
     relatedReference?: string;
   }>,

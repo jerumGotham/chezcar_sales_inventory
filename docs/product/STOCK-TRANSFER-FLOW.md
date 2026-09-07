@@ -21,7 +21,7 @@ Transfer records are authorized by source or destination. A user assigned to act
 
 ## Planned Flow
 
-1. Stock Staff creates a private multi-item draft from `SR` to a branch using searchable active products whose server-derived `SR` availability (`onHand - reserved`) is positive. Draft creation sends no notification; finalizing the draft alerts Stock Room staff who can dispatch it.
+1. Stock Staff creates a private multi-item draft from `SR` to a branch using searchable active products whose server-derived `SR` availability (`onHand - reserved - quarantined`) is positive. Draft creation sends no notification; finalizing the draft alerts Stock Room staff who can dispatch it.
 2. Dispatch deducts stock from `SR` and records matching stock as in transit.
 3. Before the branch records a receipt or discrepancy, Stock Staff may cancel the complete in-transit transfer with a required reason. The dispatch remains immutable, compensating movements restore the stock to `SR`, and the transfer becomes `CANCELLED`.
 4. Authorized source staff or the assigned destination Branch Staff may print the read-only transfer checklist at any transfer status. Pre-dispatch checklists show requested quantities, while dispatched and later records also show dispatched quantities. Printing does not update workflow state or inventory.

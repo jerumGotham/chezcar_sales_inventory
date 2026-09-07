@@ -63,7 +63,7 @@ function assertCreatableStaffRole(role: string): asserts role is StaffRole {
 }
 
 const internalCredentialEngine = betterAuth({
-  appName: "Chezcar Sales & Inventory (internal credentials)",
+  appName: "Chezcar Sales & Monitoring (internal credentials)",
   database: prismaAdapter(prisma, {
     provider: "postgresql",
   }),
@@ -126,14 +126,8 @@ type SetStaffCredentialInput = {
 };
 
 async function createStaffCredential(input: CreateStaffCredentialInput) {
-  const {
-    email,
-    password,
-    name,
-    role,
-    roleDefinitionId,
-    locationId,
-  } = input.body;
+  const { email, password, name, role, roleDefinitionId, locationId } =
+    input.body;
   assertCreatableStaffRole(role);
 
   // Better Auth Admin-plugin createUser carries application additional fields

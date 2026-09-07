@@ -3,6 +3,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { Prisma, type CustomerOrderStatus, type CustomerOrderType, type PaymentMethod } from "@prisma/client";
 import { z } from "zod";
+import { availableStock } from "@/lib/inventory-quantity";
 
 import {
   ACCOUNTING_RESOLUTION_ACTIONS,
@@ -14,6 +15,7 @@ import {
   type SaleCorrectionRequestDto,
 } from "../../contracts/sales";
 import {
+  assertAnyCapability,
   assertCapability,
   AuthorizationError,
   type AuthContext,
@@ -23,6 +25,7 @@ import { findActiveBranch, listActiveBranches } from "../locations";
 import { canAccessLocation, hasAllLocationAccess } from "../policy/access";
 import { createNotifications, notifyInventoryThresholdChange } from "./notifications";
 import { parseReceiptOcrDraft } from "./receipt-ocr";
+import { resolveActiveSalespersonForTransaction } from "./personnel";
 
 const positiveInt = z.coerce.number().int().positive();
 const money = z.coerce.number().min(0);
@@ -64,11 +67,16 @@ export const customerOrderMutationSchema = z.object({
   type: z.enum(["RESERVATION_NO_DP", "RESERVATION_WITH_DP", "WAITING_STOCK"]),
   expectedReleaseDate: z.string().optional(),
   locationId: z.string().optional(),
+  salespersonId: z.string().trim().min(1, "Select a salesperson"),
   source: z.string().trim().max(100).optional(),
   notes: z.string().trim().max(1_000).optional(),
   downpaymentAmount: money.default(0),
   downpaymentReceiptNumber: z.string().trim().max(100).optional(),
   lines: z.array(z.object({ productId: z.string().min(1), quantity: positiveInt, finalUnitPrice: money.optional() })).min(1),
+});
+
+export const customerOrderSalespersonSchema = z.object({
+  salespersonId: z.string().trim().min(1, "Select a salesperson"),
 });
 
 export const releaseOrderSchema = z.object({
@@ -89,6 +97,7 @@ export const directSaleSchema = z.object({
   locationId: z.string().optional(),
   customerId: z.string().optional(),
   customer: customerMutationSchema.optional(),
+  salespersonId: z.string().trim().min(1, "Select a salesperson"),
   receiptBooklet: z.string().trim().max(50).default(""),
   manualReceiptNumber: z.string().trim().min(1).max(100),
   paymentMethod: z.enum(["CASH", "GCASH", "MAYA", "BANK_TRANSFER", "CREDIT_CARD", "SPLIT"]).default("CASH"),
@@ -275,8 +284,16 @@ async function updateSaleInventory(tx: Prisma.TransactionClient, locationId: str
   for (const line of lines) {
     const balance = await tx.inventoryBalance.findUnique({ where: { locationId_productId: { locationId, productId: line.productId } } });
     if (!balance) throw new CustomerSalesError("INVENTORY_NOT_FOUND", "Inventory balance is missing for corrected sale", 409);
-    if (direction === "deduct" && balance.onHand - balance.reserved < line.quantity) throw new CustomerSalesError("INSUFFICIENT_STOCK", "Corrected sale would make available stock negative", 409);
-    await tx.inventoryBalance.update({ where: { id: balance.id }, data: { onHand: direction === "reverse" ? { increment: line.quantity } : { decrement: line.quantity }, version: { increment: 1 } } });
+    if (direction === "deduct" && availableStock(balance) < line.quantity) throw new CustomerSalesError("INSUFFICIENT_STOCK", "Corrected sale would make available stock negative", 409);
+    if (direction === "reverse") {
+      await tx.inventoryBalance.update({ where: { id: balance.id }, data: { onHand: { increment: line.quantity }, version: { increment: 1 } } });
+    } else {
+      const updated = await tx.inventoryBalance.updateMany({
+        where: { id: balance.id, version: balance.version, onHand: { gte: balance.reserved + balance.quarantined + line.quantity } },
+        data: { onHand: { decrement: line.quantity }, version: { increment: 1 } },
+      });
+      if (updated.count !== 1) throw new CustomerSalesError("INSUFFICIENT_STOCK", "Corrected sale stock changed before posting", 409);
+    }
     await tx.inventoryMovement.create({ data: { productId: line.productId, locationId, quantity: direction === "reverse" ? line.quantity : -line.quantity, type: direction === "reverse" ? "SALE_CORRECTION_REVERSAL" : "SALE_CORRECTION", actorId, reference, remarks } });
   }
 }
@@ -294,9 +311,13 @@ async function resolveCustomer(tx: Prisma.TransactionClient, actor: AuthContext,
 async function reserveLines(tx: Prisma.TransactionClient, locationId: string, lines: Array<{ productId: string; quantity: number }>) {
   for (const line of lines) {
     const balance = await tx.inventoryBalance.findUnique({ where: { locationId_productId: { locationId, productId: line.productId } }, include: { product: { select: { itemCode: true, name: true, reorderLevel: true } }, location: { select: { name: true } } } });
-    if (!balance || balance.onHand - balance.reserved < line.quantity) throw new CustomerSalesError("INSUFFICIENT_STOCK", "Not enough available branch stock", 409);
-    await tx.inventoryBalance.update({ where: { id: balance.id }, data: { reserved: { increment: line.quantity }, version: { increment: 1 } } });
-    await notifyInventoryThresholdChange(tx, { balanceId: balance.id, locationId, locationName: balance.location.name, productItemCode: balance.product.itemCode, productName: balance.product.name, reorderLevel: balance.product.reorderLevel, previousAvailable: balance.onHand - balance.reserved, nextAvailable: balance.onHand - balance.reserved - line.quantity });
+    if (!balance || availableStock(balance) < line.quantity) throw new CustomerSalesError("INSUFFICIENT_STOCK", "Not enough available branch stock", 409);
+    const updated = await tx.inventoryBalance.updateMany({
+      where: { id: balance.id, version: balance.version, onHand: { gte: balance.reserved + balance.quarantined + line.quantity } },
+      data: { reserved: { increment: line.quantity }, version: { increment: 1 } },
+    });
+    if (updated.count !== 1) throw new CustomerSalesError("INSUFFICIENT_STOCK", "Available stock changed before reservation", 409);
+    await notifyInventoryThresholdChange(tx, { balanceId: balance.id, locationId, locationName: balance.location.name, productItemCode: balance.product.itemCode, productName: balance.product.name, reorderLevel: balance.product.reorderLevel, previousAvailable: availableStock(balance), nextAvailable: availableStock(balance) - line.quantity });
   }
 }
 
@@ -313,9 +334,13 @@ async function releaseReservedLines(tx: Prisma.TransactionClient, locationId: st
 async function deductSaleLines(tx: Prisma.TransactionClient, locationId: string, lines: Array<{ productId: string; quantity: number }>) {
   for (const line of lines) {
     const balance = await tx.inventoryBalance.findUnique({ where: { locationId_productId: { locationId, productId: line.productId } }, include: { product: { select: { itemCode: true, name: true, reorderLevel: true } }, location: { select: { name: true } } } });
-    if (!balance || balance.onHand - balance.reserved < line.quantity) throw new CustomerSalesError("INSUFFICIENT_STOCK", "Not enough available branch stock", 409);
-    await tx.inventoryBalance.update({ where: { id: balance.id }, data: { onHand: { decrement: line.quantity }, version: { increment: 1 } } });
-    await notifyInventoryThresholdChange(tx, { balanceId: balance.id, locationId, locationName: balance.location.name, productItemCode: balance.product.itemCode, productName: balance.product.name, reorderLevel: balance.product.reorderLevel, previousAvailable: balance.onHand - balance.reserved, nextAvailable: balance.onHand - balance.reserved - line.quantity });
+    if (!balance || availableStock(balance) < line.quantity) throw new CustomerSalesError("INSUFFICIENT_STOCK", "Not enough available branch stock", 409);
+    const updated = await tx.inventoryBalance.updateMany({
+      where: { id: balance.id, version: balance.version, onHand: { gte: balance.reserved + balance.quarantined + line.quantity } },
+      data: { onHand: { decrement: line.quantity }, version: { increment: 1 } },
+    });
+    if (updated.count !== 1) throw new CustomerSalesError("INSUFFICIENT_STOCK", "Available stock changed before sale posting", 409);
+    await notifyInventoryThresholdChange(tx, { balanceId: balance.id, locationId, locationName: balance.location.name, productItemCode: balance.product.itemCode, productName: balance.product.name, reorderLevel: balance.product.reorderLevel, previousAvailable: availableStock(balance), nextAvailable: availableStock(balance) - line.quantity });
   }
 }
 
@@ -339,7 +364,7 @@ async function registerReceipt(tx: Prisma.TransactionClient, number: string, pur
 }
 
 async function activeProducts(tx: Prisma.TransactionClient, ids: string[]) {
-  const products = await tx.product.findMany({ where: { id: { in: ids }, status: "ACTIVE" }, select: { id: true, itemCode: true, name: true, price: true } });
+  const products = await tx.product.findMany({ where: { id: { in: ids }, status: "ACTIVE" }, select: { id: true, itemCode: true, name: true, price: true, warrantyDurationMonths: true } });
   if (products.length !== new Set(ids).size) throw new CustomerSalesError("INVALID_LINES", "Every line must reference an active product", 400);
   return new Map(products.map((product) => [product.id, product]));
 }
@@ -455,6 +480,8 @@ export async function createCustomerOrder(actor: AuthContext, input: z.infer<typ
     return await prisma.$transaction(async (tx) => {
     const location = await findActiveBranch(locationId, tx);
     if (!location) throw new CustomerSalesError("INVALID_LOCATION", "Select an active branch", 400);
+    const salesperson = await resolveActiveSalespersonForTransaction(tx, input.salespersonId, locationId);
+    if (!salesperson) throw new CustomerSalesError("INVALID_SALESPERSON", "Select an active salesperson assigned to this branch", 409);
     const products = await activeProducts(tx, productIds);
     const customerId = await resolveCustomer(tx, actor, input.customer);
     const total = input.lines.reduce((sum, line) => {
@@ -468,6 +495,11 @@ export async function createCustomerOrder(actor: AuthContext, input: z.infer<typ
         reference: `CO-${randomUUID()}`,
         locationId,
         customerId,
+        salespersonId: salesperson.id,
+        salespersonName: salesperson.fullName,
+        salespersonLocationId: salesperson.location.id,
+        salespersonLocationCode: salesperson.location.code,
+        salespersonLocationName: salesperson.location.name,
         type: input.type as CustomerOrderType,
         status,
         downpaymentAmount: decimal(input.downpaymentAmount),
@@ -508,6 +540,39 @@ export async function getCustomerOrderById(actor: AuthContext, id: string) {
   return serializeOrder(order);
 }
 
+export async function updateCustomerOrderSalesperson(
+  actor: AuthContext,
+  id: string,
+  input: z.infer<typeof customerOrderSalespersonSchema>,
+) {
+  assertAnyCapability(actor, ["customer-orders:create", "customer-orders:release"]);
+  assertOperationalActor(actor);
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "CustomerOrder" WHERE id = ${id} FOR UPDATE`;
+    const order = await tx.customerOrder.findUnique({ where: { id }, include: ORDER_INCLUDE });
+    if (!order) throw new CustomerSalesError("NOT_FOUND", "Order not found", 404);
+    assertOperationalResource(actor, order.locationId);
+    if (order.status === "COMPLETED" || order.status === "CANCELLED") {
+      throw new CustomerSalesError("INVALID_STATUS", "Completed or cancelled orders cannot change salesperson", 409);
+    }
+    const salesperson = await resolveActiveSalespersonForTransaction(tx, input.salespersonId, order.locationId);
+    if (!salesperson) throw new CustomerSalesError("INVALID_SALESPERSON", "Select an active salesperson assigned to this branch", 409);
+    return serializeOrder(await tx.customerOrder.update({
+      where: { id },
+      data: {
+        salespersonId: salesperson.id,
+        salespersonName: salesperson.fullName,
+        salespersonLocationId: salesperson.location.id,
+        salespersonLocationCode: salesperson.location.code,
+        salespersonLocationName: salesperson.location.name,
+        salespersonUpdatedById: actor.userId,
+        salespersonUpdatedAt: new Date(),
+      },
+      include: ORDER_INCLUDE,
+    }));
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
 export async function reserveCustomerOrder(actor: AuthContext, id: string) {
   assertCapability(actor, "customer-orders:reserve");
   assertOperationalActor(actor);
@@ -531,13 +596,21 @@ export async function releaseCustomerOrder(actor: AuthContext, id: string, input
   assertOperationalActor(actor);
   try {
     return await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "CustomerOrder" WHERE id = ${id} FOR UPDATE`;
     const order = await tx.customerOrder.findUnique({ where: { id }, include: ORDER_INCLUDE });
     if (!order) throw new CustomerSalesError("NOT_FOUND", "Order not found", 404);
     assertOperationalResource(actor, order.locationId);
     if (order.status !== "RESERVED" && order.status !== "READY_FOR_RELEASE") throw new CustomerSalesError("INVALID_STATUS", "Only reserved orders can be released", 409);
+    if (!order.salespersonId || !order.salespersonName || !order.salespersonLocationId || !order.salespersonLocationCode || !order.salespersonLocationName) {
+      throw new CustomerSalesError("INVALID_SALESPERSON", "Assign an active salesperson before releasing this order", 409);
+    }
+    const salesperson = await resolveActiveSalespersonForTransaction(tx, order.salespersonId, order.locationId);
+    if (!salesperson) throw new CustomerSalesError("INVALID_SALESPERSON", "Assign an active salesperson from this branch before release", 409);
     if (input.amountPaid !== order.remainingBalance.toNumber()) throw new CustomerSalesError("INVALID_BALANCE", "Amount paid must match remaining balance", 400);
     await releaseReservedLines(tx, order.locationId, order.lines);
-    const sale = await tx.sale.create({ data: { reference: `SALE-${randomUUID()}`, manualReceiptNumber: input.finalReceiptNumber, receiptBooklet: "", locationId: order.locationId, customerId: order.customerId, orderId: order.id, paymentMethod: input.paymentMethod as PaymentMethod, totalAmount: order.totalAmount, amountPaid: decimal(input.amountPaid), notes: input.notes || null, postedById: actor.userId, lines: { create: order.lines.map((line) => ({ productId: line.productId, productItemCode: line.productItemCode, productName: line.productName, quantity: line.quantity, unitPrice: line.finalUnitPrice })) }, accountingReview: { create: {} } } });
+    const sale = await tx.sale.create({ data: { reference: `SALE-${randomUUID()}`, manualReceiptNumber: input.finalReceiptNumber, receiptBooklet: "", locationId: order.locationId, customerId: order.customerId, orderId: order.id, salespersonId: order.salespersonId, salespersonName: order.salespersonName, salespersonLocationId: order.salespersonLocationId, salespersonLocationCode: order.salespersonLocationCode, salespersonLocationName: order.salespersonLocationName, paymentMethod: input.paymentMethod as PaymentMethod, totalAmount: order.totalAmount, amountPaid: decimal(input.amountPaid), notes: input.notes || null, postedById: actor.userId, lines: { create: order.lines.map((line) => ({ productId: line.productId, productItemCode: line.productItemCode, productName: line.productName, quantity: line.quantity, unitPrice: line.finalUnitPrice })) }, accountingReview: { create: {} } } });
+    const warrantyProducts = await tx.product.findMany({ where: { id: { in: order.lines.map((line) => line.productId) } }, select: { id: true, warrantyDurationMonths: true } });
+    for (const product of warrantyProducts) await tx.saleLine.updateMany({ where: { saleId: sale.id, productId: product.id }, data: { warrantyDurationMonths: product.warrantyDurationMonths } });
     await registerReceipt(tx, input.finalReceiptNumber, "CUSTOMER_ORDER_FINAL", { orderId: order.id, saleId: sale.id, locationId: order.locationId, receiptBooklet: "" });
     for (const line of order.lines) await tx.inventoryMovement.create({ data: { productId: line.productId, locationId: order.locationId, quantity: -line.quantity, type: "CUSTOMER_ORDER_RELEASE", actorId: actor.userId, reference: input.finalReceiptNumber, remarks: `Released order ${order.reference}` } });
     const updated = await tx.customerOrder.update({ where: { id: order.id }, data: { status: "COMPLETED", finalReceiptNumber: input.finalReceiptNumber, remainingBalance: decimal(0), releasedById: actor.userId, releasedAt: new Date() }, include: ORDER_INCLUDE });
@@ -671,12 +744,15 @@ async function createDirectSaleForActor(actor: AuthContext, rawInput: z.input<ty
     if (!location) throw new CustomerSalesError("INVALID_LOCATION", "Select an active branch", 400);
     const products = await activeProducts(tx, productIds);
     const customerId = input.customerId ?? (input.customer ? await resolveCustomer(tx, actor, input.customer) : null);
+    const salesperson = await resolveActiveSalespersonForTransaction(tx, input.salespersonId, locationId);
+    if (!salesperson) throw new CustomerSalesError("INVALID_SALESPERSON", "Select an active salesperson assigned to this branch", 409);
     const subtotal = input.lines.reduce((sum, line) => sum + line.quantity * (line.unitPrice ?? products.get(line.productId)!.price?.toNumber() ?? 0), 0);
     if (input.discountAmount > subtotal) throw new CustomerSalesError("INVALID_DISCOUNT", "Discount cannot exceed sale subtotal", 400);
     const total = subtotal - input.discountAmount;
     if (input.amountPaid !== total) throw new CustomerSalesError("INVALID_PAYMENT", "Direct sale payment must match total", 400);
     await deductSaleLines(tx, locationId, input.lines);
-    const sale = await tx.sale.create({ data: { reference: `SALE-${randomUUID()}`, manualReceiptNumber: input.manualReceiptNumber, receiptBooklet: input.receiptBooklet ?? "", locationId, customerId, paymentMethod: input.paymentMethod as PaymentMethod, totalAmount: decimal(total), discountAmount: decimal(input.discountAmount), amountPaid: decimal(input.amountPaid), notes: input.notes || null, postedById: actor.userId, lines: { create: input.lines.map((line) => { const product = products.get(line.productId)!; return { productId: product.id, productItemCode: product.itemCode, productName: product.name, quantity: line.quantity, unitPrice: decimal(line.unitPrice ?? product.price?.toNumber() ?? 0) }; }) }, accountingReview: { create: {} } }, include: SALE_INCLUDE });
+    const sale = await tx.sale.create({ data: { reference: `SALE-${randomUUID()}`, manualReceiptNumber: input.manualReceiptNumber, receiptBooklet: input.receiptBooklet ?? "", locationId, customerId, salespersonId: salesperson.id, salespersonName: salesperson.fullName, salespersonLocationId: salesperson.location.id, salespersonLocationCode: salesperson.location.code, salespersonLocationName: salesperson.location.name, paymentMethod: input.paymentMethod as PaymentMethod, totalAmount: decimal(total), discountAmount: decimal(input.discountAmount), amountPaid: decimal(input.amountPaid), notes: input.notes || null, postedById: actor.userId, lines: { create: input.lines.map((line) => { const product = products.get(line.productId)!; return { productId: product.id, productItemCode: product.itemCode, productName: product.name, quantity: line.quantity, unitPrice: decimal(line.unitPrice ?? product.price?.toNumber() ?? 0) }; }) }, accountingReview: { create: {} } }, include: SALE_INCLUDE });
+    for (const product of products.values()) await tx.saleLine.updateMany({ where: { saleId: sale.id, productId: product.id }, data: { warrantyDurationMonths: product.warrantyDurationMonths } });
     await registerReceipt(tx, input.manualReceiptNumber, "DIRECT_SALE", { saleId: sale.id, locationId, receiptBooklet: input.receiptBooklet ?? "" });
     for (const line of input.lines) await tx.inventoryMovement.create({ data: { productId: line.productId, locationId, quantity: -line.quantity, type: "DIRECT_SALE", actorId: actor.userId, reference: input.receiptBooklet ? `${input.receiptBooklet}-${input.manualReceiptNumber}` : input.manualReceiptNumber, remarks: `Direct sale ${sale.reference}` } });
     return serializeSaleWithCorrection(sale);
@@ -991,12 +1067,14 @@ export async function reviewSale(actor: AuthContext, saleId: string, input: z.in
     }
     const differences = compareReceipt(sale, input.comparison);
     if (input.status === "VERIFIED" && differences.length > 0) throw new CustomerSalesError("RECEIPT_MISMATCH", differences.join("; "), 409);
+    const reviewedAt = new Date();
     const updated = await tx.saleAccountingReview.update({
       where: { id: freshReview.id },
       data: {
         status: input.status,
         reviewedById: actor.userId,
-        reviewedAt: new Date(),
+        reviewedAt,
+        verifiedAt: input.status === "VERIFIED" ? reviewedAt : null,
         mismatchCategory: input.status === "MISMATCH_REPORTED" ? input.mismatchCategory : null,
         notes: input.status === "MISMATCH_REPORTED" ? input.notes : null,
         comparisonJson: JSON.stringify({ comparison: input.comparison, differences }),
@@ -1061,6 +1139,7 @@ export async function respondToSaleMismatch(actor: AuthContext, saleId: string, 
               comparisonJson: null,
               reviewedById: null,
               reviewedAt: null,
+              verifiedAt: null,
               resolutionAction: null,
               resolutionNote: null,
               resolvedById: null,
@@ -1140,7 +1219,7 @@ export async function resolveSale(actor: AuthContext, saleId: string, input: z.i
     if (input.action === "VOIDED" && review.branchResponse !== "SALE_ENCODED_INCORRECT") throw new CustomerSalesError("INVALID_RESOLUTION", "Only an incorrectly encoded sale can be voided without a replacement", 409);
     const now = new Date();
     if (input.action === "CONFIRMED_CORRECT") {
-      const updated = await tx.saleAccountingReview.update({ where: { id: review.id }, data: { status: "VERIFIED", resolutionAction: "CONFIRMED_CORRECT", resolutionNote: input.note, resolvedById: actor.userId, resolvedAt: now } });
+      const updated = await tx.saleAccountingReview.update({ where: { id: review.id }, data: { status: "VERIFIED", verifiedAt: now, resolutionAction: "CONFIRMED_CORRECT", resolutionNote: input.note, resolvedById: actor.userId, resolvedAt: now } });
       await notifySaleParties(tx, sale, "Receipt mismatch resolved", `${sale.manualReceiptNumber} was confirmed correct.`);
       return { action: input.action, review: updated };
     }
@@ -1183,7 +1262,7 @@ export async function resolveSale(actor: AuthContext, saleId: string, input: z.i
     if (!review.branchReplacementReceiptNumber || replacement.receiptNumber !== review.branchReplacementReceiptNumber) throw new CustomerSalesError("INVALID_REPLACEMENT_RECEIPT", "Use the replacement receipt number confirmed by the branch", 409);
     const productIds = replacement.lines.map((line) => line.itemCode);
     if (new Set(productIds).size !== productIds.length) throw new CustomerSalesError("INVALID_LINES", "A replacement product may appear only once", 400);
-    const products = await tx.product.findMany({ where: { itemCode: { in: productIds }, status: "ACTIVE" }, select: { id: true, itemCode: true, name: true } });
+    const products = await tx.product.findMany({ where: { itemCode: { in: productIds }, status: "ACTIVE" }, select: { id: true, itemCode: true, name: true, warrantyDurationMonths: true } });
     if (products.length !== new Set(productIds).size) throw new CustomerSalesError("INVALID_LINES", "Every replacement line must reference an active product", 400);
     const productsByCode = new Map(products.map((product) => [product.itemCode, product]));
     const replacementSubtotalCents = cents(replacement.lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0));
@@ -1202,6 +1281,11 @@ export async function resolveSale(actor: AuthContext, saleId: string, input: z.i
         receiptBooklet: replacement.receiptBooklet,
         locationId: sale.locationId,
         customerId: sale.customerId,
+        salespersonId: sale.salespersonId,
+        salespersonName: sale.salespersonName,
+        salespersonLocationId: sale.salespersonLocationId,
+        salespersonLocationCode: sale.salespersonLocationCode,
+        salespersonLocationName: sale.salespersonLocationName,
         paymentMethod: replacement.paymentMethod,
         totalAmount: decimal(replacementTotal),
         discountAmount: decimal(replacement.discountAmount),
@@ -1216,6 +1300,7 @@ export async function resolveSale(actor: AuthContext, saleId: string, input: z.i
       },
       include: SALE_INCLUDE,
     });
+    for (const product of products) await tx.saleLine.updateMany({ where: { saleId: replacementSale.id, productId: product.id }, data: { warrantyDurationMonths: product.warrantyDurationMonths } });
     await registerReceipt(tx, replacement.receiptNumber, "SALE_CORRECTION", { saleId: replacementSale.id, locationId: sale.locationId, receiptBooklet: replacement.receiptBooklet });
     await tx.sale.update({ where: { id: sale.id }, data: { status: "VOIDED", correctedById: actor.userId, correctedAt: now } });
     await tx.saleAccountingReview.update({ where: { id: review.id }, data: { resolutionAction: "VOIDED_REPLACED", resolutionNote: input.note, resolvedById: actor.userId, resolvedAt: now } });
@@ -1391,21 +1476,21 @@ export async function getDashboardSummary(
     prisma.sale.findMany({ where: { ...filteredSalesScope, status: "POSTED", postedAt: { gte: salesWindow.start, lte: now } }, select: { postedAt: true, totalAmount: true, location: { select: { name: true } } } }),
   ]);
   const lowStock = lowBalances
-    .filter((balance) => balance.onHand - balance.reserved <= balance.product.reorderLevel)
+    .filter((balance) => availableStock(balance) <= balance.product.reorderLevel)
     .slice(0, 10)
-    .map((balance) => ({ itemCode: balance.product.itemCode, name: balance.product.name, location: balance.location.name, available: balance.onHand - balance.reserved, reorderLevel: balance.product.reorderLevel }));
-  const availableStock = lowBalances.reduce((sum, balance) => sum + Math.max(0, balance.onHand - balance.reserved), 0);
-  const lowStockCount = lowBalances.filter((balance) => balance.onHand - balance.reserved <= balance.product.reorderLevel).length;
+    .map((balance) => ({ itemCode: balance.product.itemCode, name: balance.product.name, location: balance.location.name, available: availableStock(balance), reorderLevel: balance.product.reorderLevel }));
+  const availableStockCount = lowBalances.reduce((sum, balance) => sum + availableStock(balance), 0);
+  const lowStockCount = lowBalances.filter((balance) => availableStock(balance) <= balance.product.reorderLevel).length;
   const lowStockBranchCount = new Set(
     lowBalances
       .filter(
         (balance) =>
           balance.location.type === "BRANCH" &&
-          balance.onHand - balance.reserved <= balance.product.reorderLevel,
+          availableStock(balance) <= balance.product.reorderLevel,
       )
       .map((balance) => balance.locationId),
   ).size;
-  const outOfStockCount = lowBalances.filter((balance) => balance.onHand - balance.reserved <= 0).length;
+  const outOfStockCount = lowBalances.filter((balance) => availableStock(balance) <= 0).length;
   const inactiveWithStockCount = lowBalances.filter((balance) => balance.product.status === "INACTIVE" && balance.onHand > 0).length;
   const trendByDate = dashboardTrendBuckets(
     salesPeriod,
@@ -1450,7 +1535,7 @@ export async function getDashboardSummary(
     flaggedSales: flagged,
     verifiedToday,
     agedOrders,
-    availableStock,
+    availableStock: availableStockCount,
     lowStockCount,
     lowStockBranchCount,
     outOfStockCount,
@@ -1491,7 +1576,7 @@ export async function getReportsSummary(actor: AuthContext) {
       flaggedRows: sales.filter((sale) => sale.reviewStatus === "MISMATCH_REPORTED"),
     },
     orders: { open: orders.filter((order) => !["Released", "Cancelled"].includes(order.status)).length, rows: orders },
-    inventory: inventory.map((balance) => ({ itemCode: balance.product.itemCode, name: balance.product.name, category: balance.product.category, brand: balance.product.brand, productStatus: balance.product.status, location: balance.location.name, onHand: balance.onHand, reserved: balance.reserved, available: balance.onHand - balance.reserved, reorderLevel: balance.product.reorderLevel })),
+    inventory: inventory.map((balance) => ({ itemCode: balance.product.itemCode, name: balance.product.name, category: balance.product.category, brand: balance.product.brand, productStatus: balance.product.status, location: balance.location.name, onHand: balance.onHand, reserved: balance.reserved, quarantined: balance.quarantined, available: availableStock(balance), reorderLevel: balance.product.reorderLevel })),
   };
 }
 
@@ -1503,7 +1588,22 @@ function serializeOrder(order: Prisma.CustomerOrderGetPayload<{ include: typeof 
     COMPLETED: "Released",
     CANCELLED: "Cancelled",
   };
-  return { id: order.id, orderNo: order.reference, customer: order.customer.name, branch: order.location.name, itemSummary: order.lines.map((line) => line.productName).join(", "), totalItems: order.lines.reduce((sum, line) => sum + line.quantity, 0), status: statusLabels[order.status], statusCode: order.status, type: order.type, paymentStatus: order.remainingBalance.toNumber() === 0 ? "Paid" : order.downpaymentAmount.toNumber() > 0 ? "Partial" : "Unpaid", downpayment: serializeMoney(order.downpaymentAmount), totalAmount: serializeMoney(order.totalAmount), balance: serializeMoney(order.remainingBalance), orderDate: order.createdAt.toISOString(), releaseDate: order.expectedReleaseDate?.toISOString() ?? "", finalReceiptNumber: order.finalReceiptNumber, downpaymentReceiptNumber: order.downpaymentReceiptNumber, notes: order.notes, cancelledAt: order.cancelledAt?.toISOString() ?? null, releasedAt: order.releasedAt?.toISOString() ?? null, lines: order.lines.map((line) => ({ productId: line.productId, itemCode: line.productItemCode, name: line.productName, quantity: line.quantity, unitPrice: serializeMoney(line.finalUnitPrice), amount: line.quantity * line.finalUnitPrice.toNumber() })) };
+  return { id: order.id, orderNo: order.reference, customer: order.customer.name, branch: order.location.name, locationId: order.locationId, salesperson: serializeSalespersonSnapshot(order), itemSummary: order.lines.map((line) => line.productName).join(", "), totalItems: order.lines.reduce((sum, line) => sum + line.quantity, 0), status: statusLabels[order.status], statusCode: order.status, type: order.type, paymentStatus: order.remainingBalance.toNumber() === 0 ? "Paid" : order.downpaymentAmount.toNumber() > 0 ? "Partial" : "Unpaid", downpayment: serializeMoney(order.downpaymentAmount), totalAmount: serializeMoney(order.totalAmount), balance: serializeMoney(order.remainingBalance), orderDate: order.createdAt.toISOString(), releaseDate: order.expectedReleaseDate?.toISOString() ?? "", finalReceiptNumber: order.finalReceiptNumber, downpaymentReceiptNumber: order.downpaymentReceiptNumber, notes: order.notes, cancelledAt: order.cancelledAt?.toISOString() ?? null, releasedAt: order.releasedAt?.toISOString() ?? null, lines: order.lines.map((line) => ({ productId: line.productId, itemCode: line.productItemCode, name: line.productName, quantity: line.quantity, unitPrice: serializeMoney(line.finalUnitPrice), amount: line.quantity * line.finalUnitPrice.toNumber() })) };
+}
+
+function serializeSalespersonSnapshot(record: {
+  salespersonId: string | null;
+  salespersonName: string | null;
+  salespersonLocationId: string | null;
+  salespersonLocationCode: string | null;
+  salespersonLocationName: string | null;
+}) {
+  if (!record.salespersonId || !record.salespersonName || !record.salespersonLocationId || !record.salespersonLocationCode || !record.salespersonLocationName) return null;
+  return {
+    personnelId: record.salespersonId,
+    name: record.salespersonName,
+    branch: { id: record.salespersonLocationId, code: record.salespersonLocationCode, name: record.salespersonLocationName },
+  };
 }
 
 function parseReportedComparison(comparisonJson: string | null | undefined) {
@@ -1553,6 +1653,7 @@ function serializeSaleWithCorrection(
   const request = sale.correctionRequests[0] ?? null;
   return {
     ...serializeSale(sale),
+    salesperson: serializeSalespersonSnapshot(sale),
     correctionRequest: request ? serializeSaleCorrectionRequest(request) : null,
   };
 }

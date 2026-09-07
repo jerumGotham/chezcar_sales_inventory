@@ -19,16 +19,19 @@ export class StockReceiptError extends Error {
 function serializeReceipt(receipt: {
   id: string;
   reference: string;
-  supplier: string;
+  supplierId: string;
+  supplierName: string;
+  supplier: { id: string; code: string | null; name: string };
   notes: string | null;
   receivedAt: Date;
   location: { id: string; code: string; name: string };
-  lines: Array<{ quantity: number; productItemCode: string; productName: string; productId: string }>;
+  lines: Array<{ quantity: number; acceptedQuantity: number; quarantinedQuantity: number; missingQuantity: number; productItemCode: string; productName: string; productId: string }>;
 }) {
   return {
     id: receipt.id,
     reference: receipt.reference,
     supplier: receipt.supplier,
+    supplierName: receipt.supplierName,
     notes: receipt.notes,
     receivedAt: receipt.receivedAt.toISOString(),
     location: receipt.location,
@@ -44,7 +47,8 @@ export async function listStockReceipts(actor: AuthContext) {
     orderBy: { receivedAt: "desc" },
     include: {
       location: { select: { id: true, code: true, name: true } },
-      lines: { select: { productId: true, quantity: true, productItemCode: true, productName: true } },
+      supplier: { select: { id: true, code: true, name: true } },
+      lines: { select: { productId: true, quantity: true, acceptedQuantity: true, quarantinedQuantity: true, missingQuantity: true, productItemCode: true, productName: true } },
     },
   });
   return receipts.map(serializeReceipt);
@@ -70,6 +74,14 @@ export async function createStockReceipt(actor: AuthContext, input: CreateStockR
         throw new StockReceiptError("FORBIDDEN", "Stock Room is outside your assigned locations", 403);
       }
 
+      const supplier = await tx.supplier.findFirst({
+        where: { id: input.supplierId, status: "ACTIVE" },
+        select: { id: true, code: true, name: true },
+      });
+      if (!supplier) {
+        throw new StockReceiptError("INVALID_SUPPLIER", "Select an active supplier", 400);
+      }
+
       const products = await tx.product.findMany({
         where: { id: { in: productIds }, status: "ACTIVE" },
         select: { id: true, itemCode: true, name: true },
@@ -82,7 +94,8 @@ export async function createStockReceipt(actor: AuthContext, input: CreateStockR
       const receipt = await tx.stockReceipt.create({
         data: {
           reference: input.reference,
-          supplier: input.supplier,
+          supplierId: supplier.id,
+          supplierName: supplier.name,
           notes: input.notes || null,
           locationId: stockRoom.id,
           receivedById: actor.userId,
@@ -91,7 +104,10 @@ export async function createStockReceipt(actor: AuthContext, input: CreateStockR
               const product = productsById.get(line.productId)!;
               return {
                 productId: product.id,
-                quantity: line.quantity,
+                quantity: line.expectedQuantity,
+                acceptedQuantity: line.acceptedQuantity,
+                quarantinedQuantity: line.quarantinedQuantity,
+                missingQuantity: line.missingQuantity,
                 productItemCode: product.itemCode,
                 productName: product.name,
               };
@@ -100,24 +116,48 @@ export async function createStockReceipt(actor: AuthContext, input: CreateStockR
         },
         include: {
           location: { select: { id: true, code: true, name: true } },
-          lines: { select: { productId: true, quantity: true, productItemCode: true, productName: true } },
+          supplier: { select: { id: true, code: true, name: true } },
+          lines: { select: { productId: true, quantity: true, acceptedQuantity: true, quarantinedQuantity: true, missingQuantity: true, productItemCode: true, productName: true } },
         },
       });
 
       for (const line of input.lines) {
         await tx.inventoryBalance.upsert({
           where: { locationId_productId: { locationId: stockRoom.id, productId: line.productId } },
-          create: { locationId: stockRoom.id, productId: line.productId, onHand: line.quantity, unitCost: new Prisma.Decimal(line.unitCost) },
-          update: { onHand: { increment: line.quantity }, unitCost: new Prisma.Decimal(line.unitCost), version: { increment: 1 } },
+            create: { locationId: stockRoom.id, productId: line.productId, onHand: line.acceptedQuantity + line.quarantinedQuantity, quarantined: line.quarantinedQuantity, unitCost: new Prisma.Decimal(line.unitCost) },
+            update: { onHand: { increment: line.acceptedQuantity + line.quarantinedQuantity }, quarantined: { increment: line.quarantinedQuantity }, unitCost: new Prisma.Decimal(line.unitCost), version: { increment: 1 } },
         });
         await tx.inventoryMovement.create({
           data: {
             receiptId: receipt.id,
             productId: line.productId,
             locationId: stockRoom.id,
-            quantity: line.quantity,
+            quantity: line.acceptedQuantity + line.quarantinedQuantity,
             type: "SUPPLIER_RECEIPT",
             actorId: actor.userId,
+          },
+        });
+      }
+
+      const affected = input.lines.filter((line) => line.quarantinedQuantity > 0 || line.missingQuantity > 0);
+      if (affected.length > 0) {
+        const claimReference = `SC-${receipt.reference}-${receipt.id.slice(-6).toUpperCase()}`;
+        await tx.supplierClaim.create({
+          data: {
+            reference: claimReference,
+            idempotencyKey: `receipt:${receipt.id}`,
+            supplierId: supplier.id,
+            supplierName: supplier.name,
+            locationId: stockRoom.id,
+            locationCode: stockRoom.code,
+            locationName: stockRoom.name,
+            sourceReceiptId: receipt.id,
+            notes: `Automatically created from affected receipt ${receipt.reference}.`,
+            createdById: actor.userId,
+            lines: { create: affected.map((line) => {
+              const product = productsById.get(line.productId)!;
+              return { productId: line.productId, reason: line.claimReason!, claimedQuantity: line.quarantinedQuantity + line.missingQuantity, quarantinedQuantity: line.quarantinedQuantity, missingQuantity: line.missingQuantity, openQuarantinedQuantity: line.quarantinedQuantity, openMissingQuantity: line.missingQuantity, productItemCode: product.itemCode, productName: product.name, unitCost: new Prisma.Decimal(line.unitCost), notes: line.claimNotes };
+            }) },
           },
         });
       }

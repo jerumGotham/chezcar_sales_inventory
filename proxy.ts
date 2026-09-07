@@ -20,11 +20,16 @@ const PAGE_CAPABILITIES = {
   reports: CAPABILITIES.reportsView,
   users: CAPABILITIES.usersView,
   branches: CAPABILITIES.branchesView,
+  suppliers: CAPABILITIES.suppliersView,
+  personnel: CAPABILITIES.personnelView,
   offline: "offline-sales:activate-device",
   "stock-transfers": CAPABILITIES.stockTransfersView,
 } as const satisfies Record<string, Capability | readonly Capability[]>;
 
 function pageCapability(pathname: string): Capability | readonly Capability[] | null {
+  if (pathname === "/inventory/returns-warranty" || pathname.startsWith("/inventory/returns-warranty/")) {
+    return [CAPABILITIES.backjobsView, CAPABILITIES.customerWarrantiesView, CAPABILITIES.supplierClaimsView];
+  }
   if (pathname === "/users/roles" || pathname.startsWith("/users/roles/")) {
     return CAPABILITIES.rolesView;
   }

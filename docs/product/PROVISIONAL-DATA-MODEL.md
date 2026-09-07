@@ -1,7 +1,7 @@
 # Provisional MVP Data Model
 
 **Status:** Foundation subset implemented; remaining contract pending review of the supplied Excel workbook
-**Last updated:** 2026-08-28
+**Last updated:** 2026-09-07
 
 ## Purpose
 
@@ -64,6 +64,27 @@ Changing permissions revokes assigned users' sessions. Scope cannot change while
 
 The foundation schema now uses this unified Location concept because the central warehouse holds inventory too.
 
+### Personnel
+
+- `id`
+- `fullName`
+- one home `locationId` resolving to an active branch
+- `type`: `SALESPERSON`, `INSTALLER`, or `BOTH`
+- `status`: active/inactive
+- created/updated actors and timestamps
+
+Personnel master data is implemented as an operational identity, not an authenticated User. Direct Sales and Customer Orders now store nullable Personnel references plus complete immutable name/branch snapshots; legacy rows remain explicitly unattributed. Backjob Installer selection remains provisional.
+
+### Supplier
+
+- `id` and optional business code
+- unique normalized name
+- contact/address details
+- active/inactive status
+- created/updated actors and timestamps
+
+Supplier master data and Supplier selection for current Stock Room receiving are implemented. Future Supplier Claims will reuse the same identity rather than storing supplier identity as free text.
+
 ## Product and Pricing
 
 ### Product
@@ -74,6 +95,7 @@ The foundation schema now uses this unified Location concept because the central
 - `description`
 - `category`
 - `brand`
+- optional warranty duration and unit
 - active status
 - timestamps
 
@@ -98,11 +120,12 @@ Immutable price versions are required so offline sales can prove which server-is
 - `productId`
 - book `onHand`
 - optional `reserved`
+- `quarantined`
 - optimistic `version`
 - timestamps
 - unique `(locationId, productId)`
 
-`availableToSell = onHand - reserved`, and both canonical `onHand` and `availableToSell` must remain non-negative. An unsafe offline submission is preserved as evidence in `NEEDS_REVIEW` instead of creating a canonical sale or negative stock.
+`quarantined` and `availableToSell = onHand - reserved - quarantined` are implemented. Database constraints keep `onHand`, `reserved`, `quarantined`, and `availableToSell` non-negative. Quarantine is a bucket within the existing location, not a separate Location. Authorized quarantine mutations remain pending for Returns/Warranty workflows.
 
 ### InventoryMovement
 
@@ -117,7 +140,7 @@ Immutable price versions are required so offline sales can prove which server-is
 - `occurredAt` and server `createdAt`
 - reason/notes
 
-Movement types include opening balance, Stock Room receipt, sale, sale reversal, transfer dispatch, transfer receipt, source restoration, loss, damage, supplemental transfer, and authorized adjustment.
+Movement types include opening balance, Stock Room receipt, sale, sale reversal, transfer dispatch, transfer receipt, source restoration, loss, supplemental transfer, authorized adjustment, Backjob part issue/return, customer return to quarantine, warranty replacement release, supplier return, supplier replacement receipt, repair release, and write-off. A movement that changes sellability without changing physical on-hand records its quarantine delta atomically with the balance update.
 
 ## Stock Room Receiving
 
@@ -135,10 +158,12 @@ Movement types include opening balance, Stock Room receipt, sale, sale reversal,
 
 - receipt ID
 - product ID and description snapshot
-- quantity
+- accepted sellable quantity
+- physically received quarantined/damaged/wrong quantity
+- missing quantity
 - optional cost if confirmed later
 
-Posting creates `SR` inventory movements transactionally.
+Posting creates inventory movements transactionally only for physically received quantities and may create a linked Supplier Claim. Missing quantity never increases inventory. The next phase permits supplier receiving at the claim/authorized location rather than assuming every supplier resolution enters `SR`.
 
 ## Stock Transfers and Discrepancies
 
@@ -196,6 +221,7 @@ Admin resolution transactionally revalidates the transfer and inventory versions
 - branch location ID
 - manual receipt number and receipt-series scope
 - Branch Staff user
+- required Salesperson Personnel ID and immutable attribution snapshot
 - status and reconciliation status
 - total amount calculated by server
 - optional customer reference and name/contact snapshot
@@ -233,6 +259,66 @@ Manual receipt identity is unique by branch, receipt series/booklet, and receipt
 - reason, expected/actual values, notes
 - resolution type and linked correction/void/replacement
 - timestamps
+
+## Returns, Warranty, and Supplier Claims
+
+### Backjob
+
+- `id` and generated case number
+- branch/location, customer, and normally linked original sale
+- assigned Installer Personnel ID and snapshot
+- concern, coverage decision, required active-stage schedule, work performed, notes, optional evidence, and customer acknowledgement
+- lifecycle status and optimistic version
+- authenticated creator/completer and timestamps
+- optional linked chargeable sale
+
+### BackjobPart
+
+- Backjob and product IDs plus product snapshot
+- planned, issued, used, and returned quantities
+- linked issue/return movement IDs
+
+Planning a part has no inventory effect. Physical issue deducts on-hand; unused physical return restores it. Completion requires every issued quantity to be reconciled as used or returned.
+
+### CustomerWarranty
+
+- `id` and generated case number
+- branch/location, customer, original verified sale, and original sale-line reference
+- product and purchased-quantity snapshot
+- warranty duration/basis/expiry snapshot and Admin exception reason when required
+- claimed quantity and cumulative prior claimed/replaced quantity
+- assessment, approval, resolution, status, notes, required claim evidence, and active-stage target date
+- approved replacement product and Admin equivalent-product reason when different
+- linked Supplier Claim when supplier-covered
+- actors, timestamps, and optimistic version
+
+### SupplierClaim
+
+- `id` and generated claim number
+- Supplier and owning branch/location
+- issue reason: damage, defect, incomplete delivery, wrong delivery, or supplier-covered customer warranty
+- optional source receipt and Customer Warranty links
+- product/quantity snapshots, physically quarantined quantity, and missing quantity
+- requested resolution, supplier response, status, notes, required damage/defect evidence, active-stage target date, and external reference
+- replacement/repair quantities and dates
+- refund/credit memo amount, date, reference, proof, and Accounting actor
+- approval/closure actors, timestamps, and optimistic version
+
+Supplier Damage is an issue reason, not a separate aggregate. Customer Warranty and Supplier Claim statuses advance independently. Refund/credit fields are claim-resolution tracking only and do not imply a general ledger.
+
+### Warranty and Claim Inventory Actions
+
+Each physical action is a separately authorized idempotent command linked to its case and resulting movement IDs:
+
+- receive customer item into quarantine
+- issue/return Backjob parts
+- release customer replacement
+- return quarantined item to supplier
+- receive supplier replacement at the claim location
+- return repaired item to available stock
+- write off quarantined stock
+
+Status changes and approvals never substitute for these physical actions.
 
 ## Notifications
 
@@ -330,4 +416,5 @@ Using `excel/REALTIME INVENTORY- NEW 3.xlsx`:
 - Opening quantities and whether damaged stock exists separately
 - Product costs and historical cost requirements
 - Supported payment method values
-- Customer Order, Job Order, and advanced CRM data beyond the optional sale customer snapshot
+- Job Order and advanced CRM data beyond Backjob and the optional sale customer snapshot
+- Commission, Payroll, customer refund, and customer exchange contracts

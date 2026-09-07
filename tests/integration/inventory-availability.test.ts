@@ -39,6 +39,7 @@ type AvailabilityBody = {
     location: { code: string };
     onHand: number;
     reserved: number;
+    quarantined: number;
     available: number;
     status: string;
   }>;
@@ -71,6 +72,7 @@ async function createAvailabilityProduct(
       locationId: string;
       onHand: number;
       reserved: number;
+      quarantined?: number;
     }>;
   },
 ) {
@@ -153,6 +155,7 @@ describe("live inventory availability", () => {
       ).toMatchObject({
         onHand: 5,
         reserved: 4,
+        quarantined: 0,
         available: 1,
         status: "Low Stock",
       });

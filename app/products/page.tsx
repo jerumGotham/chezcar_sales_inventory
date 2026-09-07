@@ -70,6 +70,7 @@ type ProductForm = {
   description: string;
   price: string;
   reorderLevel: string;
+  warrantyDurationMonths: string;
   status: "ACTIVE" | "INACTIVE";
   vehicleCompatibilities: Array<{
     make: string;
@@ -87,6 +88,7 @@ const EMPTY_PRODUCT_FORM: ProductForm = {
   description: "",
   price: "",
   reorderLevel: "0",
+  warrantyDurationMonths: "",
   status: "ACTIVE",
   vehicleCompatibilities: [],
 };
@@ -324,6 +326,7 @@ export default function ProductsPage() {
         description: form.description || undefined,
         price: form.price ? Number(form.price) : null,
         reorderLevel: Number(form.reorderLevel || 0),
+        warrantyDurationMonths: form.warrantyDurationMonths ? Number(form.warrantyDurationMonths) : null,
         status: form.status,
         vehicleCompatibilities: form.vehicleCompatibilities.map((compatibility) => ({
           make: compatibility.make,
@@ -452,6 +455,7 @@ export default function ProductsPage() {
         description: product.description ?? "",
         price: product.price?.toString() ?? "",
         reorderLevel: String(product.reorderLevel),
+        warrantyDurationMonths: product.warrantyDurationMonths ? String(product.warrantyDurationMonths) : "",
         status: product.status === "Active" ? "ACTIVE" : "INACTIVE",
         vehicleCompatibilities: product.vehicleCompatibilities.map((compatibility) => ({
           make: compatibility.make,
@@ -1069,6 +1073,10 @@ export default function ProductsPage() {
                   >
                     Add Vehicle
                   </Button>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="warrantyDurationMonths">Warranty Period (months)</Label>
+                  <Input id="warrantyDurationMonths" type="number" min="1" max="120" value={form.warrantyDurationMonths} disabled={Boolean(selectedProduct && !canUpdate)} onChange={(event) => setForm((current) => ({ ...current, warrantyDurationMonths: event.target.value }))} placeholder="Optional" />
                 </div>
                 {form.vehicleCompatibilities.map((compatibility, index) => (
                   <div key={index} className="grid gap-2 rounded-xl border p-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_110px_110px_auto]">

@@ -331,6 +331,7 @@ export function InventoryClient({
       const first = rows[0];
       const totalOnHand = rows.reduce((sum, row) => sum + row.onHand, 0);
       const totalReserved = rows.reduce((sum, row) => sum + row.reserved, 0);
+      const totalQuarantined = rows.reduce((sum, row) => sum + row.quarantined, 0);
       const totalAvailable = rows.reduce(
         (sum, row) => sum + getAvailableStock(row),
         0,
@@ -347,6 +348,7 @@ export function InventoryClient({
         category: first.category,
         totalOnHand,
         totalReserved,
+        totalQuarantined,
         totalAvailable,
         reorderLevel: first.reorderLevel,
         unitCost: first.unitCost,
@@ -667,7 +669,7 @@ export function InventoryClient({
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1400px]">
+              <table className="w-full min-w-[1500px]">
                 <thead className="bg-slate-50">
                   <tr className="border-b">
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -682,6 +684,7 @@ export function InventoryClient({
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Total Reserved
                     </th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Total Quarantined</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Total Available
                     </th>
@@ -706,7 +709,7 @@ export function InventoryClient({
                 <tbody>
                   {isLoading ? (
                     <tr>
-                      <td colSpan={10} className="px-5 py-16 text-center">
+                      <td colSpan={11} className="px-5 py-16 text-center">
                         <div className="flex items-center justify-center gap-2 text-slate-500">
                           <Loader2 className="h-4 w-4 animate-spin" />
                           Loading inventory...
@@ -716,7 +719,7 @@ export function InventoryClient({
                   ) : error ? (
                     <tr>
                       <td
-                        colSpan={10}
+                        colSpan={11}
                         className="px-5 py-16 text-center text-red-600"
                       >
                         {error.message}
@@ -725,7 +728,7 @@ export function InventoryClient({
                   ) : groupedRows.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={10}
+                        colSpan={11}
                         className="px-5 py-16 text-center text-slate-500"
                       >
                         No inventory records found.
@@ -774,6 +777,7 @@ export function InventoryClient({
                             <td className="px-5 py-4 text-sm text-slate-600">
                               {group.totalReserved}
                             </td>
+                            <td className="px-5 py-4 text-sm text-amber-700">{group.totalQuarantined}</td>
 
                             <td className="px-5 py-4 text-sm font-semibold text-slate-700">
                               {group.totalAvailable}
@@ -829,7 +833,7 @@ export function InventoryClient({
 
                           {isExpanded && (
                             <tr>
-                              <td colSpan={10} className="bg-slate-50 p-0">
+                              <td colSpan={11} className="bg-slate-50 p-0">
                                 <div className="p-5">
                                   <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                                     <div>
@@ -887,12 +891,16 @@ export function InventoryClient({
                                                  Linked inventory alert
                                                </p>
                                              )}
-                                            <div className="mt-4 grid grid-cols-2 gap-3 border-t pt-3">
+                                            <div className="mt-4 grid grid-cols-3 gap-3 border-t pt-3">
                                               <div>
                                                 <p className="text-xs text-slate-500">On hand</p>
                                                 <p className="text-lg font-semibold text-slate-900">
                                                   {item.onHand} pieces
                                                 </p>
+                                              </div>
+                                              <div>
+                                                <p className="text-xs text-slate-500">Quarantined</p>
+                                                <p className="text-lg font-semibold text-amber-700">{item.quarantined} pieces</p>
                                               </div>
                                               <div>
                                                 <p className="text-xs text-slate-500">Ready to sell</p>
@@ -1517,9 +1525,10 @@ export function InventoryClient({
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                     On Hand
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Reserved
-                  </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Reserved
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Quarantined</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Available
                   </th>
@@ -1532,7 +1541,7 @@ export function InventoryClient({
               <tbody>
                 {isAvailabilityLoading ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center text-sm text-slate-500">
+                    <td colSpan={8} className="px-4 py-12 text-center text-sm text-slate-500">
                       <span className="inline-flex items-center gap-2">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Loading inventory availability...
@@ -1541,14 +1550,14 @@ export function InventoryClient({
                   </tr>
                 ) : availabilityError ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center text-sm text-red-600">
+                    <td colSpan={8} className="px-4 py-12 text-center text-sm text-red-600">
                       {availabilityError.message}
                     </td>
                   </tr>
                 ) : availabilityRows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="px-4 py-12 text-center text-sm text-slate-500"
                     >
                       No availability records found.
@@ -1587,6 +1596,7 @@ export function InventoryClient({
                       <td className="px-4 py-3 text-sm text-slate-600">
                         {row.reserved}
                       </td>
+                      <td className="px-4 py-3 text-sm text-amber-700">{row.quarantined}</td>
                       <td className="px-4 py-3 text-sm font-semibold text-slate-700">
                         {row.available}
                       </td>

@@ -15,5 +15,5 @@ export function resetOperationalData(
   environment: OperationalResetEnvironment,
 ): Promise<{
   deleted: Record<string, number>;
-  preserved: { users: number; products: number; locations: number; roles: number };
+  preserved: { users: number; products: number; locations: number; roles: number; suppliers: number; personnel: number };
 }>;

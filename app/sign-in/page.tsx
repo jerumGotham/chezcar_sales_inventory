@@ -22,7 +22,7 @@ export default async function SignInPage({
           </p>
 
           <h1 className="max-w-xl text-5xl font-bold leading-tight">
-            Sales, inventory, and operations in one place.
+            Sales, inventory, and monitoring in one place.
           </h1>
 
           <p className="mt-5 max-w-lg text-lg leading-8 text-slate-300">

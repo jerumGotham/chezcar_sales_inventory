@@ -1,0 +1,42 @@
+"use client";
+
+import { useState, type FormEvent } from "react";
+import { useParams } from "next/navigation";
+import Link from "next/link";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { PageShell } from "@/components/page-shell";
+import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+
+type Line = { productId: string; productItemCode: string; productName: string; reason: string; claimedQuantity: number; openQuarantinedQuantity: number; openMissingQuantity: number };
+type Claim = { id: string; reference: string; version: number; status: string; supplierName: string; locationName: string; notes?: string; lines: Line[]; actions: Array<{ id: string; action: string; createdAt: string; actor: { name: string } }>; settlements: Array<{ id: string; type: string; amount: string; currency: string; reference: string }>; evidence: Array<{ id: string; fileName: string }> };
+
+const ACTION_CAPABILITY: Record<string, string> = { submit: "supplier-claims:manage", "wait-replacement": "supplier-claims:manage", reject: "supplier-claims:close", complete: "supplier-claims:close", cancel: "supplier-claims:close", "return-to-supplier": "supplier-claims:return-stock", "send-repair": "supplier-claims:repair-stock", "receive-replacement": "supplier-claims:receive-replacement", "release-repaired": "supplier-claims:repair-stock", "receive-repaired": "supplier-claims:repair-stock", writeoff: "supplier-claims:approve-writeoff" };
+const SIMPLE_ACTIONS = ["submit", "wait-replacement", "reject", "complete", "cancel"];
+const QUANTITY_ACTIONS = ["return-to-supplier", "send-repair", "receive-replacement", "release-repaired", "receive-repaired", "writeoff"];
+
+export function SupplierClaimDetailClient({ capabilities }: { capabilities: readonly string[] }) {
+  const claimId = String(useParams().claimId);
+  const queryClient = useQueryClient();
+  const [message, setMessage] = useState("");
+  const query = useQuery({ queryKey: ["supplier-claim", claimId], queryFn: async () => { const response = await fetch(`/api/supplier-claims/${claimId}`); const json = await response.json(); if (!response.ok) throw new Error(json.error?.message ?? "Unable to load claim"); return json.data as Claim; } });
+  const mutation = useMutation({ mutationFn: async ({ action, lines = [] }: { action: string; lines?: Array<{ productId: string; quantity: number }> }) => { const response = await fetch(`/api/supplier-claims/${claimId}/${action}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ version: query.data!.version, idempotencyKey: crypto.randomUUID(), lines }) }); const json = await response.json(); if (!response.ok) throw new Error(json.error?.message ?? "Unable to update claim"); return json.data as Claim; }, onSuccess: (data) => queryClient.setQueryData(["supplier-claim", claimId], data) });
+  const claim = query.data;
+  if (!claim) return <PageShell title="Supplier claim" subtitle={query.error?.message ?? "Loading claim..."}><></></PageShell>;
+
+  const actionLines = (action: string) => claim.lines.flatMap((line) => { const quantity = ["receive-replacement", "receive-repaired"].includes(action) ? line.openMissingQuantity : line.openQuarantinedQuantity; return quantity ? [{ productId: line.productId, quantity }] : []; });
+  async function uploadEvidence(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); const response = await fetch(`/api/supplier-claims/${claimId}/evidence`, { method: "POST", body: form }); const json = await response.json(); if (!response.ok) return setMessage(json.error?.message ?? "Upload failed"); event.currentTarget.reset(); setMessage("Evidence uploaded."); await queryClient.invalidateQueries({ queryKey: ["supplier-claim", claimId] }); }
+  async function recordSettlement(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); const response = await fetch(`/api/supplier-claims/${claimId}/settlements`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idempotencyKey: crypto.randomUUID(), type: form.get("type"), amount: Number(form.get("amount")), reference: form.get("reference"), currency: "PHP" }) }); const json = await response.json(); if (!response.ok) return setMessage(json.error?.message ?? "Unable to record settlement"); event.currentTarget.reset(); setMessage("Refund/credit tracking recorded."); await queryClient.invalidateQueries({ queryKey: ["supplier-claim", claimId] }); }
+
+  return <PageShell title={claim.reference} subtitle={`${claim.supplierName} at ${claim.locationName}`} actions={<div className="flex items-center gap-2"><Badge variant="outline">{claim.status.replaceAll("_", " ")}</Badge>{capabilities.includes("supplier-claims:print") ? <Link className={buttonVariants({ variant: "outline" })} href={`/inventory/returns-warranty/supplier-claims/${claim.id}/print`}>Print</Link> : null}</div>}>
+    {message ? <p className="mb-3 rounded-md bg-muted p-3 text-sm">{message}</p> : null}{mutation.error ? <p className="mb-3 text-sm text-destructive">{mutation.error.message}</p> : null}
+    <div className="grid gap-4 lg:grid-cols-[1fr_340px]"><Card><CardHeader><CardTitle>Claim lines</CardTitle></CardHeader><CardContent><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="py-2">Item</th><th>Reason</th><th>Claimed</th><th>Quarantine</th><th>External</th></tr></thead><tbody>{claim.lines.map((line) => <tr key={line.productId} className="border-b"><td className="py-3"><strong>{line.productItemCode}</strong><div className="text-muted-foreground">{line.productName}</div></td><td>{line.reason.replaceAll("_", " ")}</td><td>{line.claimedQuantity}</td><td>{line.openQuarantinedQuantity}</td><td>{line.openMissingQuantity}</td></tr>)}</tbody></table></div><div className="mt-4 flex flex-wrap gap-2">{SIMPLE_ACTIONS.filter((action) => capabilities.includes(ACTION_CAPABILITY[action])).map((action) => <Button key={action} size="sm" variant="outline" disabled={mutation.isPending} onClick={() => mutation.mutate({ action })}>{action.replaceAll("-", " ")}</Button>)}{QUANTITY_ACTIONS.filter((action) => capabilities.includes(ACTION_CAPABILITY[action])).map((action) => <Button key={action} size="sm" variant="outline" disabled={mutation.isPending || actionLines(action).length === 0} onClick={() => mutation.mutate({ action, lines: actionLines(action) })}>{action.replaceAll("-", " ")} all open</Button>)}</div></CardContent></Card>
+      <div className="space-y-4"><Card><CardHeader><CardTitle className="text-base">Evidence</CardTitle></CardHeader><CardContent className="space-y-3 text-sm">{claim.evidence.map((item) => <a key={item.id} className="block underline" href={`/api/supplier-claims/${claim.id}/evidence/${item.id}`}>{item.fileName}</a>)}{capabilities.includes("supplier-claims:evidence") ? <form onSubmit={uploadEvidence} className="space-y-2"><Input name="file" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" required /><Input name="caption" placeholder="Optional caption" /><Button size="sm">Upload evidence</Button></form> : null}</CardContent></Card>
+      <Card><CardHeader><CardTitle className="text-base">Refund/Credit Tracking</CardTitle></CardHeader><CardContent className="space-y-3 text-sm">{claim.settlements.map((item) => <div key={item.id}>{item.type}: {item.currency} {item.amount} · {item.reference}</div>)}{capabilities.includes("supplier-claims:record-monetary-resolution") ? <form onSubmit={recordSettlement} className="space-y-2"><Label>Resolution</Label><select name="type" className="h-9 w-full rounded-md border bg-background px-2"><option value="REFUND">Cash refund</option><option value="CREDIT">Credit memo</option></select><Input name="amount" type="number" min="0.01" step="0.01" placeholder="Amount" required /><Input name="reference" placeholder="Reference number" required /><Button size="sm">Record resolution</Button></form> : null}<p className="text-xs text-muted-foreground">Tracking only; no general-ledger effect.</p></CardContent></Card></div>
+    </div>
+  </PageShell>;
+}

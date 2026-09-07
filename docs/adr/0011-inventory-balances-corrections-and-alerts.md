@@ -1,6 +1,6 @@
 # ADR 0011: Inventory Balances, Corrections, and Alerts
 
-**Status:** Accepted
+**Status:** Accepted; availability formula amended by ADR 0016
 **Date:** 2026-08-26
 
 ## Context
@@ -23,7 +23,7 @@ Production inventory also needs a controlled exception path for wrong opening ba
 4. Admin can post manual inventory corrections with required reason/note.
 5. Manual correction writes an inventory movement and updates the balance in one transaction.
 6. Negative corrections cannot reduce `onHand` below `reserved`.
-7. Inventory views show `onHand`, `reserved`, and `available` where the role is authorized.
+7. Inventory views show `onHand`, `reserved`, `quarantined`, and `available` where the role is authorized.
 8. Admin sees all locations. Branch Staff sees assigned branch. Stock Staff sees `SR` and transfer-relevant branch inventory. Accounting inventory visibility is limited to later sale/order reconciliation needs.
 9. Inventory status labels are `Available`, `Low Available`, `Fully Reserved`, `Out of Stock`, `Inactive With Stock`, and `In Transit`.
 10. Stock card/history is role-scoped:
@@ -31,7 +31,7 @@ Production inventory also needs a controlled exception path for wrong opening ba
    - Stock Staff sees `SR` stock card and transfer/receiving-related movements;
    - Branch Staff sees current assigned-branch balances only;
    - Accounting sees stock movements only through sale/order reconciliation later.
-11. Low-stock alerts are based on `available = onHand - reserved`.
+11. Low-stock alerts use the implemented ADR 0016 formula `available = onHand - reserved - quarantined`.
 12. Persistent low-stock notifications are created only when a product/location crosses into `Low Available` or `Out of Stock`.
 13. Reorder level edits are Admin-only.
 14. A reorder-level edit creates low/out notifications only if the current stock crosses into a low/out state under the new threshold.

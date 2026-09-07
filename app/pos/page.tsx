@@ -435,7 +435,7 @@ function PosTab() {
       const response = await fetch(`/api/customer-orders/options${locationQuery}`, { credentials: "same-origin" });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error?.message ?? "Unable to load sales options");
-      return json.data as { customers: PosCustomer[]; products: Array<{ id: string; itemCode: string; name: string; category: string; price: number; availableQuantity: number }>; branches: Array<{ id: string; code: string; name: string }> };
+      return json.data as { customers: PosCustomer[]; products: Array<{ id: string; itemCode: string; name: string; category: string; price: number; availableQuantity: number }>; branches: Array<{ id: string; code: string; name: string }>; salespersons: Array<{ id: string; fullName: string; locationId: string }> };
     },
     enabled: access.authenticated,
   });
@@ -497,6 +497,7 @@ function PosTab() {
   const [selectedCustomer, setSelectedCustomer] = useState<SelectOption | null>(
     mockCustomers[0],
   );
+  const [selectedSalesperson, setSelectedSalesperson] = useState<SelectOption | null>(null);
   const [paymentType, setPaymentType] = useState<SelectOption | null>(null);
   const [manualReceiptNumber, setManualReceiptNumber] = useState("");
   const [receiptPhoto, setReceiptPhoto] = useState<File | null>(null);
@@ -509,6 +510,9 @@ function PosTab() {
     { value: "guest", label: "Guest" },
     ...(posOptionsQuery.data?.customers.map((customer) => ({ value: customer.id, label: customer.name })) ?? []),
   ];
+  const salespersonOptions: SelectOption[] = (
+    posOptionsQuery.data?.salespersons ?? offlineSnapshot?.salespersons ?? []
+  ).map((personnel) => ({ value: personnel.id, label: personnel.fullName }));
 
   const filteredProducts = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -697,6 +701,7 @@ function PosTab() {
       customerOptions.find((c) => c.value === "guest") ?? null,
     );
     setPaymentType(null);
+    setSelectedSalesperson(null);
     setManualReceiptNumber("");
     setReceiptPhoto(null);
     setDiscountAmount("0");
@@ -704,6 +709,12 @@ function PosTab() {
     setSearch("");
     setSelectedCategory(categoryOptions[0]);
   };
+
+  useEffect(() => {
+    // A salesperson cannot carry over to another transaction branch.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSelectedSalesperson(null);
+  }, [activeLocationId]);
 
   const handleCheckout = async () => {
     setCheckoutError("");
@@ -723,6 +734,7 @@ function PosTab() {
           ? selectedCustomer.value
           : undefined,
       locationId: activeLocationId ?? undefined,
+      salespersonId: selectedSalesperson?.value ?? "",
       manualReceiptNumber,
       paymentMethod: paymentMap[paymentType?.value ?? "cash"] ?? "CASH",
       amountPaid: total,
@@ -1063,6 +1075,21 @@ function PosTab() {
             </div>
 
             <div className="space-y-3">
+              <Label>Salesperson</Label>
+              <Select
+                instanceId="salesperson-select"
+                options={salespersonOptions}
+                value={selectedSalesperson}
+                onChange={(option) => setSelectedSalesperson(option)}
+                isSearchable
+                placeholder="Select salesperson"
+                noOptionsMessage={() => "No active salespersons for this branch"}
+                styles={selectStyles}
+              />
+              {activeLocationId && !posOptionsQuery.isLoading && salespersonOptions.length === 0 ? <p className="text-xs text-amber-700">No active Salesperson is assigned to this branch. Update Personnel Maintenance first.</p> : null}
+            </div>
+
+            <div className="space-y-3">
               <Label htmlFor="manual-receipt-number">Manual Receipt Number</Label>
               <Input
                 id="manual-receipt-number"
@@ -1212,7 +1239,7 @@ function PosTab() {
                   setCheckoutError("");
                   setIsCheckoutConfirmationOpen(true);
                 }}
-                 disabled={!activeLocationId || !cart.length || !paymentType || !manualReceiptNumber.trim() || discount > subtotal || isCheckoutPending}
+                 disabled={!activeLocationId || !selectedSalesperson || !cart.length || !paymentType || !manualReceiptNumber.trim() || discount > subtotal || isCheckoutPending || posOptionsQuery.isLoading}
               >
                 <CreditCard className="mr-2 size-4" />
                 {isCheckoutPending ? "Posting Sale..." : "Complete Sale"}
@@ -1245,6 +1272,10 @@ function PosTab() {
               <div>
                 <p className="text-slate-500">Customer</p>
                 <p className="font-medium">{selectedCustomer?.label ?? "Guest"}</p>
+              </div>
+              <div>
+                <p className="text-slate-500">Salesperson</p>
+                <p className="font-medium">{selectedSalesperson?.label ?? "Not selected"}</p>
               </div>
               <div>
                 <p className="text-slate-500">Receipt number</p>

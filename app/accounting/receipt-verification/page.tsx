@@ -49,7 +49,7 @@ const RECEIPT_CONFIRMATIONS = {
   DELETE_EVIDENCE: {
     title: "Delete receipt photo?",
     description:
-      "This permanently deletes the uploaded receipt photo and its OCR result. A new photo must be attached before Accounting can review the sale.",
+      "This permanently deletes the uploaded receipt photo. A new photo must be attached before Accounting can review the sale.",
     confirmLabel: "Delete receipt photo",
   },
   VOID_AND_REPLACE: {
@@ -87,6 +87,7 @@ type Sale = {
   paymentMethod: string;
   postedAt: string;
   postedBy: string;
+  salesperson: { personnelId: string; name: string; branch: { id: string; code: string; name: string } } | null;
   reviewStatus: "UNVERIFIED" | "VERIFIED" | "MISMATCH_REPORTED";
   status: "POSTED" | "VOIDED";
   mismatchCategory: string | null;
@@ -97,26 +98,6 @@ type Sale = {
   branchReplacementReceiptNumber: string | null;
   branchRespondedAt: string | null;
   receiptPhotoUrl: string | null;
-  receiptOcrStatus: "PENDING" | "COMPLETE" | "FAILED" | null;
-  receiptOcrError: string | null;
-  receiptOcrAt: string | null;
-  receiptOcrDraft: {
-    rawText: string;
-    confidence: number;
-    detectedReceiptNumber: string | null;
-    detectedTotalAmount: number | null;
-    receiptNumberMatches: boolean;
-    totalAmountMatches: boolean;
-    lines: Array<{
-      itemCode: string;
-      name: string;
-      quantity: number;
-      unitPrice: number;
-      itemDetected: boolean;
-      quantityDetected: boolean;
-      priceDetected: boolean;
-    }>;
-  } | null;
   correctionOfId: string | null;
   resolutionAction: AccountingResolutionActionDto | null;
   resolutionNote: string | null;
@@ -749,10 +730,6 @@ function ReceiptVerificationContent() {
                 ? {
                     ...sale,
                     receiptPhotoUrl: null,
-                    receiptOcrStatus: null,
-                    receiptOcrDraft: null,
-                    receiptOcrError: null,
-                    receiptOcrAt: null,
                   }
                 : sale),
             }
@@ -1231,7 +1208,7 @@ function ReceiptVerificationContent() {
                       Receipt {selectedSale.manualReceiptNumber}
                     </h2>
                     <p className="text-sm text-slate-500">
-                      {selectedSale.branch} • posted by {selectedSale.postedBy}
+                      {selectedSale.branch} • Salesperson: {selectedSale.salesperson?.name ?? "Not recorded (legacy)"} • Encoded by: {selectedSale.postedBy}
                     </p>
                   </div>
                   <div className="flex flex-wrap justify-end gap-2">
@@ -1327,7 +1304,7 @@ function ReceiptVerificationContent() {
                   />
                   <div className="space-y-4 rounded-xl border p-4">
                     <div>
-                      <p className="font-semibold">1. Uploaded receipt photo</p>
+                      <p className="font-semibold">Uploaded receipt photo</p>
                       <p className="mt-1 text-xs text-slate-500">This is the receipt Accounting must verify.</p>
                     </div>
                     {canViewEvidence && selectedSale.receiptPhotoUrl ? (
@@ -1359,44 +1336,6 @@ function ReceiptVerificationContent() {
                         {deleteEvidenceMutation.isPending ? "Deleting..." : "Delete receipt photo"}
                       </Button>
                     ) : null}
-                    {selectedSale.receiptOcrStatus === "PENDING" && <p className="text-sm text-sky-700">Reading receipt...</p>}
-                    {selectedSale.receiptOcrStatus === "FAILED" && <p className="text-sm text-red-700">{selectedSale.receiptOcrError}</p>}
-                    {selectedSale.receiptOcrDraft && (
-                      <div className="space-y-3 rounded-xl border border-sky-200 bg-sky-50/50 p-3 text-sm">
-                        <div>
-                          <p className="font-semibold text-sky-950">2. Details read by OCR</p>
-                          <p className="mt-1 text-xs text-sky-800">Computer-read draft only. Compare these results with the receipt photo before confirming.</p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <Badge variant="outline">OCR confidence {selectedSale.receiptOcrDraft.confidence}%</Badge>
-                          <Badge variant={selectedSale.receiptOcrDraft.receiptNumberMatches ? "secondary" : "outline"} className={selectedSale.receiptOcrDraft.receiptNumberMatches ? undefined : "border-red-200 bg-red-50 text-red-700"}>Receipt number {selectedSale.receiptOcrDraft.receiptNumberMatches ? "found" : "not matched"}</Badge>
-                          <Badge variant={selectedSale.receiptOcrDraft.totalAmountMatches ? "secondary" : "outline"} className={selectedSale.receiptOcrDraft.totalAmountMatches ? undefined : "border-red-200 bg-red-50 text-red-700"}>Total {selectedSale.receiptOcrDraft.totalAmountMatches ? "matched" : "not matched"}</Badge>
-                        </div>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          <div className="rounded-lg border bg-background p-3">
-                            <p className="text-xs text-slate-500">Detected receipt number</p>
-                            <p className="mt-1 font-semibold">{selectedSale.receiptOcrDraft.detectedReceiptNumber ?? "Not detected"}</p>
-                          </div>
-                          <div className="rounded-lg border bg-background p-3">
-                            <p className="text-xs text-slate-500">Detected total</p>
-                            <p className="mt-1 font-semibold">{selectedSale.receiptOcrDraft.detectedTotalAmount === null ? "Not detected" : formatPeso(selectedSale.receiptOcrDraft.detectedTotalAmount)}</p>
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          {selectedSale.receiptOcrDraft.lines.map((line) => (
-                            <div key={line.itemCode} className="rounded-lg border bg-background p-3">
-                              <p className="font-medium">{line.itemCode} - {line.name}</p>
-                              <p className="mt-1 text-xs text-slate-500">Expected from system: Qty {line.quantity} at {formatPeso(line.unitPrice)}</p>
-                              <p className="mt-1 text-xs">OCR check: Item {line.itemDetected ? "found" : "not found"} · Qty {line.quantityDetected ? "found" : "not found"} · Price {line.priceDetected ? "found" : "not found"}</p>
-                            </div>
-                          ))}
-                        </div>
-                        <details>
-                          <summary className="cursor-pointer font-medium">Show all text read by OCR</summary>
-                          <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{selectedSale.receiptOcrDraft.rawText || "No text recognized."}</pre>
-                        </details>
-                      </div>
-                    )}
                   </div>
                 </div>
                 {selectedSale.reportedComparison && (
@@ -1604,7 +1543,7 @@ function ReceiptVerificationContent() {
                         {selectedSale.receiptPhotoUrl ? "Replace receipt photo" : "Attach receipt photo"}
                       </Label>
                       <p className="mt-1 text-xs text-slate-500">
-                        Choose a file only when the receipt is missing or the current photo is unreadable. Uploading a replacement runs OCR again.
+                        Choose a file only when the receipt is missing or the current photo is unreadable.
                       </p>
                     </div>
                     <Input
@@ -1651,9 +1590,9 @@ function ReceiptVerificationContent() {
                 selectedSale.reviewStatus !== "VERIFIED" ? (
                   <div className="space-y-4 rounded-xl border p-4">
                     <div>
-                      <p className="font-semibold">3. Accounting verification details</p>
+                        <p className="font-semibold">Accounting verification details</p>
                       <p className="mt-1 text-xs text-slate-500">
-                        These editable fields start with the system sale values, not the OCR result. Compare them with the photo and OCR text, then correct only the values that differ.
+                        These editable fields start with the system sale values. Compare them with the uploaded receipt photo, then correct only the values that differ.
                       </p>
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">

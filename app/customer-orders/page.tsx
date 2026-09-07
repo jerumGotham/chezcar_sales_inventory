@@ -57,6 +57,7 @@ type OrderStatus =
 type PaymentStatus = "Unpaid" | "Partial" | "Paid";
 
 type CustomerOrderRow = {
+  salesperson: { personnelId: string; name: string; branch: { id: string; code: string; name: string } } | null;
   id: string;
   orderNo: string;
   customer: string;
@@ -90,6 +91,7 @@ type CustomerOrdersApiResponse = {
 };
 
 type DirectSaleRow = {
+  salesperson: { personnelId: string; name: string; branch: { id: string; code: string; name: string } } | null;
   id: string;
   reference: string;
   source: "Customer Order" | "Direct Sale";
@@ -524,7 +526,7 @@ export default function CustomerOrdersPage() {
     const keyword = saleSearch.trim().toLowerCase();
     if (!keyword) return directSalesQuery.data ?? [];
     return (directSalesQuery.data ?? []).filter((sale) =>
-      [sale.reference, sale.manualReceiptNumber, sale.customer, sale.branch]
+      [sale.reference, sale.manualReceiptNumber, sale.customer, sale.branch, sale.salesperson?.name ?? ""]
         .some((value) => value.toLowerCase().includes(keyword)),
     );
   }, [directSalesQuery.data, saleSearch]);
@@ -767,7 +769,7 @@ export default function CustomerOrdersPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1450px]">
+            <table className="w-full min-w-[1550px]">
               <thead className="bg-slate-50">
                 <tr className="border-b">
                   <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -776,6 +778,7 @@ export default function CustomerOrdersPage() {
                   <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Customer
                   </th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Salesperson</th>
                   <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Items
                   </th>
@@ -806,7 +809,7 @@ export default function CustomerOrdersPage() {
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={10} className="px-5 py-16 text-center">
+                    <td colSpan={11} className="px-5 py-16 text-center">
                       <div className="flex items-center justify-center gap-2 text-slate-500">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Loading customer orders...
@@ -815,14 +818,14 @@ export default function CustomerOrdersPage() {
                   </tr>
                 ) : ordersError ? (
                   <tr>
-                    <td colSpan={10} className="px-5 py-16 text-center text-red-600">
+                    <td colSpan={11} className="px-5 py-16 text-center text-red-600">
                       {(ordersError as Error).message}
                     </td>
                   </tr>
                 ) : rows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={10}
+                      colSpan={11}
                       className="px-5 py-16 text-center text-slate-500"
                     >
                       No customer orders found.
@@ -842,6 +845,7 @@ export default function CustomerOrdersPage() {
                       <td className="px-5 py-4 text-sm text-slate-600">
                         {order.customer}
                       </td>
+                      <td className="px-5 py-4 text-sm text-slate-600">{order.salesperson?.name ?? "Not recorded (legacy)"}</td>
                       <td className="px-5 py-4 text-sm text-slate-600">
                         <span className="line-clamp-1">
                           {order.itemSummary}
@@ -1177,6 +1181,7 @@ export default function CustomerOrdersPage() {
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Receipt</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Customer</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Branch</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Salesperson</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Total</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Discount</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Payment</th>
@@ -1187,11 +1192,11 @@ export default function CustomerOrdersPage() {
                 </thead>
                 <tbody>
                   {directSalesQuery.isLoading ? (
-                    <tr><td colSpan={9} className="px-5 py-16 text-center text-slate-500">Loading direct sales...</td></tr>
+                    <tr><td colSpan={10} className="px-5 py-16 text-center text-slate-500">Loading direct sales...</td></tr>
                   ) : directSalesQuery.isError ? (
-                    <tr><td colSpan={9} className="px-5 py-16 text-center text-rose-600">Unable to load direct sales.</td></tr>
+                    <tr><td colSpan={10} className="px-5 py-16 text-center text-rose-600">Unable to load direct sales.</td></tr>
                   ) : paginatedSales.length === 0 ? (
-                    <tr><td colSpan={9} className="px-5 py-16 text-center text-slate-500">No direct sales found.</td></tr>
+                    <tr><td colSpan={10} className="px-5 py-16 text-center text-slate-500">No direct sales found.</td></tr>
                   ) : (
                     paginatedSales.map((sale) => (
                       <tr key={sale.id} className="border-b transition-colors hover:bg-slate-50">
@@ -1201,6 +1206,7 @@ export default function CustomerOrdersPage() {
                         </td>
                         <td className="px-5 py-4 text-sm text-slate-600">{sale.customer}</td>
                         <td className="px-5 py-4 text-sm text-slate-600">{sale.branch}</td>
+                        <td className="px-5 py-4 text-sm text-slate-600">{sale.salesperson?.name ?? "Not recorded (legacy)"}</td>
                         <td className="px-5 py-4 text-sm font-semibold text-emerald-700">{formatPeso(sale.totalAmount)}</td>
                         <td className="px-5 py-4 text-sm text-slate-600">{formatPeso(sale.discountAmount)}</td>
                         <td className="px-5 py-4 text-sm text-slate-600">{sale.paymentMethod}</td>
@@ -1256,8 +1262,9 @@ export default function CustomerOrdersPage() {
                   <div><p className="text-slate-500">Reference</p><p className="font-medium">{selectedSale.reference}</p></div>
                   <div><p className="text-slate-500">Customer</p><p className="font-medium">{selectedSale.customer}</p></div>
                   <div><p className="text-slate-500">Branch</p><p className="font-medium">{selectedSale.branch}</p></div>
+                  <div><p className="text-slate-500">Salesperson</p><p className="font-medium">{selectedSale.salesperson?.name ?? "Not recorded (legacy)"}</p></div>
                   <div><p className="text-slate-500">Payment</p><p className="font-medium">{selectedSale.paymentMethod}</p></div>
-                  <div><p className="text-slate-500">Posted</p><p className="font-medium">{formatDate(selectedSale.postedAt)} by {selectedSale.postedBy}</p></div>
+                  <div><p className="text-slate-500">Encoded by</p><p className="font-medium">{formatDate(selectedSale.postedAt)} by {selectedSale.postedBy}</p></div>
                 </div>
                 <div className="overflow-x-auto rounded-lg border">
                   <table className="w-full min-w-[620px]">

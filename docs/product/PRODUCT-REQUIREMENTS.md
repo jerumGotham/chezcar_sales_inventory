@@ -1,10 +1,10 @@
 # Chezcar Sales and Inventory MVP
 
 **Status:** Confirmed MVP process
-**Last updated:** 2026-08-30
+**Last updated:** 2026-09-07
 **Source:** Owner discussion, real inventory workbook, and current UI prototype
 
-> **Current-state warning:** The checked-in application is still partly a UI prototype. Authentication, Product/Inventory reads, user management, Stock Room receiving, SR-to-branch transfers/discrepancy resolution, Customer Orders, direct sales, dashboard production metrics, Accounting verification, durable notifications, browser push attempts, and limited offline direct-sale sync have a PostgreSQL-backed foundation. Offline transfer receipt/discrepancy capture, deployment operations, and remaining advanced/deferred screens are not complete until implemented and verified.
+> **Current-state warning:** The checked-in application is still partly a UI prototype. Authentication, Product/Supplier/Personnel maintenance, Salesperson attribution, quarantine-aware Inventory/Availability, Customer Orders, Direct Sales, Stock Room receiving, transfers, dashboards, Accounting verification, notifications, and limited offline direct-sale sync have a PostgreSQL-backed foundation. Quarantine mutation/disposition, Installer attribution, Backjobs, Customer Warranty, Supplier Claims, split damaged/missing receiving, and focused Reports described below are accepted next-phase requirements, not implemented behavior. Offline transfer receipt/discrepancy capture, deployment operations, and remaining advanced/deferred screens are not complete until implemented and verified.
 
 ## Product Summary
 
@@ -57,6 +57,10 @@ All MVP replenishment enters `SR`. Transfers are `SR` to branch only. Branch-to-
 - Durable in-app, live, and browser-push notifications
 - Limited offline branch sales and transfer confirmation/discrepancy capture
 - Audit history for stock-changing and corrective actions
+- Non-login Personnel maintenance for Salesperson and Installer attribution
+- Supplier master data used by receiving and Supplier Claims
+- Backjob, Customer Warranty, Supplier Claim, and per-location quarantine workflows
+- Five focused reports: Sales, Inventory Summary, Inventory Movements, Returns & Warranty, and Low Stock
 - Production deployment, backup, restore, and monitoring
 
 ### Deferred
@@ -64,7 +68,7 @@ All MVP replenishment enters `SR`. Transfers are `SR` to branch only. Branch-to-
 - Inquiry-only CRM/leads, Job Orders, and advanced CRM
 - Branch-to-branch transfers
 - Direct supplier delivery to branches
-- Customer return, exchange, and refund workflow
+- Customer cash refund and exchange workflow; repair and replacement are included through Customer Warranty
 - Standalone cycle-count and general physical-stock discrepancy workflow
 - Formal daily cash/collection closing
 - Shared branch accounts
@@ -72,6 +76,8 @@ All MVP replenishment enters `SR`. Transfers are `SR` to branch only. Branch-to-
 - Fully offline Admin, Stock Room, master-data, or final discrepancy actions
 - Customer-facing ordering, official receipt printing, and BIR-certified accounting
 - Hard deletion of users with history or any posted business transaction
+- Sales commission calculation/payment and Payroll
+- Multiple or temporary Personnel branch assignments
 
 ## Roles
 
@@ -88,6 +94,8 @@ All MVP replenishment enters `SR`. Transfers are `SR` to branch only. Branch-to-
 - Resolve final stock discrepancies after Stock Staff investigation
 - Resolve Accounting mismatch reports
 - Resolve Branch-originated direct-sale correction requests; only approval posts the reversal
+- Maintain Personnel and Suppliers when granted the corresponding actions
+- Approve warranty replacement, equivalent-product substitution, claim quantity overrides, and inventory write-off
 
 ### Stock Staff
 
@@ -97,10 +105,12 @@ All MVP replenishment enters `SR`. Transfers are `SR` to branch only. Branch-to-
 - Receive branch receipt/discrepancy notifications
 - Investigate discrepancy forms and submit findings to Admin
 - Cannot record branch sales or make the final discrepancy correction
+- Handle quarantine and Supplier Claim stock actions within granted location scope
+- Record supplier replacement receiving and supplier returns when granted
 
 ### Branch Staff
 
-- Use an individual account assigned to exactly one branch
+- Use an individual account assigned to one or more authorized operational locations; ordinary Branch Staff is typically assigned to one branch
 - View stock and incoming transfers for the assigned branch
 - Encode a completed handwritten-receipt sale
 - Report an accidental, duplicate, nonexistent, or incorrectly submitted own-branch direct sale without editing, deleting, voiding, or restoring stock
@@ -108,7 +118,10 @@ All MVP replenishment enters `SR`. Transfers are `SR` to branch only. Branch-to-
 - Confirm a transfer when every physical item and quantity matches
 - Submit a discrepancy form when any item or quantity does not match
 - Cannot directly set, adjust, or overwrite stock
-- Cannot view another branch
+- Cannot view a branch outside effective UserLocation assignments
+- Select an active branch Salesperson for every Direct Sale and Customer Order
+- Create Backjob and Customer Warranty concerns and record Backjob completion when granted
+- Receive a customer return into quarantine only when granted the dedicated physical-action capability
 
 ### Accounting Staff
 
@@ -117,6 +130,7 @@ All MVP replenishment enters `SR`. Transfers are `SR` to branch only. Branch-to-
 - Mark an individual sale `VERIFIED` or report a structured mismatch with notes
 - Cannot edit, void, delete, or correct sales
 - Cannot adjust stock
+- Record supplier cash-refund or credit-memo resolution references when granted; this does not post a general ledger
 
 ## Workflow 1: Sales
 
@@ -146,6 +160,7 @@ Available branch stock is reserved immediately for reservation orders by increas
 - A free-form discount may be encoded; preserve base price, discount, and final price. A discount reason is not required in the MVP.
 - Posted sales are not directly edited or hard-deleted. An encoding correction uses an auditable void-and-replace flow.
 - POS shows a complete confirmation before posting because successful submission deducts stock immediately.
+- Every Direct Sale and Customer Order requires an active Salesperson assigned to the transaction branch. The authenticated encoder remains separately attributable.
 - A Branch wrong-submission report is a request only: no receipt photo is required and stock remains deducted until Admin acts.
 - Admin may keep the reported sale with no inventory effect or approve a void-only reversal when the direct sale did not occur or was submitted accidentally/duplicated. A real sale with incorrect encoded details continues through receipt verification and void-and-replace.
 
@@ -161,7 +176,47 @@ Available branch stock is reserved immediately for reservation orders by increas
 
 Daily verified/unverified summaries are informational. Formal daily cash/collection closing is deferred.
 
-## Workflow 3: Stock Room Receiving and Dispatch
+## Workflow 3: Personnel and Attribution
+
+1. An authorized user maintains a non-login Personnel record with name, one home branch, type `SALESPERSON`, `INSTALLER`, or `BOTH`, and active/inactive status.
+2. Direct Sales and Customer Orders require an active Salesperson from the transaction branch before posting.
+3. Backjobs require an active Installer from the case branch before scheduling or completion.
+4. Posted transactions preserve Personnel attribution separately from the authenticated User actor.
+5. Deactivation and branch reassignment affect future selection only and never rewrite historical transactions.
+
+Commission and Payroll remain deferred. See `PERSONNEL-SPEC.md` and ADR 0015.
+
+## Workflow 4: Returns and Warranty
+
+### Backjob
+
+1. Branch Staff creates a case linked normally to the original sale and selects/schedules a branch Installer.
+2. Service-only work has no stock effect.
+3. Stock deducts only when authorized staff physically issues parts; unused parts return through a separate movement.
+4. Authorized Branch Staff records work, evidence, customer acknowledgement, and completion because the Installer does not require a login.
+5. A chargeable Backjob links to a proper sale/payment transaction.
+
+### Customer Warranty
+
+1. The case links normally to an original verified sale and sale line; Admin documents any legacy exception.
+2. An authorized user confirms physical customer return into the case location's quarantine bucket.
+3. Admin assesses product warranty eligibility and approves repair or replacement. Missing product warranty data requires a claim-specific Admin basis and reason.
+4. An approved replacement may use available branch stock immediately rather than waiting for supplier recovery.
+5. Customer status progresses independently through waiting stock, ready for release, replacement released, and completed states.
+6. Cumulative replacement quantity cannot exceed purchased quantity unless Admin overrides with reason.
+
+### Supplier Claim
+
+1. Supplier damage, defect, incomplete/wrong delivery, and supplier-covered warranty are reasons within one Supplier Claim workflow.
+2. Receiving splits accepted sellable, physically quarantined, and missing quantities; missing quantity never enters inventory.
+3. A Customer Warranty links to a Supplier Claim only after supplier coverage is confirmed.
+4. A branch may return quarantined stock directly to the supplier without routing through `SR`.
+5. Supplier replacement increases stock only when physically received at the claim branch/location.
+6. Accounting may record cash refund or credit memo amount/reference/proof; these resolutions have no inventory or general-ledger effect in this scope.
+
+Every approval and status transition is separate from its confirmed physical inventory action. See `RETURNS-WARRANTY-SPEC.md` and ADR 0016.
+
+## Workflow 5: Stock Room Receiving and Dispatch
 
 1. Stock arrives at `SR`.
 2. Stock Staff records the receipt, items, quantities, source/reference, actor, and time.
@@ -171,7 +226,7 @@ Daily verified/unverified summaries are informational. Formal daily cash/collect
 6. When goods physically leave `SR`, Stock Staff posts dispatch.
 7. Dispatch deducts `SR`, adds the same quantities to in-transit stock, marks the transfer `IN_TRANSIT`, and notifies the destination branch in real time.
 
-## Workflow 4: Branch Receipt or Discrepancy
+## Workflow 6: Branch Receipt or Discrepancy
 
 1. Assigned Branch Staff opens the incoming `IN_TRANSIT` transfer.
 2. Branch Staff compares every physical item and quantity with the dispatch.
@@ -221,8 +276,12 @@ If anything does not match:
 ### Reports
 
 - Reports are read-only and require `reports:view`.
-- Sales, Accounting/Reconciliation, Orders, and Inventory report data are limited to assigned locations unless the role grants `locations:all`.
-- Reports support date presets plus custom date ranges.
+- The five reports are Sales, Inventory Summary, Inventory Movements, Returns & Warranty, and Low Stock.
+- Accounting Queue, mismatch work, and Open Orders remain in their operational modules and are not repeated in Reports.
+- All report data is limited to effective location access; company-wide authorized users may compare branch totals.
+- The Sales Report defaults from the first day of the current month through today and supports custom date ranges, branch, Salesperson, source, and payment filters.
+- Official Sales Report totals include only verified, non-voided sales and use the system verification date.
+- Inventory Summary and Low Stock are current snapshots; Inventory Movements and Returns/Warranty are date-filtered.
 - Reports export to PDF only; CSV report export is deferred.
 - Report data is queried live from the database; saved report snapshots are deferred.
 
@@ -268,7 +327,7 @@ Offline mode keeps the same simple branch workflows available during temporary c
 - Four deterministic roles are seeded: Admin, Stock Staff, Branch Staff, and Accounting Staff. Admin may create additional non-owner roles.
 - Persisted role capability grants authorize non-owner actions; the compatibility `UserRole` value does not grant access.
 - View, create, update, delete, and workflow capabilities are independently assigned. An action capability implies the module view needed to use it but not sibling actions; matching controls are hidden and the server checks the exact action on every mutation.
-- A branch-scoped account requires one active branch.
+- A location-restricted account requires at least one active operational UserLocation assignment and may have more than one when explicitly authorized.
 - A Stock Room-scoped account is fixed to `SR`; a business-wide account has no location assignment.
 - The single owner Admin role is immutable, nonassignable, and always has the full capability catalog.
 - Admin may create, view, update, deactivate, and initiate password setup/reset for non-Admin accounts.
@@ -301,7 +360,7 @@ Production opening balances require an owner-reviewed mapping and seed result. T
 
 ## Audit and Integrity Rules
 
-1. Every stock change has an immutable movement with product, quantity, location, reason, source record, actor, and time.
+1. Every stock change has an immutable movement with product, quantity, location, reason, source record, actor, and time. Case status or approval alone never changes stock.
 2. Branch Staff cannot directly set stock quantity.
 3. Posted sales and dispatched/completed transfers are not hard-deleted.
 4. Corrections and discrepancy resolutions remain linked to their source records.
@@ -310,6 +369,8 @@ Production opening balances require an owner-reviewed mapping and seed result. T
 7. Online and offline posting never creates negative stock.
 8. Role and branch scope are enforced on the server.
 9. Deactivated users remain attributable in history.
+10. Quarantined stock remains in physical on-hand but is excluded from available stock.
+11. Deactivated Personnel and Suppliers remain attributable in history but cannot be selected for new transactions.
 
 ## Delivery Sequence
 
@@ -320,6 +381,7 @@ Production opening balances require an owner-reviewed mapping and seed result. T
 5. Branch transfer confirmation, discrepancy form, Stock Staff investigation, Admin resolution, and the complete cross-workflow Admin dashboard
 6. Limited offline branch continuity
 7. Production deployment, observability, backup, and restore verification
+8. Personnel/Supplier master data, Returns and Warranty, quarantine movements, and focused Reports
 
 ## Deployment
 

@@ -29,6 +29,14 @@ Create requests contain `roleId`, `name`, `email`, `temporaryPassword`, and `loc
 
 The owner user is visible but immutable. User Management cannot assign the owner role or create another owner.
 
+## Personnel and Next-Phase Workflow Access
+
+Personnel Maintenance is implemented as branch-owned operational master data for non-login Salespersons and Installers. A Personnel record does not receive a role, session, UserLocation, or authorization capability. Maintenance reads and mutations are limited to effective locations; branch reassignment requires access to both current and destination branches. Direct Sales and Customer Orders receive a narrow active branch-Salesperson lookup through their own workflow capability and store immutable attribution snapshots. Backjob Installer assignment remains pending.
+
+Supplier Maintenance uses independent `suppliers:view`, `suppliers:create`, `suppliers:update`, and `suppliers:deactivate` capabilities. Personnel Maintenance similarly uses independent `personnel:view`, `personnel:create`, `personnel:update`, and `personnel:deactivate` capabilities. Receive Stocks gets only its narrow active-Supplier lookup; future sales/order/Backjob actions will receive narrow Personnel lookups without implying maintenance access. The accepted next phase still adds Backjob, Customer Warranty, Supplier Claim, quarantine, replacement, write-off, and case workflow capabilities.
+
+Reports remain capability-based. `reports:view` and `reports:export` operate only within effective location scope, while `locations:all` permits consolidated branch results without granting Reports access by itself. Built-in role names are suggested defaults, not authorization rules.
+
 ## First Sign-In
 
 The staff member signs in at `/sign-in` with the temporary password. **Change Password** replaces it, keeps the current session, and revokes other sessions. **Skip for Now** consumes the prompt without claiming the password changed. A later delegated password reset re-arms the prompt.

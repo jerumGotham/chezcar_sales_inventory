@@ -53,6 +53,20 @@ export async function resetOperationalData(prisma, environment) {
       deleted.offlineSaleSubmissions = (await tx.offlineSaleSubmission.deleteMany()).count;
       deleted.offlineSyncOperations = (await tx.offlineSyncOperation.deleteMany()).count;
       deleted.offlineDeviceActivations = (await tx.offlineDeviceActivation.deleteMany()).count;
+      deleted.supplierClaimEvidence = (await tx.supplierClaimEvidence.deleteMany()).count;
+      deleted.supplierClaimSettlements = (await tx.supplierClaimSettlement.deleteMany()).count;
+      deleted.supplierClaimActions = (await tx.supplierClaimAction.deleteMany()).count;
+      deleted.customerWarrantyActions = (await tx.customerWarrantyAction.deleteMany()).count;
+      deleted.customerWarrantyEvents = (await tx.customerWarrantyEvent.deleteMany()).count;
+      deleted.backjobAttachments = (await tx.backjobAttachment.deleteMany()).count;
+      deleted.backjobSchedules = (await tx.backjobScheduleHistory.deleteMany()).count;
+      deleted.backjobEvents = (await tx.backjobEvent.deleteMany()).count;
+      deleted.inventoryMovements = (await tx.inventoryMovement.deleteMany()).count;
+      deleted.supplierClaimLines = (await tx.supplierClaimLine.deleteMany()).count;
+      deleted.supplierClaims = (await tx.supplierClaim.deleteMany()).count;
+      deleted.customerWarranties = (await tx.customerWarranty.deleteMany()).count;
+      deleted.backjobParts = (await tx.backjobPart.deleteMany()).count;
+      deleted.backjobs = (await tx.backjob.deleteMany()).count;
       deleted.saleAccountingReviews = (await tx.saleAccountingReview.deleteMany()).count;
       deleted.saleLines = (await tx.saleLine.deleteMany()).count;
       deleted.manualReceipts = (await tx.manualReceipt.deleteMany()).count;
@@ -60,7 +74,6 @@ export async function resetOperationalData(prisma, environment) {
       deleted.customerOrderLines = (await tx.customerOrderLine.deleteMany()).count;
       deleted.customerOrders = (await tx.customerOrder.deleteMany()).count;
       deleted.customers = (await tx.customer.deleteMany()).count;
-      deleted.inventoryMovements = (await tx.inventoryMovement.deleteMany()).count;
       deleted.transferResolutionLines = (await tx.stockTransferResolutionLine.deleteMany()).count;
       deleted.transferResolutions = (await tx.stockTransferResolution.deleteMany()).count;
       deleted.transferInvestigations = (await tx.stockTransferInvestigation.deleteMany()).count;
@@ -73,13 +86,15 @@ export async function resetOperationalData(prisma, environment) {
       deleted.inventoryBalances = (await tx.inventoryBalance.deleteMany()).count;
       deleted.verifications = (await tx.verification.deleteMany()).count;
 
-      const [users, products, locations, roles] = await Promise.all([
+      const [users, products, locations, roles, suppliers, personnel] = await Promise.all([
         tx.user.count(),
         tx.product.count(),
         tx.location.count(),
         tx.roleDefinition.count(),
+        tx.supplier.count(),
+        tx.personnel.count(),
       ]);
-      return { deleted, preserved: { users, products, locations, roles } };
+      return { deleted, preserved: { users, products, locations, roles, suppliers, personnel } };
     },
     { timeout: 30_000 },
   );

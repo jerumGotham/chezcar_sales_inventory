@@ -203,6 +203,7 @@ export function AppHeader({
     );
     if (newNotification) {
       window.localStorage.setItem(popupCursorKey, newNotification.cursor);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setToast(newNotification);
     }
   }, [identityEmail, notificationsQuery.data]);

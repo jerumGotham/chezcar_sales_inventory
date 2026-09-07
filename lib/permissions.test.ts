@@ -30,4 +30,35 @@ describe("granular permissions", () => {
       ]),
     );
   });
+
+  it("keeps supplier maintenance separate from receiving lookup access", () => {
+    expect(effectiveCapabilities(["suppliers:create"])).toEqual(
+      expect.arrayContaining(["suppliers:create", "suppliers:view"]),
+    );
+    expect(hasCapability(["inventory-receiving:create"], "suppliers:view")).toBe(false);
+    expect(hasCapability(["suppliers:view"], "inventory-receiving:create")).toBe(false);
+  });
+
+  it("keeps personnel maintenance actions independent", () => {
+    expect(effectiveCapabilities(["personnel:create"])).toEqual(
+      expect.arrayContaining(["personnel:create", "personnel:view"]),
+    );
+    expect(hasCapability(["personnel:view"], "personnel:update")).toBe(false);
+    expect(hasCapability(["personnel:view"], "sales:post")).toBe(false);
+  });
+
+  it("grants Backjob stock actions only their required views", () => {
+    expect(effectiveCapabilities(["backjobs:parts:issue"])).toEqual(
+      expect.arrayContaining(["backjobs:view", "inventory:view", "inventory-movements:view"]),
+    );
+    expect(hasCapability(["backjobs:view"], "backjobs:parts:issue")).toBe(false);
+  });
+
+  it("keeps warranty approvals separate from physical inventory actions", () => {
+    expect(hasCapability(["customer-warranties:approve"], "customer-warranties:view")).toBe(true);
+    expect(hasCapability(["customer-warranties:approve"], "customer-warranties:release")).toBe(false);
+    expect(effectiveCapabilities(["customer-warranties:receive-quarantine"])).toEqual(
+      expect.arrayContaining(["inventory:view", "inventory-movements:view"]),
+    );
+  });
 });

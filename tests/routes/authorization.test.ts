@@ -24,7 +24,7 @@ vi.mock("@/lib/server/prisma", () => ({
   },
 }));
 vi.mock("@/lib/server/authorization", async () => {
-  const actual = await import("../../lib/server/authorization");
+  const actual = await vi.importActual<typeof import("../../lib/server/authorization")>("@/lib/server/authorization");
   mocks.requireCapability.mockImplementation(actual.requireCapability);
 
   return { ...actual, requireCapability: mocks.requireCapability };

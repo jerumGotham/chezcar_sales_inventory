@@ -35,10 +35,19 @@ describe("operational data reset", () => {
           locationId: fixture.locations.branches.QC.id,
           productId: product.id,
           onHand: 5,
+          quarantined: 1,
         },
       });
       await prisma.customer.create({
         data: { name: "Delete Me", createdById: fixture.users.admin.id },
+      });
+      const supplier = await prisma.supplier.create({ data: { name: "Preserved Supplier" } });
+      const personnel = await prisma.personnel.create({
+        data: {
+          fullName: "Preserved Salesperson",
+          locationId: fixture.locations.branches.QC.id,
+          type: "SALESPERSON",
+        },
       });
       await prisma.notification.create({
         data: { userId: fixture.users.admin.id, title: "Delete", description: "Delete" },
@@ -48,6 +57,8 @@ describe("operational data reset", () => {
         products: await prisma.product.count(),
         locations: await prisma.location.count(),
         roles: await prisma.roleDefinition.count(),
+        suppliers: await prisma.supplier.count(),
+        personnel: await prisma.personnel.count(),
       };
       const { resetOperationalData } = await import(
         "../../prisma/reset-operational-data.mjs"
@@ -64,6 +75,8 @@ describe("operational data reset", () => {
       await expect(prisma.product.count()).resolves.toBe(before.products);
       await expect(prisma.location.count()).resolves.toBe(before.locations);
       await expect(prisma.roleDefinition.count()).resolves.toBe(before.roles);
+      await expect(prisma.supplier.findUnique({ where: { id: supplier.id } })).resolves.toMatchObject({ name: "Preserved Supplier" });
+      await expect(prisma.personnel.findUnique({ where: { id: personnel.id } })).resolves.toMatchObject({ fullName: "Preserved Salesperson" });
       await expect(
         prisma.product.findUniqueOrThrow({ where: { id: product.id } }),
       ).resolves.toMatchObject({

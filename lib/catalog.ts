@@ -17,6 +17,7 @@ export type ProductRow = {
   brand: string;
   price: number | null;
   reorderLevel: number;
+  warrantyDurationMonths: number | null;
   status: ProductStatus;
   description?: string;
   vehicleCompatibilities: VehicleCompatibility[];
@@ -52,6 +53,7 @@ export type InventoryRow = {
   location: string;
   onHand: number;
   reserved: number;
+  quarantined: number;
   reorderLevel: number;
   unitCost: number;
   lastUpdated: string;

@@ -1,5 +1,6 @@
 <!-- generated-by: gsd-doc-writer -->
-# Chezcar Sales & Inventory UI Starter
+
+# Chezcar Sales & Monitoring
 
 A Next.js 16 and React 19 prototype for demonstrating Chezcar's car-accessories sales, inventory, order, and branch-management workflows.
 
@@ -17,12 +18,16 @@ The framework baseline was upgraded to Next.js `16.3.2`, React `19.2.8`, and Tai
 
 - **Dashboard** — sales summaries, trends, branch performance, pending orders, and low-stock views.
 - **Customers and products** — Products uses validated, authorized PostgreSQL list/maintenance APIs with private product-image upload and authenticated thumbnails; customer records and sales history are also durable. POS can attach private handwritten-receipt photos after sale posting, and Accounting cannot verify a sale while that evidence is pending.
-- **Inventory** — the primary product/location list and Inventory Availability sheet use authorized PostgreSQL reads constrained to owner/all-location access or active `UserLocation` assignments. Supplier receiving is durable and SR-only; stock cards and adjustments remain prototypes.
+- **Inventory** — the primary product/location list and Inventory Availability sheet expose on-hand, reserved, quarantined, and available quantities through authorized PostgreSQL reads. All stock-consuming workflows use `available = onHand - reserved - quarantined`. Supplier receiving is durable and SR-only; quarantine disposition/Returns workflows remain pending.
 - **Customer and job orders** — list, create, detail, edit, and release-oriented prototype flows.
 - **Stock transfers** — durable SR-to-active-branch transfer ledger with exact receipt/discrepancy, investigation, and final resolution; real-time/offline/evidence uploads remain deferred.
 - **Reports and notifications** — reports remain mock/prototype; notifications use persisted per-user workflow rows with read timestamps and stock-transfer links.
 - **User and Role Management** — capability-delegated `/users` and `/users/roles` pages over durable lifecycle APIs. Roles contain action grants, users may have multiple locations, access changes revoke sessions, and explicit owner identity remains immutable and unique.
 - **Branch Maintenance** — capability-gated `/branches` page over durable add/edit APIs; codes are uppercase, unique, and immutable, while deactivation/deletion is not exposed.
+- **Supplier Maintenance** — capability-gated `/suppliers` page for add/edit/deactivate/reactivate; inactive suppliers remain in history and are unavailable to new stock receipts.
+- **Personnel Maintenance** — capability- and branch-scoped `/personnel` page for non-login Salesperson/Installer lifecycle. Direct Sales and Customer Orders require an eligible branch Salesperson and preserve attribution separately from the authenticated encoder; commission and Backjob Installer assignment remain pending.
+- **Returns & Warranty** — durable Backjob, Customer Warranty, and Supplier Claim records under `/inventory/returns-warranty`, including Installer assignment, parts movements, quarantine intake/release, split supplier receiving, supplier stock resolutions, and refund/credit tracking without a general ledger.
+- **Reports** — five focused live reports for verified Sales, Inventory Summary, Inventory Movements, Returns & Warranty, and Low Stock, with current-month defaults for dated reports, authorized branch filters, and PDF export.
 - **Shared application shell** — responsive navigation, capability-filtered sidebar, scope feedback header, dedicated access-denied screen, page shells, and reusable UI components under `components/`.
 - **Mock data and helpers** — prototype records and dashboard utilities under `lib/`.
 - **API routes** — Better Auth handlers plus protected Prisma-backed catalog, inventory/availability, customer/sales, notification, branch, role, user, transfer, receipt, and credential-setup surfaces under `app/api/`.

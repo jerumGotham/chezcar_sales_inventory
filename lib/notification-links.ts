@@ -17,5 +17,10 @@ export function notificationDestination(
   if (notification.relatedType === "INVENTORY_BALANCE") {
     return `/inventory?balanceId=${id}`;
   }
+  if (notification.relatedType === "BACKJOB") {
+    return `/inventory/returns-warranty?backjobId=${id}`;
+  }
+  if (notification.relatedType === "CUSTOMER_WARRANTY") return `/inventory/returns-warranty/warranties/${id}`;
+  if (notification.relatedType === "SUPPLIER_CLAIM") return `/inventory/returns-warranty/supplier-claims/${id}`;
   return null;
 }

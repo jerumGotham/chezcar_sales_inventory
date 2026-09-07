@@ -28,6 +28,7 @@ type OrderDetail = {
   orderNo: string;
   customer: string;
   branch: string;
+  salesperson: { personnelId: string; name: string; branch: { id: string; code: string; name: string } } | null;
   status: string;
   statusCode: CustomerOrderStatusCode;
   paymentStatus: string;
@@ -132,6 +133,7 @@ export default function CustomerOrderDetailsPage() {
                 <Info label="Order No." value={order.orderNo} />
                 <Info label="Customer" value={order.customer} />
                 <Info label="Branch" value={order.branch} />
+                <Info label="Salesperson" value={order.salesperson?.name ?? "Not recorded (legacy)"} />
                 <Info label="Created" value={new Date(order.orderDate).toLocaleDateString("en-PH")} />
                 <Info label="Planned Release" value={order.releaseDate ? new Date(order.releaseDate).toLocaleDateString("en-PH") : "Not set"} />
                 <div><p className="text-sm text-slate-500">Status</p><Badge className="mt-1">{order.status}</Badge></div>

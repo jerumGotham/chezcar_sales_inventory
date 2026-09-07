@@ -1,7 +1,7 @@
 # Chezcar Domain Glossary
 
 **Status:** Working glossary
-**Last updated:** 2026-08-26
+**Last updated:** 2026-09-07
 
 | Term | Working definition |
 | --- | --- |
@@ -9,9 +9,11 @@
 | Accounting Staff | A business-wide read/reconciliation role that compares every system sale line, quantity, price, discount, payment, and total with its handwritten receipt. It may verify or report mismatches but cannot edit sales or stock. Formal daily cash-collection closing is deferred. |
 | Actual Received Quantity | The physical quantity counted by an individually authenticated Branch Staff user assigned to the destination branch. It may differ from the dispatched quantity. |
 | Available Stock | Sellable quantity at one location after excluding stock in non-sellable states. The MVP never permits a posted sale to make stock negative, including during offline synchronization. In-transit stock is separately accountable and is unavailable at both source and destination until receipt is posted. |
+| Backjob | Remedial installation or service work linked normally to an original sale. It may be covered or chargeable. Service-only work has no stock effect; parts reduce stock when physically issued and unused parts return through separate movements. |
 | Branch | A retail location that sells items and receives stock from the central Stock Room. |
 | Branch Staff | A branch-scoped user who records sales, views branch inventory, confirms transfer receipt, reports transfer discrepancies, responds to assigned-branch receipt mismatches, and may request review of a wrong direct-sale submission. This role cannot directly adjust stock balances or void sales. |
 | Customer Order | A branch customer commitment for reserved stock, reserved stock with downpayment, or waiting-stock/special-order fulfillment. It requires customer identity and is completed through final release. |
+| Customer Warranty | A customer repair or replacement case linked normally to an original verified sale and receipt. It tracks eligibility, cumulative claimed quantity, returned quarantine stock, approval, replacement stock, and any linked Supplier Claim. Customer refund and exchange workflows are excluded from the current scope. |
 | Correction | A new auditable action that fixes a posted transaction without rewriting its original history. |
 | Daily Reconciliation | An informational dashboard summary of individual receipt-level verification for a branch and date. It is not a submitted closing. Formal daily closing and actual-cash reconciliation are deferred. |
 | Discrepancy | In the MVP, a difference between an `SR` transfer dispatch and the destination branch's physical count or item identity. Standalone cycle-count and general physical-stock discrepancy workflows are deferred. |
@@ -21,13 +23,13 @@
 | Handwritten Receipt | The customer-facing manual receipt used by the business. The internal system records its receipt number but does not replace or print it in the MVP. |
 | In Transit | Stock that has left `SR` but has not yet been accepted into destination branch stock. The transfer remains `IN_TRANSIT` while the branch physically checks it; there is no separate `DELIVERED` status. |
 | Inventory Adjustment | An authorized stock movement used to correct a confirmed count or variance. Branch Staff cannot create a posted adjustment directly. |
-| Inventory Balance | The current quantity derived from or maintained consistently with recorded inventory movements for one product and location. |
+| Inventory Balance | The current quantity derived from or maintained consistently with recorded inventory movements for one product and location. It maintains on-hand, reserved, and quarantined quantities; available is `onHand - reserved - quarantined`. |
 | Inventory Correction | An Admin-only manual inventory adjustment with required reason/note, used for wrong opening balance, found/lost/damaged stock, or physical count mismatch not tied to a transfer. |
 | Inventory Movement | An immutable increase or decrease linked to a reason and source transaction, such as Stock Room receipt, sale, transfer dispatch, transfer receipt, reversal, or variance. |
 | Manual Receipt Number | The identifier from the handwritten receipt linked to an internal downpayment, final order release, or direct sale. It is globally unique across the company in the locked production workflow. |
 | Reservation | A customer order state that holds available branch stock by increasing reserved quantity while keeping physical on-hand stock unchanged until final release. |
 | Master Data | Relatively stable records such as products, prices, branches, and users. These may be edited or deactivated according to role permissions. |
-| Non-sellable Stock | Physically accountable stock that cannot be sold, including damaged goods pending resolution. Damage, return, loss, and write-off remain explicit movement reasons or resolution outcomes rather than separate sellable balances. |
+| Non-sellable Stock | Physically accountable stock that cannot be sold, including quarantined damaged or returned goods and unresolved in-transit quantities. Each transition remains an explicit movement or resolution outcome. |
 | Needs Review | A synchronized or aged offline operation that represents a real physical event but cannot be posted automatically and requires authenticated Admin or Stock Staff investigation. It is never silently discarded. |
 | Notification | A durable per-user server record that alerts a responsible user about an actionable workflow event or final outcome. Read state belongs to the recipient user. Notification creation is partial evidence that the system attempted to inform the user, while the business audit remains the stock-transfer timeline and inventory movements. SSE and browser push delivery are best-effort channels over the durable row; escalation and cross-user notification audit are deferred. |
 | Offline Operation | A branch-scoped action recorded on a registered device while the cloud server cannot be reached and queued for later synchronization. |
@@ -37,6 +39,8 @@
 | Primary Offline Device | The physical branch device operationally assigned the one logical server activation permitted to synchronize offline sales and transfer receipt/discrepancy evidence. Browser storage alone cannot cryptographically prove physical-device uniqueness. |
 | Product | A sellable or historically accountable item identified by a unique item code. Active products require a positive current price; inactive products remain visible for inventory/history but cannot be selected for new business flows. |
 | Posted Sale | A finalized internal sale that has created sale lines and stock deduction movements. It cannot be silently edited or hard-deleted. |
+| Personnel | A non-login operational identity used for Salesperson attribution or Installer assignment. Personnel has one home branch, one or both operational types, and active/inactive status; it does not grant system authorization. |
+| Quarantined Stock | Physical on-hand quantity at a location that is excluded from available stock while awaiting assessment, repair, supplier return, replacement, or write-off. Quarantine is a balance bucket, not a separate Location. |
 | Reconciliation Issue | A mismatch reported by Admin or Accounting between any system sale line, quantity, price, discount, payment, total, or receipt identity and the handwritten receipt. Assigned Branch Staff double-checks it before Admin/Accounting confirms the original or Admin voids and replaces the sale. |
 | Sale Correction Request | An auditable Branch report that a posted direct sale was accidental, duplicated, incorrect, or did not occur. It requires a reason and note but not receipt evidence. The request has no stock effect; Admin either keeps the sale or voids it and posts the reversal. |
 | Received Transfer | A transfer for which assigned Branch Staff submitted a complete physical count and confirmed that every item and quantity matches the `SR` dispatch. A mismatch does not become `RECEIVED`; it enters the discrepancy path. There is no separate `CONFIRMED` status. |
@@ -45,11 +49,17 @@
 | Stock Staff | Central inventory user who operates Stock Room receiving and dispatch, views destination-branch stock and receipt evidence for transfer investigation, investigates discrepancies, and recommends resolutions. This role cannot record branch sales or directly manage ordinary branch stock. Admin performs final discrepancy posting in the MVP. |
 | Stock Transfer | A Stock Staff-initiated allocation of one or more products from `SR` to a branch. The MVP has no branch-request or branch-to-branch transfer path. |
 | System Sale | The internal electronic record encoded after the handwritten receipt is written and goods are released. A successful posting immediately updates system sales totals and deducts branch inventory. |
+| Salesperson | Personnel credited with a Direct Sale or Customer Order. The Salesperson is separate from the authenticated User who encoded or posted the transaction. |
+| Installer | Personnel assigned to installation or Backjob work. The Installer does not need a User account; an authorized authenticated User records workflow actions on the Installer's behalf. |
+| Supplier | Active master data selected by receiving and Supplier Claims. It is not free-text claim identity. |
+| Supplier Claim | A case for supplier damage, defect, wrong or incomplete delivery, or a supplier-covered Customer Warranty. It tracks supplier resolution independently from any linked customer case. |
+| Supplier Damage | An issue reason within a Supplier Claim, not a separate transaction type. Physically received damaged stock enters quarantine; missing quantity creates no inventory. |
 | User Account | An individual employee identity. Shared branch credentials are not allowed because every business action must remain attributable to one person. |
 | Sync Operation | A queued command identified by device and idempotency key, with a canonical request hash, activation epoch, type, status, dependencies, occurrence time, and business payload. |
 | Variance Movement | A separate inventory movement recording a confirmed missing, excess, damaged, loss, or correction quantity during discrepancy resolution. |
 | Void and Replace | The recommended correction pattern for a materially incorrect sale: reverse the original through an auditable void, then post a corrected sale. |
 | Verification | Admin or Accounting comparison of an encoded sale against its handwritten receipt. Outcomes are `VERIFIED` or `MISMATCH_REPORTED`. |
+| Verified Sales Report | The official date-range sales report containing only verified, non-voided sales, grouped by the system verification date. It defaults to the current month through today. |
 | Mismatch Report | A structured Admin/Accounting filing on an `UNVERIFIED` sale with a closed category (`PRICE_MISMATCH`, `QUANTITY_MISMATCH`, `ITEM_MISMATCH`, `TOTAL_MISMATCH`, `RECEIPT_NOT_FOUND`, `OTHER`), notes, required receipt photo, and actor/time. Assigned Branch Staff must respond before final resolution; the report itself does not correct stock. |
 | Voided Sale | A posted sale marked voided and preserved for audit. It is either linked to a corrected replacement or to an approved Branch correction request that reversed a sale which did not occur or was accidentally duplicated. |
 | Warehouse | Legacy synonym for Stock Room. Owner-facing language should use Stock Room and code `SR`. |
