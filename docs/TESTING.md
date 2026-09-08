@@ -127,7 +127,7 @@ Use the local URL printed by Next.js, then check the following current-prototype
 3. On list screens, exercise search, filters, pagination, dialogs, and loading states.
 4. Exercise the inventory receive and transfer forms, customer-order create/detail/release screens, job-order create/edit screens, and stock-transfer state controls.
 5. Confirm Customers, Customer Sales, Customer Orders, Products, and the primary Inventory list survive reload because they use database-backed APIs.
-6. Check narrow and wide viewports, sidebar behavior, and light/dark theme selection.
+6. Check narrow and wide viewports and sidebar behavior. During the temporary light-only release, confirm light mode and no theme toggle even with a saved `chezcar-theme=dark` preference or an OS dark preference; keep the stored value unchanged. Dark-mode checks elsewhere in this guide are deferred until `FORCE_LIGHT_THEME` is disabled.
 
 ### Focused reports smoke matrix
 

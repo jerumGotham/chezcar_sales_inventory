@@ -14,6 +14,8 @@ import { authClient } from "@/lib/auth-client";
 import { markHeaderNotificationRead } from "@/lib/header-notifications";
 
 const THEME_KEY = "chezcar-theme";
+// Temporary light-only release; retain dark-mode code and saved preferences for later.
+const FORCE_LIGHT_THEME = true;
 
 type HeaderNotification = {
   id: string;
@@ -215,6 +217,10 @@ export function AppHeader({
   }, [toast]);
 
   useEffect(() => {
+    if (FORCE_LIGHT_THEME) {
+      applyTheme("light");
+      return;
+    }
     const storedTheme = window.localStorage.getItem(THEME_KEY);
     const nextTheme =
       storedTheme === "dark" || storedTheme === "light"
@@ -231,7 +237,7 @@ export function AppHeader({
   }, []);
 
   useEffect(() => {
-    if (!isReady) {
+    if (FORCE_LIGHT_THEME || !isReady) {
       return;
     }
 
@@ -344,23 +350,25 @@ export function AppHeader({
           </Link>
         ) : null}
 
-        <Button
-          variant="outline"
-          size="icon"
-          className="rounded-2xl border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100 hover:text-brand-800 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
-          onClick={() =>
-            setTheme((current) => (current === "light" ? "dark" : "light"))
-          }
-          aria-label={
-            theme === "light" ? "Switch to dark mode" : "Switch to light mode"
-          }
-        >
-          {theme === "light" ? (
-            <Moon className="h-5 w-5" />
-          ) : (
-            <Sun className="h-5 w-5" />
-          )}
-        </Button>
+        {!FORCE_LIGHT_THEME && (
+          <Button
+            variant="outline"
+            size="icon"
+            className="rounded-2xl border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100 hover:text-brand-800 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+            onClick={() =>
+              setTheme((current) => (current === "light" ? "dark" : "light"))
+            }
+            aria-label={
+              theme === "light" ? "Switch to dark mode" : "Switch to light mode"
+            }
+          >
+            {theme === "light" ? (
+              <Moon className="h-5 w-5" />
+            ) : (
+              <Sun className="h-5 w-5" />
+            )}
+          </Button>
+        )}
 
         {access.authenticated ? (
           <div className="relative" ref={menuRef}>

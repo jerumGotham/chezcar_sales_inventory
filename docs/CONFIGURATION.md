@@ -199,7 +199,7 @@ These client-side preferences are independent of environment variables:
 
 | Key | Values | Behavior when absent or invalid |
 | --- | --- | --- |
-| `chezcar-theme` | `light` or `dark` | Uses the browser's `prefers-color-scheme` value, then stores the selected theme. |
+| `chezcar-theme` | `light` or `dark` | Temporarily ignored and left unchanged while `FORCE_LIGHT_THEME` in `components/app-header.tsx` is true. The app stays light, including native controls, and the theme toggle is hidden. Setting that code flag to false restores the retained saved/system-preference behavior. |
 | `chezcar-sidebar-pinned` | String `true` or `false` | Sidebar state initially defaults to pinned and expanded. A stored value is treated as pinned only when it equals `true`. |
 
 Both keys are read and written in browser-only React components, so they are not available during server rendering.

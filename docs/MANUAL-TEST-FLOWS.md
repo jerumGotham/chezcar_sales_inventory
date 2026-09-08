@@ -14,6 +14,8 @@
 
 ## Recommended Test Order
 
+Theme note: the current release temporarily forces light mode and hides the theme toggle. Any light/dark comparison steps below are deferred for dark mode. Confirm the app remains light with saved/system dark preferences and retains the saved preference for later restoration.
+
 Run the workflows in this order because later workflows need records created by earlier workflows:
 
 1. Personnel
