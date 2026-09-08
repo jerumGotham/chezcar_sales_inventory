@@ -6,7 +6,7 @@ The current Coolify target is **staging, not the final production environment**.
 
 ## Staging Deployment Record
 
-On 2026-09-08, Coolify successfully deployed immutable image `ghcr.io/jerumgotham/chezcar_sales_inventory:2d0fc80a1228df2e74ea8523e0a6bc6aa59d8e3b` to the existing Chezcar application. The application is now pinned to that SHA, not the mutable `production` tag. Future releases must select a newly verified SHA deliberately; GitHub publication alone does not redeploy this resource.
+On 2026-09-08, Coolify successfully deployed immutable image `ghcr.io/jerumgotham/chezcar_sales_inventory:2d0fc80a1228df2e74ea8523e0a6bc6aa59d8e3b` to the existing Chezcar application. That release switched the application from the mutable `production` tag to a pinned image SHA. Future releases must select a newly verified SHA deliberately; GitHub publication alone does not redeploy this resource.
 
 - [CI run 34248064320](https://github.com/jerumGotham/chezcar_sales_inventory/actions/runs/34248064320) passed typecheck, lint (with existing warnings), unit/integration tests, application build, Docker build, and image publication. No local test/build commands were run during this release.
 - A private PostgreSQL custom-format backup and storage archive were saved on the staging host before migrations. The database archive restored successfully into a separate temporary database, which was removed afterward. Backup paths and credentials are intentionally not published here.
@@ -15,6 +15,10 @@ On 2026-09-08, Coolify successfully deployed immutable image `ghcr.io/jerumgotha
 - Post-deployment counts: 1 User, 1 RoleDefinition, 1 credential Account, 6 Locations; 0 Products, Suppliers, Personnel, Customers, Sales, Customer Orders, Inventory Balances, Backjobs, Customer Warranties, and Supplier Claims. Normal sign-in creates a session; these counts describe initialization, not a permanent invariant.
 - `/api/health` returned `200 {"status":"ok"}`; Admin sign-in returned 200. Sales by Salesperson loaded, its JSON returned the empty initialized dataset, and its PDF response returned 200 with PDF content type and signature. These are focused release checks, not a populated-data workflow or visual PDF regression suite. The destructive staging-reset tool itself remains unexecuted.
 - Warranty and Supplier Claim runtime storage paths are configured under the existing `/app/storage` volume. The same immutable image was redeployed to activate those environment settings; this did not rerun initialization or clear new data.
+
+### Light-Only Follow-Up
+
+The current staging image is `ghcr.io/jerumgotham/chezcar_sales_inventory:f0eb427645b8df93148433ef1834ae16fc17c21a`, deployed through Coolify after [CI run 34254909222](https://github.com/jerumGotham/chezcar_sales_inventory/actions/runs/34254909222) passed verification and publication. The temporary `FORCE_LIGHT_THEME` flag hides theme controls and ignores saved/system dark preferences without deleting them or removing dark-mode styles. An isolated authenticated browser check at desktop and mobile widths confirmed no root dark class, light color scheme, and no theme toggle with both stored dark and emulated system-dark preferences. Health returned 200. No local test/build commands, database reset, or new schema changes were required; existing data and storage settings were preserved.
 
 ## GitHub Setup
 
