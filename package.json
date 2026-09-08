@@ -21,6 +21,7 @@
     "db:provision-owner": "node scripts/provision-owner-admin.mjs",
     "db:catalog:reload": "node --env-file=.env prisma/seed.mjs --catalog-only",
     "db:data:reset": "node --env-file=.env prisma/reset-operational-data.mjs",
+    "db:staging:reset": "node prisma/reset-staging-data.mjs",
     "verify:phase-01": "node scripts/verify-phase-01.mjs"
   },
   "dependencies": {

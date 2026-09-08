@@ -1,5 +1,6 @@
 export const REPORT_TYPES = [
   "sales",
+  "salesperson-sales",
   "inventory-summary",
   "returns-warranty",
 ] as const;
@@ -52,6 +53,7 @@ export type SalesReport = ReportMeta & {
     manualReceiptNumber: string;
     branch: string;
     customer: string;
+    salespersonId: string | null;
     salesperson: string;
     encoder: string;
     source: "Direct Sale" | "Customer Order";
@@ -63,6 +65,20 @@ export type SalesReport = ReportMeta & {
   }>;
   branchTotals: Array<{ branch: string; transactionCount: number; units: number; totalAmount: number; percentage: number }>;
   grandTotal: { transactionCount: number; units: number; totalDiscount: number; averageSale: number; totalAmount: number };
+};
+
+export type SalespersonSalesReport = Omit<SalesReport, "type"> & {
+  type: "salesperson-sales";
+  salespersonTotals: Array<{
+    salespersonId: string | null;
+    salesperson: string;
+    transactionCount: number;
+    units: number;
+    totalDiscount: number;
+    averageSale: number;
+    totalAmount: number;
+    percentage: number;
+  }>;
 };
 
 export type InventoryReportRow = {
@@ -128,4 +144,4 @@ export type ReturnsWarrantyReport = ReportMeta & {
   };
 };
 
-export type ReportResult = SalesReport | InventorySummaryReport | ReturnsWarrantyReport;
+export type ReportResult = SalesReport | SalespersonSalesReport | InventorySummaryReport | ReturnsWarrantyReport;

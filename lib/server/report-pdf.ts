@@ -2,7 +2,7 @@ import "server-only";
 
 import { PDFDocument, PageSizes, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 
-import type { ReportResult } from "@/lib/contracts/reports";
+import type { ReportResult, SalesReport } from "@/lib/contracts/reports";
 
 type PdfColumn = { header: string; width: number; numeric?: boolean };
 
@@ -65,7 +65,7 @@ export async function createReportPdf(report: ReportResult, metadata: { generate
   const document = await PDFDocument.create();
   const regular = await document.embedFont(StandardFonts.Helvetica);
   const bold = await document.embedFont(StandardFonts.HelveticaBold);
-  const title = report.type === "sales" ? "Sales Report" : report.type === "inventory-summary" ? "Inventory Summary" : "Returns & Warranty";
+  const title = report.type === "sales" ? "Sales Report" : report.type === "salesperson-sales" ? "Sales by Salesperson" : report.type === "inventory-summary" ? "Inventory Summary" : "Returns & Warranty";
   document.setTitle(`Chezcar ${title}`);
   document.setAuthor(safe(metadata.generatedBy));
   let page: PDFPage;
@@ -152,17 +152,29 @@ export async function createReportPdf(report: ReportResult, metadata: { generate
   text(`Authorized scope: ${report.effectiveScope.map((row) => row.label).join(", ") || "No authorized locations"}`);
   text(report.type === "inventory-summary"
     ? "Current branch snapshot. Available = on hand - reserved - quarantined. Positive available stock only; Stock Room and in-transit stock excluded. Comparison cells with no positive stock show 0."
-    : `From ${report.dateFrom} to ${report.dateTo}, inclusive. Based on ${report.type === "sales" ? "verification" : "case creation"} date in Asia/Manila.`);
+    : `From ${report.dateFrom} to ${report.dateTo}, inclusive. Based on ${report.type === "sales" || report.type === "salesperson-sales" ? "verification" : "case creation"} date in Asia/Manila.`);
   text(`Applied filters: ${report.appliedFilters.map((filter) => `${filter.label}: ${filter.value}`).join("; ") || "None"}`);
   y -= 16;
 
-  if (report.type === "sales") {
+  if (report.type === "sales" || report.type === "salesperson-sales") {
     const total = report.grandTotal;
     table("Sales overview", [{ header: "Measure", width: 3 }, { header: "Total", width: 2, numeric: true }], [
       ["Verified transactions", String(total.transactionCount)], ["Units sold", String(total.units)],
       ["Discounts", money(total.totalDiscount)], ["Average sale", money(total.averageSale)],
       ["Overall verified sales", money(total.totalAmount)],
     ], true);
+    if (report.type === "salesperson-sales") {
+      text("Verified sales attributed to each salesperson, not commissions or collected payments. Older unattributed sales remain under Not recorded (legacy).");
+      table("Salesperson subtotals", [
+        { header: "Salesperson", width: 3 }, { header: "Transactions", width: 1.1, numeric: true },
+        { header: "Units", width: 0.8, numeric: true }, { header: "Discounts", width: 1.5, numeric: true },
+        { header: "Average sale", width: 1.5, numeric: true }, { header: "Verified sales", width: 1.6, numeric: true },
+        { header: "Share", width: 0.8, numeric: true },
+      ], [
+        ...report.salespersonTotals.map((row) => [row.salesperson, String(row.transactionCount), String(row.units), money(row.totalDiscount), money(row.averageSale), money(row.totalAmount), `${row.percentage.toFixed(1)}%`]),
+        ["OVERALL TOTAL", String(total.transactionCount), String(total.units), money(total.totalDiscount), money(total.averageSale), money(total.totalAmount), total.totalAmount ? "100.0%" : "0.0%"],
+      ], true);
+    }
     table("Branch subtotals", [
       { header: "Branch", width: 4 }, { header: "Transactions", width: 1.3, numeric: true },
       { header: "Units", width: 1, numeric: true }, { header: "Verified sales", width: 2, numeric: true },
@@ -171,17 +183,26 @@ export async function createReportPdf(report: ReportResult, metadata: { generate
       ...report.branchTotals.map((row) => [row.branch, String(row.transactionCount), String(row.units), money(row.totalAmount), `${row.percentage.toFixed(1)}%`]),
       ["OVERALL TOTAL", String(total.transactionCount), String(total.units), money(total.totalAmount), total.totalAmount ? "100.0%" : "0.0%"],
     ], true);
-    table("Verified sales detail", [
+    const salesByPerson = new Map<string | null, SalesReport["rows"]>();
+    if (report.type === "salesperson-sales") for (const row of report.rows) {
+      const group = salesByPerson.get(row.salespersonId) ?? [];
+      group.push(row);
+      salesByPerson.set(row.salespersonId, group);
+    }
+    const detailGroups = report.type === "salesperson-sales"
+      ? report.salespersonTotals.map((group) => ({ heading: `Salesperson: ${group.salesperson} - ${group.transactionCount} receipt(s)`, rows: salesByPerson.get(group.salespersonId) ?? [], subtotal: group }))
+      : [{ heading: "Verified sales detail", rows: report.rows, subtotal: null }];
+    for (const group of detailGroups) table(group.heading, [
       { header: "Receipt / verified", width: 1.6 }, { header: "Branch", width: 1.35 },
       { header: "Customer / personnel", width: 2.3 }, { header: "Source / payment / status", width: 1.5 },
       { header: "Units", width: 0.6, numeric: true }, { header: "Discount", width: 1.25, numeric: true },
       { header: "Final amount", width: 1.4, numeric: true },
-    ], report.rows.map((row) => [
+    ], [...group.rows.map((row) => [
       `${row.manualReceiptNumber}\n${dateTime(row.verifiedAt)}`, row.branch,
       `Customer: ${row.customer}\nSalesperson: ${row.salesperson}\nEncoder: ${row.encoder}`,
       `${row.source}\n${humanize(row.paymentMethod)}\n${humanize(row.verificationStatus)}`,
       String(row.units), money(row.discountAmount), money(row.totalAmount),
-    ]));
+    ]), ...(group.subtotal ? [["SALESPERSON TOTAL", "", "", "", String(group.subtotal.units), money(group.subtotal.totalDiscount), money(group.subtotal.totalAmount)]] : [])], group.subtotal !== null);
   } else if (report.type === "inventory-summary") {
     table("Inventory overview", [{ header: "Measure", width: 3 }, { header: "Total", width: 2, numeric: true }], [
       ["Products in filtered rows", String(report.totals.productCount)], ["Authorized branches in scope", String(report.totals.locationCount)],

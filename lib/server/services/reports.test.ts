@@ -1,8 +1,9 @@
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const reportPrisma = vi.hoisted(() => ({
   location: { findMany: vi.fn() },
   backjob: { findMany: vi.fn() },
+  sale: { findMany: vi.fn() },
 }));
 
 vi.mock("server-only", () => ({}));
@@ -15,6 +16,16 @@ beforeAll(async () => {
 });
 
 describe("report filters", () => {
+  it("accepts only sales filters for salesperson sales with the same date defaults", () => {
+    expect(reports.queryFromSearchParams(new URLSearchParams("type=salesperson-sales&dateFrom=2024-02-10&locationId=branch&salespersonId=person&source=CUSTOMER_ORDER&paymentMethod=SPLIT"))).toEqual({
+      type: "salesperson-sales", dateFrom: "2024-02-10", dateTo: "2024-02-29", locationId: "branch", salespersonId: "person", source: "CUSTOMER_ORDER", paymentMethod: "SPLIT",
+    });
+    expect(reports.reportQuerySchema.parse({ type: "salesperson-sales" })).toEqual({ type: "salesperson-sales", ...reports.defaultReportDates() });
+    for (const filter of ["search=x", "category=x", "brand=x", "productStatus=ACTIVE", "caseType=BACKJOB", "status=COMPLETED", "resolution=REPAIR", "entitySearch=x", "unknown=x", "salespersonId=one&salespersonId=two", "dateFrom=2026-02-30", "dateFrom=2026-09-08&dateTo=2026-09-07"]) {
+      expect(() => reports.queryFromSearchParams(new URLSearchParams(`type=salesperson-sales&${filter}`))).toThrow();
+    }
+  });
+
   it("uses a complete Asia/Manila calendar month sales period", () => {
     expect(reports.defaultReportDates(new Date("2026-09-07T18:00:00Z"))).toEqual({
       dateFrom: "2026-09-01",
@@ -97,6 +108,103 @@ describe("report quantity projections", () => {
     expect(reports.backjobReportDetails(legacy)).toEqual({ product: "P-1 - Original product", quantity: null });
     expect(reports.backjobReportDetails({ ...legacy, affectedProductItemCode: null, affectedProductName: null })).toEqual({ product: "Legacy description", quantity: null });
     expect(reports.backjobReportDetails({ ...legacy, affectedProductItemCode: null, affectedProductName: null, legacyProductDescription: null })).toEqual({ product: "Not recorded", quantity: null });
+  });
+});
+
+describe("sales and salesperson sales reports", () => {
+  const actor = { userId: "actor", roleDefinitionId: "role", isOwner: false, capabilities: ["reports:view"], locationIds: ["branch"] };
+  const query = { dateFrom: "2026-09-01", dateTo: "2026-09-30", locationId: "branch" };
+  const attribution = [
+    { salespersonId: "person-1", salespersonName: "Later historical name" },
+    { salespersonId: "person-2", salespersonName: "Same name" },
+  ];
+
+  beforeEach(() => {
+    reportPrisma.location.findMany.mockReset().mockResolvedValue([{ id: "branch", code: "B", name: "Branch" }]);
+    reportPrisma.sale.findMany.mockReset();
+  });
+
+  function sale(id: string, salespersonId: string | null, salespersonName: string | null, amount: number, units = 1) {
+    return {
+      id, salespersonId, salespersonName, manualReceiptNumber: id, receiptBooklet: null, orderId: null, paymentMethod: "CASH",
+      totalAmount: { toNumber: () => amount }, discountAmount: { toNumber: () => amount / 10 }, lines: [{ quantity: units }],
+      customer: null, location: { code: "B", name: "Branch" }, postedBy: { name: "Encoder" },
+      accountingReview: { verifiedAt: new Date("2026-09-10T00:00:00Z") },
+    };
+  }
+
+  it.each(["sales", "salesperson-sales"] as const)("shares verified sales rows and totals for %s, grouping identities rather than snapshot names", async (type) => {
+    reportPrisma.sale.findMany.mockResolvedValueOnce(attribution).mockResolvedValueOnce([
+      sale("5", "person-1", "Same name", 120, 2),
+      sale("4", "person-2", "Same name", 60),
+      sale("3", "person-1", "Old name", 60),
+      sale("2", null, null, 30),
+      sale("1", null, "Legacy snapshot", 30),
+    ]);
+    const report = await reports.getReport(actor, { type, ...query });
+    expect(report.type).toBe(type);
+    if (report.type !== "sales" && report.type !== "salesperson-sales") throw new Error("Expected sales report");
+    expect(report.rows.map((row) => [row.salespersonId, row.salesperson])).toEqual([
+      ["person-1", "Same name"], ["person-2", "Same name"], ["person-1", "Old name"], [null, "Unassigned"], [null, "Legacy snapshot"],
+    ]);
+    expect(report.grandTotal).toEqual({ transactionCount: 5, units: 6, totalDiscount: 30, averageSale: 60, totalAmount: 300 });
+    expect(report.branchTotals).toEqual([{ branch: "B - Branch", transactionCount: 5, units: 6, totalAmount: 300, percentage: 100 }]);
+    if (report.type === "salesperson-sales") {
+      expect(report.salespersonTotals).toEqual([
+        { salespersonId: null, salesperson: "Not recorded (legacy)", transactionCount: 2, units: 2, totalDiscount: 6, averageSale: 30, totalAmount: 60, percentage: 20 },
+        { salespersonId: "person-1", salesperson: "Same name", transactionCount: 2, units: 3, totalDiscount: 18, averageSale: 90, totalAmount: 180, percentage: 60 },
+        { salespersonId: "person-2", salesperson: "Same name", transactionCount: 1, units: 1, totalDiscount: 6, averageSale: 60, totalAmount: 60, percentage: 20 },
+      ]);
+    } else {
+      expect(report).not.toHaveProperty("salespersonTotals");
+    }
+    expect(reportPrisma.sale.findMany).toHaveBeenCalledTimes(2);
+    expect(reportPrisma.sale.findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: {
+        locationId: { in: ["branch"] }, status: "POSTED", salespersonId: undefined, orderId: undefined, paymentMethod: undefined,
+        accountingReview: { status: "VERIFIED", verifiedAt: { gte: new Date("2026-08-31T16:00:00Z"), lt: new Date("2026-09-30T16:00:00Z") } },
+      },
+      select: expect.objectContaining({ salespersonId: true, salespersonName: true }),
+      orderBy: [{ accountingReview: { verifiedAt: "desc" } }, { id: "desc" }],
+    }));
+  });
+
+  it.each(["sales", "salesperson-sales"] as const)("offers scoped historical identities for %s regardless of current personnel status/home branch or other filters", async (type) => {
+    reportPrisma.sale.findMany.mockResolvedValueOnce(attribution).mockResolvedValueOnce([]);
+    const report = await reports.getReport(actor, { type, ...query, salespersonId: "person-1", source: "CUSTOMER_ORDER", paymentMethod: "GCASH" });
+    expect(report.filters.salespersons).toEqual([
+      { id: "person-1", label: "Later historical name" }, { id: "person-2", label: "Same name" },
+    ]);
+    expect(report.appliedFilters).toContainEqual({ label: "Salesperson", value: "Later historical name" });
+    expect(reportPrisma.sale.findMany).toHaveBeenNthCalledWith(1, {
+      where: { locationId: { in: ["branch"] }, status: "POSTED", salespersonId: { not: null }, accountingReview: { status: "VERIFIED", verifiedAt: { not: null } } },
+      select: { salespersonId: true, salespersonName: true }, distinct: ["salespersonId"],
+      orderBy: [{ accountingReview: { verifiedAt: "desc" } }, { id: "desc" }],
+    });
+    expect(reportPrisma.location.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ["branch"] }, isActive: true } }));
+    expect(reportPrisma.sale.findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: expect.objectContaining({ locationId: { in: ["branch"] }, salespersonId: "person-1", orderId: { not: null }, paymentMethod: "GCASH" }),
+    }));
+    if (report.type !== "sales" && report.type !== "salesperson-sales") throw new Error("Expected sales report");
+    expect(report.rows).toEqual([]);
+    expect(report.branchTotals).toEqual([]);
+    expect(report.grandTotal).toEqual({ transactionCount: 0, units: 0, totalDiscount: 0, averageSale: 0, totalAmount: 0 });
+    if (report.type === "salesperson-sales") expect(report.salespersonTotals).toEqual([]);
+  });
+
+  it.each(["sales", "salesperson-sales"] as const)("rejects unauthorized locations and arbitrary salesperson IDs for %s before querying sale details", async (type) => {
+    await expect(reports.getReport(actor, { type, ...query, locationId: "hidden" })).rejects.toThrow("Report location is not an active authorized location");
+    expect(reportPrisma.sale.findMany).not.toHaveBeenCalled();
+    reportPrisma.sale.findMany.mockResolvedValueOnce(attribution);
+    await expect(reports.getReport(actor, { type, ...query, salespersonId: "hidden-person" })).rejects.toThrow("Salesperson has no verified sales in the selected report scope");
+    expect(reportPrisma.sale.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps salesperson percentages finite when all sale amounts are zero", async () => {
+    reportPrisma.sale.findMany.mockResolvedValueOnce(attribution).mockResolvedValueOnce([sale("zero", "person-1", "Same name", 0)]);
+    const report = await reports.getReport(actor, { type: "salesperson-sales", ...query });
+    if (report.type !== "salesperson-sales") throw new Error("Expected salesperson sales report");
+    expect(report.salespersonTotals).toEqual([{ salespersonId: "person-1", salesperson: "Same name", transactionCount: 1, units: 1, totalDiscount: 0, averageSale: 0, totalAmount: 0, percentage: 0 }]);
   });
 });
 

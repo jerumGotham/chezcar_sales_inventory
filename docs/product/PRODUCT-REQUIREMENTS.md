@@ -4,7 +4,7 @@
 **Last updated:** 2026-09-07
 **Source:** Owner discussion, real inventory workbook, and current UI prototype
 
-> **Current-state warning:** The checked-in application is still partly a UI prototype. Authentication, Product/Supplier/Personnel maintenance, Salesperson and Backjob Installer attribution, quarantine-aware Inventory/Availability, Customer Orders, Direct Sales, split Stock Room receiving, transfers, Backjobs, Customer Warranty, Supplier Claims, dashboards, manual Accounting verification, notifications, three focused Reports, and limited offline direct-sale sync have a PostgreSQL-backed foundation. General Job Orders, offline transfer receipt/discrepancy capture, deployment operations, and remaining advanced/deferred screens are not complete until implemented and verified.
+> **Current-state warning:** The checked-in application is still partly a UI prototype. Authentication, Product/Supplier/Personnel maintenance, Salesperson and Backjob Installer attribution, quarantine-aware Inventory/Availability, Customer Orders, Direct Sales, split Stock Room receiving, transfers, Backjobs, Customer Warranty, Supplier Claims, dashboards, manual Accounting verification, notifications, four focused Reports, and limited offline direct-sale sync have a PostgreSQL-backed foundation. General Job Orders, offline transfer receipt/discrepancy capture, deployment operations, and remaining advanced/deferred screens are not complete until implemented and verified.
 
 ## Product Summary
 
@@ -60,7 +60,7 @@ All MVP replenishment enters `SR`. Transfers are `SR` to branch only. Branch-to-
 - Non-login Personnel maintenance for Salesperson and Installer attribution
 - Supplier master data used by receiving and Supplier Claims
 - Backjob, Customer Warranty, Supplier Claim, and per-location quarantine workflows
-- Three focused reports: Sales, branch-only available Inventory Summary, and Returns & Warranty; Inventory Movements and Low Stock are deferred from Reports
+- Four focused reports: Sales, Sales by Salesperson, branch-only available Inventory Summary, and Returns & Warranty; Inventory Movements and Low Stock are deferred from Reports
 - Production deployment, backup, restore, and monitoring
 
 ### Deferred
@@ -276,7 +276,7 @@ If anything does not match:
 ### Reports
 
 - Reports are read-only and require `reports:view`.
-- The three reports are Sales, Inventory Summary, and Returns & Warranty. Inventory Movements and Low Stock are deferred from Reports; operational inventory history and alerts remain intact.
+- The four reports are Sales, Sales by Salesperson, Inventory Summary, and Returns & Warranty. Sales by Salesperson shares Sales filters and verified-sale eligibility, groups receipts and totals by stored Personnel identity, and exports those details to PDF without adding commission or ranking behavior. Inventory Movements and Low Stock are deferred from Reports; operational inventory history and alerts remain intact.
 - Accounting Queue, mismatch work, and Open Orders remain in their operational modules and are not repeated in Reports.
 - All report data is limited to effective location access; company-wide authorized users may compare branch totals.
 - The Sales Report defaults from the first through the last day of the current Manila month and supports custom date ranges, branch, Salesperson, source, and payment filters. Omitted To follows the selected/default From month; explicit custom To is preserved. All filter edits stay pending until Apply Filters, with independent option loading.

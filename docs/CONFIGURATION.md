@@ -27,6 +27,14 @@ Copy the sanitized `.env.example` to an untracked `.env` and replace every place
 | `PROVISION_OWNER_NAME` | One-time production bootstrap | None | Display name for the first owner Admin. |
 | `ALLOW_CATALOG_RESET` | Local catalog seed/reload and the phase gate only | `true` in `.env.example` | Must equal `true`; accepts only the exact local Compose URL or disposable test URL and refuses production or unknown targets. |
 | `ALLOW_OPERATIONAL_DATA_RESET` | `db:data:reset` only | `true` in `.env.example` | Accepts only the exact local Compose or disposable test URL and preserves users/auth, roles, products, and locations. |
+| `APP_ENV` | Manual `db:staging:reset` only | None | Must equal `staging`; `NODE_ENV=production` remains allowed. This is a separate environment gate, not permission to reset final production. |
+| `STAGING_RESET_HOST` | Manual staging reset, including dry-run | None | Exact hostname from the staging `DATABASE_URL`; recognized local/dev/test targets are refused. |
+| `STAGING_RESET_PORT` | Manual staging reset, including dry-run | None | Exact URL port, or `5432` if omitted in the URL. |
+| `STAGING_RESET_DATABASE` | Manual staging reset, including dry-run | None | Exact decoded URL database name, also matched to connected `current_database()`. |
+| `STAGING_RESET_OWNER_ID` | Manual staging reset, including dry-run | None | Existing sole explicit owner's User ID; no creation or fallback lookup by Admin name/grants. |
+| `STAGING_RESET_OWNER_EMAIL` | Manual staging reset, including dry-run | None | Exact stored owner email, including case. No password input or credential change. |
+| `STAGING_RESET_ROLE_ID` | Manual staging reset, including dry-run | None | Existing owner's RoleDefinition ID; must be the sole role with `isOwner=true`. |
+| `STAGING_RESET_CONFIRM` | Manual staging reset, including dry-run | None | Exact `RESET STAGING <host>:<port>/<database> OWNER <owner-id> <owner-email> ROLE <role-id>` with all placeholders replaced by independently confirmed values. |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Browser push only | Empty | Public VAPID key exposed to authenticated browsers for PushManager subscription. |
 | `VAPID_PRIVATE_KEY` | Browser push only | Empty | Private VAPID key used server-side for best-effort browser push delivery attempts. |
 | `VAPID_SUBJECT` | Browser push only | `mailto:admin@example.invalid` | Contact subject passed to push providers. Use an owner/operator email or HTTPS URL. |
@@ -75,11 +83,14 @@ The npm scripts in `package.json` are:
 | `npm run db:provision-owner` | `node scripts/provision-owner-admin.mjs` | Create the first production owner User and Better Auth credential once after migrations; refuses replacement and verifies the connected database. |
 | `npm run db:catalog:reload` | `node --env-file=.env prisma/seed.mjs --catalog-only` | Transactionally reconcile canonical products, replace opening balances, and upsert the six import locations while preserving product identities, auth, and additional records; uses the same positive reset gates. |
 | `npm run db:data:reset` | `node --env-file=.env prisma/reset-operational-data.mjs` | Transactionally delete local operational data while preserving users/auth, roles, products, and required locations; requires the exact approved Compose database identity. |
+| `npm run db:staging:reset` | `node prisma/reset-staging-data.mjs` | Manual staging-only locked dry-run; add `-- --apply` to delete everything except the confirmed owner/role/password credential/owner location assignments and all Locations. Revokes all sessions/tokens. Requires every staging confirmation variable; no `.env` loading, fixtures, or disk deletion. |
 | `npm run verify:phase-01 -- [--validate-evidence]` | `node scripts/verify-phase-01.mjs` | Phase 1 evidence gate: asserts the disposable test target and seed/reset environment, then runs fresh migration deploy, seed, two equivalent catalog reloads, full unit/integration suites, typecheck, and build; captures lint's expected failure baseline separately and writes/validates `docs/verification/phase-01-evidence.md`. |
 
 `package-lock.json` is present, so npm is the repository's locked package manager.
 
 GitHub Actions builds the Coolify runtime from the root `Dockerfile` and publishes the verified image to GHCR. Deployment variables, registry access, persistent storage, and the manual Coolify release sequence are documented in `docs/DEPLOYMENT.md`.
+
+The dedicated staging reset is packaged by the existing Docker `prisma/` copy and must never run at startup or pre-deployment. Use only temporary process-scoped `STAGING_RESET_*` confirmations, removing them after maintenance. The actual staging identities are not checked in or inferred from local configuration. It accepts only `public` and optional URL parameters `schema=public` and `sslmode=disable|require|verify-ca|verify-full`; alternate connection-routing/SSL parameters and recognized local/dev/test databases fail closed. Use a reviewed direct endpoint and inspect the connected address/port printed by dry-run. See [Manual Staging Reset](DEPLOYMENT.md#manual-staging-reset) for exact variables/commands, backup and stop-writer prerequisites, pending-migration refusals, preservation rules, and separate residual-file cleanup. This command is source-only and has not been executed or verified in this revision.
 
 ### Vitest and workbook tooling
 
@@ -195,7 +206,7 @@ Both keys are read and written in browser-only React components, so they are not
 
 ## Per-environment overrides
 
-No `.env.development`, `.env.test`, `.env.production`, environment loader, or `NODE_ENV` conditional configuration is checked in. Next.js can load conventional local environment files, but this repository does not define project-specific development, staging, or production overrides.
+Next.js can load conventional local environment files, but this repository does not define checked-in environment-specific runtime files. Local catalog/reset commands explicitly load `.env`; the dedicated staging reset deliberately uses only injected process variables and its `APP_ENV=staging` gate. That CLI-only gate does not change Next.js runtime configuration.
 
 For separate environments:
 

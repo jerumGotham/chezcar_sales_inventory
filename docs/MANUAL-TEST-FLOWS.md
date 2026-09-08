@@ -532,12 +532,15 @@ Open `/reports`.
 The Reports module must contain exactly:
 
 1. Sales
-2. Inventory Summary
-3. Returns & Warranty
+2. Sales by Salesperson
+3. Inventory Summary
+4. Returns & Warranty
+
+Check that the four report controls are compact side-by-side icon/label buttons, with a distinct pressed/active state, wrapping on mobile instead of using large report cards. Check keyboard operation, light/dark themes, and horizontal overflow of wide detail tables. These are pending checks, not observed browser results.
 
 Inventory Movements and Low Stock are removed from Reports for now. Operational inventory history, movement records, and stock alerts remain in their own modules; retain the stock and movement checks in the Backjob, receiving, Customer Warranty, and Supplier Claim flows above. Accounting Queue and Open Customer Orders must remain in their operational modules.
 
-These revised Reports checks are source-based and pending manual execution. See `docs/product/REPORTS-SPEC.md`; no Reports runtime or PDF rendering verification was performed for this update.
+These revised Reports checks, including Sales by Salesperson, are source-based and pending manual execution. See `docs/product/REPORTS-SPEC.md`; no tests/build/lint/typecheck/browser/PDF rendering/verification commands/migrations/generation were performed for this update. Sales by Salesperson requires no new migration; existing pending migrations and the BackjobItem database/client prerequisite remain pending.
 
 ### Sales Report
 
@@ -551,10 +554,21 @@ These revised Reports checks are source-based and pending manual execution. See 
 8. Click Reset filters. Confirm only draft fields reset to the current full month and default selections until Apply Filters is clicked.
 9. Confirm full-dataset totals for verified transactions, units, discounts, average sale, and grand total. Branch transaction/unit/amount subtotals must reconcile to the grand total, and branch percentages total approximately 100% when sales exist.
 
+### Sales by Salesperson
+
+1. Open Sales by Salesperson and confirm `type=salesperson-sales` in the applied URL and JSON discriminator. Repeat Sales date/filter checks above: identical verification From/To, full current Manila month, location, Salesperson, source, and payment controls; identical automatic/custom month-end and draft/Apply/Reset behavior. Reload an applied link and confirm its filters are restored.
+2. Compare Sales and Sales by Salesperson using identical applied filters and unchanged data (tab switching resets defaults, so reapply the comparison filters). Receipt IDs, grand totals, and JSON branch totals/percentages must match. Only posted, verified sales within authorized locations and verification dates contribute; open orders, unverified sales, and voided sales do not.
+3. Reconcile the Salesperson summary's transactions, units, discounts, and sales amount to all filtered receipts and the overall footer. Average is amount divided by transaction count, not an average of group averages; percentage share is group amount divided by filtered grand amount times 100, displayed to one decimal. Zero grand amount yields zero shares and empty results retain zero totals without invented groups.
+4. Use historical data with two personnel IDs sharing a name and one ID with different sale-name snapshots. Confirm same-name IDs remain separate groups, one ID remains one group, and the group label is the newest matching verification snapshot (sale ID descending breaks timestamp ties). Groups sort by label then ID, not sales amount/rank; details preserve each receipt's stored name and verification-descending order.
+5. Include older sales with null `salespersonId`. Confirm all remain in one `Not recorded (legacy)` group and contribute to the overall totals; receipt name/fallback text remains unchanged. There is no separate missing-attribution selector option.
+6. Confirm each group's receipt table contains verification date, manual receipt, branch, customer, Salesperson on receipt, encoder, source, payment, units, discount, final amount, and status, plus a units/discount/amount subtotal footer. Attribution must not be presented as commissions, collected payments, ranking, or Payroll.
+7. In both sales reports, check historical Salesperson options with inactive/reassigned personnel and personnel whose current home is outside the sale branch or actor's personnel scope. Qualifying posted, verified sale attribution within the actor's effective active-location scope must retain the option; current eligibility without scoped verified history must not add it. Changing date/source/payment must not remove historical options. An eligible ID with no sales in the applied period returns empty rows, not an authorization error.
+8. Confirm option labels use the newest qualifying scoped verified snapshot across all dates, so a label can differ from an older period's group label. Personnel with only unverified/voided or out-of-scope sale history must not appear. Send their IDs directly to JSON/PDF and confirm `403`; `/options` returns scoped choices rather than validating selected-ID membership. No option or ID filter may widen sale-location access.
+
 ### Draft Filters and Options
 
-1. Repeat pending-edit and Reset checks for Inventory Summary and Returns & Warranty: neither changes results, totals, URL, or export parameters before Apply Filters.
-2. Change draft Sales location and confirm draft Salesperson clears and authorized options reload independently, without applying report rows. Change Inventory Product status and confirm draft category/brand clear and their options reload.
+1. Repeat pending-edit and Reset checks for Sales by Salesperson, Inventory Summary, and Returns & Warranty: none changes results, totals, URL, or export parameters before Apply Filters.
+2. Change draft location in both sales reports and confirm draft Salesperson clears and authorized historical options reload independently, without applying report rows. Change Inventory Product status and confirm draft category/brand clear and their options reload.
 3. With invalid draft dates or a failed report-row request, confirm filter options remain independently usable. Check their separate loading/error states and Retry options action.
 4. Switch report tabs while edits are pending. Confirm tab navigation immediately loads the selected report's clean defaults, without carrying incompatible draft filters across reports.
 
@@ -604,17 +618,18 @@ These revised Reports checks are source-based and pending manual execution. See 
 
 ### PDF Export
 
-1. For each of the three retained reports, apply a distinctive set of filters, then make an unsaved draft edit and export. Confirm the PDF uses the applied filters, not the pending edit.
+1. For each of the four retained reports, apply a distinctive set of filters, then make an unsaved draft edit and export. Confirm the PDF uses the applied filters, not the pending edit.
 2. Confirm the header contains `CHEZCAR AUTO CARE` and the correct report title, with no literal logo placeholder or embedded logo.
 3. Confirm generated-by display identity, generated-at Manila time, effective location scope, all applied filters, and inclusive date range/date basis are present. Inventory instead describes the current branch-only available-stock snapshot.
 4. With no intervening data changes, confirm summaries and all authorized detail rows match the UI's complete filtered dataset. Export reruns a live query; PDFs are not saved/frozen report snapshots, so intervening changes may legitimately alter results.
-5. For Sales, confirm a separate Branch subtotals table includes branch transactions, units, sales amount, and share, ending in an emphasized `OVERALL TOTAL` row that reconciles to the overview/UI. Empty results still show a zero overall total.
+5. For both sales PDFs, confirm a separate Branch subtotals table includes branch transactions, units, sales amount, and share, ending in an emphasized `OVERALL TOTAL` row that reconciles to the overview/JSON. Empty results still show a zero overall total; existing Sales percentages remain unchanged.
 6. For Inventory, confirm the single-branch product/available table covers all filtered products. Multi-branch comparison exports product totals followed by separate fixed-width sections per branch, including every filtered product's zero cells and each full branch total. Branch names repeat on continued headers; additional branches add sections rather than overflowing or shrinking columns. Product count, branches in scope, and full available-unit totals reconcile to the UI/JSON; no warehouse stock or hidden quantity/cost columns appear.
 7. For Returns & Warranty, confirm case summaries and type/status/branch/resolution breakdowns match the UI. Recorded Backjob charges remain separate from supplier refund/credit tracking, collected payments, verified Sales revenue, and ledger totals. Multi-item Backjobs retain all product snapshots but only one case row/count and one charge, with quantity `Not recorded`.
 8. Confirm A4 landscape pages, readable 9-point detail text, proportional column widths, aligned numeric amounts, alternating row shading, repeated section/table headers, and page numbers.
-9. Confirm Sales and Returns detail fields remain represented in grouped multiline cells rather than tiny individual columns. Long names, references, and notes wrap without ellipses or truncation.
+9. Confirm both sales reports and Returns detail fields remain represented in grouped multiline cells rather than tiny individual columns. Long names, references, and notes wrap without ellipses or truncation.
 10. Confirm ordinary rows stay together when they fit a fresh page and oversized rows continue across pages without overlapping headers or footers.
 11. Confirm JSON and PDF responses use private no-store caching.
+12. For Sales by Salesperson, confirm title and filename `chezcar-salesperson-sales-report.pdf`, overview, Salesperson subtotals with overall total, inherited branch subtotals, and one receipt section per stable-ID group with subtotal footer. Check duplicate-name groups, changed snapshots, the legacy bucket, empty results, and groups spanning pages. Receipt fields, discounts, averages, shares, and group/overall totals must match the full applied UI/JSON dataset without implying commissions or collected payments.
 
 ## 10. Authorization Checks
 

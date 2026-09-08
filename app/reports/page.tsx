@@ -1,8 +1,8 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Boxes, FileText, Filter, Loader2, Receipt, RefreshCw, RotateCcw, ShieldCheck, type LucideIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Boxes, ChevronLeft, ChevronRight, FileText, Filter, Loader2, Receipt, RefreshCw, RotateCcw, ShieldCheck, Users, type LucideIcon } from "lucide-react";
+import { useState, useSyncExternalStore } from "react";
 
 import { PageShell } from "@/components/page-shell";
 import { useCan } from "@/components/shell-access-context";
@@ -22,16 +22,19 @@ import {
   type ReportFilterOptions,
   type ReportResult,
   type ReportType,
+  type SalesReport,
 } from "@/lib/contracts/reports";
 
 const LABELS: Record<ReportType, string> = {
   sales: "Sales",
+  "salesperson-sales": "Sales by Salesperson",
   "inventory-summary": "Inventory Summary",
   "returns-warranty": "Returns & Warranty",
 };
 
 const REPORT_ICONS: Record<ReportType, LucideIcon> = {
   sales: Receipt,
+  "salesperson-sales": Users,
   "inventory-summary": Boxes,
   "returns-warranty": ShieldCheck,
 };
@@ -64,7 +67,7 @@ function manilaToday() {
 }
 
 function isDated(type: ReportType) {
-  return type === "sales" || type === "returns-warranty";
+  return type === "sales" || type === "salesperson-sales" || type === "returns-warranty";
 }
 
 function filtersFromSearchParams(url = new URLSearchParams()): Filters {
@@ -112,25 +115,31 @@ function options(values: readonly string[]) {
 const peso = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" });
 const dateTime = new Intl.DateTimeFormat("en-PH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Manila" });
 
+const subscribeToHydration = () => () => {};
+const getClientSnapshot = () => true;
+const getServerSnapshot = () => false;
+
 export default function ReportsPage() {
+  const ready = useSyncExternalStore(subscribeToHydration, getClientSnapshot, getServerSnapshot);
+
+  // Keep SSR and hydration identical; mount URL-initialized state only in the browser.
+  return (
+    <PageShell title="Reports" subtitle="View sales, salesperson totals, available stock, and customer service cases.">
+      {ready ? <ReportsContent /> : <State><Loader2 className="h-4 w-4 animate-spin" /> Loading report...</State>}
+    </PageShell>
+  );
+}
+
+function ReportsContent() {
   const canExport = useCan("reports:export");
-  const [draft, setDraft] = useState<Filters>({ type: "sales", dateFrom: "", dateTo: "", ...EMPTY_FILTERS });
-  const [applied, setApplied] = useState<Filters>({ type: "sales", dateFrom: "", dateTo: "", ...EMPTY_FILTERS });
-  const [ready, setReady] = useState(false);
-  const [customDateTo, setCustomDateTo] = useState(false);
-  const { data, isLoading, error } = useQuery({ queryKey: ["report", applied], queryFn: () => fetchReport(applied), enabled: ready });
+  const [draft, setDraft] = useState<Filters>(() => filtersFromSearchParams(new URLSearchParams(window.location.search)));
+  const [applied, setApplied] = useState<Filters>(draft);
+  const [customDateTo, setCustomDateTo] = useState(() => new URLSearchParams(window.location.search).has("dateTo"));
+  const { data, isLoading, error } = useQuery({ queryKey: ["report", applied], queryFn: () => fetchReport(applied) });
   const optionFilters = { type: draft.type, locationId: draft.locationId, productStatus: draft.type === "inventory-summary" ? draft.productStatus : "" };
   const { data: filterOptions, isFetching: optionsLoading, error: optionsError, refetch: reloadOptions } = useQuery({
-    queryKey: ["report-options", optionFilters], queryFn: () => fetchOptions(optionFilters), enabled: ready,
+    queryKey: ["report-options", optionFilters], queryFn: () => fetchOptions(optionFilters),
   });
-
-  useEffect(() => {
-    const linked = filtersFromSearchParams(new URLSearchParams(window.location.search));
-    setDraft(linked);
-    setApplied(linked);
-    setCustomDateTo(new URLSearchParams(window.location.search).has("dateTo"));
-    setReady(true);
-  }, []);
 
   function change<K extends keyof Filters>(key: K, value: Filters[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -166,23 +175,23 @@ export default function ReportsPage() {
   if (data?.type === "inventory-summary" && !applied.locationId && data.effectiveScope[0]) exportParams.set("locationId", data.effectiveScope[0].id);
   exportParams.set("format", "pdf");
   const inventoryFilters = draft.type === "inventory-summary";
+  const salesFilters = draft.type === "sales" || draft.type === "salesperson-sales";
   const appliedData = data?.type === applied.type ? data : undefined;
   const locationOptions = filterOptions ?? appliedData?.filters;
   const pending = paramsFor(draft).toString() !== paramsFor(applied).toString();
 
   return (
-    <PageShell title="Reports" subtitle="Three focused, read-only reports from authorized durable records.">
       <div className="space-y-4">
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <nav aria-label="Report selection" className="flex flex-wrap gap-2">
           {REPORT_TYPES.map((type) => {
             const Icon = REPORT_ICONS[type];
-            return <Button key={type} size="sm" variant={applied.type === type ? "default" : "outline"} onClick={() => selectType(type)}><Icon aria-hidden="true" />{LABELS[type]}</Button>;
+            return <Button key={type} aria-pressed={applied.type === type} className={applied.type === type ? "font-semibold underline underline-offset-4" : undefined} variant={applied.type === type ? "default" : "outline"} onClick={() => selectType(type)}><Icon aria-hidden="true" />{LABELS[type]}</Button>;
           })}
-        </div>
+        </nav>
 
         <Card><CardContent className="p-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
-            {isDated(draft.type) && <Field label="From" helper={draft.type === "sales" ? "Based on verification date (Manila)." : "Based on case creation date (Manila)."}><Input type="date" value={draft.dateFrom} onChange={(event) => changeDateFrom(event.target.value)} /></Field>}
+            {isDated(draft.type) && <Field label="From" helper={salesFilters ? "Based on verification date (Manila)." : "Based on case creation date (Manila)."}><Input type="date" value={draft.dateFrom} onChange={(event) => changeDateFrom(event.target.value)} /></Field>}
             {isDated(draft.type) && <Field label="To" helper="Inclusive; defaults to month-end."><Input type="date" value={draft.dateTo} onChange={(event) => { setCustomDateTo(Boolean(event.target.value)); change("dateTo", event.target.value); }} /></Field>}
             <Field label={inventoryFilters ? "Branch" : "Location"} helper={inventoryFilters ? "Defaults to one branch. Select All Branches to compare." : undefined}>
               <NativeSelect
@@ -193,9 +202,9 @@ export default function ReportsPage() {
               />
             </Field>
 
-            {draft.type === "sales" && <Field label="Salesperson"><NativeSelect value={draft.salespersonId} onChange={(value) => change("salespersonId", value)} options={filterOptions?.salespersons ?? []} disabled={optionsLoading || !filterOptions} allLabel={optionsLoading ? "Loading salespersons..." : "All salespersons"} /></Field>}
-            {draft.type === "sales" && <Field label="Source"><NativeSelect value={draft.source} onChange={(value) => change("source", value)} options={options(SALE_SOURCES)} allLabel="All sources" /></Field>}
-            {draft.type === "sales" && <Field label="Payment"><NativeSelect value={draft.paymentMethod} onChange={(value) => change("paymentMethod", value)} options={options(PAYMENT_METHODS)} allLabel="All methods" /></Field>}
+            {salesFilters && <Field label="Salesperson"><NativeSelect value={draft.salespersonId} onChange={(value) => change("salespersonId", value)} options={filterOptions?.salespersons ?? []} disabled={optionsLoading || !filterOptions} allLabel={optionsLoading ? "Loading salespersons..." : "All salespersons"} /></Field>}
+            {salesFilters && <Field label="Source"><NativeSelect value={draft.source} onChange={(value) => change("source", value)} options={options(SALE_SOURCES)} allLabel="All sources" /></Field>}
+            {salesFilters && <Field label="Payment"><NativeSelect value={draft.paymentMethod} onChange={(value) => change("paymentMethod", value)} options={options(PAYMENT_METHODS)} allLabel="All methods" /></Field>}
 
             {inventoryFilters && <Field label="Item code or name"><Input value={draft.search} onChange={(event) => change("search", event.target.value)} placeholder="Search product" /></Field>}
             {inventoryFilters && <Field label="Category"><NativeSelect value={draft.category} onChange={(value) => change("category", value)} options={filterOptions?.categories ?? []} disabled={optionsLoading || !filterOptions} allLabel="All categories" /></Field>}
@@ -216,9 +225,8 @@ export default function ReportsPage() {
           </div>
         </CardContent></Card>
 
-        {!ready || isLoading ? <State><Loader2 className="h-4 w-4 animate-spin" /> Loading {LABELS[applied.type]} report...</State> : error || !appliedData ? <State destructive>{error?.message ?? `${LABELS[applied.type]} report unavailable`}</State> : <><h2 className="text-lg font-semibold">{LABELS[appliedData.type]} Report</h2><p className="text-xs text-muted-foreground">Applied scope: {appliedData.effectiveScope.map((location) => location.label).join(", ") || "No authorized locations"}{appliedData.dateFrom ? ` | ${appliedData.dateFrom} to ${appliedData.dateTo}` : " | Current snapshot"}</p><ReportView key={paramsFor(applied).toString()} report={appliedData} /></>}
+        {isLoading ? <State><Loader2 className="h-4 w-4 animate-spin" /> Loading {LABELS[applied.type]} report...</State> : error || !appliedData ? <State destructive>{error?.message ?? `${LABELS[applied.type]} report unavailable`}</State> : <><h2 className="text-lg font-semibold">{LABELS[appliedData.type]} Report</h2><p className="text-xs text-muted-foreground">Applied scope: {appliedData.effectiveScope.map((location) => location.label).join(", ") || "No authorized locations"}{appliedData.dateFrom ? ` | ${appliedData.dateFrom} to ${appliedData.dateTo}` : " | Current snapshot"}</p><ReportView key={paramsFor(applied).toString()} report={appliedData} /></>}
       </div>
-    </PageShell>
   );
 }
 
@@ -235,6 +243,20 @@ function State({ children, destructive = false }: { children: React.ReactNode; d
 }
 
 function ReportView({ report }: { report: ReportResult }) {
+  if (report.type === "salesperson-sales") {
+    const salesByPerson = new Map<string | null, SalesReport["rows"]>();
+    for (const row of report.rows) {
+      const group = salesByPerson.get(row.salespersonId) ?? [];
+      group.push(row);
+      salesByPerson.set(row.salespersonId, group);
+    }
+    return <>
+      <p className="text-sm text-muted-foreground">See which receipts belong to each salesperson and their total verified sales. This is sales attribution, not a commission or payment report. Older sales without attribution appear under Not recorded (legacy).</p>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Metric label="Verified transactions" value={String(report.grandTotal.transactionCount)} /><Metric label="Units sold" value={String(report.grandTotal.units)} /><Metric label="Discounts" value={peso.format(report.grandTotal.totalDiscount)} /><Metric label="Average sale" value={peso.format(report.grandTotal.averageSale)} /><Metric label="Grand total" value={peso.format(report.grandTotal.totalAmount)} /></div>
+      <Table title="Salesperson totals" numericFrom={1} headers={["Salesperson", "Transactions", "Units", "Discounts", "Average sale", "Sales", "% of grand total"]} rows={report.salespersonTotals.map((row) => [row.salesperson, String(row.transactionCount), String(row.units), peso.format(row.totalDiscount), peso.format(row.averageSale), peso.format(row.totalAmount), `${row.percentage.toFixed(1)}%`])} footerRow={["OVERALL TOTAL", String(report.grandTotal.transactionCount), String(report.grandTotal.units), peso.format(report.grandTotal.totalDiscount), peso.format(report.grandTotal.averageSale), peso.format(report.grandTotal.totalAmount), report.grandTotal.totalAmount ? "100.0%" : "0.0%"]} />
+      {report.salespersonTotals.map((group) => <Table key={group.salespersonId ?? "unattributed"} title={`${group.salesperson} - ${group.transactionCount} receipt(s)`} numericFrom={8} headers={["Verified", "Manual receipt", "Branch", "Customer", "Salesperson on receipt", "Encoder", "Source", "Payment", "Units", "Discount", "Final amount", "Status"]} rows={(salesByPerson.get(group.salespersonId) ?? []).map((row) => [dateTime.format(new Date(row.verifiedAt)), row.manualReceiptNumber, row.branch, row.customer, row.salesperson, row.encoder, row.source, humanize(row.paymentMethod), String(row.units), peso.format(row.discountAmount), peso.format(row.totalAmount), humanize(row.verificationStatus)])} footerRow={["SALESPERSON TOTAL", "", "", "", "", "", "", "", String(group.units), peso.format(group.totalDiscount), peso.format(group.totalAmount), ""]} />)}
+    </>;
+  }
   if (report.type === "sales") return <>
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Metric label="Verified transactions" value={String(report.grandTotal.transactionCount)} /><Metric label="Units sold" value={String(report.grandTotal.units)} /><Metric label="Discounts" value={peso.format(report.grandTotal.totalDiscount)} /><Metric label="Average sale" value={peso.format(report.grandTotal.averageSale)} /><Metric label="Grand total" value={peso.format(report.grandTotal.totalAmount)} /></div>
     <Table headers={["Verified", "Manual receipt", "Branch", "Customer", "Salesperson", "Encoder", "Source", "Payment", "Units", "Discount", "Final amount", "Status"]} rows={report.rows.map((row) => [dateTime.format(new Date(row.verifiedAt)), row.manualReceiptNumber, row.branch, row.customer, row.salesperson, row.encoder, row.source, humanize(row.paymentMethod), String(row.units), peso.format(row.discountAmount), peso.format(row.totalAmount), humanize(row.verificationStatus)])} />
@@ -266,7 +288,7 @@ function InventoryView({ report }: { report: InventorySummaryReport }) {
     <Table headers={headers} numericFrom={4} footerRow={totals} rows={report.rows.slice(start, start + pageSize).map((row) => [row.itemCode, row.product, row.category, row.brand, ...(comparison ? report.effectiveScope.map((location) => String(row.availableByLocation[location.id])) : []), String(row.available)])} />
     <nav aria-label="Inventory products pagination" className="flex flex-wrap items-center justify-between gap-3">
       <p className="text-xs text-muted-foreground">{report.rows.length ? `${start + 1}-${Math.min(start + pageSize, report.rows.length)}` : "0"} of {report.rows.length} products | 25 per page. Totals and PDF include all filtered products.</p>
-      <div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>Previous</Button><span className="text-xs">Page {currentPage} of {pageCount}</span><Button variant="outline" size="sm" disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>Next</Button></div>
+      <div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}><ChevronLeft aria-hidden="true" />Previous</Button><span className="text-xs">Page {currentPage} of {pageCount}</span><Button variant="outline" size="sm" disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>Next<ChevronRight aria-hidden="true" /></Button></div>
     </nav>
   </>;
 }

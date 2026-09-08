@@ -1,12 +1,12 @@
 # Reports Production Spec
 
-**Status:** Three focused reports in source; 2026-09-08 revision unverified at owner request
+**Status:** Four focused reports in source; 2026-09-08 revision, including Sales by Salesperson, unverified at user request
 **Last updated:** 2026-09-08
-**Source:** Owner Reports revision, 2026-09-08; ADR 0017 (supersedes ADR 0013)
+**Source:** Reports revision and accepted Sales by Salesperson refinement, 2026-09-08; ADR 0017 (supersedes ADR 0013) for earlier scope history
 
 ## Purpose
 
-Provide three concise, read-only reports from live persisted data: Sales, Inventory Summary, and Returns & Warranty. Inventory Movements and Low Stock are deferred from Reports for now. Operational inventory history, movement records, stock alerts, Accounting queues, and open Customer Orders remain in their own modules and are not removed or duplicated here.
+Provide four concise, read-only reports from live persisted data: Sales, Sales by Salesperson, Inventory Summary, and Returns & Warranty. Inventory Movements and Low Stock are deferred from Reports for now. Operational inventory history, movement records, stock alerts, Accounting queues, and open Customer Orders remain in their own modules and are not removed or duplicated here.
 
 ## Access
 
@@ -19,10 +19,11 @@ Provide three concise, read-only reports from live persisted data: Sales, Invent
 
 - Reports query the live database and do not save report snapshots or generated PDFs.
 - Date-based reports default from the first through the last day of the current Asia/Manila month, not month-to-date. On 2026-09-08 this means `2026-09-01` through `2026-09-30`.
-- The date labels are From / To. Small helper text identifies verification date for Sales and case creation date for Returns & Warranty. Both ends are inclusive Manila calendar dates; the database upper bound is the following Manila midnight, exclusive.
+- The date labels are From / To. Small helper text identifies verification date for both sales reports and case creation date for Returns & Warranty. Both ends are inclusive Manila calendar dates; the database upper bound is the following Manila midnight, exclusive.
 - An omitted To defaults to the last day of the supplied/default From month. While To remains automatic, changing From updates month-end; manually entering To (including an explicit URL end date) makes it custom and preserves it across later From/location edits. Clearing To restores the default on Apply. Reset restores the current month in draft state. No date presets are currently exposed.
 - Inventory Summary is a current snapshot and does not use a historical date range.
 - Every filter edit, including location and Reset Filters, remains pending until Apply Filters. Results, totals, URL filters, and PDF parameters continue using applied filters. Switching report tabs is navigation and loads that report's defaults immediately.
+- Report selection uses compact side-by-side icon/label buttons in a wrapping row, not large report cards. The active button has pressed state and distinct styling; controls wrap on narrow screens and tables retain horizontal overflow.
 - Filter options load independently of report rows, keyed by draft report/location/product status. Location changes clear draft Salesperson; product-status changes clear draft category/brand. Options remain usable even when report rows fail or draft dates are invalid; loading/error/retry states are separate.
 - UI tables may paginate, but summary totals must use the full filtered dataset and must never be calculated from a display limit.
 - PDF export uses the same selected report, filters, totals, and effective location scope as the UI.
@@ -33,10 +34,10 @@ Provide three concise, read-only reports from live persisted data: Sales, Invent
 ## Query And Export Boundary
 
 - `GET /api/reports` requires `reports:view` for JSON. `format=pdf` requires `reports:export`; the route removes only `format` and executes the same report query before rendering the PDF.
-- The service validates report-specific filters, resolves active options inside effective location access, rejects an unauthorized/inactive requested `locationId`, and computes rows and full totals from that narrowed scope.
+- The service validates report-specific filters, resolves active locations inside effective location access, rejects an unauthorized/inactive requested `locationId`, and computes rows and full totals from that narrowed scope. Salesperson options are historical sale attributions, not an active-personnel list.
 - Inventory Summary further restricts scope and location options to active authorized `BRANCH` locations. Explicit Stock Room/warehouse requests return `403`; warehouse-only actors get an empty branch snapshot, not access to branches.
 - `/api/reports/options` requires `reports:view`, uses the same strict query validation and scope, and returns only `{ data: { locations, defaultLocationId, salespersons, categories, brands } }`. `defaultLocationId` is the first eligible branch for Inventory Summary (or `null` when none); it is `null` for other reports. The UI sends draft type/location and inventory product status only, without dates or dependent selections. It does not fetch report rows or totals.
-- For Inventory Summary, omitted `locationId` resolves server-side to one authorized active branch, ordered by name then ID. The current access context exposes no preference/home-branch field; the compatibility `User.locationId` is not consulted. Explicit `locationId=all` selects all authorized active branches; an actual branch ID selects only that branch. Empty/duplicate parameters are invalid, and no eligible branches means empty rows/scope, never widened access. Options, JSON, and PDF share this resolution, so the first report request cannot fetch All while the selector shows a default branch. Sales and Returns retain their existing omitted-location semantics.
+- For Inventory Summary, omitted `locationId` resolves server-side to one authorized active branch, ordered by name then ID. The current access context exposes no preference/home-branch field; the compatibility `User.locationId` is not consulted. Explicit `locationId=all` selects all authorized active branches; an actual branch ID selects only that branch. Empty/duplicate parameters are invalid, and no eligible branches means empty rows/scope, never widened access. Options, JSON, and PDF share this resolution, so the first report request cannot fetch All while the selector shows a default branch. Both sales reports and Returns use all authorized active locations when `locationId` is omitted; the literal `all` is Inventory-only.
 - `type=inventory-movements` and `type=low-stock` return `400 INVALID_FILTERS` for JSON, PDF, and options requests. Removed movement/low-stock-specific filter parameters are unknown and rejected. Old Reports page links for retired types open clean default Sales filters; operational `/api/inventory/movements` is unchanged.
 - JSON and PDF responses are private and not cached. Generated PDFs are not persisted.
 - PDF includes report title, generated actor/time, effective locations, date basis, selected filters, the complete authorized rows, and the same summaries/breakdowns returned to the UI.
@@ -46,6 +47,7 @@ Provide three concise, read-only reports from live persisted data: Sales, Invent
 | Report | Supported filters | Date semantics |
 | --- | --- | --- |
 | Sales | `dateFrom`, `dateTo`, `locationId`, `salespersonId`, `source`, `paymentMethod` | `verifiedAt`; current Manila month by default |
+| Sales by Salesperson (`salesperson-sales`) | `dateFrom`, `dateTo`, `locationId`, `salespersonId`, `source`, `paymentMethod` | Same verified-sale query and Manila dates as Sales |
 | Inventory Summary | `locationId` (branch ID or explicit `all`), `search`, `category`, `brand`, `productStatus` | Current positive available stock; one authorized active branch by default; all product statuses by default; no date range |
 | Returns & Warranty | `dateFrom`, `dateTo`, `locationId`, `caseType`, `status`, `resolution`, `entitySearch` | Case creation time exposed as `caseDate`; current Manila month by default |
 
@@ -88,6 +90,7 @@ The Sales Report is the monthly sales report by default; there is no separate Mo
 - Salesperson.
 - Authenticated encoder.
 - Source.
+- Payment method.
 - Units/items.
 - Discount.
 - Final amount.
@@ -95,7 +98,24 @@ The Sales Report is the monthly sales report by default; there is no separate Mo
 
 Salesperson output is transaction attribution, not ranking, commission, or Payroll reporting.
 
-## 2. Inventory Summary
+### Shared Sales Query and Historical Options
+
+Both sales reports execute the same `Sale` query: effective active locations, `status=POSTED`, Accounting review `VERIFIED`, and `verifiedAt` within the applied date range. The optional Salesperson ID, source (`DIRECT_SALE` means no `orderId`; `CUSTOMER_ORDER` means an `orderId`), and payment method narrow that query. Receipt rows include nullable `salespersonId` and the stored `salespersonName` snapshot (display fallback `Unassigned`), separately from the encoder. Rows sort by verification timestamp descending, then sale ID descending. Existing Sales detail, grand totals, branch totals, and branch percentage calculations are unchanged.
+
+For both reports, Salesperson options select distinct non-null attribution IDs from posted, verified sales with a non-null verification timestamp in the effective location scope. They are independent of date, source, and payment filters and of current personnel status, role, or home assignment. Inactive/reassigned personnel and personnel whose current home is elsewhere remain selectable when they have qualifying scoped sale history; current personnel eligibility alone does not add an option. Each option uses the newest qualifying sale's name snapshot, with sale ID descending breaking timestamp ties, then options sort by label and ID. A selected ID without qualifying history in scope returns `403` for report JSON/PDF; an eligible historical ID with no sales in the applied period returns an empty report. The options endpoint returns scoped choices without that selected-ID membership check.
+
+## 2. Sales by Salesperson
+
+- Query discriminator: `type=salesperson-sales`. It accepts exactly the Sales filters and inherits full-month Manila defaults, inclusive verification dates, draft/Apply/Reset behavior, location authorization, and PDF export permissions. Selecting the report tab starts clean defaults, even when switching from Sales.
+- `SalespersonSalesReport` retains Sales `rows`, `branchTotals`, `grandTotal`, and metadata, changes `type`, and adds `salespersonTotals`. Each subtotal is `{ salespersonId: string | null, salesperson, transactionCount, units, totalDiscount, averageSale, totalAmount, percentage }`.
+- Group by stable `salespersonId`, never name: equal names with different IDs stay separate; changed snapshots for one ID stay together. The group label is the newest matching receipt snapshot in the applied dataset, with sale ID descending breaking verification-time ties. It can differ from the broader historical option label. All null IDs form one `Not recorded (legacy)` group; row-level snapshot/fallback text is preserved, and there is no separate missing-attribution filter option.
+- Groups sort by display name, then ID, not by sales amount or rank. Summary metrics show full filtered verified transactions, units, discounts, average sale, and grand total. The Salesperson totals table shows those measures per group plus `% of grand total` and an `OVERALL TOTAL` footer.
+- Group average is sales amount divided by transaction count; group share is sales amount divided by the filtered grand amount times 100, or zero when the grand amount is zero. UI/PDF display shares to one decimal. Overall average is calculated from all transactions, not the mean of group averages. Empty results retain zero overall metrics/totals and no invented groups.
+- UI receipt-detail tables follow group order, retain verification-descending receipt order within each group, and show verification date, manual receipt, branch, customer, Salesperson on receipt, encoder, source, payment, units, discount, final amount, and status. Each ends with a `SALESPERSON TOTAL` footer for units, discounts, and sales amount. The UI does not add a separate branch-total table to this report.
+- PDF contains Sales overview, Salesperson subtotals with an emphasized overall total, inherited Branch subtotals with their overall total, and receipt details grouped by Salesperson with individual subtotal footers. It uses the shared landscape layout and live applied-filter query; the download filename is `chezcar-salesperson-sales-report.pdf`.
+- This is sales attribution, not commissions, collected-payment reconciliation, staff ranking, or Payroll. It requires no new schema or migration; existing pending migrations for other workflows remain pending.
+
+## 3. Inventory Summary
 
 ### Filters
 
@@ -117,7 +137,7 @@ Salesperson output is transaction attribution, not ranking, commission, or Payro
 - DTO rows are `{ id, productId, itemCode, product, category, brand, productStatus, available, availableByLocation }`; `id` is the product ID, `availableByLocation` maps every effective branch ID to its nonnegative contribution, and `available` is their sum. The former row-level `locationId`, `branch`, and `stockStatus` are removed. `effectiveScope` supplies ordered branch IDs/labels, and `branchTotals: [{ locationId, available }]` follows that order.
 - Summary: `productCount` is grouped row count, `locationCount` counts branches in scope even when no products match, and `available` sums all filtered rows. PDF requests from a default-branch result send the resolved branch ID explicitly so that export does not silently select a different default; the underlying data remains live.
 
-## 3. Returns & Warranty
+## 4. Returns & Warranty
 
 ### Filters
 
@@ -159,7 +179,9 @@ For persisted cases with no item rows, use one fallback snapshot from `affectedP
 11. Inventory shows 25 products per page, but totals and readable branch-section PDFs retain the entire filtered set.
 12. Recorded CHARGEABLE Backjob amounts appear in UI/PDF detail and summaries without entering supplier totals or Sales revenue. Sales '% of grand total' behavior is unchanged.
 13. Multi-item Backjobs list/search every original snapshot in stored position order, fall back to singular snapshots only without item rows, and remain one case with one charge and no invented affected-unit quantity.
+14. Four compact report-selection buttons wrap on narrow screens. Sales by Salesperson uses the same filters and verified-sale dataset as Sales, preserving existing Sales totals and percentages.
+15. Historical Salesperson options retain inactive/reassigned/cross-home attributions only through verified sales in authorized scope. ID grouping keeps same-name personnel distinct and null attribution in one legacy bucket; group totals and grouped receipt/PDF details reconcile to the shared grand total.
 
 ## Verification Limit
 
-This revision is source-only. Existing report assertions were updated for positive-only grouped inventory, branch contributions, unset versus explicit All parameters, ordered Backjob snapshot projection, legacy fallback, and absent affected-unit quantities. A mocked report-service assertion covers later-item code/name search and one case/one charge. None were executed. No tests, build, lint, typecheck, browser/PDF rendering, verification commands, migrations, generation, or server restart were performed. This Reports integration authors no schema or migrations, but reading `Backjob.items` requires the separately authored BackjobItem database/client changes. Large-dataset memory/response size, PDF page counts, and runtime multi-item behavior remain unverified.
+This revision, including Sales by Salesperson, is source-only, documented from `lib/contracts/reports.ts`, `lib/server/services/reports.ts`, `app/reports/page.tsx`, and `lib/server/report-pdf.ts`. No tests, build, lint, typecheck, browser/PDF rendering, verification commands, migrations, generation, or server restart were performed for this update. Sales by Salesperson requires no new schema or migration and does not resolve existing pending migrations. Reading `Backjob.items` still requires the separately authored BackjobItem database/client changes. Runtime grouping/options, responsive behavior, large-dataset memory/response size, PDF page counts/layout, and multi-item Backjob behavior remain unverified.

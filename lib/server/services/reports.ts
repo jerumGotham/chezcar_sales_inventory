@@ -17,6 +17,8 @@ import {
   type ReportBreakdown,
   type ReportOption,
   type ReportResult,
+  type SalesReport,
+  type SalespersonSalesReport,
 } from "@/lib/contracts/reports";
 import { availableStock } from "@/lib/inventory-quantity";
 import { assertCapability, AuthorizationError, type AuthContext } from "@/lib/server/authorization";
@@ -46,8 +48,10 @@ const reportQueryBaseSchema = z.object({
   resolution: z.enum(RETURN_RESOLUTIONS).optional(),
   entitySearch: optionalText,
 }).strict().superRefine((value, context) => {
+  const salesFilters = new Set(["type", "dateFrom", "dateTo", "locationId", "salespersonId", "source", "paymentMethod"]);
   const allowed: Record<(typeof REPORT_TYPES)[number], ReadonlySet<string>> = {
-    sales: new Set(["type", "dateFrom", "dateTo", "locationId", "salespersonId", "source", "paymentMethod"]),
+    sales: salesFilters,
+    "salesperson-sales": salesFilters,
     "inventory-summary": new Set(["type", "locationId", "search", "category", "brand", "productStatus"]),
     "returns-warranty": new Set(["type", "dateFrom", "dateTo", "locationId", "caseType", "status", "resolution", "entitySearch"]),
   };
@@ -76,7 +80,7 @@ const CLOSED_WARRANTY = new Set(["COMPLETED", "CANCELLED", "REJECTED"]);
 const CLOSED_CLAIM = new Set(["COMPLETED", "CANCELLED", "REJECTED"]);
 
 function isDatedReport(type: (typeof REPORT_TYPES)[number]) {
-  return type === "sales" || type === "returns-warranty";
+  return type === "sales" || type === "salesperson-sales" || type === "returns-warranty";
 }
 
 export function manilaDateKey(value: Date) {
@@ -103,14 +107,21 @@ async function options(query: ReportQuery, locations: ReportLocation[], effectiv
   const scopedLocation = { in: effectiveLocations.map((location) => location.id) };
   const inventoryProductStatus = query.type === "inventory-summary" ? query.productStatus : "ACTIVE";
   const [salespersons, categories, brands] = await Promise.all([
-    query.type !== "sales" ? Promise.resolve([]) : prisma.personnel.findMany({ where: { locationId: scopedLocation, status: "ACTIVE", type: { in: ["SALESPERSON", "BOTH"] } }, select: { id: true, fullName: true }, orderBy: { fullName: "asc" } }),
+    (query.type !== "sales" && query.type !== "salesperson-sales") || !effectiveLocations.length ? Promise.resolve([]) : prisma.sale.findMany({
+      where: { locationId: scopedLocation, status: "POSTED", salespersonId: { not: null }, accountingReview: { status: "VERIFIED", verifiedAt: { not: null } } },
+      // Historical attribution, independent of date/source/payment filters or current personnel assignments.
+      select: { salespersonId: true, salespersonName: true },
+      distinct: ["salespersonId"],
+      orderBy: [{ accountingReview: { verifiedAt: "desc" } }, { id: "desc" }],
+    }),
     query.type !== "inventory-summary" || !effectiveLocations.length ? Promise.resolve([]) : prisma.product.findMany({ where: { ...(inventoryProductStatus ? { status: inventoryProductStatus } : {}), category: { not: null } }, distinct: ["category"], select: { category: true }, orderBy: { category: "asc" } }),
     query.type !== "inventory-summary" || !effectiveLocations.length ? Promise.resolve([]) : prisma.product.findMany({ where: { ...(inventoryProductStatus ? { status: inventoryProductStatus } : {}), brand: { not: null } }, distinct: ["brand"], select: { brand: true }, orderBy: { brand: "asc" } }),
   ]);
   return {
     locations: locations.map((row) => ({ id: row.id, label: `${row.code} - ${row.name}` })),
     defaultLocationId: query.type === "inventory-summary" ? locations[0]?.id ?? null : null,
-    salespersons: salespersons.map((row) => ({ id: row.id, label: row.fullName })),
+    salespersons: salespersons.flatMap((row) => row.salespersonId !== null ? [{ id: row.salespersonId, label: row.salespersonName ?? "Unassigned" }] : [])
+      .sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id)),
     categories: categories.flatMap((row) => row.category ? [{ id: row.category, label: row.category }] : []),
     brands: brands.flatMap((row) => row.brand ? [{ id: row.brand, label: row.brand }] : []),
   };
@@ -252,14 +263,14 @@ export async function getReportOptions(actor: AuthContext, rawQuery: unknown) {
 export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<ReportResult> {
   const { query, effectiveLocations, filters } = await reportContext(actor, rawQuery);
   if (query.salespersonId && !filters.salespersons.some((row) => row.id === query.salespersonId)) {
-    throw new AuthorizationError("Salesperson is inactive or outside the selected report scope");
+    throw new AuthorizationError("Salesperson has no verified sales in the selected report scope");
   }
   const effectiveScope = effectiveLocations.map((location) => ({ id: location.id, label: `${location.code} - ${location.name}` }));
   const scopedLocation = { in: effectiveLocations.map((location) => location.id) };
   const undatedRange = dateRange(query, false);
   const base = { type: query.type, generatedAt: new Date().toISOString(), filters, effectiveScope };
 
-  if (query.type === "sales") {
+  if (query.type === "sales" || query.type === "salesperson-sales") {
     const range = dateRange(query, true);
     const records = await prisma.sale.findMany({
       where: {
@@ -272,7 +283,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
       },
       select: {
         id: true, manualReceiptNumber: true, receiptBooklet: true, orderId: true, paymentMethod: true,
-        totalAmount: true, discountAmount: true, salespersonName: true, lines: { select: { quantity: true } },
+        totalAmount: true, discountAmount: true, salespersonId: true, salespersonName: true, lines: { select: { quantity: true } },
         customer: { select: { name: true } }, location: { select: { code: true, name: true } }, postedBy: { select: { name: true } },
         accountingReview: { select: { verifiedAt: true } },
       },
@@ -284,6 +295,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
       manualReceiptNumber: row.receiptBooklet ? `${row.receiptBooklet}-${row.manualReceiptNumber}` : row.manualReceiptNumber,
       branch: `${row.location.code} - ${row.location.name}`,
       customer: row.customer?.name ?? "Guest",
+      salespersonId: row.salespersonId,
       salesperson: row.salespersonName ?? "Unassigned",
       encoder: row.postedBy.name,
       source: row.orderId ? "Customer Order" as const : "Direct Sale" as const,
@@ -303,7 +315,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
       totals.set(row.branch, total);
     }
     for (const total of totals.values()) total.percentage = grandAmount ? (total.totalAmount / grandAmount) * 100 : 0;
-    return {
+    const salesReport: SalesReport = {
       ...base, type: "sales", dateFrom: range.dateFrom, dateTo: range.dateTo,
       appliedFilters: selectedFilters(query, filters, range), rows,
       branchTotals: [...totals.values()].sort((a, b) => a.branch.localeCompare(b.branch)),
@@ -314,6 +326,30 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
         averageSale: rows.length ? grandAmount / rows.length : 0,
         totalAmount: grandAmount,
       },
+    };
+    if (query.type === "sales") return salesReport;
+
+    const salespersonTotals = new Map<string | null, SalespersonSalesReport["salespersonTotals"][number]>();
+    // Rows are newest verification first, with sale ID breaking ties; keep that first snapshot label.
+    for (const row of rows) {
+      const total = salespersonTotals.get(row.salespersonId) ?? {
+        salespersonId: row.salespersonId,
+        salesperson: row.salespersonId === null ? "Not recorded (legacy)" : row.salesperson,
+        transactionCount: 0, units: 0, totalDiscount: 0, averageSale: 0, totalAmount: 0, percentage: 0,
+      };
+      total.transactionCount += 1;
+      total.units += row.units;
+      total.totalDiscount += row.discountAmount;
+      total.totalAmount += row.totalAmount;
+      salespersonTotals.set(row.salespersonId, total);
+    }
+    for (const total of salespersonTotals.values()) {
+      total.averageSale = total.totalAmount / total.transactionCount;
+      total.percentage = grandAmount ? (total.totalAmount / grandAmount) * 100 : 0;
+    }
+    return {
+      ...salesReport, type: "salesperson-sales",
+      salespersonTotals: [...salespersonTotals.values()].sort((a, b) => a.salesperson.localeCompare(b.salesperson) || (a.salespersonId ?? "").localeCompare(b.salespersonId ?? "")),
     };
   }
 
