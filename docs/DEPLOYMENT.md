@@ -4,6 +4,18 @@ The application is built from the checked-in `Dockerfile`. GitHub Actions verifi
 
 The current Coolify target is **staging, not the final production environment**. The image tag `production` and Next.js `NODE_ENV=production` describe the image/runtime, not the business environment or permission to erase data. Use staging-specific database credentials and storage. The existing migration and first-owner flows below are deployment procedures; they must not be confused with the separate manual staging reset.
 
+## Staging Deployment Record
+
+On 2026-09-08, Coolify successfully deployed immutable image `ghcr.io/jerumgotham/chezcar_sales_inventory:2d0fc80a1228df2e74ea8523e0a6bc6aa59d8e3b` to the existing Chezcar application. The application is now pinned to that SHA, not the mutable `production` tag. Future releases must select a newly verified SHA deliberately; GitHub publication alone does not redeploy this resource.
+
+- [CI run 34248064320](https://github.com/jerumGotham/chezcar_sales_inventory/actions/runs/34248064320) passed typecheck, lint (with existing warnings), unit/integration tests, application build, Docker build, and image publication. No local test/build commands were run during this release.
+- A private PostgreSQL custom-format backup and storage archive were saved on the staging host before migrations. The database archive restored successfully into a separate temporary database, which was removed afterward. Backup paths and credentials are intentionally not published here.
+- All 48 checked-in migrations in that image were confirmed applied in staging, including optional Warranty photos and Backjob items/deletion. They were applied from the intended image in a one-off container before the Coolify rolling update; the ordinary migration-only hook remains configured. This does not establish local-database migration status.
+- The old staging database had no users, locations, or products. No historical-data purge was needed. With explicit operator approval, a locked empty-database bootstrap created one Owner Admin credential using the authorized local seed configuration, retained only its owner role, and initialized the six project locations (five branches and Stock Room). No credentials were printed or committed, and no full catalog seed or staging-reset command was executed.
+- Post-deployment counts: 1 User, 1 RoleDefinition, 1 credential Account, 6 Locations; 0 Products, Suppliers, Personnel, Customers, Sales, Customer Orders, Inventory Balances, Backjobs, Customer Warranties, and Supplier Claims. Normal sign-in creates a session; these counts describe initialization, not a permanent invariant.
+- `/api/health` returned `200 {"status":"ok"}`; Admin sign-in returned 200. Sales by Salesperson loaded, its JSON returned the empty initialized dataset, and its PDF response returned 200 with PDF content type and signature. These are focused release checks, not a populated-data workflow or visual PDF regression suite. The destructive staging-reset tool itself remains unexecuted.
+- Warranty and Supplier Claim runtime storage paths are configured under the existing `/app/storage` volume. The same immutable image was redeployed to activate those environment settings; this did not rerun initialization or clear new data.
+
 ## GitHub Setup
 
 The CI workflow uses isolated placeholder configuration and needs no production secrets. For `main`, it transfers the image built by the verification job as a short-lived workflow artifact; a main-only package-write job loads those exact bytes and publishes `ghcr.io/jerumgotham/chezcar_sales_inventory:<commit-sha>` and `ghcr.io/jerumgotham/chezcar_sales_inventory:production`. Pull-request jobs have no package-write permission. Keep `DATABASE_URL`, Better Auth credentials, VAPID credentials, and storage configuration only in Coolify.
@@ -33,6 +45,8 @@ BETTER_AUTH_SECRET=<at least 32 random characters>
 BETTER_AUTH_URL=https://<public application domain>
 RECEIPT_STORAGE_PATH=/app/storage/receipts
 PRODUCT_IMAGE_STORAGE_PATH=/app/storage/products
+WARRANTY_STORAGE_PATH=/app/storage/warranty-evidence
+SUPPLIER_CLAIM_STORAGE_PATH=/app/storage/supplier-claim-evidence
 ```
 
 Optional browser-push variables:
@@ -88,7 +102,7 @@ Coolify remains responsible for deployment logs, rollback, and deployment notifi
 
 `npm run db:staging:reset` is a dedicated destructive staging maintenance tool, **dry-run by default**. It is not a seed: it creates no fixture products, users, roles, locations, opening balances, or passwords. The existing `db:data:reset` local-only guard is unchanged and must never be bypassed to target Coolify. The new entry point is `prisma/reset-staging-data.mjs`, included by the Dockerfile's existing `/app/prisma` copy; it needs no `scripts/` directory or `.env` file in the image.
 
-This 2026-09-08 addition is source-only: no reset (including dry-run), migrations, tests, build, lint, typecheck, or browser verification was run. The real staging host/database/owner identity has not been supplied or verified. Do not infer it from the public application domain, local Compose configuration, image tag, or examples below.
+The staging reset command itself has not been executed, including dry-run; the separate release and empty-database initialization are recorded above. Independently verify the current staging host/database/owner identity before any future reset. Do not infer it from the public application domain, local Compose configuration, image tag, or examples below.
 
 1. Arrange a maintenance window. Stop application replicas, background workers/reminders, integrations, and offline sync writers; block incoming traffic and stop concurrent deployments/migrations. A proxy maintenance page alone does not stop background writes. Use a one-off shell/container from the intended immutable image on the staging database network with the same protected runtime database configuration, without starting Next.js. Keep writers stopped until post-reset inspection is complete. Table locks protect the transaction, not writes queued after commit.
 2. Create and verify a restorable logical PostgreSQL backup and a corresponding private-storage backup before proceeding. Record the image SHA, database connection identity, existing owner User ID/email, and its RoleDefinition ID. Identify ownership through `RoleDefinition.isOwner=true`, not `User.role`, role name, scope, or permission grants. Confirm that exactly one user has that role and has already completed password setup; know its working login before maintenance. Backups contain credentials and private evidence and must remain restricted.
@@ -127,7 +141,7 @@ The only retained application rows are the existing owner User, exactly its expl
 
 ### Residual Private Files
 
-All deleted product/evidence records lose their database file references, but the tool deliberately performs **no disk deletion**. It does not emit file keys into logs. Product images, receipt photos, Backjob attachments, warranty intake photos, and Supplier Claim evidence can remain in the configured private directories (`PRODUCT_IMAGE_STORAGE_PATH`, `RECEIPT_STORAGE_PATH`, `BACKJOB_EVIDENCE_STORAGE_PATH`, `WARRANTY_EVIDENCE_STORAGE_PATH`, `SUPPLIER_CLAIM_STORAGE_PATH`), including defaults under `data/` if those paths were not configured. Preserved owner fields, including any `User.image` value, are not scrubbed.
+All deleted product/evidence records lose their database file references, but the tool deliberately performs **no disk deletion**. It does not emit file keys into logs. Product images, receipt photos, warranty intake photos, and Supplier Claim evidence can remain in the configured private directories (`PRODUCT_IMAGE_STORAGE_PATH`, `RECEIPT_STORAGE_PATH`, `WARRANTY_STORAGE_PATH`, `SUPPLIER_CLAIM_STORAGE_PATH`), including defaults under `data/` if those paths were not configured. Backjob binary upload remains unimplemented. Preserved owner fields, including any `User.image` value, are not scrubbed.
 
 After the database and storage backups are verified and reset has committed, authorize a **separate** file-cleanup operation: derive an exact old-key manifest from the protected backup, resolve the actual staging-only roots/volumes, exclude any retained/shared files and owner image, validate canonical paths and symlink boundaries, and delete only reviewed keys under those roots. Keep uploads/writers stopped during that cleanup. Do not broadly remove `/app/storage`, `data/`, a mounted volume, or PostgreSQL's data directory; those paths may contain shared or retained data. Missing/unreferenced old uploads also need a separately reviewed storage inventory, not a guessed wildcard deletion. Database rollback cannot recover disk deletions. Leave residual files private until this separate work is authorized.
 
