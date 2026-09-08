@@ -1,5 +1,6 @@
 import { ReactNode } from "react";
 import { AppHeader } from "@/components/app-header";
+import { PageShellNavigation } from "@/components/page-shell-navigation";
 
 export function PageShell({
   title,
@@ -15,6 +16,7 @@ export function PageShell({
   return (
     <div>
       <AppHeader title={title} subtitle={subtitle} />
+      <PageShellNavigation />
       {actions ? <div className="mb-6 flex flex-wrap gap-3">{actions}</div> : null}
       {children}
     </div>

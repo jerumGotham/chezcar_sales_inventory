@@ -2,7 +2,7 @@ import "server-only";
 
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 const MAX_RECEIPT_BYTES = 6 * 1024 * 1024;
 const MIME_TYPES = new Map([
@@ -51,4 +51,8 @@ export async function removeReceiptEvidence(key: string) {
 
 export function isReceiptEvidenceKey(key: string) {
   return /^[0-9a-f-]{36}\.(jpg|png|webp)$/.test(key);
+}
+
+export function receiptEvidenceVersion(key: string) {
+  return createHash("sha256").update(key).digest("hex");
 }

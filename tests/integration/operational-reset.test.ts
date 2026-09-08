@@ -38,7 +38,7 @@ describe("operational data reset", () => {
           quarantined: 1,
         },
       });
-      await prisma.customer.create({
+      const customer = await prisma.customer.create({
         data: { name: "Delete Me", createdById: fixture.users.admin.id },
       });
       const supplier = await prisma.supplier.create({ data: { name: "Preserved Supplier" } });
@@ -47,6 +47,28 @@ describe("operational data reset", () => {
           fullName: "Preserved Salesperson",
           locationId: fixture.locations.branches.QC.id,
           type: "SALESPERSON",
+        },
+      });
+      const order = await prisma.customerOrder.create({
+        data: {
+          reference: "RESET-ORDER",
+          locationId: fixture.locations.branches.QC.id,
+          customerId: customer.id,
+          type: "WAITING_STOCK",
+          totalAmount: 0,
+          remainingBalance: 0,
+          createdById: fixture.users.admin.id,
+        },
+      });
+      await prisma.customerOrderSalespersonEvent.create({
+        data: {
+          orderId: order.id,
+          newSalespersonId: personnel.id,
+          newSalespersonName: personnel.fullName,
+          newSalespersonLocationId: fixture.locations.branches.QC.id,
+          newSalespersonLocationCode: fixture.locations.branches.QC.code,
+          newSalespersonLocationName: fixture.locations.branches.QC.name,
+          actorId: fixture.users.admin.id,
         },
       });
       await prisma.notification.create({
@@ -71,6 +93,7 @@ describe("operational data reset", () => {
       });
 
       expect(result.preserved).toEqual(before);
+      expect(result.deleted.customerOrderSalespersonEvents).toBe(1);
       await expect(prisma.user.count()).resolves.toBe(before.users);
       await expect(prisma.product.count()).resolves.toBe(before.products);
       await expect(prisma.location.count()).resolves.toBe(before.locations);

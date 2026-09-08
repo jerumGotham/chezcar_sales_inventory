@@ -501,6 +501,7 @@ function PosTab() {
   const [paymentType, setPaymentType] = useState<SelectOption | null>(null);
   const [manualReceiptNumber, setManualReceiptNumber] = useState("");
   const [receiptPhoto, setReceiptPhoto] = useState<File | null>(null);
+  const receiptPhotoInputRef = useRef<HTMLInputElement>(null);
   const [checkoutError, setCheckoutError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [isCheckoutPending, setIsCheckoutPending] = useState(false);
@@ -704,6 +705,7 @@ function PosTab() {
     setSelectedSalesperson(null);
     setManualReceiptNumber("");
     setReceiptPhoto(null);
+    if (receiptPhotoInputRef.current) receiptPhotoInputRef.current.value = "";
     setDiscountAmount("0");
     setCheckoutError("");
     setSearch("");
@@ -711,7 +713,7 @@ function PosTab() {
   };
 
   useEffect(() => {
-    // A salesperson cannot carry over to another transaction branch.
+    // Reset the selection while options reload for the new transaction branch.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedSalesperson(null);
   }, [activeLocationId]);
@@ -1083,10 +1085,10 @@ function PosTab() {
                 onChange={(option) => setSelectedSalesperson(option)}
                 isSearchable
                 placeholder="Select salesperson"
-                noOptionsMessage={() => "No active salespersons for this branch"}
+                noOptionsMessage={() => "No eligible salespersons in your authorized locations"}
                 styles={selectStyles}
               />
-              {activeLocationId && !posOptionsQuery.isLoading && salespersonOptions.length === 0 ? <p className="text-xs text-amber-700">No active Salesperson is assigned to this branch. Update Personnel Maintenance first.</p> : null}
+              {activeLocationId && !posOptionsQuery.isLoading && salespersonOptions.length === 0 ? <p className="text-xs text-amber-700">No eligible Salesperson is available in your authorized locations. Update Personnel Maintenance first.</p> : null}
             </div>
 
             <div className="space-y-3">
@@ -1104,18 +1106,34 @@ function PosTab() {
                 <Label htmlFor="receipt-photo">Handwritten Receipt Photo</Label>
                 <Input
                   id="receipt-photo"
+                  ref={receiptPhotoInputRef}
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
                   capture="environment"
+                  disabled={isCheckoutPending}
                   onChange={(event) => setReceiptPhoto(event.target.files?.[0] ?? null)}
                 />
                 <p className="text-xs text-slate-500">
                   Take a clear photo of the complete receipt. The sale can still post if the upload fails, but Accounting cannot verify it until evidence is attached.
                 </p>
                 {receiptPhoto ? (
-                  <p className="flex items-center gap-2 text-xs font-medium text-emerald-700">
-                    <Upload className="size-4" /> {receiptPhoto.name}
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="flex min-w-0 items-center gap-2 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                      <Upload className="size-4 shrink-0" /> <span className="break-all">{receiptPhoto.name}</span>
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isCheckoutPending}
+                      onClick={() => {
+                        setReceiptPhoto(null);
+                        if (receiptPhotoInputRef.current) receiptPhotoInputRef.current.value = "";
+                      }}
+                    >
+                      <Trash2 className="mr-2 size-4" /> Remove selected photo
+                    </Button>
+                  </div>
                 ) : null}
               </div>
             ) : null}
@@ -2245,7 +2263,7 @@ export default function SalesPage() {
       title="Customer Sales"
       subtitle="Post walk-in sales for the selected branch and customer."
       actions={
-        <Link href="/customer-orders" className={buttonVariants({ variant: "outline" })}>Customer Orders</Link>
+        <Link href="/customer-orders?view=orders" className={buttonVariants({ variant: "outline" })}>Customer Orders</Link>
       }
     >
       <PosTab />

@@ -16,8 +16,10 @@ import type { AuthContext } from "@/lib/server/authorization";
 import { assertCapability } from "@/lib/server/authorization";
 import { canAccessLocation, hasAllLocationAccess } from "@/lib/server/policy/access";
 import { prisma } from "@/lib/server/prisma";
+import { createNotifications } from "./notifications";
+import { eligiblePersonnelWhere } from "./personnel";
 
-export type BackjobCapability = "backjobs:view" | "backjobs:create" | "backjobs:update" | "backjobs:schedule" | "backjobs:complete" | "backjobs:parts:issue" | "backjobs:parts:return" | "backjobs:print";
+export type BackjobCapability = "backjobs:view" | "backjobs:create" | "backjobs:update" | "backjobs:delete" | "backjobs:schedule" | "backjobs:complete" | "backjobs:parts:issue" | "backjobs:parts:return" | "backjobs:print";
 
 export class BackjobError extends Error {
   constructor(readonly code: string, message: string, readonly status = 409) {
@@ -27,6 +29,7 @@ export class BackjobError extends Error {
 }
 
 const BACKJOB_INCLUDE = {
+  items: { select: { id: true, originalSaleLineId: true, productId: true, productItemCode: true, productName: true, position: true }, orderBy: { position: "asc" as const } },
   parts: {
     include: {
       product: { select: { id: true } },
@@ -56,6 +59,8 @@ function assertScope(actor: AuthContext, locationId: string) {
 function serialize(row: BackjobRecord) {
   return {
     ...row,
+    // Older writers may still have created a one-line case after the backfill.
+    items: row.items.length ? row.items : [{ id: `backfill-${row.id}`, originalSaleLineId: row.originalSaleLineId, productId: row.affectedProductId, productItemCode: row.affectedProductItemCode, productName: row.affectedProductName ?? row.legacyProductDescription ?? "Not recorded", position: 0 }],
     chargeableAmount: Number(row.chargeableAmount),
     scheduledFor: row.scheduledFor?.toISOString() ?? null,
     acknowledgedAt: row.acknowledgedAt?.toISOString() ?? null,
@@ -81,7 +86,50 @@ async function lockBackjob(tx: Prisma.TransactionClient, actor: AuthContext, id:
 }
 
 async function event(tx: Prisma.TransactionClient, backjobId: string, actorId: string, type: string, fromStatus?: BackjobStatus, toStatus?: BackjobStatus, reason?: string, detailsJson?: Prisma.InputJsonValue) {
-  await tx.backjobEvent.create({ data: { backjobId, actorId, type, fromStatus, toStatus, reason, detailsJson } });
+  const recorded = await tx.backjobEvent.create({
+    data: { backjobId, actorId, type, fromStatus, toStatus, reason, detailsJson },
+    select: { backjob: { select: { reference: true, locationCode: true } } },
+  });
+  await notifyBackjob(tx, recorded.backjob, type, backjobId);
+}
+
+async function notifyBackjob(tx: Prisma.TransactionClient, row: { reference: string; locationCode: string }, type: string, backjobId?: string) {
+  // Admin is the explicit owner role, not a role name or all-location grant.
+  const recipients = await tx.user.findMany({
+    where: { status: "ACTIVE", accessRole: { isOwner: true } },
+    select: { id: true },
+  });
+  const labels: Record<string, string> = {
+    CREATED: "created",
+    SCHEDULED: "scheduled",
+    RESCHEDULED: "rescheduled",
+    STARTED: "started",
+    COVERAGE_SET: "coverage updated",
+    PARTS_PLANNED: "parts plan saved",
+    PART_ISSUED: "part issued",
+    PART_USAGE_RECORDED: "part usage recorded",
+    PART_RETURNED: "part returned",
+    COMPLETED: "completed",
+    REJECTED: "rejected",
+    CANCELLED: "cancelled",
+    DELETED: "deleted",
+  };
+  const label = labels[type] ?? type.toLowerCase().replaceAll("_", " ");
+  await createNotifications(tx, recipients.map(({ id: userId }) => ({
+    userId,
+    title: `Backjob ${label}`,
+    description: `${row.reference} (${row.locationCode}): ${label}.`,
+    type: type === "COMPLETED" ? "SUCCESS" : type === "REJECTED" || type === "CANCELLED" || type === "DELETED" ? "WARNING" : "INFO",
+    relatedType: "BACKJOB",
+    relatedId: backjobId,
+    relatedReference: row.reference,
+  })));
+}
+
+async function assertEligibleAssignedInstaller(tx: Prisma.TransactionClient, actor: AuthContext, row: BackjobRecord) {
+  if (row.installerId) await tx.$queryRaw`SELECT "id" FROM "Personnel" WHERE "id" = ${row.installerId} FOR SHARE`;
+  const installer = row.installerId ? await tx.personnel.findFirst({ where: { id: row.installerId, ...eligiblePersonnelWhere(actor, "INSTALLER") }, select: { id: true } }) : null;
+  if (!installer) throw new BackjobError("INVALID_INSTALLER", "Assign an active installer within your authorized locations before continuing", 409);
 }
 
 export async function listBackjobs(actor: AuthContext, query: { page: number; pageSize: number; search: string; status: string }) {
@@ -94,6 +142,7 @@ export async function listBackjobs(actor: AuthContext, query: { page: number; pa
       { customerName: { contains: query.search, mode: "insensitive" } },
       { originalReceiptNumber: { contains: query.search, mode: "insensitive" } },
       { affectedProductItemCode: { contains: query.search, mode: "insensitive" } },
+      { items: { some: { OR: [{ productItemCode: { contains: query.search, mode: "insensitive" } }, { productName: { contains: query.search, mode: "insensitive" } }] } } },
     ] } : {}),
   };
   const [total, rows] = await prisma.$transaction([
@@ -108,7 +157,7 @@ export async function getBackjob(actor: AuthContext, id: string) {
   const row = await prisma.backjob.findFirst({ where: { id, ...scope(actor) }, include: BACKJOB_INCLUDE });
   if (!row) throw new BackjobError("NOT_FOUND", "Backjob not found", 404);
   const [installers, balances, chargeSales] = await Promise.all([
-    prisma.personnel.findMany({ where: { locationId: row.locationId, status: "ACTIVE", type: { in: ["INSTALLER", "BOTH"] } }, select: { id: true, fullName: true }, orderBy: { fullName: "asc" } }),
+    prisma.personnel.findMany({ where: eligiblePersonnelWhere(actor, "INSTALLER"), select: { id: true, fullName: true }, orderBy: { fullName: "asc" } }),
     prisma.inventoryBalance.findMany({ where: { locationId: row.locationId, product: { status: "ACTIVE" } }, select: { version: true, onHand: true, reserved: true, quarantined: true, product: { select: { id: true, itemCode: true, name: true } } }, orderBy: { product: { itemCode: "asc" } } }),
     prisma.sale.findMany({ where: { locationId: row.locationId, customerId: row.customerId, status: "POSTED" }, select: { id: true, reference: true, manualReceiptNumber: true, totalAmount: true }, orderBy: { postedAt: "desc" }, take: 50 }),
   ]);
@@ -132,16 +181,21 @@ export async function createBackjob(actor: AuthContext, input: CreateBackjobInpu
   return prisma.$transaction(async (tx) => {
     let data: Prisma.BackjobUncheckedCreateInput;
     if (!input.isLegacy) {
-      const sale = await tx.sale.findFirst({ where: { id: input.saleId, status: "POSTED", customerId: { not: null }, lines: { some: { id: input.saleLineId } } }, include: { location: true, customer: true, lines: { where: { id: input.saleLineId } } } });
-      if (!sale || !sale.customer || sale.lines.length !== 1) throw new BackjobError("INVALID_ORIGINAL_SALE", "Select a posted sale line with a customer", 400);
+      if (!input.saleLineIds.length || input.saleLineIds.length > 100 || new Set(input.saleLineIds).size !== input.saleLineIds.length) throw new BackjobError("INVALID_ORIGINAL_ITEMS", "Select between 1 and 100 distinct purchased items", 400);
+      await tx.$queryRaw`SELECT id FROM "Sale" WHERE id = ${input.saleId} FOR SHARE`;
+      const sale = await tx.sale.findFirst({ where: { id: input.saleId, status: "POSTED", customerId: { not: null } }, include: { location: true, customer: true, lines: { where: { id: { in: input.saleLineIds } } } } });
+      if (!sale || !sale.customer || sale.lines.length !== input.saleLineIds.length) throw new BackjobError("INVALID_ORIGINAL_SALE", "Every selected item must belong to the same posted sale with a recorded customer", 400);
       assertScope(actor, sale.locationId);
-      const line = sale.lines[0];
-      data = { reference: `BJ-${randomUUID()}`, locationId: sale.locationId, customerId: sale.customer.id, originalSaleId: sale.id, originalSaleLineId: line.id, affectedProductId: line.productId, originalSaleReference: sale.reference, originalReceiptNumber: sale.manualReceiptNumber, customerName: sale.customer.name, customerMobile: sale.customer.mobile, affectedProductItemCode: line.productItemCode, affectedProductName: line.productName, locationCode: sale.location.code, locationName: sale.location.name, concern: input.concern, notes: input.notes, createdById: actor.userId };
+      const lines = input.saleLineIds.map((id) => sale.lines.find((line) => line.id === id)!);
+      const line = lines[0];
+      data = { reference: `BackJob-${randomUUID()}`, locationId: sale.locationId, customerId: sale.customer.id, originalSaleId: sale.id, originalSaleLineId: line.id, affectedProductId: line.productId, originalSaleReference: sale.reference, originalReceiptNumber: sale.manualReceiptNumber, customerName: sale.customer.name, customerMobile: sale.customer.mobile, affectedProductItemCode: line.productItemCode, affectedProductName: line.productName, locationCode: sale.location.code, locationName: sale.location.name, concern: input.concern, notes: input.notes, createdById: actor.userId };
+      data.items = { create: lines.map((item, position) => ({ originalSaleLineId: item.id, productId: item.productId, productItemCode: item.productItemCode, productName: item.productName, position })) };
     } else {
       const [location, customer] = await Promise.all([tx.location.findFirst({ where: { id: input.locationId, type: "BRANCH", isActive: true } }), tx.customer.findUnique({ where: { id: input.customerId } })]);
       if (!location || !customer) throw new BackjobError("INVALID_LEGACY_SOURCE", "Select an active branch and customer", 400);
       assertScope(actor, location.id);
-      data = { reference: `BJ-${randomUUID()}`, isLegacy: true, legacyReference: input.legacyReference, legacyReason: input.legacyReason, legacyProductDescription: input.legacyProductDescription, locationId: location.id, customerId: customer.id, customerName: customer.name, customerMobile: customer.mobile, locationCode: location.code, locationName: location.name, concern: input.concern, notes: input.notes, createdById: actor.userId };
+      data = { reference: `BackJob-${randomUUID()}`, isLegacy: true, legacyReference: input.legacyReference, legacyReason: input.legacyReason, legacyProductDescription: input.legacyProductDescription, locationId: location.id, customerId: customer.id, customerName: customer.name, customerMobile: customer.mobile, locationCode: location.code, locationName: location.name, concern: input.concern, notes: input.notes, createdById: actor.userId };
+      data.items = { create: { productName: input.legacyProductDescription, position: 0 } };
     }
     const row = await tx.backjob.create({ data, include: BACKJOB_INCLUDE });
     await event(tx, row.id, actor.userId, "CREATED", undefined, "DRAFT", input.isLegacy ? input.legacyReason : undefined);
@@ -171,8 +225,9 @@ export async function scheduleBackjob(actor: AuthContext, id: string, input: Sch
   return prisma.$transaction(async (tx) => {
     const row = await lockBackjob(tx, actor, id, input.version);
     if (!["DRAFT", "SCHEDULED"].includes(row.status)) throw new BackjobError("INVALID_STATUS", "Only draft or scheduled Backjobs can be scheduled");
-    const installer = await tx.personnel.findFirst({ where: { id: input.installerId, locationId: row.locationId, status: "ACTIVE", type: { in: ["INSTALLER", "BOTH"] } }, include: { location: true } });
-    if (!installer) throw new BackjobError("INVALID_INSTALLER", "Select an active installer from the same branch", 400);
+    await tx.$queryRaw`SELECT "id" FROM "Personnel" WHERE "id" = ${input.installerId} FOR SHARE`;
+    const installer = await tx.personnel.findFirst({ where: { id: input.installerId, ...eligiblePersonnelWhere(actor, "INSTALLER") }, include: { location: true } });
+    if (!installer) throw new BackjobError("INVALID_INSTALLER", "Select an active installer within your authorized locations", 400);
     const scheduledFor = new Date(input.scheduledFor);
     if (scheduledFor <= new Date()) throw new BackjobError("INVALID_SCHEDULE", "Schedule must be in the future", 400);
     if (row.status === "SCHEDULED" && !input.reason) throw new BackjobError("RESCHEDULE_REASON_REQUIRED", "Enter a reason for rescheduling", 400);
@@ -185,7 +240,14 @@ export async function scheduleBackjob(actor: AuthContext, id: string, input: Sch
 
 export async function startBackjob(actor: AuthContext, id: string, version: number) {
   await assertBackjobCapability(actor, "backjobs:update");
-  return transition(actor, id, version, ["SCHEDULED"], "IN_PROGRESS", "STARTED");
+  return prisma.$transaction(async (tx) => {
+    const row = await lockBackjob(tx, actor, id, version);
+    if (row.status !== "SCHEDULED") throw new BackjobError("INVALID_STATUS", `Cannot start a ${row.status.toLowerCase()} Backjob`);
+    await assertEligibleAssignedInstaller(tx, actor, row);
+    await tx.backjob.update({ where: { id }, data: { status: "IN_PROGRESS", version: { increment: 1 }, updatedById: actor.userId } });
+    await event(tx, id, actor.userId, "STARTED", row.status, "IN_PROGRESS");
+    return getLockedResult(tx, id);
+  });
 }
 export async function cancelBackjob(actor: AuthContext, id: string, version: number, reason: string) {
   await assertBackjobCapability(actor, "backjobs:update");
@@ -196,6 +258,38 @@ export async function cancelBackjob(actor: AuthContext, id: string, version: num
 export async function rejectBackjob(actor: AuthContext, id: string, version: number, reason: string) {
   await assertBackjobCapability(actor, "backjobs:update");
   return transition(actor, id, version, ["DRAFT"], "REJECTED", "REJECTED", reason);
+}
+
+export async function deleteDraftBackjob(actor: AuthContext, id: string, version: number) {
+  await assertBackjobCapability(actor, "backjobs:delete");
+  return prisma.$transaction(async (tx) => {
+    const row = await lockBackjob(tx, actor, id, version);
+    if (row.status !== "DRAFT") throw new BackjobError("INVALID_STATUS", "Only draft Backjobs can be deleted; pending coverage is not a workflow state");
+    if (row.parts.some((part) => part.issuedQuantity !== 0 || part.usedQuantity !== null || part.returnedQuantity !== 0 || part.movements.length)) throw new BackjobError("STOCK_EVIDENCE_EXISTS", "Backjobs with issued, recorded usage, returned parts, or stock movements cannot be deleted");
+    // Also protect older/imported movements that carry the reference without a part link.
+    if (await tx.inventoryMovement.count({ where: { reference: row.reference } })) throw new BackjobError("STOCK_EVIDENCE_EXISTS", "Backjobs with stock movement history cannot be deleted");
+    if (row.chargeSaleId || row.coverage === "CHARGEABLE" || !row.chargeableAmount.isZero()) throw new BackjobError("FINANCIAL_EVIDENCE_EXISTS", "Backjobs with charge or financial evidence cannot be deleted");
+    if (row.attachments.length || row.schedules.length || row.scheduledFor || row.installerId || row.installerName || row.installerLocationId || row.installerLocationCode || row.installerLocationName || row.workPerformed || row.completionNotes || row.acknowledgementMethod || row.acknowledgedByName || row.acknowledgementNote || row.acknowledgedAt || row.completedAt || row.completedById || row.cancelledAt || row.cancelledById || row.rejectedAt || row.rejectedById) throw new BackjobError("WORK_EVIDENCE_EXISTS", "Backjobs with attachments, scheduling, or work evidence cannot be deleted");
+    // A reverted coverage value must not erase the history of a financial link.
+    if (row.events.some((item) => {
+      if (!["CREATED", "PARTS_PLANNED", "COVERAGE_SET"].includes(item.type) || (item.fromStatus && item.fromStatus !== "DRAFT") || (item.toStatus && item.toStatus !== "DRAFT")) return true;
+      if (item.type !== "COVERAGE_SET") return false;
+      const details = item.detailsJson;
+      return !details || typeof details !== "object" || Array.isArray(details) || details.coverage !== "COVERED" || Boolean(details.chargeSaleId) || details.amount !== 0;
+    })) throw new BackjobError("HISTORY_PREVENTS_DELETE", "Backjobs with financial, work, or unrecognized event history cannot be deleted");
+    await tx.notification.deleteMany({ where: { relatedType: "BACKJOB", relatedId: id } });
+    await tx.backjobEvent.deleteMany({ where: { backjobId: id } });
+    await tx.backjobPart.deleteMany({ where: { backjobId: id } });
+    await tx.backjobItem.deleteMany({ where: { backjobId: id } });
+    await tx.backjob.delete({ where: { id } });
+    // Keep the owner alert, but never link to the now-deleted detail page.
+    await notifyBackjob(tx, row, "DELETED");
+    return { id };
+  }, { isolationLevel: "Serializable" }).catch((error: unknown) => {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") throw new BackjobError("STALE_VERSION", "Backjob changed concurrently; reload before retrying");
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") throw new BackjobError("RELATED_RECORDS_EXIST", "Related records prevent deletion; preserve the Backjob and review its history");
+    throw error;
+  });
 }
 
 export async function setBackjobCoverage(actor: AuthContext, id: string, input: CoverageBackjobInput) {
@@ -287,6 +381,7 @@ export async function completeBackjob(actor: AuthContext, id: string, input: Com
   return prisma.$transaction(async (tx) => {
     const row = await lockBackjob(tx, actor, id, input.version);
     if (row.status !== "IN_PROGRESS") throw new BackjobError("INVALID_STATUS", "Only in-progress work can be completed");
+    await assertEligibleAssignedInstaller(tx, actor, row);
     if (row.coverage === "PENDING") throw new BackjobError("COVERAGE_REQUIRED", "Set covered or chargeable coverage before completion");
     if (row.coverage === "CHARGEABLE") {
       const chargeSale = row.chargeSaleId ? await tx.sale.findFirst({ where: { id: row.chargeSaleId, status: "POSTED", locationId: row.locationId, customerId: row.customerId }, select: { id: true } }) : null;

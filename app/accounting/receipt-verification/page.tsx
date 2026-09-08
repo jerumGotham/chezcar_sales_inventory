@@ -98,6 +98,8 @@ type Sale = {
   branchReplacementReceiptNumber: string | null;
   branchRespondedAt: string | null;
   receiptPhotoUrl: string | null;
+  receiptPhotoVersion: string | null;
+  reviewedAt: string | null;
   correctionOfId: string | null;
   resolutionAction: AccountingResolutionActionDto | null;
   resolutionNote: string | null;
@@ -345,11 +347,11 @@ export default function ReceiptVerificationPage() {
 }
 
 function ReceiptVerificationContent() {
-  const canReview = useCan("sales:verify");
+  const canViewEvidence = useCan("sales:evidence:view");
+  const canReview = useCan("sales:verify") && canViewEvidence;
   const canResolve = useCan("sales:resolve");
   const canVoidReplace = useCan("sales:void-replace");
   const canRespond = useCan("sales:mismatch:respond");
-  const canViewEvidence = useCan("sales:evidence:view");
   const canUploadEvidence = useCan("sales:evidence:upload");
   const canDeleteEvidence = useCan("sales:evidence:delete");
   const searchParams = useSearchParams();
@@ -400,11 +402,15 @@ function ReceiptVerificationContent() {
     useState<string | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const branchPhotoInputRef = useRef<HTMLInputElement>(null);
+  const [photoDeletionTarget, setPhotoDeletionTarget] = useState<{ saleId: string; version: string } | null>(null);
   const [confirmationAction, setConfirmationAction] =
     useState<ReceiptConfirmationAction | null>(null);
 
   function clearSelectedPhoto() {
     setPhotoFile(null);
+    if (photoInputRef.current) photoInputRef.current.value = "";
     setPhotoPreview((current) => {
       if (current) URL.revokeObjectURL(current);
       return null;
@@ -412,6 +418,7 @@ function ReceiptVerificationContent() {
   }
 
   function clearBranchReplacementPhoto() {
+    if (branchPhotoInputRef.current) branchPhotoInputRef.current.value = "";
     setBranchReplacementEvidenceKey(null);
     setBranchReplacementPhotoFile(null);
     setBranchReplacementPhotoPreview((current) => {
@@ -703,41 +710,49 @@ function ReceiptVerificationContent() {
       clearSelectedPhoto();
       setFormError(null);
       queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] });
+      queryClient.invalidateQueries({ queryKey: ["accounting-receipt-linked"] });
     },
     onError: (mutationError) => setFormError((mutationError as Error).message),
   });
   const deleteEvidenceMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedId) throw new Error("Select a receipt first.");
-      const response = await fetch(`/api/accounting/receipts/${encodeURIComponent(selectedId)}/photo`, {
+    mutationFn: async (target: { saleId: string; version: string }) => {
+      if (!canDeleteEvidence) throw new Error("You do not have permission to delete receipt photos.");
+      const response = await fetch(`/api/accounting/receipts/${encodeURIComponent(target.saleId)}/photo`, {
         method: "DELETE",
         credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ version: target.version }),
       });
       const json = (await response.json().catch(() => null)) as {
         error?: { message?: string };
       } | null;
       if (!response.ok) throw new Error(json?.error?.message ?? "Unable to delete receipt photo");
     },
-    onSuccess: () => {
-      clearSelectedPhoto();
+    onSuccess: (_, target) => {
       setFormError(null);
-      queryClient.setQueriesData<ReceiptListResponse>(
-        { queryKey: ["accounting-receipts"] },
-        (current) => current
-          ? {
-              ...current,
-              data: current.data.map((sale) => sale.id === selectedId
-                ? {
-                    ...sale,
-                    receiptPhotoUrl: null,
-                  }
-                : sale),
-            }
-          : current,
-      );
+      for (const queryKey of ["accounting-receipts", "accounting-receipt-linked"]) {
+        queryClient.setQueriesData<ReceiptListResponse>(
+          { queryKey: [queryKey] },
+          (current) => current
+            ? {
+                ...current,
+                data: current.data.map((sale) => sale.id === target.saleId && sale.receiptPhotoVersion === target.version
+                  ? { ...sale, receiptPhotoUrl: null, receiptPhotoVersion: null }
+                  : sale),
+              }
+            : current,
+        );
+      }
       queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] });
+      queryClient.invalidateQueries({ queryKey: ["accounting-receipt-linked"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
     },
-    onError: (mutationError) => setFormError((mutationError as Error).message),
+    onError: (mutationError) => {
+      setFormError((mutationError as Error).message);
+      queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] });
+      queryClient.invalidateQueries({ queryKey: ["accounting-receipt-linked"] });
+    },
   });
 
   useEffect(() => {
@@ -1316,21 +1331,31 @@ function ReceiptVerificationContent() {
                         unoptimized
                         className="max-h-[32rem] w-full rounded-xl border bg-slate-50 object-contain"
                       />
+                    ) : !canViewEvidence && selectedSale.receiptPhotoUrl ? (
+                      <p className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700">You do not have permission to view receipt evidence.</p>
                     ) : (
                       <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">No receipt image uploaded.</p>
                     )}
                     {canDeleteEvidence &&
                     selectedSale.receiptPhotoUrl &&
+                    selectedSale.receiptPhotoVersion &&
                     selectedSale.status === "POSTED" &&
-                    selectedSale.reviewStatus === "UNVERIFIED" ? (
+                    selectedSale.reviewStatus === "UNVERIFIED" &&
+                    !selectedSale.reviewedAt &&
+                    !selectedSale.resolvedAt &&
+                    !selectedSale.branchResponse &&
+                    !selectedSale.branchRespondedAt &&
+                    selectedSale.correctionRequest?.status !== "PENDING" ? (
                       <Button
                         type="button"
                         variant="destructive"
                         size="sm"
                         disabled={deleteEvidenceMutation.isPending || evidenceMutation.isPending || reviewMutation.isPending}
-                        onClick={() =>
-                          setConfirmationAction("DELETE_EVIDENCE")
-                        }
+                        onClick={() => {
+                          if (!selectedSale.receiptPhotoVersion) return;
+                          setPhotoDeletionTarget({ saleId: selectedSale.id, version: selectedSale.receiptPhotoVersion });
+                          setConfirmationAction("DELETE_EVIDENCE");
+                        }}
                       >
                         <Trash2 className="mr-2 size-4" />
                         {deleteEvidenceMutation.isPending ? "Deleting..." : "Delete receipt photo"}
@@ -1466,6 +1491,7 @@ function ReceiptVerificationContent() {
                           </div>
                           <Input
                             id="branch-replacement-photo"
+                            ref={branchPhotoInputRef}
                             type="file"
                             accept="image/jpeg,image/png,image/webp"
                             capture="environment"
@@ -1481,6 +1507,17 @@ function ReceiptVerificationContent() {
                               unoptimized
                               className="max-h-48 w-full rounded-xl border object-contain"
                             />
+                          ) : null}
+                          {branchReplacementPhotoFile && !branchReplacementEvidenceKey ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={branchResponseMutation.isPending}
+                              onClick={clearBranchReplacementPhoto}
+                            >
+                              Remove selected photo
+                            </Button>
                           ) : null}
                           {branchReplacementEvidenceKey ? (
                             <p className="text-xs text-sky-700 dark:text-sky-300">
@@ -1535,8 +1572,7 @@ function ReceiptVerificationContent() {
                 ) : null}
                 {canUploadEvidence &&
                 selectedSale.status === "POSTED" &&
-                (selectedSale.reviewStatus === "UNVERIFIED" ||
-                  selectedSale.branchResponse === "RECEIPT_CORRECTION_NEEDED") ? (
+                selectedSale.reviewStatus === "UNVERIFIED" ? (
                   <div className="space-y-3 rounded-xl border p-4">
                     <div>
                       <Label htmlFor="receipt-photo">
@@ -1548,9 +1584,11 @@ function ReceiptVerificationContent() {
                     </div>
                     <Input
                       id="receipt-photo"
+                      ref={photoInputRef}
                       type="file"
                       accept="image/jpeg,image/png,image/webp"
                       capture="environment"
+                      disabled={evidenceMutation.isPending || deleteEvidenceMutation.isPending || reviewMutation.isPending}
                       onChange={(event) => handlePhoto(event.target.files?.[0])}
                     />
                     {photoPreview ? (
@@ -1569,7 +1607,7 @@ function ReceiptVerificationContent() {
                         variant="workflow"
                         size="sm"
                         onClick={() => evidenceMutation.mutate()}
-                        disabled={!photoFile || evidenceMutation.isPending}
+                        disabled={!photoFile || evidenceMutation.isPending || deleteEvidenceMutation.isPending || reviewMutation.isPending}
                       >
                         <Upload className="mr-2 size-4" />
                         {evidenceMutation.isPending
@@ -1579,8 +1617,8 @@ function ReceiptVerificationContent() {
                             : "Attach receipt photo"}
                       </Button>
                       {photoFile ? (
-                        <Button type="button" variant="outline" size="sm" onClick={clearSelectedPhoto}>
-                          Clear selection
+                        <Button type="button" variant="outline" size="sm" disabled={evidenceMutation.isPending || deleteEvidenceMutation.isPending || reviewMutation.isPending} onClick={clearSelectedPhoto}>
+                          Remove selected photo
                         </Button>
                       ) : null}
                     </div>
@@ -1790,7 +1828,7 @@ function ReceiptVerificationContent() {
                           variant="workflow"
                           onClick={() => reviewMutation.mutate("VERIFIED")}
                           disabled={
-                            reviewMutation.isPending || Boolean(comparisonError) || differences.length > 0 || (!selectedSale.receiptPhotoUrl && !photoFile)
+                            reviewMutation.isPending || evidenceMutation.isPending || deleteEvidenceMutation.isPending || Boolean(comparisonError) || differences.length > 0 || (!selectedSale.receiptPhotoUrl && !photoFile)
                           }
                         >
                           <CheckCircle2 className="mr-2 h-4 w-4" />
@@ -1851,6 +1889,8 @@ function ReceiptVerificationContent() {
                         }}
                         disabled={
                           reviewMutation.isPending ||
+                          evidenceMutation.isPending ||
+                          deleteEvidenceMutation.isPending ||
                           Boolean(comparisonError) ||
                           (!selectedSale.receiptPhotoUrl && !photoFile)
                         }
@@ -1986,13 +2026,16 @@ function ReceiptVerificationContent() {
             : "Confirm"
         }
         onOpenChange={(open) => {
-          if (!open) setConfirmationAction(null);
+          if (!open) {
+            setConfirmationAction(null);
+            setPhotoDeletionTarget(null);
+          }
         }}
         onConfirm={() => {
           if (confirmationAction === "VOID_CORRECTION_REQUEST") {
             correctionResolutionMutation.mutate("VOID_SALE");
           } else if (confirmationAction === "DELETE_EVIDENCE") {
-            deleteEvidenceMutation.mutate();
+            if (photoDeletionTarget && !deleteEvidenceMutation.isPending) deleteEvidenceMutation.mutate(photoDeletionTarget);
           } else if (confirmationAction === "VOID_AND_REPLACE") {
             resolveMutation.mutate("VOIDED_REPLACED");
           } else if (confirmationAction === "VOID_INCORRECT_SALE") {

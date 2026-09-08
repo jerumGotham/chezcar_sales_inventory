@@ -5,12 +5,16 @@
 
 Vitest `4.1.11` is configured with Node unit and serial integration projects. The unit project covers the workbook profiler, canonicalizer, fixture generator, catalog/operational-reset gates, access policy, shell DTOs, proxy denial, branch/role routes, health readiness, notification cursor/wake-up helpers, and the disposable-database/request helpers. The serial integration project covers migration application, seed/reload/reset determinism, persisted authorization factories, product-image storage/routes, inventory scope and availability, the Better Auth admin surface, user/role/branch maintenance, session revocation, and first-login credential setup over a fixed-identity disposable PostgreSQL 17 container. GitHub Actions runs lint, type-check, both Vitest projects, the production build, and the Coolify Docker build, then publishes successful `main` images to immutable GHCR tags. No DOM testing library, browser runner, coverage tool, or automated end-to-end suite is checked in.
 
+The current uncommitted implementation adds assertions for Customer Warranty creation evidence-hash replay/conflict and concurrent actions, quarantine disposition, Supplier Claim replay/settlement/cancellation rules, future-target approval input, evidence-view authorization in Accounting review fixtures, immutable Customer Order Salesperson reassignment snapshots/no-op behavior, and focused report service filters, zero-balance rows, quarantine attribution, and Backjob quantity semantics. These changed assertions have not been run during the 2026-09-08 update. PDF rendering/layout parity still has no automated coverage.
+
+The source-only Warranty/Supplier Claim usability update additionally adjusts contract expectations for omitted photos and empty browser file placeholders, plus integration expectations for null photo metadata, no-photo replay, and changed-photo conflicts. These expectations have not been executed. The no-photo integration path requires the pending database nullability migration and Prisma generation described in `docs/DATABASE.md`. Form submit-button behavior, attachment removal/reselection, preview cleanup, and network-error handling have only been source-inspected, not browser-verified; no tests, build, lint, typecheck, migrations, browser actions, or restart were run for this update.
+
 | Capability | Current state |
 | --- | --- |
 | Unit tests | Vitest Node project; 26 suite files currently checked in |
 | Component tests | Not configured |
 | Route-handler tests | Unit-project direct-handler authorization suites (`tests/routes/authorization.test.ts`, `proxy.test.ts`); no DOM/browser runner |
-| Database integration tests | Serial Vitest project with fixed-identity disposable PostgreSQL 17 harness; 25 integration suite files and 83 tests currently pass |
+| Database integration tests | Serial Vitest project with fixed-identity disposable PostgreSQL 17 harness; the last clean baseline had 25 integration suite files and 83 passing tests; current changes are unverified |
 | End-to-end tests | Not configured |
 | Coverage reporting or thresholds | Not configured |
 | CI test execution | `.github/workflows/ci.yml` runs on pull requests and pushes to `main` |
@@ -96,10 +100,9 @@ Integration project (`npm run test:integration`, serial over disposable PostgreS
 | `tests/integration/branch-maintenance.test.ts` | Branch Maintenance slice | Persisted active-branch add/edit, uppercase unique immutable codes, and shared active-location sources |
 | `tests/integration/supplier-maintenance.test.ts` | Supplier Maintenance slice | Normalized create/update, duplicate conflict, deactivate/reactivate, history visibility, and active receiving options |
 | `tests/integration/personnel-maintenance.test.ts` | Personnel Maintenance slice | Non-login identity, active-branch validation, effective-location scope, reassignment denial, lifecycle, and audit actors |
-| `tests/integration/salesperson-attribution.test.ts` | Salesperson attribution | Direct Sale and Customer Order snapshots, encoder separation, eligibility rejection, order reassignment, and release revalidation |
+| `tests/integration/salesperson-attribution.test.ts` | Salesperson attribution | Direct Sale and Customer Order snapshots, encoder separation, eligibility rejection, immutable previous/new order reassignment events, no-op reassignment, and release revalidation |
 | `tests/integration/inventory-quarantine.test.ts` | Quarantine foundation | Database nonnegative/allocation constraints and sale rejection when stock is quarantined |
-| `tests/integration/customer-warranties.test.ts` | Customer Warranty | Verified sale linkage, evidence, cumulative quantity, quarantine intake, approvals, and release movements |
-| `tests/integration/salesperson-attribution.test.ts` | Salesperson attribution | Direct Sale and Customer Order snapshots, encoder separation, eligibility rejection, order reassignment, and release revalidation |
+| `tests/integration/customer-warranties.test.ts` | Customer Warranty | Verified sale linkage, evidence-content idempotency replay/conflict, cumulative quantity, quarantine intake, future-target approval input, and release movements |
 | `tests/integration/role-maintenance.test.ts` | Role Maintenance | Case-insensitive names, current/requested delegated grant ceilings, superior-role and self-edit refusal, safe all-location removal, optimistic conflict, assignment concurrency, immutable owner, and session revocation |
 | `tests/integration/user-management.test.ts` | User Management | Safe DTOs, complete-target location authority, all-location target refusal, provisioning cleanup failures, lifecycle writes, and session revocation |
 | `tests/integration/migration.test.ts`, `tests/integration/seed.test.ts` | Authorization migration/seed | Exact SQL legacy backfill, owner-role/user singleton constraints, multi-location preservation, owner marker, and expected `locations:all` grants |
@@ -125,6 +128,20 @@ Use the local URL printed by Next.js, then check the following current-prototype
 4. Exercise the inventory receive and transfer forms, customer-order create/detail/release screens, job-order create/edit screens, and stock-transfer state controls.
 5. Confirm Customers, Customer Sales, Customer Orders, Products, and the primary Inventory list survive reload because they use database-backed APIs.
 6. Check narrow and wide viewports, sidebar behavior, and light/dark theme selection.
+
+### Focused reports smoke matrix
+
+No row below was executed during the source-only 2026-09-08 Reports revision, at the user's explicit request. Report assertions were updated for month-end defaults, explicit end-date preservation, retired-type rejection, and available-only rows, but not run. No tests/build/lint/typecheck/browser/PDF rendering/migrations/restart were performed. The following is a future smoke matrix, not verification evidence.
+
+| Report | Filters and date basis | Detail/totals to reconcile | Scope/PDF check |
+| --- | --- | --- | --- |
+| Sales | Verification From / To; default first through last day of current Manila month; location, Salesperson, source, payment | All edits stay pending until Apply Filters; location refreshes only options and clears draft Salesperson; custom To survives From/location edits | Branch account cannot widen scope; PDF preserves fields and includes branch subtotals plus overall total, including empty results |
+| Inventory Summary | Authorized active branch, product search, category, brand, product status, stock status; current snapshot | Code/Product/Branch/Available only; distinct product count, branches in scope, summed availability; missing balances zero; all product statuses by default | Stock Room absent from selectors/rows/totals; explicit warehouse request denied; warehouse-only actor gets empty scope; PDF parity |
+| Returns & Warranty | Case date, location, case type, status, resolution, entity search | Backjob/Warranty/Claim details, targets/overdue, linked cases, quarantine and supplier refund/credit tracking totals | Confirm monetary values are claim tracking only and PDF parity holds |
+
+Also send one unsupported cross-report filter and one unauthorized/inactive `locationId`; both must fail rather than be silently ignored.
+
+Retired `inventory-movements` and `low-stock` report types must return `400 INVALID_FILTERS` for JSON, PDF, and options. Old UI links should open clean Sales defaults, while operational inventory history stays available under its existing authorization. Exercise Reset Filters followed by Apply, rapid location edits with delayed option responses, option loading/errors/retry, invalid dates with usable selectors, and reload of applied filters. Inspect all retained PDFs with long names/references and enough rows to span pages: repeated headings, non-clipped wrapped cells, continued oversized rows, readable totals, and no logo placeholder. Responsive/light/dark UI and PDF layout remain unverified.
 
 Authenticated route handlers can be inspected while the development server is running. Supply a Better Auth session cookie:
 
@@ -250,3 +267,8 @@ When coverage is introduced, establish a measured baseline first and raise it in
 ## CI integration
 
 `.github/workflows/ci.yml` installs the locked dependency tree and runs Prisma generation, type checking, linting, unit tests, the serial disposable-PostgreSQL integration project, the production build, and the Coolify Docker image build. Successful pushes to `main` publish immutable SHA and mutable `production` tags to GHCR for manual Coolify deployment. Add the critical E2E subset after the application has stable authentication, database seeding, and server-backed workflows.
+## Personnel Selection Regression
+
+Run `npm run test:integration -- tests/integration/personnel-selection.test.ts tests/integration/salesperson-attribution.test.ts tests/integration/personnel-maintenance.test.ts` serially against the disposable PostgreSQL harness. The personnel selection regression covers non-owner `locations:all` actors, scoped and multiple-location actors, cross-branch Salesperson options/offline snapshots/posting/order reassignment/release, Backjob Installer options/scheduling/start/completion, inactive personnel/branches, wrong types, unchanged transaction-location authorization, and home-branch snapshots distinct from transaction location.
+
+Manual smoke: in Direct Sales, Customer Order create/release, and Backjob scheduling, compare an all-location actor with a single-location actor. Confirm remote eligible personnel appear only where authorized, submit and reload, then deactivate or change the type of an assigned person before release/start/completion and confirm rejection. Refresh offline snapshots after changing scope; sync still revalidates current authorization. Check empty-state copy on desktop/mobile and light/dark themes. These browser checks are not covered by the database regression.

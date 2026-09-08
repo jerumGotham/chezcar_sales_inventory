@@ -305,6 +305,7 @@ model Product {
   customerOrderLines     CustomerOrderLine[]
   saleLines              SaleLine[]
   affectedBackjobs       Backjob[]                     @relation("BackjobAffectedProduct")
+  backjobItems           BackjobItem[]
   backjobParts           BackjobPart[]
   warrantyClaims         CustomerWarranty[]            @relation("WarrantyClaimProduct")
   warrantyReplacements   CustomerWarranty[]            @relation("WarrantyReplacementProduct")
@@ -424,6 +425,7 @@ model CustomerWarranty {
   id                       String                     @id @default(cuid())
   reference                String                     @unique
   idempotencyKey           String                     @unique
+  requestHash              String?
   version                  Int                        @default(1)
   status                   CustomerWarrantyStatus     @default(ASSESSMENT)
   resolution               CustomerWarrantyResolution?
@@ -449,14 +451,15 @@ model CustomerWarranty {
   warrantyExpiresAt        DateTime?
   claimQuantity            Int
   receivedQuantity         Int                        @default(0)
+  returnedQuantity         Int                        @default(0)
   concern                  String                     @db.Text
   assessmentNotes          String?                    @db.Text
   replacementReason        String?                    @db.Text
   replacementItemCode      String?
   replacementProductName   String?
-  intakePhotoKey           String                     @unique
-  intakePhotoType          String
-  intakePhotoName          String
+  intakePhotoKey           String?                    @unique
+  intakePhotoType          String?
+  intakePhotoName          String?
   receivedAt               DateTime?
   targetDate               DateTime?
   readyAt                  DateTime?
@@ -572,6 +575,7 @@ model Backjob {
   completedBy                   User?                         @relation("BackjobCompletedBy", fields: [completedById], references: [id], onDelete: Restrict)
   cancelledBy                   User?                         @relation("BackjobCancelledBy", fields: [cancelledById], references: [id], onDelete: Restrict)
   rejectedBy                    User?                         @relation("BackjobRejectedBy", fields: [rejectedById], references: [id], onDelete: Restrict)
+  items                         BackjobItem[]
   parts                         BackjobPart[]
   events                        BackjobEvent[]
   schedules                     BackjobScheduleHistory[]
@@ -584,6 +588,24 @@ model Backjob {
   @@index([originalSaleId])
   @@index([originalSaleLineId])
   @@index([installerId, status])
+}
+
+model BackjobItem {
+  id                 String   @id @default(cuid())
+  backjobId          String
+  originalSaleLineId String?
+  productId          String?
+  productItemCode    String?
+  productName        String
+  position           Int
+  backjob            Backjob  @relation(fields: [backjobId], references: [id], onDelete: Restrict)
+  originalSaleLine   SaleLine? @relation(fields: [originalSaleLineId], references: [id], onDelete: Restrict)
+  product            Product? @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([backjobId, originalSaleLineId])
+  @@unique([backjobId, position])
+  @@index([originalSaleLineId])
+  @@index([productId])
 }
 
 model BackjobPart {
@@ -687,6 +709,7 @@ model User {
   releasedCustomerOrders   CustomerOrder[]              @relation("CustomerOrderReleasedBy")
   cancelledCustomerOrders  CustomerOrder[]              @relation("CustomerOrderCancelledBy")
   salespersonUpdatedOrders CustomerOrder[]               @relation("CustomerOrderSalespersonUpdatedBy")
+  customerOrderSalespersonEvents CustomerOrderSalespersonEvent[] @relation("CustomerOrderSalespersonEventActor")
   postedSales              Sale[]                       @relation("SalePostedBy")
   reviewedSales            SaleAccountingReview[]       @relation("SaleReviewedBy")
   branchMismatchResponses  SaleAccountingReview[]       @relation("SaleBranchRespondedBy")
@@ -1026,6 +1049,7 @@ model InventoryMovement {
   remarks    String?               @db.Text
   occurredAt DateTime              @default(now())
   createdAt  DateTime              @default(now())
+  serverRecordedAt DateTime?       @default(now())
   transfer   StockTransfer?        @relation(fields: [transferId], references: [id], onDelete: Restrict)
   receipt    StockReceipt?         @relation(fields: [receiptId], references: [id], onDelete: Restrict)
   backjobPart BackjobPart?         @relation(fields: [backjobPartId], references: [id], onDelete: Restrict)
@@ -1041,6 +1065,7 @@ model InventoryMovement {
   @@index([warrantyId])
   @@index([supplierClaimId])
   @@index([productId, locationId])
+  @@index([locationId, occurredAt])
   @@index([createdAt])
 }
 
@@ -1119,6 +1144,7 @@ model CustomerOrder {
   cancelledBy              User?               @relation("CustomerOrderCancelledBy", fields: [cancelledById], references: [id])
   salesperson              Personnel?          @relation(fields: [salespersonId], references: [id], onDelete: Restrict)
   salespersonUpdatedBy     User?               @relation("CustomerOrderSalespersonUpdatedBy", fields: [salespersonUpdatedById], references: [id])
+  salespersonEvents        CustomerOrderSalespersonEvent[]
   lines                    CustomerOrderLine[]
   sale                     Sale?
   createdAt                DateTime            @default(now())
@@ -1129,6 +1155,27 @@ model CustomerOrder {
   @@index([createdById])
   @@index([salespersonId, createdAt])
   @@index([salespersonUpdatedById])
+}
+
+model CustomerOrderSalespersonEvent {
+  id                            String        @id @default(cuid())
+  orderId                       String
+  previousSalespersonId         String?
+  previousSalespersonName       String?
+  previousSalespersonLocationId String?
+  previousSalespersonLocationCode String?
+  previousSalespersonLocationName String?
+  newSalespersonId              String
+  newSalespersonName            String
+  newSalespersonLocationId      String
+  newSalespersonLocationCode    String
+  newSalespersonLocationName    String
+  actorId                       String
+  occurredAt                    DateTime      @default(now())
+  order                         CustomerOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  actor                         User          @relation("CustomerOrderSalespersonEventActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, occurredAt])
 }
 
 model CustomerOrderLine {
@@ -1212,6 +1259,7 @@ model SaleLine {
   product         Product @relation(fields: [productId], references: [id])
   backjobs        Backjob[]
   warranties      CustomerWarranty[]
+  backjobItems    BackjobItem[]
 
   @@index([saleId])
   @@index([productId])

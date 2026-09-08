@@ -4,7 +4,7 @@
 **Last updated:** 2026-09-07
 **Source:** Owner discussion, real inventory workbook, and current UI prototype
 
-> **Current-state warning:** The checked-in application is still partly a UI prototype. Authentication, Product/Supplier/Personnel maintenance, Salesperson attribution, quarantine-aware Inventory/Availability, Customer Orders, Direct Sales, Stock Room receiving, transfers, dashboards, Accounting verification, notifications, and limited offline direct-sale sync have a PostgreSQL-backed foundation. Quarantine mutation/disposition, Installer attribution, Backjobs, Customer Warranty, Supplier Claims, split damaged/missing receiving, and focused Reports described below are accepted next-phase requirements, not implemented behavior. Offline transfer receipt/discrepancy capture, deployment operations, and remaining advanced/deferred screens are not complete until implemented and verified.
+> **Current-state warning:** The checked-in application is still partly a UI prototype. Authentication, Product/Supplier/Personnel maintenance, Salesperson and Backjob Installer attribution, quarantine-aware Inventory/Availability, Customer Orders, Direct Sales, split Stock Room receiving, transfers, Backjobs, Customer Warranty, Supplier Claims, dashboards, manual Accounting verification, notifications, three focused Reports, and limited offline direct-sale sync have a PostgreSQL-backed foundation. General Job Orders, offline transfer receipt/discrepancy capture, deployment operations, and remaining advanced/deferred screens are not complete until implemented and verified.
 
 ## Product Summary
 
@@ -60,7 +60,7 @@ All MVP replenishment enters `SR`. Transfers are `SR` to branch only. Branch-to-
 - Non-login Personnel maintenance for Salesperson and Installer attribution
 - Supplier master data used by receiving and Supplier Claims
 - Backjob, Customer Warranty, Supplier Claim, and per-location quarantine workflows
-- Five focused reports: Sales, Inventory Summary, Inventory Movements, Returns & Warranty, and Low Stock
+- Three focused reports: Sales, branch-only available Inventory Summary, and Returns & Warranty; Inventory Movements and Low Stock are deferred from Reports
 - Production deployment, backup, restore, and monitoring
 
 ### Deferred
@@ -160,7 +160,7 @@ Available branch stock is reserved immediately for reservation orders by increas
 - A free-form discount may be encoded; preserve base price, discount, and final price. A discount reason is not required in the MVP.
 - Posted sales are not directly edited or hard-deleted. An encoding correction uses an auditable void-and-replace flow.
 - POS shows a complete confirmation before posting because successful submission deducts stock immediately.
-- Every Direct Sale and Customer Order requires an active Salesperson assigned to the transaction branch. The authenticated encoder remains separately attributable.
+- Every Direct Sale and Customer Order requires an active Salesperson within the acting user's authorized personnel locations. All-location actors can select across all active branches; transaction location authorization remains separate. The authenticated encoder remains separately attributable.
 - A Branch wrong-submission report is a request only: no receipt photo is required and stock remains deducted until Admin acts.
 - Admin may keep the reported sale with no inventory effect or approve a void-only reversal when the direct sale did not occur or was submitted accidentally/duplicated. A real sale with incorrect encoded details continues through receipt verification and void-and-replace.
 
@@ -179,7 +179,7 @@ Daily verified/unverified summaries are informational. Formal daily cash/collect
 ## Workflow 3: Personnel and Attribution
 
 1. An authorized user maintains a non-login Personnel record with name, one home branch, type `SALESPERSON`, `INSTALLER`, or `BOTH`, and active/inactive status.
-2. Direct Sales and Customer Orders require an active Salesperson from the transaction branch before posting.
+2. Direct Sales and Customer Orders require an active Salesperson within the acting user's authorized personnel locations before posting, independently of the transaction branch.
 3. Backjobs require an active Installer from the case branch before scheduling or completion.
 4. Posted transactions preserve Personnel attribution separately from the authenticated User actor.
 5. Deactivation and branch reassignment affect future selection only and never rewrite historical transactions.
@@ -276,13 +276,13 @@ If anything does not match:
 ### Reports
 
 - Reports are read-only and require `reports:view`.
-- The five reports are Sales, Inventory Summary, Inventory Movements, Returns & Warranty, and Low Stock.
+- The three reports are Sales, Inventory Summary, and Returns & Warranty. Inventory Movements and Low Stock are deferred from Reports; operational inventory history and alerts remain intact.
 - Accounting Queue, mismatch work, and Open Orders remain in their operational modules and are not repeated in Reports.
 - All report data is limited to effective location access; company-wide authorized users may compare branch totals.
-- The Sales Report defaults from the first day of the current month through today and supports custom date ranges, branch, Salesperson, source, and payment filters.
+- The Sales Report defaults from the first through the last day of the current Manila month and supports custom date ranges, branch, Salesperson, source, and payment filters. Omitted To follows the selected/default From month; explicit custom To is preserved. All filter edits stay pending until Apply Filters, with independent option loading.
 - Official Sales Report totals include only verified, non-voided sales and use the system verification date.
-- Inventory Summary and Low Stock are current snapshots; Inventory Movements and Returns/Warranty are date-filtered.
-- Reports export to PDF only; CSV report export is deferred.
+- Inventory Summary shows current available stock per active authorized branch, excluding Stock Room and in-transit stock. Returns/Warranty is case-date-filtered with the same full-month default.
+- Reports export to PDF only, with wrapped grouped columns and pagination; Sales includes branch subtotals and an overall total. CSV report export is deferred. The 2026-09-08 Reports revision is source-only and unverified; see `REPORTS-SPEC.md`.
 - Report data is queried live from the database; saved report snapshots are deferred.
 
 ## Notifications

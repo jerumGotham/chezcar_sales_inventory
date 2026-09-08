@@ -122,17 +122,19 @@ export async function createStockReceipt(actor: AuthContext, input: CreateStockR
       });
 
       for (const line of input.lines) {
+        const receivedQuantity = line.acceptedQuantity + line.quarantinedQuantity;
+        if (receivedQuantity === 0) continue;
         await tx.inventoryBalance.upsert({
           where: { locationId_productId: { locationId: stockRoom.id, productId: line.productId } },
-            create: { locationId: stockRoom.id, productId: line.productId, onHand: line.acceptedQuantity + line.quarantinedQuantity, quarantined: line.quarantinedQuantity, unitCost: new Prisma.Decimal(line.unitCost) },
-            update: { onHand: { increment: line.acceptedQuantity + line.quarantinedQuantity }, quarantined: { increment: line.quarantinedQuantity }, unitCost: new Prisma.Decimal(line.unitCost), version: { increment: 1 } },
+            create: { locationId: stockRoom.id, productId: line.productId, onHand: receivedQuantity, quarantined: line.quarantinedQuantity, unitCost: new Prisma.Decimal(line.unitCost) },
+            update: { onHand: { increment: receivedQuantity }, quarantined: { increment: line.quarantinedQuantity }, unitCost: new Prisma.Decimal(line.unitCost), version: { increment: 1 } },
         });
         await tx.inventoryMovement.create({
           data: {
             receiptId: receipt.id,
             productId: line.productId,
             locationId: stockRoom.id,
-            quantity: line.acceptedQuantity + line.quarantinedQuantity,
+            quantity: receivedQuantity,
             type: "SUPPLIER_RECEIPT",
             actorId: actor.userId,
           },

@@ -426,7 +426,7 @@ describe("customer orders, direct sales, accounting", () => {
       const outsideReviewer: AuthContext = {
         userId: fixture.users.accountingStaff.id,
         roleDefinitionId: fixture.users.accountingStaff.roleDefinitionId,
-        capabilities: ["sales:verify", "sales:verify:view", "sales:resolve", "sales:void-replace"],
+        capabilities: ["sales:verify", "sales:verify:view", "sales:resolve", "sales:void-replace", "sales:evidence:view"],
         isOwner: false,
         locationIds: [fixture.locations.branches.BL.id],
       };

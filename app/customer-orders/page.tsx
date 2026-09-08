@@ -264,11 +264,20 @@ async function fetchCustomerOrders(params: {
   };
 }
 
-async function fetchDirectSales(): Promise<DirectSaleRow[]> {
-  const response = await fetch("/api/sales", { credentials: "same-origin" });
+type DirectSalesApiResponse = {
+  data: DirectSaleRow[];
+  summary: {
+    totalSales: number;
+    totalAmount: number;
+    totalDiscounts: number;
+    totalAmountPaid: number;
+  };
+};
+
+async function fetchDirectSales(): Promise<DirectSalesApiResponse> {
+  const response = await fetch("/api/sales?source=direct", { credentials: "same-origin" });
   if (!response.ok) throw new Error("Unable to load direct sales");
-  const payload = (await response.json()) as { data: DirectSaleRow[] };
-  return payload.data;
+  return (await response.json()) as DirectSalesApiResponse;
 }
 
 const reactSelectStyles: StylesConfig<SelectOption, false> = {
@@ -322,11 +331,9 @@ export default function CustomerOrdersPage() {
   const canViewOrders = hasCapability(capabilities, "customer-orders:view");
   const canViewSales = hasCapability(capabilities, "sales:view");
   const canRequestSaleCorrection = hasCapability(capabilities, "sales:correction:request");
-  const [activeView, setActiveView] = useState<"orders" | "sales">(
-    (searchParams.get("view") === "sales" && canViewSales) || !canViewOrders
-      ? "sales"
-      : "orders",
-  );
+  const activeView = searchParams.get("view") === "orders" && canViewOrders
+    ? "orders"
+    : canViewSales ? "sales" : canViewOrders ? "orders" : null;
   const [orderNo, setOrderNo] = useState("");
   const [customer, setCustomer] = useState("");
   const [orderStatus, setOrderStatus] = useState<SelectOption>(
@@ -385,7 +392,7 @@ export default function CustomerOrdersPage() {
   });
 
   const directSalesQuery = useQuery({
-    queryKey: ["customer-direct-sales-list"],
+    queryKey: ["customer-direct-sales-list", "overview"],
     queryFn: fetchDirectSales,
     enabled: activeView === "sales" && canViewSales,
   });
@@ -524,12 +531,13 @@ export default function CustomerOrdersPage() {
 
   const filteredSales = useMemo(() => {
     const keyword = saleSearch.trim().toLowerCase();
-    if (!keyword) return directSalesQuery.data ?? [];
-    return (directSalesQuery.data ?? []).filter((sale) =>
+    if (!keyword) return directSalesQuery.data?.data ?? [];
+    return (directSalesQuery.data?.data ?? []).filter((sale) =>
       [sale.reference, sale.manualReceiptNumber, sale.customer, sale.branch, sale.salesperson?.name ?? ""]
         .some((value) => value.toLowerCase().includes(keyword)),
     );
   }, [directSalesQuery.data, saleSearch]);
+  const salesSummary = directSalesQuery.isError ? undefined : directSalesQuery.data?.summary;
   const saleTotalPages = Math.max(1, Math.ceil(filteredSales.length / pageSize));
   const safeSalePage = Math.min(salePage, saleTotalPages);
   const paginatedSales = filteredSales.slice(
@@ -581,25 +589,23 @@ export default function CustomerOrdersPage() {
         </>
       }
     >
-      <div className="mb-6 flex flex-wrap gap-2 rounded-xl border bg-slate-50 p-2">
-        {canViewOrders ? <Button
-          variant={activeView === "orders" ? "default" : "ghost"}
-          onClick={() => {
-            setActiveView("orders");
-            setPage(1);
-          }}
-        >
-          Customer Orders
-        </Button> : null}
-        {canViewSales ? <Button
-          variant={activeView === "sales" ? "default" : "ghost"}
-          onClick={() => {
-            setActiveView("sales");
-            setSalePage(1);
-          }}
+      <div className="mb-6 flex flex-wrap gap-2 rounded-xl border bg-muted/50 p-2">
+        {canViewSales ? <Link
+          href="/customer-orders?view=sales"
+          className={buttonVariants({ variant: activeView === "sales" ? "default" : "ghost" })}
+          aria-current={activeView === "sales" ? "page" : undefined}
+          onClick={() => setSalePage(1)}
         >
           Direct Sales
-        </Button> : null}
+        </Link> : null}
+        {canViewOrders ? <Link
+          href="/customer-orders?view=orders"
+          className={buttonVariants({ variant: activeView === "orders" ? "default" : "ghost" })}
+          aria-current={activeView === "orders" ? "page" : undefined}
+          onClick={() => setPage(1)}
+        >
+          Customer Orders
+        </Link> : null}
       </div>
 
       {activeView === "orders" ? (
@@ -1154,14 +1160,34 @@ export default function CustomerOrdersPage() {
         </DialogContent>
       </Dialog>
         </>
-      ) : (
+      ) : activeView === "sales" ? (
         <>
+        <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4" aria-busy={directSalesQuery.isFetching}>
+          {[
+            { label: "Total Direct Sales", value: salesSummary?.totalSales.toLocaleString("en-PH"), hint: "Posted direct-sale records", icon: ShoppingBag },
+            { label: "Sales Total", value: salesSummary && formatPeso(salesSummary.totalAmount), hint: "After sale discounts", icon: Wallet },
+            { label: "Total Discounts", value: salesSummary && formatPeso(salesSummary.totalDiscounts), hint: "Discounts on posted direct sales", icon: CheckCircle2 },
+            { label: "Amount Paid", value: salesSummary && formatPeso(salesSummary.totalAmountPaid), hint: "Recorded direct-sale payments", icon: Wallet },
+          ].map(({ label, value, hint, icon: Icon }) => (
+            <Card key={label}>
+              <CardContent className="flex items-start justify-between gap-3 p-5">
+                <div className="min-w-0">
+                  <p className="text-sm text-muted-foreground">{label}</p>
+                  <h3 className="mt-3 break-words text-3xl font-bold text-foreground">{value ?? (directSalesQuery.isError ? "Unavailable" : "Loading...")}</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">{hint}</p>
+                </div>
+                <div className="shrink-0 rounded-full bg-primary/10 p-2"><Icon className="h-5 w-5 text-primary" /></div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <p className="mb-4 text-sm text-muted-foreground">All-time posted direct sales in your authorized locations, excluding Customer Order releases and voided sales. Summary totals are independent of the list search.</p>
         <Card>
           <CardContent className="p-0">
             <div className="flex flex-col gap-4 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 className="text-base font-semibold text-foreground">Direct Sales List</h3>
-                <p className="text-sm text-slate-500">Completed walk-in sales posted from Customer Sales.</p>
+                <p className="text-sm text-slate-500">Latest 200 posted direct sales. Search and pagination apply to this recent list only.</p>
               </div>
               <Input
                 className="sm:max-w-xs"
@@ -1416,7 +1442,7 @@ export default function CustomerOrdersPage() {
           </DialogContent>
         </Dialog>
         </>
-      )}
+      ) : <p className="text-sm text-muted-foreground">You do not have permission to view customer orders or direct sales.</p>}
     </PageShell>
   );
 }

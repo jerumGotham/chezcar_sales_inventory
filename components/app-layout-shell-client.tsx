@@ -12,8 +12,10 @@ export function AppLayoutShellClient({ children }: { children: ReactNode }) {
   const access = useShellAccess();
   const isTransferPrintView =
     /^\/stock-transfers\/[^/]+\/print$/.test(pathname);
+  const isBackjobPrintView =
+    /^\/inventory\/returns-warranty\/[^/]+\/print$/.test(pathname);
 
-  if (pathname.startsWith("/sign-in") || isTransferPrintView) {
+  if (pathname.startsWith("/sign-in") || isTransferPrintView || isBackjobPrintView) {
     return children;
   }
 

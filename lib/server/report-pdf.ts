@@ -4,112 +4,242 @@ import { PDFDocument, PageSizes, StandardFonts, rgb, type PDFFont, type PDFPage 
 
 import type { ReportResult } from "@/lib/contracts/reports";
 
-type PdfColumn = { header: string; width: number; value: (row: Record<string, unknown>) => string };
+type PdfColumn = { header: string; width: number; numeric?: boolean };
 
 const PAGE_WIDTH = PageSizes.A4[1];
 const PAGE_HEIGHT = PageSizes.A4[0];
 const MARGIN = 36;
+const BOTTOM = 44;
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
-const BODY_SIZE = 7;
-const ROW_HEIGHT = 15;
+const BODY_SIZE = 9;
+const LINE_HEIGHT = 12;
+const PADDING = 7;
+const INK = rgb(0.13, 0.16, 0.2);
+const MUTED = rgb(0.36, 0.4, 0.44);
+const RULE = rgb(0.82, 0.85, 0.86);
+const TINT = rgb(0.93, 0.96, 0.95);
 
 function safe(value: unknown) {
-  return String(value ?? "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7E]/g, "?");
+  return String(value ?? "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7E\n]/g, "?");
 }
 
-function fit(value: string, font: PDFFont, width: number) {
-  const text = safe(value);
-  if (font.widthOfTextAtSize(text, BODY_SIZE) <= width) return text;
-  let shortened = text;
-  while (shortened && font.widthOfTextAtSize(`${shortened}...`, BODY_SIZE) > width) shortened = shortened.slice(0, -1);
-  return `${shortened}...`;
+function wrap(value: string, font: PDFFont, size: number, width: number) {
+  const lines: string[] = [];
+  for (const paragraph of safe(value).split("\n")) {
+    let line = "";
+    for (const word of paragraph.split(/\s+/)) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (font.widthOfTextAtSize(candidate, size) <= width) {
+        line = candidate;
+        continue;
+      }
+      if (line) lines.push(line);
+      line = "";
+      for (const character of word) {
+        if (line && font.widthOfTextAtSize(`${line}${character}`, size) > width) {
+          lines.push(line);
+          line = "";
+        }
+        line += character;
+      }
+    }
+    lines.push(line);
+  }
+  return lines;
 }
 
-function money(value: unknown) {
-  return `PHP ${Number(value).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function money(value: number) {
+  return `PHP ${value.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function dateTime(value: unknown) {
-  return new Date(String(value)).toLocaleString("en-PH", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Manila" });
+function dateTime(value: string | null) {
+  if (!value) return "Not set";
+  return new Date(value).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Manila" });
 }
 
-function reportDefinition(report: ReportResult): { title: string; columns: PdfColumn[]; rows: Record<string, unknown>[]; summary: string[] } {
-  if (report.type === "sales") return {
-    title: "Sales Report",
-    columns: [
-      { header: "Verified", width: 76, value: (r) => dateTime(r.verifiedAt) }, { header: "Receipt", width: 70, value: (r) => String(r.receipt) },
-      { header: "Branch", width: 90, value: (r) => String(r.branch) }, { header: "Salesperson", width: 90, value: (r) => String(r.salesperson) },
-      { header: "Source", width: 78, value: (r) => String(r.source) }, { header: "Payment", width: 68, value: (r) => String(r.paymentMethod) },
-      { header: "Total", width: 85, value: (r) => money(r.totalAmount) },
-    ],
-    rows: report.rows as unknown as Record<string, unknown>[],
-    summary: [`Transactions: ${report.grandTotal.transactionCount}`, `Grand total: ${money(report.grandTotal.totalAmount)}`, ...report.branchTotals.map((row) => `${row.branch}: ${row.transactionCount} / ${money(row.totalAmount)}`)],
-  };
-  if (report.type === "inventory-summary" || report.type === "low-stock") return {
-    title: report.type === "low-stock" ? "Low Stock Report" : "Inventory Summary",
-    columns: [
-      { header: "Code", width: 75, value: (r) => String(r.itemCode) }, { header: "Product", width: 145, value: (r) => String(r.product) },
-      { header: "Branch", width: 105, value: (r) => String(r.branch) }, { header: "On hand", width: 55, value: (r) => String(r.onHand) },
-      { header: "Reserved", width: 55, value: (r) => String(r.reserved) }, { header: "Quarantine", width: 60, value: (r) => String(r.quarantined) },
-      { header: "Available", width: 55, value: (r) => String(r.available) }, { header: "Reorder", width: 52, value: (r) => String(r.reorderLevel) },
-    ],
-    rows: report.rows as unknown as Record<string, unknown>[],
-    summary: report.type === "inventory-summary" ? [`Rows: ${report.rows.length}`, `On hand: ${report.totals.onHand}; Reserved: ${report.totals.reserved}; Quarantined: ${report.totals.quarantined}; Available: ${report.totals.available}`] : [`Low-stock rows: ${report.rows.length}`],
-  };
-  if (report.type === "inventory-movements") return {
-    title: "Inventory Movements",
-    columns: [
-      { header: "Occurred", width: 76, value: (r) => dateTime(r.occurredAt) }, { header: "Branch", width: 88, value: (r) => String(r.branch) },
-      { header: "Code", width: 70, value: (r) => String(r.itemCode) }, { header: "Product", width: 125, value: (r) => String(r.product) },
-      { header: "Movement", width: 105, value: (r) => String(r.type) }, { header: "Qty", width: 35, value: (r) => String(r.quantity) },
-      { header: "Actor", width: 80, value: (r) => String(r.actor) }, { header: "Reference", width: 78, value: (r) => String(r.reference) },
-    ], rows: report.rows as unknown as Record<string, unknown>[], summary: [`Movements: ${report.rows.length}`],
-  };
-  return {
-    title: "Returns & Warranty",
-    columns: [
-      { header: "Created", width: 76, value: (r) => dateTime(r.createdAt) }, { header: "Type", width: 92, value: (r) => String(r.recordType) },
-      { header: "Reference", width: 78, value: (r) => String(r.reference) }, { header: "Branch", width: 90, value: (r) => String(r.branch) },
-      { header: "Party", width: 105, value: (r) => String(r.party) }, { header: "Item", width: 130, value: (r) => String(r.item) },
-      { header: "Qty", width: 35, value: (r) => String(r.quantity) }, { header: "Status", width: 70, value: (r) => String(r.status) },
-    ], rows: report.rows as unknown as Record<string, unknown>[], summary: [`Records: ${report.rows.length}`],
-  };
+function humanize(value: string) {
+  return value.toLowerCase().replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 export async function createReportPdf(report: ReportResult, metadata: { generatedBy: string }): Promise<ArrayBuffer> {
   const document = await PDFDocument.create();
   const regular = await document.embedFont(StandardFonts.Helvetica);
   const bold = await document.embedFont(StandardFonts.HelveticaBold);
-  const definition = reportDefinition(report);
-  let page: PDFPage = document.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-  let y = PAGE_HEIGHT - MARGIN;
-  const addPage = () => { page = document.addPage([PAGE_WIDTH, PAGE_HEIGHT]); y = PAGE_HEIGHT - MARGIN; };
-  const ensure = (height: number) => { if (y - height < MARGIN) { addPage(); return true; } return false; };
-  const text = (value: string, size = BODY_SIZE, font = regular) => { page.drawText(safe(value), { x: MARGIN, y, size, font, color: rgb(0.13, 0.16, 0.2) }); y -= size + 5; };
-  const header = () => {
-    page.drawRectangle({ x: MARGIN, y: y - 4, width: CONTENT_WIDTH, height: ROW_HEIGHT, color: rgb(0.92, 0.95, 0.94) });
-    let x = MARGIN + 3;
-    for (const column of definition.columns) { page.drawText(fit(column.header, bold, column.width - 6), { x, y, size: BODY_SIZE, font: bold }); x += column.width; }
-    y -= ROW_HEIGHT;
+  const title = report.type === "sales" ? "Sales Report" : report.type === "inventory-summary" ? "Inventory Summary" : "Returns & Warranty";
+  document.setTitle(`Chezcar ${title}`);
+  document.setAuthor(safe(metadata.generatedBy));
+  let page: PDFPage;
+  let y = 0;
+
+  const addPage = () => {
+    page = document.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+    page.drawText("CHEZCAR AUTO CARE", { x: MARGIN, y: PAGE_HEIGHT - MARGIN, size: 10, font: bold, color: INK });
+    page.drawText(title, { x: PAGE_WIDTH - MARGIN - bold.widthOfTextAtSize(title, 10), y: PAGE_HEIGHT - MARGIN, size: 10, font: bold, color: MUTED });
+    page.drawLine({ start: { x: MARGIN, y: PAGE_HEIGHT - MARGIN - 10 }, end: { x: PAGE_WIDTH - MARGIN, y: PAGE_HEIGHT - MARGIN - 10 }, color: RULE, thickness: 0.7 });
+    y = PAGE_HEIGHT - MARGIN - 32;
   };
-  document.setTitle(`Chezcar ${definition.title}`);
-  text("CHEZCAR AUTO CARE", 9, bold);
-  text(definition.title, 18, bold);
-  text(`Generated: ${dateTime(report.generatedAt)} | User: ${metadata.generatedBy}`);
-  text(`Authorized location scope${report.dateFrom || report.dateTo ? ` | Dates: ${report.dateFrom ?? "start"} to ${report.dateTo ?? "today"}` : " | Current snapshot"}`);
-  y -= 3;
-  for (const line of definition.summary) text(line, 8);
-  y -= 5;
-  ensure(ROW_HEIGHT * 2); header();
-  if (!definition.rows.length) text("No rows in the authorized report scope.");
-  for (const row of definition.rows) {
-    if (ensure(ROW_HEIGHT + 3)) header();
-    let x = MARGIN + 3;
-    for (const column of definition.columns) { page.drawText(fit(column.value(row), regular, column.width - 6), { x, y, size: BODY_SIZE, font: regular }); x += column.width; }
-    page.drawLine({ start: { x: MARGIN, y: y - 4 }, end: { x: PAGE_WIDTH - MARGIN, y: y - 4 }, thickness: 0.35, color: rgb(0.82, 0.84, 0.83) });
-    y -= ROW_HEIGHT;
+  const ensure = (height: number) => { if (y - height < BOTTOM) addPage(); };
+  const text = (value: string, size = BODY_SIZE, font = regular) => {
+    for (const line of wrap(value, font, size, CONTENT_WIDTH)) {
+      ensure(size + 6);
+      page.drawText(line, { x: MARGIN, y: y - size, size, font, color: INK });
+      y -= size + 6;
+    }
+  };
+
+  const table = (heading: string, columns: PdfColumn[], rows: string[][], emphasizeLast = false) => {
+    const totalWidth = columns.reduce((sum, column) => sum + column.width, 0);
+    const widths = columns.map((column) => CONTENT_WIDTH * column.width / totalWidth);
+    const headerLines = columns.map((column, index) => wrap(column.header, bold, BODY_SIZE, widths[index] - PADDING * 2));
+    const headerHeight = Math.max(...headerLines.map((cell) => cell.length)) * LINE_HEIGHT + PADDING * 2;
+    const headingHeight = wrap(`${heading} (continued)`, bold, 12, CONTENT_WIDTH).length * 18 + 5;
+    const drawCells = (cells: string[][], font: PDFFont, background?: ReturnType<typeof rgb>, header = false) => {
+      const height = Math.max(...cells.map((cell) => cell.length), 1) * LINE_HEIGHT + PADDING * 2;
+      if (background) page.drawRectangle({ x: MARGIN, y: y - height, width: CONTENT_WIDTH, height, color: background });
+      let x = MARGIN;
+      cells.forEach((cell, index) => {
+        cell.forEach((line, lineIndex) => page.drawText(line, {
+          x: columns[index].numeric && !header ? x + widths[index] - PADDING - font.widthOfTextAtSize(line, BODY_SIZE) : x + PADDING,
+          y: y - PADDING - BODY_SIZE - lineIndex * LINE_HEIGHT,
+          size: BODY_SIZE, font, color: INK,
+        }));
+        x += widths[index];
+      });
+      y -= height;
+      page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_WIDTH - MARGIN, y }, thickness: 0.4, color: RULE });
+    };
+    const header = (continued = false) => {
+      text(`${heading}${continued ? " (continued)" : ""}`, 12, bold);
+      y -= 5;
+      drawCells(headerLines, bold, TINT, true);
+    };
+    // Leave room for a heading, column labels and at least one data line.
+    ensure(headingHeight + headerHeight + LINE_HEIGHT + PADDING * 2);
+    header();
+    if (!rows.length) {
+      text("No rows in the applied authorized scope.");
+      y -= 12;
+      return;
+    }
+    rows.forEach((row, rowIndex) => {
+      const font = emphasizeLast && rowIndex === rows.length - 1 ? bold : regular;
+      const wrapped = row.map((cell, index) => wrap(cell, font, BODY_SIZE, widths[index] - PADDING * 2));
+      const totalLines = Math.max(...wrapped.map((cell) => cell.length), 1);
+      const height = totalLines * LINE_HEIGHT + PADDING * 2;
+      const freshPageRoom = PAGE_HEIGHT - MARGIN - 32 - BOTTOM - headerHeight - headingHeight;
+      // Ordinary rows stay together; exceptionally long rows continue without truncation.
+      if (height > y - BOTTOM && height <= freshPageRoom) { addPage(); header(true); }
+      let offset = 0;
+      while (offset < totalLines) {
+        if (y - BOTTOM < LINE_HEIGHT + PADDING * 2) { addPage(); header(true); }
+        if (offset > 0) text(`Row ${rowIndex + 1} (continued)`, 8, bold);
+        const availableLines = Math.max(1, Math.floor((y - BOTTOM - PADDING * 2) / LINE_HEIGHT));
+        const count = Math.min(totalLines - offset, availableLines);
+        const background = emphasizeLast && rowIndex === rows.length - 1 ? TINT : rowIndex % 2 ? rgb(0.97, 0.98, 0.98) : undefined;
+        drawCells(wrapped.map((cell) => cell.slice(offset, offset + count)), font, background);
+        offset += count;
+        if (offset < totalLines) { addPage(); header(true); }
+      }
+    });
+    y -= 20;
+  };
+
+  addPage();
+  text(title, 22, bold);
+  y -= 4;
+  text(`Generated: ${dateTime(report.generatedAt)} (Asia/Manila)`);
+  text(`Generated by: ${metadata.generatedBy}`);
+  text(`Authorized scope: ${report.effectiveScope.map((row) => row.label).join(", ") || "No authorized locations"}`);
+  text(report.type === "inventory-summary"
+    ? "Current branch snapshot. Available = on hand - reserved - quarantined. Positive available stock only; Stock Room and in-transit stock excluded. Comparison cells with no positive stock show 0."
+    : `From ${report.dateFrom} to ${report.dateTo}, inclusive. Based on ${report.type === "sales" ? "verification" : "case creation"} date in Asia/Manila.`);
+  text(`Applied filters: ${report.appliedFilters.map((filter) => `${filter.label}: ${filter.value}`).join("; ") || "None"}`);
+  y -= 16;
+
+  if (report.type === "sales") {
+    const total = report.grandTotal;
+    table("Sales overview", [{ header: "Measure", width: 3 }, { header: "Total", width: 2, numeric: true }], [
+      ["Verified transactions", String(total.transactionCount)], ["Units sold", String(total.units)],
+      ["Discounts", money(total.totalDiscount)], ["Average sale", money(total.averageSale)],
+      ["Overall verified sales", money(total.totalAmount)],
+    ], true);
+    table("Branch subtotals", [
+      { header: "Branch", width: 4 }, { header: "Transactions", width: 1.3, numeric: true },
+      { header: "Units", width: 1, numeric: true }, { header: "Verified sales", width: 2, numeric: true },
+      { header: "Share", width: 1, numeric: true },
+    ], [
+      ...report.branchTotals.map((row) => [row.branch, String(row.transactionCount), String(row.units), money(row.totalAmount), `${row.percentage.toFixed(1)}%`]),
+      ["OVERALL TOTAL", String(total.transactionCount), String(total.units), money(total.totalAmount), total.totalAmount ? "100.0%" : "0.0%"],
+    ], true);
+    table("Verified sales detail", [
+      { header: "Receipt / verified", width: 1.6 }, { header: "Branch", width: 1.35 },
+      { header: "Customer / personnel", width: 2.3 }, { header: "Source / payment / status", width: 1.5 },
+      { header: "Units", width: 0.6, numeric: true }, { header: "Discount", width: 1.25, numeric: true },
+      { header: "Final amount", width: 1.4, numeric: true },
+    ], report.rows.map((row) => [
+      `${row.manualReceiptNumber}\n${dateTime(row.verifiedAt)}`, row.branch,
+      `Customer: ${row.customer}\nSalesperson: ${row.salesperson}\nEncoder: ${row.encoder}`,
+      `${row.source}\n${humanize(row.paymentMethod)}\n${humanize(row.verificationStatus)}`,
+      String(row.units), money(row.discountAmount), money(row.totalAmount),
+    ]));
+  } else if (report.type === "inventory-summary") {
+    table("Inventory overview", [{ header: "Measure", width: 3 }, { header: "Total", width: 2, numeric: true }], [
+      ["Products in filtered rows", String(report.totals.productCount)], ["Authorized branches in scope", String(report.totals.locationCount)],
+      ["Available units", String(report.totals.available)],
+    ], true);
+    const inventoryColumns: PdfColumn[] = [
+      { header: "Item code", width: 1.4 }, { header: "Product", width: 3.5 },
+      { header: "Category", width: 1.5 }, { header: "Brand", width: 1.5 }, { header: "Available", width: 1.3, numeric: true },
+    ];
+    table(report.effectiveScope.length > 1 ? "Product totals across selected branches" : "Available products", inventoryColumns, [
+      ...report.rows.map((row) => [row.itemCode, row.product, row.category, row.brand, String(row.available)]),
+      ["FULL FILTERED TOTAL", "", "", "", String(report.totals.available)],
+    ], true);
+    if (report.effectiveScope.length > 1) {
+      text("Branch comparison follows in separate sections. Every section includes the full filtered product set, including 0 cells, without narrowing columns for additional branches.");
+      for (const location of report.effectiveScope) {
+        table(`Branch: ${location.label}`, inventoryColumns, [
+          ...report.rows.map((row) => [row.itemCode, row.product, row.category, row.brand, String(row.availableByLocation[location.id])]),
+          ["BRANCH TOTAL", "", "", "", String(report.branchTotals.find((total) => total.locationId === location.id)?.available ?? 0)],
+        ], true);
+      }
+    }
+  } else {
+    const total = report.totals;
+    text("Backjob charges are recorded case amounts, not collected payments or additional Sales revenue. Supplier refunds/credits are separate claim tracking, not ledger totals. Amounts follow applied case filters, including status.");
+    text("Backjobs list all original items in one case row. Their affected-unit quantity is not recorded; original item selections are not unit counts.");
+    table("Case overview", [{ header: "Measure", width: 3 }, { header: "Total", width: 2, numeric: true }], [
+      ["Total cases", String(total.total)], ["Open", String(total.open)], ["Completed", String(total.completed)],
+      ["Overdue", String(total.overdue)], ["Unresolved quarantined quantity", String(total.unresolvedQuarantinedQuantity)],
+      ["Backjob charges recorded (not Sales revenue)", money(total.backjobChargeAmount)],
+      ["Supplier refunds (claim tracking, not ledger totals)", money(total.supplierRefundAmount)],
+      ["Supplier credits (claim tracking, not ledger totals)", money(total.supplierCreditAmount)],
+    ]);
+    table("Case breakdowns", [{ header: "Group", width: 1 }, { header: "Value", width: 4 }, { header: "Cases", width: 1, numeric: true }], [
+      ...total.byType.map((row) => ["Type", row.label, String(row.count)]),
+      ...total.byStatus.map((row) => ["Status", humanize(row.label), String(row.count)]),
+      ...total.byBranch.map((row) => ["Branch", row.label, String(row.count)]),
+      ...total.byResolution.map((row) => ["Resolution", humanize(row.label), String(row.count)]),
+    ]);
+    table("Case detail", [
+      { header: "Case / references", width: 1.7 }, { header: "Location / party", width: 1.7 },
+      { header: "Product / quantity", width: 2.2 }, { header: "Personnel", width: 1.5 },
+      { header: "Status / dates", width: 1.8 }, { header: "Case amounts / quarantine", width: 1.8 },
+    ], report.rows.map((row) => [
+      `${row.recordType}\n${row.reference}\nCase date: ${dateTime(row.caseDate)}\nOriginal: ${row.originalReference || "None"}\nLinked: ${row.linkedCase || "None"}`,
+      `${row.branch}\nCustomer / supplier: ${row.party}`,
+      `${row.product}\nCase quantity: ${row.quantity === null ? "Not recorded" : row.quantity}`,
+      `Assigned: ${row.assignedPersonnel}\nSalesperson: ${row.salesperson}`,
+      `${humanize(row.status)}\nResolution: ${humanize(row.resolution)}\nTarget: ${dateTime(row.targetDate)}\nOverdue: ${row.overdue ? "Yes" : "No"}`,
+      `Backjob charge recorded: ${row.backjobChargeAmount === null ? "Not applicable" : money(row.backjobChargeAmount)}\nUnresolved quarantine: ${row.unresolvedQuarantinedQuantity}\nSupplier refund: ${money(row.supplierRefundAmount)}\nSupplier credit: ${money(row.supplierCreditAmount)}`,
+    ]));
   }
+
   const pages = document.getPages();
-  pages.forEach((current, index) => current.drawText(`Page ${index + 1} of ${pages.length}`, { x: PAGE_WIDTH - MARGIN - 62, y: 18, size: 7, font: regular }));
+  pages.forEach((current, index) => {
+    current.drawText("Private | Authorized report scope | Times: Asia/Manila", { x: MARGIN, y: 22, size: 8, font: regular, color: MUTED });
+    const pageNumber = `Page ${index + 1} of ${pages.length}`;
+    current.drawText(pageNumber, { x: PAGE_WIDTH - MARGIN - regular.widthOfTextAtSize(pageNumber, 8), y: 22, size: 8, font: regular, color: MUTED });
+  });
   return Uint8Array.from(await document.save()).buffer;
 }

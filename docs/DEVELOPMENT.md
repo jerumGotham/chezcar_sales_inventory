@@ -101,6 +101,7 @@ export function ExampleContent() {
 ```
 
 - Use `PageShell` for standard business pages so the title, subtitle, header, and action spacing remain consistent.
+- A route layout may opt into `PageShellNavigationProvider` (`components/page-shell-navigation.tsx`) to supply navigation immediately after the title/subtitle/user header card and before actions. Without a provider the slot renders nothing; `PageShell` stays server-compatible. The Returns & Warranty layout uses this for permission-filtered sibling tabs on list, create, and detail routes. Its navigation remains hidden on print routes and in printed output.
 - Import primitives from their direct module paths. `components/ui.tsx` re-exports only a subset and is not the canonical complete barrel.
 - Compose conditional classes with `cn()` from `lib/utils.ts`; it combines `clsx` and `tailwind-merge`.
 - Use `buttonVariants()` when a `Link` must look like a button, as in the sidebar.

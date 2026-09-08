@@ -2,6 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-09-07
+**Amended:** 2026-09-08, user requested optional Customer Warranty intake photos; Supplier Claim damage/defect photo requirements are unchanged.
 
 ## Context
 
@@ -21,7 +22,7 @@ The business needs Backjob, customer replacement, damaged supplier item, and sup
 10. Track supplier refunds and credit memos as claim resolutions without inventory or general-ledger effects in this scope.
 11. Limit customer resolutions to repair and replacement; customer refunds/exchanges are deferred.
 12. Require stable Supplier master data and capability-based, location-scoped authorization.
-13. Require photo evidence for Customer Warranty and Supplier Claim damage/defect submissions; Backjob photos remain optional.
+13. Permit Customer Warranty creation without an intake photo. Require photo evidence for Supplier Claim damage/defect submissions; Backjob photos remain optional. This replaces the original Customer Warranty required-photo decision only.
 14. Require schedule/follow-up target dates for active case stages and preserve reasoned rescheduling history for overdue monitoring.
 
 ## Consequences

@@ -76,6 +76,7 @@ export const CAPABILITY_CATALOG = [
   { id: "backjobs:view", module: "Returns & Warranty", label: "View backjobs" },
   { id: "backjobs:create", module: "Returns & Warranty", label: "Create backjobs" },
   { id: "backjobs:update", module: "Returns & Warranty", label: "Edit backjobs" },
+  { id: "backjobs:delete", module: "Returns & Warranty", label: "Delete unused Backjob drafts" },
   { id: "backjobs:schedule", module: "Returns & Warranty", label: "Schedule backjobs" },
   { id: "backjobs:complete", module: "Returns & Warranty", label: "Record and complete backjob work" },
   { id: "backjobs:parts:issue", module: "Returns & Warranty", label: "Issue backjob parts" },

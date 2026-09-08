@@ -73,7 +73,7 @@ The foundation schema now uses this unified Location concept because the central
 - `status`: active/inactive
 - created/updated actors and timestamps
 
-Personnel master data is implemented as an operational identity, not an authenticated User. Direct Sales and Customer Orders now store nullable Personnel references plus complete immutable name/branch snapshots; legacy rows remain explicitly unattributed. Backjob Installer selection remains provisional.
+Personnel master data is implemented as an operational identity, not an authenticated User. Direct Sales and Customer Orders store nullable Personnel references plus complete immutable name/branch snapshots; legacy rows remain explicitly unattributed. Customer Order reassignment appends immutable previous/new attribution events. Backjobs persist Installer assignment and revalidate active eligibility within the acting user's authorized personnel locations at scheduling, start, and completion. Personnel home branch and transaction branch may differ; `locations:all` actors and owners can select across all active branches without changing transaction location authorization.
 
 ### Supplier
 

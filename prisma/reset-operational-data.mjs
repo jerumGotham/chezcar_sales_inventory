@@ -45,6 +45,7 @@ export async function resetOperationalData(prisma, environment) {
   return prisma.$transaction(
     async (tx) => {
       await assertConnectedDatabaseTarget(tx, environment.databaseUrl);
+      await tx.$executeRaw`SELECT set_config('chezcar.operational_data_reset', 'true', true)`;
 
       const deleted = {};
       deleted.pushDeliveryAttempts = (await tx.pushDeliveryAttempt.deleteMany()).count;
@@ -66,12 +67,14 @@ export async function resetOperationalData(prisma, environment) {
       deleted.supplierClaims = (await tx.supplierClaim.deleteMany()).count;
       deleted.customerWarranties = (await tx.customerWarranty.deleteMany()).count;
       deleted.backjobParts = (await tx.backjobPart.deleteMany()).count;
+      deleted.backjobItems = (await tx.backjobItem.deleteMany()).count;
       deleted.backjobs = (await tx.backjob.deleteMany()).count;
       deleted.saleAccountingReviews = (await tx.saleAccountingReview.deleteMany()).count;
       deleted.saleLines = (await tx.saleLine.deleteMany()).count;
       deleted.manualReceipts = (await tx.manualReceipt.deleteMany()).count;
       deleted.sales = (await tx.sale.deleteMany()).count;
       deleted.customerOrderLines = (await tx.customerOrderLine.deleteMany()).count;
+      deleted.customerOrderSalespersonEvents = (await tx.customerOrderSalespersonEvent.deleteMany()).count;
       deleted.customerOrders = (await tx.customerOrder.deleteMany()).count;
       deleted.customers = (await tx.customer.deleteMany()).count;
       deleted.transferResolutionLines = (await tx.stockTransferResolutionLine.deleteMany()).count;

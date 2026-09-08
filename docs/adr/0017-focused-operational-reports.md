@@ -3,6 +3,8 @@
 **Status:** Accepted; supersedes ADR 0013
 **Date:** 2026-09-07
 
+**Revision, 2026-09-08:** The owner narrowed the current Reports surface to Sales, branch-only available Inventory Summary, and Returns & Warranty. Inventory Movements and Low Stock are deferred from Reports, leaving operational inventory history intact. This revision replaces the original report set and month-to-date defaults below: dated reports now default through the last day of the selected/default Manila month; filter edits remain pending until Apply Filters; PDFs use readable grouped columns with Sales branch subtotals and an overall total, without a literal logo placeholder. See `../product/REPORTS-SPEC.md` for current behavior and source-only verification limits. The original decision is retained below as history.
+
 ## Context
 
 The combined Reports summary currently duplicates operational Accounting and Orders queues and cannot provide a reliable monthly total because its query is unfiltered and row-limited. The business needs a concise branch-comparison Sales Report and focused inventory and warranty reports.

@@ -42,6 +42,7 @@ const ALL_CAPABILITIES = Object.freeze([
   "suppliers:deactivate", "personnel:view", "personnel:create", "personnel:update",
   "personnel:deactivate", "roles:view", "roles:create", "roles:update",
   "backjobs:view", "backjobs:create", "backjobs:update", "backjobs:schedule",
+  "backjobs:delete",
   "backjobs:complete", "backjobs:parts:issue", "backjobs:parts:return", "backjobs:print",
   "customer-warranties:view", "customer-warranties:create", "customer-warranties:photos:add",
   "customer-warranties:receive-quarantine", "customer-warranties:assess", "customer-warranties:approve",

@@ -12,6 +12,7 @@ import { prisma } from "@/lib/server/prisma";
 import { findActiveBranch } from "@/lib/server/locations";
 import { canAccessLocation } from "@/lib/server/policy/access";
 import { createOfflineDirectSale, CustomerSalesError, directSaleSchema } from "@/lib/server/services/customer-sales";
+import { listActiveSalespersonOptions } from "@/lib/server/services/personnel";
 
 const activationSchema = z.object({
   locationId: z.string().min(1),
@@ -83,11 +84,7 @@ export async function getOfflineSnapshot(actor: AuthContext, rawInput: unknown) 
     orderBy: { product: { itemCode: "asc" } },
     take: 500,
   });
-  const salespersons = await prisma.personnel.findMany({
-    where: { locationId, status: "ACTIVE", type: { in: ["SALESPERSON", "BOTH"] } },
-    select: { id: true, fullName: true, locationId: true },
-    orderBy: { fullName: "asc" },
-  });
+  const salespersons = await listActiveSalespersonOptions(actor, locationId);
 
   return {
     deviceId: input.deviceId,

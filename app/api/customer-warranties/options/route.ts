@@ -8,7 +8,7 @@ export async function GET(request: Request) {
     const actor = await requireCapability(request.headers, "customer-warranties:create" as Capability);
     const [locations, lines, products] = await Promise.all([
       prisma.location.findMany({ where: { isActive: true, ...accessibleLocationWhere(actor) }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
-      prisma.saleLine.findMany({ where: { sale: { status: "POSTED", customerId: { not: null }, accountingReview: { status: "VERIFIED" }, location: accessibleLocationWhere(actor) } }, select: { id: true, quantity: true, productItemCode: true, productName: true, sale: { select: { reference: true, manualReceiptNumber: true, locationId: true, customer: { select: { name: true } } } } }, orderBy: { sale: { postedAt: "desc" } }, take: 250 }),
+      prisma.saleLine.findMany({ where: { sale: { status: "POSTED", customerId: { not: null }, accountingReview: { status: "VERIFIED" }, location: accessibleLocationWhere(actor) } }, select: { id: true, quantity: true, productItemCode: true, productName: true, warrantyDurationMonths: true, warrantyExpiresAt: true, sale: { select: { reference: true, manualReceiptNumber: true, locationId: true, customer: { select: { name: true } } } } }, orderBy: { sale: { postedAt: "desc" } }, take: 250 }),
       prisma.product.findMany({ where: { status: "ACTIVE" }, select: { id: true, itemCode: true, name: true }, orderBy: { itemCode: "asc" }, take: 2_000 }),
     ]);
     return Response.json({ data: { locations, lines, products, legacyAllowed: actor.isOwner } });

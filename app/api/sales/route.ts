@@ -1,7 +1,7 @@
 import { ZodError } from "zod";
 
 import { authorizationErrorResponse, requireCapability } from "@/lib/server/authorization";
-import { createDirectSale, CustomerSalesError, directSaleSchema, listSales } from "../../../lib/server/services/customer-sales";
+import { createDirectSale, CustomerSalesError, directSaleSchema, getDirectSalesOverview, listSales } from "../../../lib/server/services/customer-sales";
 
 function errorResponse(error: unknown) {
   if (error instanceof ZodError) return Response.json({ error: { code: "INVALID_INPUT", message: "Invalid sale input" } }, { status: 400 });
@@ -12,6 +12,9 @@ function errorResponse(error: unknown) {
 export async function GET(request: Request) {
   try {
     const actor = await requireCapability(request.headers, "sales:view");
+    if (new URL(request.url).searchParams.get("source") === "direct") {
+      return Response.json(await getDirectSalesOverview(actor));
+    }
     return Response.json({ data: await listSales(actor) });
   } catch (error) {
     return errorResponse(error);

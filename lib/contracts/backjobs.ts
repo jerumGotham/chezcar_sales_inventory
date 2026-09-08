@@ -16,7 +16,7 @@ export const createBackjobSchema = z.discriminatedUnion("isLegacy", [
   z.object({
     isLegacy: z.literal(false),
     saleId: id,
-    saleLineId: id,
+    saleLineIds: z.array(id).min(1).max(100).refine((ids) => new Set(ids).size === ids.length, "Sale lines must be unique"),
     concern: z.string().trim().min(1).max(4_000),
     notes: note,
   }),
@@ -85,6 +85,15 @@ export type PlanBackjobPartsInput = z.infer<typeof planBackjobPartsSchema>;
 export type IssueBackjobPartInput = z.infer<typeof issueBackjobPartSchema>;
 export type ReconcileBackjobPartInput = z.infer<typeof reconcileBackjobPartSchema>;
 export type CompleteBackjobInput = z.infer<typeof completeBackjobSchema>;
+
+export type BackjobItemDto = {
+  id: string;
+  originalSaleLineId: string | null;
+  productId: string | null;
+  productItemCode: string | null;
+  productName: string;
+  position: number;
+};
 
 export type BackjobOptionDto = {
   locations: Array<{ id: string; code: string; name: string }>;

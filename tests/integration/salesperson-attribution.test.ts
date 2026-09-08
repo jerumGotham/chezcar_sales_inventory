@@ -93,6 +93,23 @@ describe("salesperson transaction attribution", () => {
 
       const replacement = await prisma.personnel.create({ data: { fullName: "Replacement Salesperson", locationId: branch.id, type: "SALESPERSON" } });
       await updateCustomerOrderSalesperson(branchActor, order.id, { salespersonId: replacement.id });
+      await updateCustomerOrderSalesperson(branchActor, order.id, { salespersonId: replacement.id });
+      const reassignment = await prisma.customerOrderSalespersonEvent.findFirstOrThrow({ where: { orderId: order.id } });
+      expect(reassignment).toMatchObject({
+        previousSalespersonId: salesperson.id,
+        previousSalespersonName: salesperson.fullName,
+        previousSalespersonLocationId: branch.id,
+        previousSalespersonLocationCode: branch.code,
+        previousSalespersonLocationName: branch.name,
+        newSalespersonId: replacement.id,
+        newSalespersonName: replacement.fullName,
+        newSalespersonLocationId: branch.id,
+        newSalespersonLocationCode: branch.code,
+        newSalespersonLocationName: branch.name,
+        actorId: branchActor.userId,
+      });
+      await expect(prisma.customerOrderSalespersonEvent.count({ where: { orderId: order.id } })).resolves.toBe(1);
+      await expect(prisma.customerOrderSalespersonEvent.update({ where: { id: reassignment.id }, data: { newSalespersonName: "Tampered" } })).rejects.toThrow();
       await releaseCustomerOrder(branchActor, order.id, { finalReceiptNumber: "ATTR-ORDER-001", amountPaid: 100, paymentMethod: "CASH" });
       await expect(prisma.sale.findFirstOrThrow({ where: { orderId: order.id } })).resolves.toMatchObject({
         salespersonId: replacement.id,

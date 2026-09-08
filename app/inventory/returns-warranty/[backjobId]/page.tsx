@@ -8,5 +8,5 @@ export default async function BackjobDetailPage({ params }: { params: Promise<{ 
   const access = await loadShellAccess(await headers());
   if (!access.authenticated) redirect("/sign-in");
   if (!access.capabilities.includes("backjobs:view")) redirect("/access-denied");
-  return <BackjobDetailClient backjobId={(await params).backjobId} />;
+  return <BackjobDetailClient backjobId={(await params).backjobId} capabilities={access.capabilities} />;
 }

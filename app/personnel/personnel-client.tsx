@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Contact, Loader2, Pencil, Plus, X } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
+import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -70,6 +71,7 @@ export function PersonnelClient({
   const canUpdate = capabilities.includes("personnel:update");
   const canSetStatus = capabilities.includes("personnel:deactivate");
   const [editing, setEditing] = useState<PersonnelDto | null>(null);
+  const [deactivating, setDeactivating] = useState<PersonnelDto | null>(null);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<PersonnelForm>(() => emptyForm(branches));
   const [formError, setFormError] = useState("");
@@ -153,10 +155,21 @@ export function PersonnelClient({
           <div className="flex min-h-48 flex-col items-center justify-center gap-2 text-muted-foreground"><Contact className="h-8 w-8" /><p>No personnel yet.</p></div>
         ) : (
           <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Home Branch</TableHead><TableHead>Type</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{query.data?.map((personnel) => (
-            <TableRow key={personnel.id}><TableCell className="font-medium">{personnel.fullName}</TableCell><TableCell>{personnel.location.name} ({personnel.location.code})</TableCell><TableCell>{TYPE_LABELS[personnel.type]}</TableCell><TableCell><span className={personnel.status === "ACTIVE" ? "text-emerald-700" : "text-muted-foreground"}>{personnel.status === "ACTIVE" ? "Active" : "Inactive"}</span></TableCell><TableCell><div className="flex justify-end gap-2">{canUpdate ? <Button variant="edit" size="sm" onClick={() => openEdit(personnel)}><Pencil className="mr-2 h-4 w-4" />Edit</Button> : null}{canSetStatus ? <Button variant={personnel.status === "ACTIVE" ? "outline" : "workflow"} size="sm" disabled={statusMutation.isPending} onClick={() => statusMutation.mutate(personnel)}>{personnel.status === "ACTIVE" ? "Deactivate" : "Reactivate"}</Button> : null}{!canUpdate && !canSetStatus ? <span className="text-muted-foreground">-</span> : null}</div></TableCell></TableRow>
+            <TableRow key={personnel.id}><TableCell className="font-medium">{personnel.fullName}</TableCell><TableCell>{personnel.location.name} ({personnel.location.code})</TableCell><TableCell>{TYPE_LABELS[personnel.type]}</TableCell><TableCell><span className={personnel.status === "ACTIVE" ? "text-emerald-700" : "text-muted-foreground"}>{personnel.status === "ACTIVE" ? "Active" : "Inactive"}</span></TableCell><TableCell><div className="flex justify-end gap-2">{canUpdate ? <Button variant="edit" size="sm" onClick={() => openEdit(personnel)}><Pencil className="mr-2 h-4 w-4" />Edit</Button> : null}{canSetStatus ? <Button variant={personnel.status === "ACTIVE" ? "outline" : "workflow"} size="sm" disabled={statusMutation.isPending} onClick={() => personnel.status === "ACTIVE" ? setDeactivating(personnel) : statusMutation.mutate(personnel)}>{personnel.status === "ACTIVE" ? "Deactivate" : "Reactivate"}</Button> : null}{!canUpdate && !canSetStatus ? <span className="text-muted-foreground">-</span> : null}</div></TableCell></TableRow>
           ))}</TableBody></Table></div>
         )}
       </CardContent></Card>
+
+      <ConfirmationDialog
+        open={deactivating !== null}
+        title="Deactivate personnel?"
+        description={`Deactivate ${deactivating?.fullName ?? "this personnel record"}? They will no longer be available for new Salesperson or Installer assignments. Historical records will be preserved.`}
+        confirmLabel="Deactivate"
+        onOpenChange={(isOpen) => { if (!isOpen) setDeactivating(null); }}
+        onConfirm={() => {
+          if (deactivating && canSetStatus && !statusMutation.isPending) statusMutation.mutate(deactivating);
+        }}
+      />
 
       {((editing && canUpdate) || (!editing && canCreate)) ? (
         <Dialog open={open} onOpenChange={setOpen}><DialogContent className="sm:max-w-lg"><form onSubmit={submit}><DialogHeader><DialogTitle>{editing ? "Edit personnel" : "Add personnel"}</DialogTitle><DialogDescription>Personnel records identify Salespersons and Installers but do not create system accounts.</DialogDescription></DialogHeader><div className="grid gap-4 py-5"><div className="space-y-2"><Label htmlFor="personnel-name">Name</Label><Input id="personnel-name" value={form.fullName} required maxLength={200} onChange={(event) => setForm((current) => ({ ...current, fullName: event.target.value }))} /></div><div className="space-y-2"><Label htmlFor="personnel-branch">Home branch</Label><select id="personnel-branch" value={form.locationId} required className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" onChange={(event) => setForm((current) => ({ ...current, locationId: event.target.value }))}>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.code} - {branch.name}</option>)}</select></div><div className="space-y-2"><Label htmlFor="personnel-type">Personnel type</Label><select id="personnel-type" value={form.type} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" onChange={(event) => setForm((current) => ({ ...current, type: event.target.value as PersonnelDto["type"] }))}><option value="SALESPERSON">Salesperson</option><option value="INSTALLER">Installer</option><option value="BOTH">Salesperson & Installer</option></select></div></div>{formError ? <p role="alert" className="mb-4 text-sm text-destructive">{formError}</p> : null}<DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" disabled={saveMutation.isPending || !form.locationId}>{saveMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}{editing ? "Save changes" : "Add personnel"}</Button></DialogFooter></form></DialogContent></Dialog>

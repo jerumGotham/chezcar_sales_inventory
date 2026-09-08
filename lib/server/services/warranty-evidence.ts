@@ -2,7 +2,7 @@ import "server-only";
 
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 const MAX_BYTES = 6 * 1024 * 1024;
 const TYPES = new Map([["image/jpeg", "jpg"], ["image/png", "png"], ["image/webp", "webp"]]);
@@ -23,7 +23,12 @@ export async function saveWarrantyEvidence(file: File) {
   const key = `${randomUUID()}.${extension}`;
   await mkdir(root(), { recursive: true });
   await writeFile(path.join(/*turbopackIgnore: true*/ root(), key), bytes, { flag: "wx" });
-  return { key, contentType: file.type, fileName: file.name.slice(0, 255) || `evidence.${extension}` };
+  return { key, contentHash: createHash("sha256").update(bytes).digest("hex"), contentType: file.type, fileName: file.name.slice(0, 255) || `evidence.${extension}` };
+}
+
+export async function hashStoredWarrantyEvidence(key: string) {
+  if (!/^[0-9a-f-]{36}\.(jpg|png|webp)$/.test(key)) throw new Error("Invalid warranty evidence key");
+  return createHash("sha256").update(await readFile(path.join(/*turbopackIgnore: true*/ root(), key))).digest("hex");
 }
 
 export async function readWarrantyEvidence(key: string) {

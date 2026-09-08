@@ -85,11 +85,15 @@ export async function notifyReceiptEvidencePending(actor: AuthContext, saleId: s
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
-export async function notifyReceiptEvidenceUploaded(saleId: string) {
+export async function notifyReceiptEvidenceUploaded(saleId: string, expectedKey?: string) {
   await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Sale" WHERE id = ${saleId} FOR UPDATE`;
     const sale = await tx.sale.findUnique({ where: { id: saleId }, include: { accountingReview: true } });
-    if (!sale?.accountingReview?.receiptPhotoKey) return;
-    await tx.saleAccountingReview.update({ where: { saleId }, data: { evidenceUploadedAt: new Date() } });
+    if (!sale?.accountingReview?.receiptPhotoKey || sale.status !== "POSTED" || sale.accountingReview.status !== "UNVERIFIED") return;
+    if (expectedKey && sale.accountingReview.receiptPhotoKey !== expectedKey) return;
+    if (!sale.accountingReview.evidenceUploadedAt) {
+      await tx.saleAccountingReview.update({ where: { saleId }, data: { evidenceUploadedAt: new Date() } });
+    }
     const recipients = await accountingRecipients(tx, sale.locationId);
     await createNotifications(tx, recipients.map(({ id: userId }) => ({
       userId,
@@ -101,6 +105,25 @@ export async function notifyReceiptEvidenceUploaded(saleId: string) {
       relatedReference: sale.reference,
     })));
   });
+}
+
+export async function notifyReceiptEvidenceDeleted(
+  tx: Prisma.TransactionClient,
+  actor: AuthContext,
+  sale: { id: string; postedById: string; locationId: string; manualReceiptNumber: string; reference: string },
+) {
+  const branch = await branchRecipients(tx, sale);
+  const accounting = await accountingRecipients(tx, sale.locationId);
+  const recipients = new Set([actor.userId, ...branch, ...accounting.map((user) => user.id)]);
+  await createNotifications(tx, Array.from(recipients, (userId) => ({
+    userId,
+    title: "Receipt photo deleted",
+    description: `User ${actor.userId} deleted the unreviewed photo for receipt ${sale.manualReceiptNumber}. A new photo is required before Accounting review.`,
+    type: "WARNING" as const,
+    relatedType: "SALE" as const,
+    relatedId: sale.id,
+    relatedReference: sale.reference,
+  })));
 }
 
 export async function createDueReceiptEvidenceReminders(now = new Date()) {

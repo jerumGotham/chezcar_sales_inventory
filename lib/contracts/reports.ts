@@ -1,25 +1,47 @@
 export const REPORT_TYPES = [
   "sales",
   "inventory-summary",
-  "inventory-movements",
   "returns-warranty",
-  "low-stock",
 ] as const;
 
-export type ReportType = (typeof REPORT_TYPES)[number];
+export const SALE_SOURCES = ["DIRECT_SALE", "CUSTOMER_ORDER"] as const;
+export const PAYMENT_METHODS = ["CASH", "GCASH", "MAYA", "BANK_TRANSFER", "CREDIT_CARD", "SPLIT"] as const;
+export const PRODUCT_STATUSES = ["ACTIVE", "INACTIVE"] as const;
+export const RETURN_CASE_TYPES = ["BACKJOB", "CUSTOMER_WARRANTY", "SUPPLIER_CLAIM"] as const;
+export const RETURN_STATUSES = [
+  "DRAFT", "SCHEDULED", "IN_PROGRESS", "ASSESSMENT", "APPROVED_REPAIR", "APPROVED_REPLACEMENT",
+  "WAITING_STOCK", "READY", "RELEASED", "PENDING", "WAITING_REPLACEMENT", "PARTIAL",
+  "REPLACEMENT_RECEIVED", "COMPLETED", "CANCELLED", "REJECTED",
+] as const;
+export const RETURN_RESOLUTIONS = ["COVERED", "CHARGEABLE", "REPAIR", "REPLACEMENT", "REFUND", "CREDIT"] as const;
 
+export type ReportType = (typeof REPORT_TYPES)[number];
 export type ReportOption = { id: string; label: string };
+export type ReportBreakdown = { label: string; count: number };
+
+export function reportMonthEnd(date: string) {
+  const end = new Date(`${date.slice(0, 7)}-01T00:00:00Z`);
+  end.setUTCMonth(end.getUTCMonth() + 1);
+  end.setUTCDate(0);
+  return end.toISOString().slice(0, 10);
+}
+
+export type ReportFilterOptions = {
+  locations: ReportOption[];
+  defaultLocationId: string | null;
+  salespersons: ReportOption[];
+  categories: ReportOption[];
+  brands: ReportOption[];
+};
 
 export type ReportMeta = {
   type: ReportType;
   generatedAt: string;
   dateFrom: string | null;
   dateTo: string | null;
-  filters: {
-    branches: ReportOption[];
-    salespersons: ReportOption[];
-    actors: ReportOption[];
-  };
+  effectiveScope: ReportOption[];
+  appliedFilters: Array<{ label: string; value: string }>;
+  filters: ReportFilterOptions;
 };
 
 export type SalesReport = ReportMeta & {
@@ -27,15 +49,17 @@ export type SalesReport = ReportMeta & {
   rows: Array<{
     id: string;
     verifiedAt: string;
-    receipt: string;
+    manualReceiptNumber: string;
     branch: string;
+    customer: string;
     salesperson: string;
+    encoder: string;
     source: "Direct Sale" | "Customer Order";
     paymentMethod: string;
-    customer: string;
-    totalAmount: number;
     units: number;
     discountAmount: number;
+    totalAmount: number;
+    verificationStatus: "VERIFIED";
   }>;
   branchTotals: Array<{ branch: string; transactionCount: number; units: number; totalAmount: number; percentage: number }>;
   grandTotal: { transactionCount: number; units: number; totalDiscount: number; averageSale: number; totalAmount: number };
@@ -43,42 +67,25 @@ export type SalesReport = ReportMeta & {
 
 export type InventoryReportRow = {
   id: string;
+  productId: string;
   itemCode: string;
   product: string;
-  branch: string;
-  onHand: number;
-  reserved: number;
-  quarantined: number;
+  category: string;
+  brand: string;
+  productStatus: string;
   available: number;
-  reorderLevel: number;
-  suggestedReorder: number;
+  availableByLocation: Record<string, number>;
 };
 
 export type InventorySummaryReport = ReportMeta & {
   type: "inventory-summary";
   rows: InventoryReportRow[];
-  totals: Omit<InventoryReportRow, "id" | "itemCode" | "product" | "branch" | "reorderLevel" | "suggestedReorder">;
-};
-
-export type LowStockReport = ReportMeta & {
-  type: "low-stock";
-  rows: InventoryReportRow[];
-};
-
-export type InventoryMovementsReport = ReportMeta & {
-  type: "inventory-movements";
-  rows: Array<{
-    id: string;
-    occurredAt: string;
-    createdAt: string;
-    branch: string;
-    itemCode: string;
-    product: string;
-    type: string;
-    quantity: number;
-    actor: string;
-    reference: string;
-  }>;
+  branchTotals: Array<{ locationId: string; available: number }>;
+  totals: {
+    productCount: number;
+    locationCount: number;
+    available: number;
+  };
 };
 
 export type ReturnsWarrantyReport = ReportMeta & {
@@ -86,19 +93,39 @@ export type ReturnsWarrantyReport = ReportMeta & {
   rows: Array<{
     id: string;
     recordType: "Backjob" | "Customer Warranty" | "Supplier Claim";
-    createdAt: string;
+    caseDate: string;
     reference: string;
+    originalReference: string;
     branch: string;
     party: string;
-    item: string;
-    quantity: number;
+    product: string;
+    quantity: number | null;
+    assignedPersonnel: string;
+    salesperson: string;
     status: string;
+    resolution: string;
+    targetDate: string | null;
+    overdue: boolean;
+    linkedCase: string;
+    unresolvedQuarantinedQuantity: number;
+    backjobChargeAmount: number | null;
+    supplierRefundAmount: number;
+    supplierCreditAmount: number;
   }>;
+  totals: {
+    total: number;
+    open: number;
+    completed: number;
+    overdue: number;
+    unresolvedQuarantinedQuantity: number;
+    backjobChargeAmount: number;
+    supplierRefundAmount: number;
+    supplierCreditAmount: number;
+    byType: ReportBreakdown[];
+    byStatus: ReportBreakdown[];
+    byBranch: ReportBreakdown[];
+    byResolution: ReportBreakdown[];
+  };
 };
 
-export type ReportResult =
-  | SalesReport
-  | InventorySummaryReport
-  | InventoryMovementsReport
-  | ReturnsWarrantyReport
-  | LowStockReport;
+export type ReportResult = SalesReport | InventorySummaryReport | ReturnsWarrantyReport;

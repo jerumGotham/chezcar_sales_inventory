@@ -1,6 +1,6 @@
 import { ZodError } from "zod";
 
-import { authorizationErrorResponse, requireCapability } from "@/lib/server/authorization";
+import { assertCapability, authorizationErrorResponse, requireCapability } from "@/lib/server/authorization";
 import { accountingReviewSchema, CustomerSalesError, reviewSale } from "@/lib/server/services/customer-sales";
 
 type Context = { params: Promise<{ saleId: string }> };
@@ -14,6 +14,7 @@ function errorResponse(error: unknown) {
 export async function POST(request: Request, context: Context) {
   try {
     const actor = await requireCapability(request.headers, "sales:verify");
+    assertCapability(actor, "sales:evidence:view");
     const { saleId } = await context.params;
     return Response.json({ data: await reviewSale(actor, saleId, accountingReviewSchema.parse(await request.json())) });
   } catch (error) {

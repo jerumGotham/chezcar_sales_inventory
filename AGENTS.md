@@ -10,6 +10,8 @@ Current gaps are intentional and material:
 
 - Better Auth email/password sessions, active-account checks, action-only RoleDefinition grants, explicit owner identity, and UserLocation authorization are implemented. Public sign-up is disabled; `UserRole`, `User.locationId`, and `RoleDefinition.scope` remain compatibility storage only.
 - Products, Suppliers, Personnel master data, Salesperson attribution for Direct Sales/Customer Orders, quarantine-aware Inventory and Availability, customers/orders/sales/accounting, stock receiving/transfers, Backjobs, Customer Warranty, Supplier Claims, focused reports, notifications, users, roles, and branches use PostgreSQL through Prisma. General Job Orders and some supporting panels remain mock/local behavior.
+- Receipt verification is manual side-by-side review of persisted sale details and private uploaded evidence. Verification requires evidence-view access in addition to the verification capability; receipt OCR and automatic extraction are intentionally absent.
+- The Reports module exposes three live location-scoped reports: Sales, branch-only available Inventory Summary, and Returns & Warranty. Inventory Movements and Low Stock are deferred from Reports; operational inventory history remains intact. See `docs/product/REPORTS-SPEC.md` for filter, date, and PDF semantics; the 2026-09-08 Reports revision is source-only and unverified.
 - Checked-in additive migrations and an environment-driven development seed exist. The seed provisions reference catalog data, deterministic built-in roles, and the first Admin without committed credentials.
 - Vitest unit and serial disposable-PostgreSQL integration suites run locally and in GitHub Actions CI. Coverage and automated browser tests do not exist.
 - A current Node.js 20 verification run passes `npm run build`, `npm run typecheck`, and both Vitest projects.
@@ -95,7 +97,7 @@ For current changes, run the narrowest available command and manually walk the a
 - Hidden buttons and menu entries do not authorize anything. Protect every future mutation and sensitive read on the server.
 - Do not silently join the divergent page fixtures, `lib/mock-data.ts` shapes, and Prisma models. Establish canonical DTOs, validation, statuses, money representation, and identifiers first.
 - Do not import Prisma into a client component. Add one server-only client and a deliberate repository/service boundary when persistence begins.
-- Extend durable inventory and sales workflows only through validated, authorized database transactions and auditable movement records. Job completion remains a prototype.
+- Extend durable inventory and sales workflows only through validated, authorized database transactions and auditable movement records. General Job Order completion remains a prototype; do not confuse it with the implemented Backjob workflow.
 - `docker-compose.yml` credentials are for isolated local development only. Never commit `.env` files or files under `data/`, and do not use the live PostgreSQL data directory as a migration or backup artifact.
 
 ## Safe change rules

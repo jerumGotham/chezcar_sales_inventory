@@ -1,14 +1,14 @@
 # Personnel Production Spec
 
 **Status:** Maintenance, Sales/Order attribution, and Backjob Installer assignment implemented
-**Last updated:** 2026-09-07
+**Last updated:** 2026-09-08
 **Source:** Owner grill-with-docs decisions; ADR 0015
 
 ## Purpose
 
 Maintain operational Salesperson and Installer identities independently from system login accounts. Personnel records support transaction attribution and assignment; they do not grant application access.
 
-The Personnel master, lifecycle, location scope, permissions, APIs, and `/personnel` UI are implemented. Direct Sales and Customer Orders require an eligible branch Salesperson and store immutable name/branch snapshots separately from the authenticated encoder. Backjob Installer assignment remains pending.
+The Personnel master, lifecycle, location scope, permissions, APIs, and `/personnel` UI are implemented. Direct Sales and Customer Orders require an eligible branch Salesperson and store immutable name/branch snapshots separately from the authenticated encoder. Backjob Installer assignment is implemented.
 
 ## Personnel Record
 
@@ -24,14 +24,15 @@ A Personnel record does not require an email address, password, role, or User ac
 
 ## Selection Rules
 
-- Every Direct Sale and Customer Order requires an active Salesperson from the transaction branch before it can be posted.
-- A Backjob may be drafted before assignment but requires an active Installer from the case branch before scheduling or work completion.
+- Every Direct Sale and Customer Order requires an active `SALESPERSON` or `BOTH` from an active home branch within the acting user's personnel location scope before posting. `locations:all` actors (and owners) may select across all active branches; scoped actors may select across their authorized locations, independently of the transaction branch.
+- A Backjob may be drafted before assignment but requires an active `INSTALLER` or `BOTH` Personnel record within the same actor-based personnel scope before scheduling. Scheduling, start, and completion hold a PostgreSQL `FOR SHARE` lock on the assigned Personnel row while validating eligibility and committing the workflow action, so concurrent deactivation, reassignment, or type changes cannot pass between validation and commit.
 - A `BOTH` record may be selected for either function.
 - Salesperson and encoder are separate identities. The selected Personnel record receives business attribution; the authenticated User remains the actor who encoded or posted the transaction.
 - Existing pre-attribution sales/orders remain visible as `Not recorded (legacy)`; no Personnel identity is fabricated from an encoder.
-- Open orders may replace Salesperson attribution through an audited narrow action. Release revalidates active/type/branch eligibility and copies the order snapshot to the posted Sale.
+- Open orders may replace Salesperson attribution through an audited narrow action. Every actual change appends an immutable previous/new Personnel and branch snapshot event with actor/time; selecting the current Salesperson adds no event. Release revalidates active/type/branch eligibility and copies the order snapshot to the posted Sale.
 - Void-only actions preserve attribution. Void-and-replace copies the original Salesperson snapshot without requiring that Personnel to remain active or assigned to the historical branch.
-- Cross-branch selection is not allowed. Temporary and multiple-branch personnel assignments are deferred.
+- Cross-branch selection is allowed within the acting user's authorized personnel locations. This supersedes the previous same-branch restriction; it does not grant access to the transaction location or change the Personnel home branch. Temporary and multiple-branch personnel assignments remain deferred.
+- Online selectors and offline snapshots use the same eligibility scope. Offline sync, order reassignment/release, and Backjob scheduling/start/completion revalidate against the current acting user's scope, status, and required Personnel type. A scoped actor cannot continue with an assignment outside their locations merely because an all-location actor previously selected it.
 
 ## Access
 

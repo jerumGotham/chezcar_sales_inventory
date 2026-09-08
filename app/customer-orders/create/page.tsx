@@ -182,7 +182,7 @@ export default function CreateCustomerOrderPage() {
         queryClient.invalidateQueries({ queryKey: ["customer-history"] }),
         queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
       ]);
-      router.push("/customer-orders");
+      router.push("/customer-orders?view=orders");
     },
     onError: (error: Error) => setErrorMessage(error.message),
   });
@@ -242,7 +242,7 @@ export default function CreateCustomerOrderPage() {
       subtitle="Create a reservation or special order with multiple products."
       actions={
         <div className="flex gap-2">
-          <Link href={"/customer-orders" as Route} className={buttonVariants({ variant: "outline" })}>
+          <Link href={"/customer-orders?view=orders" as Route} className={buttonVariants({ variant: "outline" })}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Link>
@@ -302,10 +302,10 @@ export default function CreateCustomerOrderPage() {
                     onChange={(option) => setSalesperson(option)}
                     isSearchable
                     placeholder="Select salesperson"
-                    noOptionsMessage={() => "No active salespersons for this branch"}
+                    noOptionsMessage={() => "No eligible salespersons in your authorized locations"}
                     styles={reactSelectStyles}
                   />
-                  {activeLocationId && !optionsQuery.isLoading && salespersonOptions.length === 0 ? <p className="text-xs text-amber-700">No active Salesperson is assigned to this branch. Update Personnel Maintenance first.</p> : null}
+                  {activeLocationId && !optionsQuery.isLoading && salespersonOptions.length === 0 ? <p className="text-xs text-amber-700">No eligible Salesperson is available in your authorized locations. Update Personnel Maintenance first.</p> : null}
                 </div>
 
                 <div className="space-y-2">

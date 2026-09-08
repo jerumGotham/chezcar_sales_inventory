@@ -1,6 +1,6 @@
 import { ZodError } from "zod";
 
-import { warrantyCreateFieldsSchema, warrantyListQuerySchema } from "@/lib/contracts/customer-warranties";
+import { warrantyCreateFieldsSchema, warrantyCreatePhotoSchema, warrantyListQuerySchema } from "@/lib/contracts/customer-warranties";
 import { authorizationErrorResponse, requireCapability } from "@/lib/server/authorization";
 import type { Capability } from "@/lib/server/policy/access";
 import { createCustomerWarranty, CustomerWarrantyError, listCustomerWarranties } from "@/lib/server/services/customer-warranties";
@@ -30,15 +30,14 @@ export async function POST(request: Request) {
   try {
     const actor = await requireCapability(request.headers, createCapability);
     const form = await request.formData();
-    const photo = form.get("photo");
-    if (!(photo instanceof File)) throw new CustomerWarrantyError("INVALID_INPUT", "Intake photo is required", 400);
+    const photo = warrantyCreatePhotoSchema.parse(form.get("photo"));
     const fields = warrantyCreateFieldsSchema.parse(Object.fromEntries([...form.entries()].filter(([, value]) => typeof value === "string")));
-    const evidence = await saveWarrantyEvidence(photo);
-    savedKey = evidence.key;
+    const evidence = photo ? await saveWarrantyEvidence(photo) : null;
+    savedKey = evidence?.key;
     const result = await createCustomerWarranty(actor, fields, evidence);
-    if (!result.evidenceUsed) await removeWarrantyEvidence(evidence.key);
+    if (evidence && !result.evidenceUsed) await removeWarrantyEvidence(evidence.key);
     savedKey = undefined;
-    return Response.json({ data: result.warranty }, { status: result.evidenceUsed ? 201 : 200 });
+    return Response.json({ data: result.warranty }, { status: result.created ? 201 : 200 });
   } catch (error) {
     if (savedKey) await removeWarrantyEvidence(savedKey).catch((cleanupError) => console.error("Unable to clean up warranty evidence", cleanupError));
     return errorResponse(error);

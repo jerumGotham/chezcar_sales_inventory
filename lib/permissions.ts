@@ -58,6 +58,7 @@ const IMPLIED_CAPABILITIES: Partial<Record<CapabilityId, readonly CapabilityId[]
   "personnel:deactivate": ["personnel:view"],
   "backjobs:create": ["backjobs:view"],
   "backjobs:update": ["backjobs:view"],
+  "backjobs:delete": ["backjobs:view"],
   "backjobs:schedule": ["backjobs:view"],
   "backjobs:complete": ["backjobs:view"],
   "backjobs:parts:issue": ["backjobs:view", "inventory:view", "inventory-movements:view"],

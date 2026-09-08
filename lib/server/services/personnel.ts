@@ -125,10 +125,7 @@ export async function listActiveSalespersonOptions(
   }
   return prisma.personnel.findMany({
     where: {
-      locationId,
-      status: "ACTIVE",
-      type: { in: ["SALESPERSON", "BOTH"] },
-      location: { type: "BRANCH", isActive: true },
+      ...eligiblePersonnelWhere(actor, "SALESPERSON"),
     },
     select: { id: true, fullName: true, locationId: true },
     orderBy: { fullName: "asc" },
@@ -137,17 +134,18 @@ export async function listActiveSalespersonOptions(
 
 export async function resolveActiveSalespersonForTransaction(
   tx: Prisma.TransactionClient,
+  actor: AuthContext,
   personnelId: string,
   locationId: string,
 ) {
+  if (!canAccessLocation(actor, locationId)) {
+    throw new AuthorizationError("Branch is outside assigned locations");
+  }
   await tx.$queryRaw`SELECT id FROM "Personnel" WHERE id = ${personnelId} FOR SHARE`;
   return tx.personnel.findFirst({
     where: {
       id: personnelId,
-      locationId,
-      status: "ACTIVE",
-      type: { in: ["SALESPERSON", "BOTH"] },
-      location: { type: "BRANCH", isActive: true },
+      ...eligiblePersonnelWhere(actor, "SALESPERSON"),
     },
     select: {
       id: true,
@@ -156,6 +154,18 @@ export async function resolveActiveSalespersonForTransaction(
       location: { select: { id: true, code: true, name: true } },
     },
   });
+}
+
+export function eligiblePersonnelWhere(
+  actor: AuthContext,
+  type: "SALESPERSON" | "INSTALLER",
+): Prisma.PersonnelWhereInput {
+  return {
+    ...locationScope(actor),
+    status: "ACTIVE",
+    type: { in: [type, "BOTH"] },
+    location: { type: "BRANCH", isActive: true },
+  };
 }
 
 export async function createPersonnel(

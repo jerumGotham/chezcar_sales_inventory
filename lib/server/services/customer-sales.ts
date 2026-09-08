@@ -25,6 +25,7 @@ import { findActiveBranch, listActiveBranches } from "../locations";
 import { canAccessLocation, hasAllLocationAccess } from "../policy/access";
 import { createNotifications, notifyInventoryThresholdChange } from "./notifications";
 import { parseReceiptOcrDraft } from "./receipt-ocr";
+import { receiptEvidenceVersion } from "./receipt-evidence";
 import { resolveActiveSalespersonForTransaction } from "./personnel";
 
 const positiveInt = z.coerce.number().int().positive();
@@ -480,8 +481,8 @@ export async function createCustomerOrder(actor: AuthContext, input: z.infer<typ
     return await prisma.$transaction(async (tx) => {
     const location = await findActiveBranch(locationId, tx);
     if (!location) throw new CustomerSalesError("INVALID_LOCATION", "Select an active branch", 400);
-    const salesperson = await resolveActiveSalespersonForTransaction(tx, input.salespersonId, locationId);
-    if (!salesperson) throw new CustomerSalesError("INVALID_SALESPERSON", "Select an active salesperson assigned to this branch", 409);
+    const salesperson = await resolveActiveSalespersonForTransaction(tx, actor, input.salespersonId, locationId);
+    if (!salesperson) throw new CustomerSalesError("INVALID_SALESPERSON", "Select an active salesperson within your authorized locations", 409);
     const products = await activeProducts(tx, productIds);
     const customerId = await resolveCustomer(tx, actor, input.customer);
     const total = input.lines.reduce((sum, line) => {
@@ -555,8 +556,27 @@ export async function updateCustomerOrderSalesperson(
     if (order.status === "COMPLETED" || order.status === "CANCELLED") {
       throw new CustomerSalesError("INVALID_STATUS", "Completed or cancelled orders cannot change salesperson", 409);
     }
-    const salesperson = await resolveActiveSalespersonForTransaction(tx, input.salespersonId, order.locationId);
-    if (!salesperson) throw new CustomerSalesError("INVALID_SALESPERSON", "Select an active salesperson assigned to this branch", 409);
+    const salesperson = await resolveActiveSalespersonForTransaction(tx, actor, input.salespersonId, order.locationId);
+    if (!salesperson) throw new CustomerSalesError("INVALID_SALESPERSON", "Select an active salesperson within your authorized locations", 409);
+    if (order.salespersonId === salesperson.id) return serializeOrder(order);
+    const changedAt = new Date();
+    await tx.customerOrderSalespersonEvent.create({
+      data: {
+        orderId: order.id,
+        previousSalespersonId: order.salespersonId,
+        previousSalespersonName: order.salespersonName,
+        previousSalespersonLocationId: order.salespersonLocationId,
+        previousSalespersonLocationCode: order.salespersonLocationCode,
+        previousSalespersonLocationName: order.salespersonLocationName,
+        newSalespersonId: salesperson.id,
+        newSalespersonName: salesperson.fullName,
+        newSalespersonLocationId: salesperson.location.id,
+        newSalespersonLocationCode: salesperson.location.code,
+        newSalespersonLocationName: salesperson.location.name,
+        actorId: actor.userId,
+        occurredAt: changedAt,
+      },
+    });
     return serializeOrder(await tx.customerOrder.update({
       where: { id },
       data: {
@@ -566,7 +586,7 @@ export async function updateCustomerOrderSalesperson(
         salespersonLocationCode: salesperson.location.code,
         salespersonLocationName: salesperson.location.name,
         salespersonUpdatedById: actor.userId,
-        salespersonUpdatedAt: new Date(),
+        salespersonUpdatedAt: changedAt,
       },
       include: ORDER_INCLUDE,
     }));
@@ -604,8 +624,8 @@ export async function releaseCustomerOrder(actor: AuthContext, id: string, input
     if (!order.salespersonId || !order.salespersonName || !order.salespersonLocationId || !order.salespersonLocationCode || !order.salespersonLocationName) {
       throw new CustomerSalesError("INVALID_SALESPERSON", "Assign an active salesperson before releasing this order", 409);
     }
-    const salesperson = await resolveActiveSalespersonForTransaction(tx, order.salespersonId, order.locationId);
-    if (!salesperson) throw new CustomerSalesError("INVALID_SALESPERSON", "Assign an active salesperson from this branch before release", 409);
+    const salesperson = await resolveActiveSalespersonForTransaction(tx, actor, order.salespersonId, order.locationId);
+    if (!salesperson) throw new CustomerSalesError("INVALID_SALESPERSON", "Assign an active salesperson within your authorized locations before release", 409);
     if (input.amountPaid !== order.remainingBalance.toNumber()) throw new CustomerSalesError("INVALID_BALANCE", "Amount paid must match remaining balance", 400);
     await releaseReservedLines(tx, order.locationId, order.lines);
     const sale = await tx.sale.create({ data: { reference: `SALE-${randomUUID()}`, manualReceiptNumber: input.finalReceiptNumber, receiptBooklet: "", locationId: order.locationId, customerId: order.customerId, orderId: order.id, salespersonId: order.salespersonId, salespersonName: order.salespersonName, salespersonLocationId: order.salespersonLocationId, salespersonLocationCode: order.salespersonLocationCode, salespersonLocationName: order.salespersonLocationName, paymentMethod: input.paymentMethod as PaymentMethod, totalAmount: order.totalAmount, amountPaid: decimal(input.amountPaid), notes: input.notes || null, postedById: actor.userId, lines: { create: order.lines.map((line) => ({ productId: line.productId, productItemCode: line.productItemCode, productName: line.productName, quantity: line.quantity, unitPrice: line.finalUnitPrice })) }, accountingReview: { create: {} } } });
@@ -744,8 +764,8 @@ async function createDirectSaleForActor(actor: AuthContext, rawInput: z.input<ty
     if (!location) throw new CustomerSalesError("INVALID_LOCATION", "Select an active branch", 400);
     const products = await activeProducts(tx, productIds);
     const customerId = input.customerId ?? (input.customer ? await resolveCustomer(tx, actor, input.customer) : null);
-    const salesperson = await resolveActiveSalespersonForTransaction(tx, input.salespersonId, locationId);
-    if (!salesperson) throw new CustomerSalesError("INVALID_SALESPERSON", "Select an active salesperson assigned to this branch", 409);
+    const salesperson = await resolveActiveSalespersonForTransaction(tx, actor, input.salespersonId, locationId);
+    if (!salesperson) throw new CustomerSalesError("INVALID_SALESPERSON", "Select an active salesperson within your authorized locations", 409);
     const subtotal = input.lines.reduce((sum, line) => sum + line.quantity * (line.unitPrice ?? products.get(line.productId)!.price?.toNumber() ?? 0), 0);
     if (input.discountAmount > subtotal) throw new CustomerSalesError("INVALID_DISCOUNT", "Discount cannot exceed sale subtotal", 400);
     const total = subtotal - input.discountAmount;
@@ -784,6 +804,28 @@ export async function listSales(actor: AuthContext) {
   const where = { locationId: locationIdFilter(actor), status: "POSTED" as const };
   const sales = await prisma.sale.findMany({ where, orderBy: { postedAt: "desc" }, include: SALE_INCLUDE, take: 200 });
   return sales.map(serializeSaleWithCorrection);
+}
+
+export async function getDirectSalesOverview(actor: AuthContext) {
+  assertCapability(actor, "sales:view");
+  const where = { locationId: locationIdFilter(actor), status: "POSTED" as const, orderId: null };
+  const [sales, totals] = await prisma.$transaction([
+    prisma.sale.findMany({ where, orderBy: { postedAt: "desc" }, include: SALE_INCLUDE, take: 200 }),
+    prisma.sale.aggregate({
+      where,
+      _count: { _all: true },
+      _sum: { totalAmount: true, discountAmount: true, amountPaid: true },
+    }),
+  ], { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+  return {
+    data: sales.map(serializeSaleWithCorrection),
+    summary: {
+      totalSales: totals._count._all,
+      totalAmount: totals._sum.totalAmount?.toNumber() ?? 0,
+      totalDiscounts: totals._sum.discountAmount?.toNumber() ?? 0,
+      totalAmountPaid: totals._sum.amountPaid?.toNumber() ?? 0,
+    },
+  };
 }
 
 function receiptDate(value: string, endOfDay = false) {
@@ -1036,6 +1078,7 @@ export async function resolveSaleCorrection(
 
 export async function reviewSale(actor: AuthContext, saleId: string, input: z.infer<typeof accountingReviewSchema>) {
   assertCapability(actor, "sales:verify");
+  assertCapability(actor, "sales:evidence:view");
   assertAccounting(actor);
   assertUniqueComparisonLines(input.comparison);
   return prisma.$transaction(async (tx) => {
@@ -1651,8 +1694,16 @@ function serializeSaleWithCorrection(
   sale: Prisma.SaleGetPayload<{ include: typeof SALE_INCLUDE }>,
 ) {
   const request = sale.correctionRequests[0] ?? null;
+  const serialized = serializeSale(sale);
+  const photoVersion = sale.accountingReview?.receiptPhotoKey
+    ? receiptEvidenceVersion(sale.accountingReview.receiptPhotoKey)
+    : null;
   return {
-    ...serializeSale(sale),
+    ...serialized,
+    receiptPhotoVersion: photoVersion,
+    receiptPhotoUrl: serialized.receiptPhotoUrl && photoVersion
+      ? `${serialized.receiptPhotoUrl}&version=${photoVersion}`
+      : null,
     salesperson: serializeSalespersonSnapshot(sale),
     correctionRequest: request ? serializeSaleCorrectionRequest(request) : null,
   };

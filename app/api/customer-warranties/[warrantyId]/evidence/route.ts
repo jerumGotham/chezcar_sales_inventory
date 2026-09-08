@@ -9,6 +9,7 @@ export async function GET(request: Request, context: Context) {
   try {
     const actor = await requireCapability(request.headers, "customer-warranties:view" as Capability);
     const warranty = await getCustomerWarranty(actor, (await context.params).warrantyId);
+    if (!warranty.intakePhotoKey || !warranty.intakePhotoName) throw new CustomerWarrantyError("NOT_FOUND", "No intake photo was attached to this claim", 404);
     const evidence = await readWarrantyEvidence(warranty.intakePhotoKey);
     return new Response(evidence.body, { headers: { "Content-Type": evidence.contentType, "Cache-Control": "private, no-store", "Content-Disposition": `inline; filename="${warranty.intakePhotoName.replaceAll('"', "")}"` } });
   } catch (error) {
