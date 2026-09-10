@@ -6,6 +6,7 @@ import { Prisma, type InventoryMovementType, type SupplierClaimStatus } from "@p
 import { supplierClaimActionCapabilities, type CreateSupplierClaimInput, type SupplierClaimAction, type SupplierClaimActionInput, type SupplierClaimSettlementInput } from "@/lib/contracts/supplier-claims";
 import { assertCapability, type AuthContext } from "@/lib/server/authorization";
 import { prisma } from "@/lib/server/prisma";
+import { createNotifications, findWorkflowNotificationRecipients } from "@/lib/server/services/notifications";
 import { canAccessLocation, hasAllLocationAccess } from "@/lib/server/policy/access";
 import { calculateWarrantyQuarantine } from "@/lib/server/services/warranty-quarantine";
 
@@ -162,7 +163,10 @@ export async function createSupplierClaim(actor: AuthContext, input: CreateSuppl
     }
     await assertQuarantineAvailable(tx, location.id, input.lines, input.customerWarrantyId);
     const byId = new Map(products.map((product) => [product.id, product]));
-    return tx.supplierClaim.create({ data: { reference: claimReference(), idempotencyKey: input.idempotencyKey, supplierId: supplier.id, supplierName: supplier.name, locationId: location.id, locationCode: location.code, locationName: location.name, sourceReceiptId: input.sourceReceiptId, customerWarrantyId: input.customerWarrantyId, notes: input.notes, targetDate: input.targetDate ? new Date(input.targetDate) : undefined, createdById: actor.userId, lines: { create: input.lines.map((line) => { const product = byId.get(line.productId)!; return { ...line, claimedQuantity: line.quarantinedQuantity + line.missingQuantity, openQuarantinedQuantity: line.quarantinedQuantity, openMissingQuantity: line.missingQuantity, productItemCode: product.itemCode, productName: product.name, unitCost: new Prisma.Decimal(line.unitCost) }; }) } }, include: detailInclude });
+     const created = await tx.supplierClaim.create({ data: { reference: claimReference(), idempotencyKey: input.idempotencyKey, supplierId: supplier.id, supplierName: supplier.name, locationId: location.id, locationCode: location.code, locationName: location.name, sourceReceiptId: input.sourceReceiptId, customerWarrantyId: input.customerWarrantyId, notes: input.notes, targetDate: input.targetDate ? new Date(input.targetDate) : undefined, createdById: actor.userId, lines: { create: input.lines.map((line) => { const product = byId.get(line.productId)!; return { ...line, claimedQuantity: line.quarantinedQuantity + line.missingQuantity, openQuarantinedQuantity: line.quarantinedQuantity, openMissingQuantity: line.missingQuantity, productItemCode: product.itemCode, productName: product.name, unitCost: new Prisma.Decimal(line.unitCost) }; }) } }, include: detailInclude });
+     const recipients = await findWorkflowNotificationRecipients(tx, location.id);
+     await createNotifications(tx, recipients.map(({ id: userId }) => ({ userId, title: "Supplier claim created", description: `${created.reference} (${location.code}) requires supplier follow-up.`, type: "INFO" as const, relatedType: "SUPPLIER_CLAIM" as const, relatedId: created.id, relatedReference: created.reference })));
+     return created;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
   } catch (error) {
     if (!isUniqueConstraintError(error)) throw error;

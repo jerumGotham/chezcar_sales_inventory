@@ -40,6 +40,7 @@ export function NewBackjobClient({ isOwner }: { isOwner: boolean }) {
   const [saving, setSaving] = useState(false);
   const options = useQuery({ queryKey: ["backjob-options"], queryFn: async () => { const response = await fetch("/api/backjobs/options"); const body = await response.json(); if (!response.ok) throw new Error(body.error?.message ?? "Unable to load options"); return body.data as BackjobOptionDto; } });
   const sale = options.data?.sales.find((item) => item.id === saleId);
+  const saleLocation = options.data?.locations.find((item) => item.id === sale?.locationId);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -93,8 +94,9 @@ export function NewBackjobClient({ isOwner }: { isOwner: boolean }) {
             {!sale || !sale.lines.length ? <p className="text-sm text-muted-foreground">{!sale ? "Select a sale first" : "No items on this sale"}</p> : <div className="grid max-h-64 gap-2 overflow-y-auto">{sale.lines.map((line) => <label key={line.id} className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={lineIds.includes(line.id)} disabled={!lineIds.includes(line.id) && lineIds.length >= 100} onChange={(event) => setLineIds((current) => event.target.checked ? [...current, line.id] : current.filter((id) => id !== line.id))} /><span className="min-w-0 break-words">{line.itemCode} · {line.name}</span></label>)}</div>}
             <p className="text-xs text-muted-foreground">{lineIds.length} selected</p>
           </fieldset>
-          <p className="text-sm text-muted-foreground sm:col-span-2">Select one or more purchased items from the same receipt. They share one Backjob, concern, schedule, and parts plan.</p>
-        </> : <>
+           <p className="text-sm text-muted-foreground sm:col-span-2">Select one or more purchased items from the same receipt. They share one Backjob, concern, schedule, and parts plan.</p>
+           <Field label="Branch handling this Backjob"><Input readOnly value={saleLocation ? `${saleLocation.code} · ${saleLocation.name}` : "Select a posted sale first"} /></Field>
+         </> : <>
           <Field label="Branch"><select required className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">Select branch</option>{options.data?.locations.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></Field>
           <Field label="Customer"><select required className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={customerId} onChange={(event) => setCustomerId(event.target.value)}><option value="">Select customer</option>{options.data?.customers.map((item) => <option key={item.id} value={item.id}>{item.name}{item.mobile ? ` · ${item.mobile}` : ""}</option>)}</select></Field>
           <Field label="Legacy reference"><Input required value={legacyReference} onChange={(event) => setLegacyReference(event.target.value)} /></Field>

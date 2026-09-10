@@ -89,6 +89,13 @@ export async function createNotifications(
   schedulePushDelivery();
 }
 
+export async function findWorkflowNotificationRecipients(tx: Prisma.TransactionClient, locationId: string) {
+  return tx.user.findMany({
+    where: { status: "ACTIVE", accessRole: { OR: [{ isOwner: true }, { permissions: { has: "notifications:view" } }] }, OR: [{ accessRole: { isOwner: true } }, { locationAssignments: { some: { locationId } } }] },
+    select: { id: true },
+  });
+}
+
 function inventoryAlertStatus(available: number, reorderLevel: number) {
   if (available <= 0) return "Out of Stock" as const;
   if (available <= reorderLevel) return "Low Stock" as const;

@@ -16,6 +16,7 @@ import type { AuthContext } from "@/lib/server/authorization";
 import { assertCapability } from "@/lib/server/authorization";
 import { canAccessLocation, hasAllLocationAccess } from "@/lib/server/policy/access";
 import { prisma } from "@/lib/server/prisma";
+import { findWorkflowNotificationRecipients } from "@/lib/server/services/notifications";
 import { createNotifications } from "./notifications";
 import { eligiblePersonnelWhere } from "./personnel";
 
@@ -88,17 +89,13 @@ async function lockBackjob(tx: Prisma.TransactionClient, actor: AuthContext, id:
 async function event(tx: Prisma.TransactionClient, backjobId: string, actorId: string, type: string, fromStatus?: BackjobStatus, toStatus?: BackjobStatus, reason?: string, detailsJson?: Prisma.InputJsonValue) {
   const recorded = await tx.backjobEvent.create({
     data: { backjobId, actorId, type, fromStatus, toStatus, reason, detailsJson },
-    select: { backjob: { select: { reference: true, locationCode: true } } },
+    select: { backjob: { select: { reference: true, locationCode: true, locationId: true } } },
   });
   await notifyBackjob(tx, recorded.backjob, type, backjobId);
 }
 
-async function notifyBackjob(tx: Prisma.TransactionClient, row: { reference: string; locationCode: string }, type: string, backjobId?: string) {
-  // Admin is the explicit owner role, not a role name or all-location grant.
-  const recipients = await tx.user.findMany({
-    where: { status: "ACTIVE", accessRole: { isOwner: true } },
-    select: { id: true },
-  });
+async function notifyBackjob(tx: Prisma.TransactionClient, row: { reference: string; locationCode: string; locationId: string }, type: string, backjobId?: string) {
+  const recipients = await findWorkflowNotificationRecipients(tx, row.locationId);
   const labels: Record<string, string> = {
     CREATED: "created",
     SCHEDULED: "scheduled",

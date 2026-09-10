@@ -9,6 +9,7 @@ import { prisma } from "@/lib/server/prisma";
 import { canAccessLocation, hasAllLocationAccess } from "@/lib/server/policy/access";
 import { hashStoredWarrantyEvidence } from "@/lib/server/services/warranty-evidence";
 import { calculateWarrantyQuarantine } from "@/lib/server/services/warranty-quarantine";
+import { createNotifications, findWorkflowNotificationRecipients } from "@/lib/server/services/notifications";
 
 export class CustomerWarrantyError extends Error {
   constructor(readonly code: string, message: string, readonly status: number) { super(message); }
@@ -141,7 +142,9 @@ export async function createCustomerWarranty(actor: AuthContext, input: Warranty
     if (!location?.isActive) throw new CustomerWarrantyError("INVALID_LOCATION", "Active warranty location not found", 400);
     const created = await tx.customerWarranty.create({ data: { reference: reference(), idempotencyKey: input.idempotencyKey, requestHash, locationId: input.locationId, ...source, claimQuantity: input.claimQuantity, concern: input.concern, isLegacy: legacy, legacyCustomerName: input.legacyCustomerName, legacySaleReference: input.legacySaleReference, legacyReason: input.legacyReason, locationCode: location.code, locationName: location.name, intakePhotoKey: evidence?.key ?? null, intakePhotoType: evidence?.contentType ?? null, intakePhotoName: evidence?.fileName ?? null, createdById: actor.userId } });
     await tx.customerWarrantyEvent.create({ data: { warrantyId: created.id, type: "CREATED", toStatus: "ASSESSMENT", actorId: actor.userId, detailsJson: { claimQuantity: input.claimQuantity, ...(input.warrantyBasisReason ? { warrantyBasisMonths: input.warrantyBasisMonths, warrantyBasisReason: input.warrantyBasisReason } : {}), ...(input.quantityOverrideReason ? { quantityOverrideReason: input.quantityOverrideReason } : {}) } } });
-    const result = await tx.customerWarranty.findUniqueOrThrow({ where: { id: created.id }, include: detailInclude });
+     const recipients = await findWorkflowNotificationRecipients(tx, input.locationId);
+     await createNotifications(tx, recipients.map(({ id: userId }) => ({ userId, title: "Customer warranty created", description: `${created.reference} (${location.code}) requires assessment.`, type: "INFO" as const, relatedType: "CUSTOMER_WARRANTY" as const, relatedId: created.id, relatedReference: created.reference })));
+     const result = await tx.customerWarranty.findUniqueOrThrow({ where: { id: created.id }, include: detailInclude });
     return { record: { ...result, replacementProducts: [] as ReplacementProduct[] }, evidenceUsed: Boolean(evidence), created: true };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
     return { warranty: warranty.record, evidenceUsed: warranty.evidenceUsed, created: warranty.created };
@@ -166,7 +169,7 @@ export async function actOnCustomerWarranty(actor: AuthContext, warrantyId: stri
     const prior = await tx.customerWarrantyAction.findUnique({ where: { warrantyId_idempotencyKey: { warrantyId, idempotencyKey: input.idempotencyKey } } });
     if (prior) {
       if (prior.action !== action || prior.requestHash !== requestHash) throw new CustomerWarrantyError("IDEMPOTENCY_CONFLICT", "Idempotency key was used for a different request", 409);
-      const result = await tx.customerWarranty.findUniqueOrThrow({ where: { id: warrantyId }, include: detailInclude });
+     const result = await tx.customerWarranty.findUniqueOrThrow({ where: { id: warrantyId }, include: detailInclude });
       const replacementProducts = actor.isOwner ? await tx.product.findMany({ where: { status: "ACTIVE" }, select: { id: true, itemCode: true, name: true }, orderBy: { itemCode: "asc" } }) : [];
       return { ...result, replacementProducts };
     }
@@ -223,7 +226,9 @@ export async function actOnCustomerWarranty(actor: AuthContext, warrantyId: stri
     data.status = toStatus;
     await tx.customerWarranty.update({ where: { id: warrantyId }, data });
     await tx.customerWarrantyAction.create({ data: { warrantyId, idempotencyKey: input.idempotencyKey, action, requestHash, actorId: actor.userId } });
-    await tx.customerWarrantyEvent.create({ data: { warrantyId, type: action.toUpperCase().replaceAll("-", "_"), fromStatus: warranty.status, toStatus, actorId: actor.userId, detailsJson: input.notes || input.quantity || input.targetDate || input.replacementReason ? { ...(input.notes ? { notes: input.notes } : {}), ...(input.quantity ? { quantity: input.quantity } : {}), ...(input.targetDate ? { targetDate: input.targetDate } : {}), ...(input.replacementProductId ? { replacementProductId: input.replacementProductId } : {}), ...(input.replacementReason ? { replacementReason: input.replacementReason } : {}) } : undefined } });
+     await tx.customerWarrantyEvent.create({ data: { warrantyId, type: action.toUpperCase().replaceAll("-", "_"), fromStatus: warranty.status, toStatus, actorId: actor.userId, detailsJson: input.notes || input.quantity || input.targetDate || input.replacementReason ? { ...(input.notes ? { notes: input.notes } : {}), ...(input.quantity ? { quantity: input.quantity } : {}), ...(input.targetDate ? { targetDate: input.targetDate } : {}), ...(input.replacementProductId ? { replacementProductId: input.replacementProductId } : {}), ...(input.replacementReason ? { replacementReason: input.replacementReason } : {}) } : undefined } });
+     const recipients = await findWorkflowNotificationRecipients(tx, warranty.locationId);
+     await createNotifications(tx, recipients.map(({ id: userId }) => ({ userId, title: `Customer warranty ${action.replaceAll("-", " ")}`, description: `${warranty.reference} (${warranty.locationName}) was updated.`, type: ["reject", "cancel"].includes(action) ? "WARNING" as const : ["complete", "release"].includes(action) ? "SUCCESS" as const : "INFO" as const, relatedType: "CUSTOMER_WARRANTY" as const, relatedId: warranty.id, relatedReference: warranty.reference })));
     const result = await tx.customerWarranty.findUniqueOrThrow({ where: { id: warrantyId }, include: detailInclude });
     const replacementProducts = actor.isOwner ? await tx.product.findMany({ where: { status: "ACTIVE" }, select: { id: true, itemCode: true, name: true }, orderBy: { itemCode: "asc" } }) : [];
     return { ...result, replacementProducts };
