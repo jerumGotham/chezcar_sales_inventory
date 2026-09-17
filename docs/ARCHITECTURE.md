@@ -3,7 +3,7 @@
 
 ## System overview
 
-Chezcar Sales & Inventory is a Next.js 16 App Router modular monolith. It is still primarily a UI prototype with a growing production-oriented foundation: database-backed authentication (plus a guarded internal credential engine), action-capability and multi-location authorization from pages through APIs, delegated user and role management with immediate session revocation, a first-login credential prompt, capability-aware shell navigation, scoped Product/Inventory reads, durable Stock Room transfers and supplier receipts, persistent per-user workflow notifications, deterministic catalog onboarding tooling, and a disposable-database test harness.
+The Sales, Inventory & Monitoring System is a Next.js 16 App Router modular monolith. It is still primarily a UI prototype with a growing production-oriented foundation: database-backed authentication (plus a guarded internal credential engine), action-capability and multi-location authorization from pages through APIs, delegated user and role management with immediate session revocation, a first-login credential prompt, capability-aware shell navigation, scoped Product/Inventory reads, durable Stock Room transfers and supplier receipts, persistent per-user workflow notifications, deterministic catalog onboarding tooling, and a disposable-database test harness.
 
 General Job Orders, stock-card supporting data, and parts of the offline workflow remain page-local or fixture-backed. Sales, customers, Customer Orders, the four focused reports, and the Returns/Warranty workflows documented below use persisted data; other UI presence is not evidence of persistence unless documented here or in `docs/API.md`.
 

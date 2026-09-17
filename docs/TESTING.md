@@ -123,10 +123,10 @@ npm run dev
 Use the local URL printed by Next.js, then check the following current-prototype smoke path. This inventory includes deferred screens so current prototype regressions remain visible; it is not the MVP acceptance scope:
 
 1. Confirm an unauthenticated `/` request redirects to `/sign-in`; after sign-in, `/` redirects to `/dashboard`.
-2. Navigate through Dashboard, Customers, Customer Sales, Customer Orders, Products, Inventory, Stock Transfers, Reports, and User Management from the application shell.
+2. Navigate through Dashboard, Customers, POS, Customer Orders, Products, Inventory, Stock Transfers, Reports, and User Management from the application shell.
 3. On list screens, exercise search, filters, pagination, dialogs, and loading states.
 4. Exercise the inventory receive and transfer forms, customer-order create/detail/release screens, job-order create/edit screens, and stock-transfer state controls.
-5. Confirm Customers, Customer Sales, Customer Orders, Products, and the primary Inventory list survive reload because they use database-backed APIs.
+5. Confirm Customers, POS, Customer Orders, Products, and the primary Inventory list survive reload because they use database-backed APIs.
 6. Check narrow and wide viewports and sidebar behavior. During the temporary light-only release, confirm light mode and no theme toggle even with a saved `chezcar-theme=dark` preference or an OS dark preference; keep the stored value unchanged. Dark-mode checks elsewhere in this guide are deferred until `FORCE_LIGHT_THEME` is disabled.
 
 ### Focused reports smoke matrix

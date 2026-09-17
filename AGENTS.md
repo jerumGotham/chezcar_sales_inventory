@@ -4,7 +4,7 @@
 
 ## Project status
 
-Chezcar Sales & Monitoring is a Next.js 16/React 19 **UI prototype**, not a production sales system. Most screens operate on page-local arrays or `lib/mock-data.ts`; interactions commonly update React state, navigate, close a dialog, or log a payload. Do not describe these actions as persistent or complete unless server and database behavior has actually been added.
+The Sales, Inventory & Monitoring System is a Next.js 16/React 19 **UI prototype**, not a production sales system. Most screens operate on page-local arrays or `lib/mock-data.ts`; interactions commonly update React state, navigate, close a dialog, or log a payload. Do not describe these actions as persistent or complete unless server and database behavior has actually been added.
 
 Current gaps are intentional and material:
 

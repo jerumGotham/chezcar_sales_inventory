@@ -1,27 +1,29 @@
-# Chezcar Sales and Inventory MVP
+# Sales, Inventory & Monitoring System MVP
 
 **Status:** Confirmed MVP process
-**Last updated:** 2026-09-07
+**Last updated:** 2026-09-17
 **Source:** Owner discussion, real inventory workbook, and current UI prototype
 
 > **Current-state warning:** The checked-in application is still partly a UI prototype. Authentication, Product/Supplier/Personnel maintenance, Salesperson and Backjob Installer attribution, quarantine-aware Inventory/Availability, Customer Orders, Direct Sales, split Stock Room receiving, transfers, Backjobs, Customer Warranty, Supplier Claims, dashboards, manual Accounting verification, notifications, four focused Reports, and limited offline direct-sale sync have a PostgreSQL-backed foundation. General Job Orders, offline transfer receipt/discrepancy capture, deployment operations, and remaining advanced/deferred screens are not complete until implemented and verified.
 
 ## Product Summary
 
-Chezcar needs a simple cloud-based internal system for monitoring sales and inventory across one central Stock Room and five branches. Customers continue receiving handwritten receipts. After goods are released, Branch Staff encodes the receipt in the system; successful posting deducts branch stock immediately and updates Admin monitoring.
+Chezcar needs a simple cloud-based internal system for monitoring sales and inventory across one central Stock Room and its branches. Locations are dynamic: authorized users add, update, or deactivate branches in Branch Maintenance. Customers continue receiving handwritten receipts. After goods are released, Branch Staff encodes the receipt in the system; successful posting deducts branch stock immediately and updates Admin monitoring.
 
 Stock Staff records stock received into `SR`, dispatches stock from `SR` to a branch, and records the dispatch in the system. The destination branch is notified in real time. Branch Staff compares the physical delivery with the transfer and either confirms an exact match or submits a discrepancy form. Stock Staff investigates discrepancies; Admin makes the final stock correction.
 
-The system has four built-in roles, delegable action-based user and role management, explicit owner identity, authoritative multi-location assignments, dashboards, low-stock monitoring, durable real-time notifications, and limited branch offline continuity for temporary internet outages.
+The system seeds four default roles as a starting point; non-owner role names and permissions are configurable, and Admin may add custom roles. It also has delegable action-based user and role management, explicit owner identity, authoritative multi-location assignments, dashboards, low-stock monitoring, durable real-time notifications, and limited branch offline continuity for temporary internet outages.
 
-## Confirmed Locations
+## Locations
+
+Locations are managed data, not a fixed list. Branch Maintenance adds, updates, and deactivates branches, so the set below is only the initial seed:
 
 - `SR` - central Stock Room; not a retail branch
-- `QC` - branch
-- `BL` - branch
-- `LU` - branch
-- `VC` - branch
-- `SP` - branch
+- `QC` - Quezon City branch
+- `BL` - Biñan Laguna branch
+- `LU` - La Union branch
+- `VC` - Vigan City branch
+- `SP` - San Fernando Pampanga branch
 
 All MVP replenishment enters `SR`. Transfers are `SR` to branch only. Branch-to-branch transfers and direct supplier-to-branch receipts are deferred.
 
@@ -276,7 +278,7 @@ If anything does not match:
 ### Reports
 
 - Reports are read-only and require `reports:view`.
-- The four reports are Sales, Sales by Salesperson, Inventory Summary, and Returns & Warranty. Sales by Salesperson shares Sales filters and verified-sale eligibility, groups receipts and totals by stored Personnel identity, and exports those details to PDF without adding commission or ranking behavior. Inventory Movements and Low Stock are deferred from Reports; operational inventory history and alerts remain intact.
+- The four reports are Sales, Sales by Salesperson, Inventory Summary, and Returns & Warranty. Sales and Sales by Salesperson cover both Direct Sales (POS) and Customer Order sales, filterable by source. Inventory Summary is the printable inventory report. Sales by Salesperson shares Sales filters and verified-sale eligibility, groups receipts and totals by stored Personnel identity, and exports those details to PDF without adding commission or ranking behavior. Inventory Movements and Low Stock are deferred from Reports; operational inventory history and alerts remain intact.
 - Accounting Queue, mismatch work, and Open Orders remain in their operational modules and are not repeated in Reports.
 - All report data is limited to effective location access; company-wide authorized users may compare branch totals.
 - The Sales Report defaults from the first through the last day of the current Manila month and supports custom date ranges, branch, Salesperson, source, and payment filters. Omitted To follows the selected/default From month; explicit custom To is preserved. All filter edits stay pending until Apply Filters, with independent option loading.
@@ -324,7 +326,7 @@ Offline mode keeps the same simple branch workflows available during temporary c
 ## User Management and Access
 
 - Accounts are individual; shared branch credentials are not allowed.
-- Four deterministic roles are seeded: Admin, Stock Staff, Branch Staff, and Accounting Staff. Admin may create additional non-owner roles.
+- Four default roles are seeded: Admin, Stock Staff, Branch Staff, and Accounting Staff. Role names and permissions other than the owner Admin role are configurable, and Admin may create additional non-owner roles. Role names used in this document describe the default setup only.
 - Persisted role capability grants authorize non-owner actions; the compatibility `UserRole` value does not grant access.
 - View, create, update, delete, and workflow capabilities are independently assigned. An action capability implies the module view needed to use it but not sibling actions; matching controls are hidden and the server checks the exact action on every mutation.
 - A location-restricted account requires at least one active operational UserLocation assignment and may have more than one when explicitly authorized.

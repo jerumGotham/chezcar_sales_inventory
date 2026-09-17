@@ -105,7 +105,7 @@ Open `/accounting/receipt-verification` after posting a Sale.
 
 ### Remove Selected Photo
 
-1. In Customer Sales/POS and Receipt Verification, select an unsaved receipt image and click `Remove selected photo`. Confirm the File, preview, and native file input clear, the same file can be selected again, and removal sends no server request.
+1. In POS and Receipt Verification, select an unsaved receipt image and click `Remove selected photo`. Confirm the File, preview, and native file input clear, the same file can be selected again, and removal sends no server request.
 2. Confirm POS exposes only unsaved selection removal. In Receipt Verification, removing a selected replacement must leave the persisted receipt photo unchanged, including after reload.
 3. If a Branch Finding replacement was already uploaded but its response submission needs retry, confirm it is not presented as an unsaved removable file.
 

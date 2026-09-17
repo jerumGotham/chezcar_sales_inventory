@@ -2,7 +2,7 @@
 
 # Development
 
-This guide covers development of the Chezcar Sales & Monitoring UI prototype. The repository is hybrid: documented workflows use authenticated Prisma/PostgreSQL APIs, while Job Orders and some supporting panels remain mock/local. Preserve that distinction when changing or reviewing the code.
+This guide covers development of the Sales, Inventory & Monitoring System. The repository is hybrid: documented workflows use authenticated Prisma/PostgreSQL APIs, while Job Orders and some supporting panels remain mock/local. Preserve that distinction when changing or reviewing the code.
 
 ## Local setup
 
@@ -149,7 +149,7 @@ Existing `react-select` style objects use `any` and literal colors, and several 
 
 1. Decide the boundary first. Use a server page for static or server-loaded content; create a small client component only for interactive behavior.
 2. Add `app/<route>/page.tsx`. Use `[id]` folders for dynamic segments and make the route parameter select real data rather than a fixed fixture.
-3. Wrap standard business content in `PageShell`. Customer Sales at `/pos` uses the same authenticated shell and sidebar as the other business routes.
+3. Wrap standard business content in `PageShell`. POS at `/pos` uses the same authenticated shell and sidebar as the other business routes.
 4. Reuse `components/ui/` primitives and `cn()`. Add a shared component under `components/` only when it has a cross-route responsibility.
 5. Add a visible navigation entry to `lib/menu.ts` if users should reach the route from the sidebar. A route may intentionally exist without a menu entry, but it must still have an authorization mapping.
 6. For a list prototype, follow the applied-filter/query-key pattern above. For real data, define one canonical contract, validate input on the server, and keep secrets and persistence out of client bundles.
