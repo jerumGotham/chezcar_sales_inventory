@@ -16,6 +16,16 @@ On 2026-09-08, Coolify successfully deployed immutable image `ghcr.io/jerumgotha
 - `/api/health` returned `200 {"status":"ok"}`; Admin sign-in returned 200. Sales by Salesperson loaded, its JSON returned the empty initialized dataset, and its PDF response returned 200 with PDF content type and signature. These are focused release checks, not a populated-data workflow or visual PDF regression suite. The destructive staging-reset tool itself remains unexecuted.
 - Warranty and Supplier Claim runtime storage paths are configured under the existing `/app/storage` volume. The same immutable image was redeployed to activate those environment settings; this did not rerun initialization or clear new data.
 
+### List PDF Export Release
+
+On 2026-09-18, Coolify deployed immutable image `ghcr.io/jerumgotham/chezcar_sales_inventory:43a4a97e546439f54ba8e1a2de9e3b68e4294831`, replacing the previous `f0eb4276...` pin. The release adds `format=pdf` list exports for Inventory, Direct Sales, and Customer Orders.
+
+- [CI run 35278803822](https://github.com/jerumGotham/chezcar_sales_inventory/actions/runs/35278803822) passed both `verify` and `publish`. Locally, typecheck, lint (23 existing warnings), 227 unit tests plus 4 new PDF tests, and `npm run build` passed before the push.
+- The deployment was triggered through the Coolify API: a tag update on application `uqasuoi74mnbr3vyy6wznhcz` followed by a deploy request, recorded as deployment `cgil2qdvgv7pb8dqbf2gee1h`, which reported `finished`.
+- No schema change and no new migration are part of this release; the configured migration hook ran unchanged. No database backup, reset, or seed was performed, and no environment variables or storage settings were altered.
+- Post-deployment checks: `/api/health` returned `200 {"status":"ok"}` and the application reported `running:healthy`. Unauthenticated `format=pdf` requests to `/api/inventory`, `/api/sales`, and `/api/customer-orders` returned `401 UNAUTHENTICATED`, and `format=xml` returned `400 INVALID_FORMAT`, confirming the new code is live and still gated.
+- Not verified: no signed-in session exercised an actual PDF download, so rendered layout, row coverage against real data, and the 5,000-row export cap remain unchecked in staging. Customer deactivation was reviewed in source during the same change but was not executed against any database.
+
 ### Light-Only Follow-Up
 
 The current staging image is `ghcr.io/jerumgotham/chezcar_sales_inventory:f0eb427645b8df93148433ef1834ae16fc17c21a`, deployed through Coolify after [CI run 34254909222](https://github.com/jerumGotham/chezcar_sales_inventory/actions/runs/34254909222) passed verification and publication. The temporary `FORCE_LIGHT_THEME` flag hides theme controls and ignores saved/system dark preferences without deleting them or removing dark-mode styles. An isolated authenticated browser check at desktop and mobile widths confirmed no root dark class, light color scheme, and no theme toggle with both stored dark and emulated system-dark preferences. Health returned 200. No local test/build commands, database reset, or new schema changes were required; existing data and storage settings were preserved.
