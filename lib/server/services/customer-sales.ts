@@ -533,6 +533,62 @@ export async function listCustomerOrders(actor: AuthContext) {
   return orders.map(serializeOrder);
 }
 
+// List screens stay capped at 200 recent rows; a PDF copy pulls the whole
+// filtered set within one bounded request.
+const EXPORT_TAKE = 5000;
+
+export type CustomerOrderExportFilters = {
+  orderNo?: string;
+  customer?: string;
+  status?: string;
+  paymentStatus?: string;
+};
+
+/**
+ * Every authorized order matching the filters the screen applies. Status and
+ * payment status are derived labels, so they are matched after serialization.
+ */
+export async function exportCustomerOrders(actor: AuthContext, filters: CustomerOrderExportFilters) {
+  assertCapability(actor, "customer-orders:view");
+  const orderNo = filters.orderNo?.trim();
+  const customer = filters.customer?.trim();
+  const where: Prisma.CustomerOrderWhereInput = {
+    locationId: locationIdFilter(actor),
+    reference: orderNo ? { contains: orderNo, mode: "insensitive" } : undefined,
+    customer: customer ? { is: { name: { contains: customer, mode: "insensitive" } } } : undefined,
+  };
+  const orders = await prisma.customerOrder.findMany({ where, orderBy: { createdAt: "desc" }, include: ORDER_INCLUDE, take: EXPORT_TAKE });
+  const status = filters.status && filters.status !== "all" ? filters.status : null;
+  const paymentStatus = filters.paymentStatus && filters.paymentStatus !== "all" ? filters.paymentStatus : null;
+  return orders
+    .map(serializeOrder)
+    .filter((order) => (!status || order.status === status) && (!paymentStatus || order.paymentStatus === paymentStatus));
+}
+
+/** Every authorized posted direct sale matching the screen's search keyword. */
+export async function exportDirectSales(actor: AuthContext, filters: { search?: string }) {
+  assertCapability(actor, "sales:view");
+  const search = filters.search?.trim();
+  const where: Prisma.SaleWhereInput = {
+    locationId: locationIdFilter(actor),
+    status: "POSTED",
+    orderId: null,
+    ...(search
+      ? {
+          OR: [
+            { reference: { contains: search, mode: "insensitive" as const } },
+            { manualReceiptNumber: { contains: search, mode: "insensitive" as const } },
+            { customer: { is: { name: { contains: search, mode: "insensitive" as const } } } },
+            { location: { is: { name: { contains: search, mode: "insensitive" as const } } } },
+            { salespersonName: { contains: search, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
+  };
+  const sales = await prisma.sale.findMany({ where, orderBy: { postedAt: "desc" }, include: SALE_INCLUDE, take: EXPORT_TAKE });
+  return sales.map(serializeSaleWithCorrection);
+}
+
 export async function getCustomerOrderById(actor: AuthContext, id: string) {
   assertCapability(actor, "customer-orders:view");
   const order = await prisma.customerOrder.findUnique({ where: { id }, include: ORDER_INCLUDE });

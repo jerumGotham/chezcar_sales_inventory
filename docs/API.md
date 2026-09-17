@@ -58,10 +58,10 @@ The complete list and Role Maintenance labels are generated from `CAPABILITY_CAT
 | `GET`, `POST` | `/api/customers` | Prisma Customer | `customers:view` / `customers:create` |
 | `GET`, `PATCH`, `DELETE` | `/api/customers/:id` | Prisma Customer, sales, and customer orders | `customers:view` / `customers:update` / `customers:deactivate` |
 | `GET` | `/api/customer-orders/options?locationId=<branchId>&includeUnavailable=<boolean>` | Accessible branches, active customers, and selected-branch products | `customer-orders:create` or `sales:post`; target-location access applies when `locationId` is present |
-| `GET`, `POST` | `/api/customer-orders` | Prisma CustomerOrder/Customer/InventoryBalance | `customer-orders:view` / `customer-orders:create` |
+| `GET`, `POST` | `/api/customer-orders` | Prisma CustomerOrder/Customer/InventoryBalance | `customer-orders:view` / `customer-orders:create`; `format=pdf` uses `customer-orders:view` on the same authorized query |
 | `GET` | `/api/customer-orders/:orderId` | Single persisted customer order with lines and release/payment summary | `customer-orders:view`; Branch Staff restricted to assigned branch |
 | `POST` | `/api/customer-orders/:orderId/:action` | Prisma CustomerOrder/Sale/InventoryMovement | Exact `customer-orders:reserve`, `:record-payment`, `:release`, or `:cancel`; paid cancellation also requires `:cancel-paid` |
-| `GET`, `POST` | `/api/sales` | Prisma Sale/SaleLine/InventoryMovement | `sales:view` / `sales:post` plus effective location access |
+| `GET`, `POST` | `/api/sales` | Prisma Sale/SaleLine/InventoryMovement | `sales:view` / `sales:post` plus effective location access; `format=pdf` uses `sales:view` on the same authorized query |
 | `GET` | `/api/sales?source=direct` | Prisma Sale/SaleLine with uncapped Sale aggregates | `sales:view` plus effective location access; posted direct sales only (`orderId IS NULL`), excluding voided sales and Customer Order releases |
 | `POST`, `PATCH` | `/api/sales/:saleId/correction-request` | Prisma SaleCorrectionRequest/Sale/InventoryMovement/Notification | `sales:correction:request` submits an assigned-branch direct-sale request without changing stock; `sales:void-replace` keeps the sale or atomically voids it and reverses its original deduction |
 | `GET` | `/api/accounting/receipts?page=1&pageSize=10&reviewStatus=all&saleStatus=all` | Prisma Sale/SaleLine/SaleAccountingReview/Location | `sales:verify:view`; server-side filters, pagination, and missing-evidence summary |
@@ -74,7 +74,7 @@ The complete list and Role Maintenance labels are generated from `CAPABILITY_CAT
 | `GET`, `POST` | `/api/products` | Prisma Product/InventoryBalance | `products:view` / `products:create` |
 | `PATCH`, `DELETE` | `/api/products/:productId` | Prisma Product | `products:update` / `products:delete` |
 | `GET`, `POST`, `DELETE` | `/api/products/:productId/image` | Prisma Product + private persistent image storage | `products:view` / `products:image:update` |
-| `GET` | `/api/inventory` | Prisma Product/InventoryBalance/Location | `inventory:view` |
+| `GET` | `/api/inventory` | Prisma Product/InventoryBalance/Location | `inventory:view`; `format=pdf` uses `inventory:view` on the same authorized query |
 | `GET` | `/api/inventory/availability` | Prisma Product/InventoryBalance/Location | `inventory-availability:view`; active scoped locations only |
 | `PATCH` | `/api/inventory/:balanceId` | Prisma Product/InventoryBalance | `inventory:cost:update`; non-owner actors remain location-scoped |
 | `POST` | `/api/inventory/:balanceId/adjustment` | Prisma InventoryBalance/InventoryMovement/Notification | `inventory:adjust`; non-owner actors remain location-scoped |
@@ -227,6 +227,20 @@ Backjob report selection now reads `items` ordered by `position` ascending. The 
 Absent `format` and exact `format=json` return JSON; exact `format=pdf` additionally requires `reports:export` (the service still requires `reports:view`). Other or duplicated format values return `400 INVALID_FORMAT`. PDFs run the same live authorized query, with private no-store headers, so records may change between viewing and exporting. A4 landscape PDFs use 9-point wrapped detail text, grouped columns, repeated section/table headers, page numbers, and continued oversized rows without truncation. Inventory comparison uses product totals followed by separate fixed-width branch sections (all filtered products, including zero cells), so additional branches add sections rather than overflowing or shrinking columns. Both sales PDFs include a separate branch-subtotal table and emphasized overall total. Sales by Salesperson additionally includes Salesperson subtotals/overall total and grouped receipt sections with individual subtotal footers; its filename is `chezcar-salesperson-sales-report.pdf`. Company text replaces the literal logo placeholder; no image logo is embedded. Accounting Queue and Open Orders are not Reports.
 
 This Reports revision, including Sales by Salesperson, is source-only. No tests/build/lint/typecheck/browser/PDF rendering/verification commands/migrations/generation/restart were performed for this update. Sales by Salesperson requires no new schema or migration; existing pending migrations and the BackjobItem database/client prerequisite remain unresolved. Runtime historical options/grouping, full-dataset performance, PDF layout, and multi-item Backjob behavior remain unverified. See `docs/product/REPORTS-SPEC.md` for detailed semantics.
+
+## List PDF copies
+
+`GET /api/inventory`, `GET /api/sales`, and `GET /api/customer-orders` accept an optional `format` parameter. Absent `format` and exact `format=json` return the existing JSON responses unchanged; exact `format=pdf` returns an A4 landscape PDF copy of the list. Other or duplicated format values return `400 INVALID_FORMAT`. No new capability is introduced: each export runs under the same view capability, the same persisted location scope, and the same live query as its JSON list, with `Content-Disposition: attachment` and private no-store headers.
+
+Each export covers every row matching the supplied filters, not the page shown on screen, bounded by one request cap: 5,000 products for Inventory and 5,000 rows for Sales and Customer Orders. This deliberately exceeds the 200-row recent window that the Direct Sales and Customer Orders screens paginate, so an export can include sales or orders that the screen does not list.
+
+| Endpoint | Filter parameters honored | Filename |
+| --- | --- | --- |
+| `GET /api/inventory?format=pdf` | `itemCode`, `name`, `category`, `location`, `status`, `balanceId` | `chezcar-inventory-list.pdf` |
+| `GET /api/sales?format=pdf` | `search` (reference, receipt number, customer, branch, salesperson) | `chezcar-direct-sales.pdf` |
+| `GET /api/customer-orders?format=pdf` | `orderNo`, `customer`, `orderStatus`, `paymentStatus` | `chezcar-customer-orders.pdf` |
+
+Sales exports cover posted direct sales only, excluding Customer Order releases and voided sales, matching `source=direct`. Customer Order `orderStatus` and `paymentStatus` are derived labels (`Reserved`, `Pending`, `For Release`, `Released`, `Cancelled`; `Unpaid`, `Partial`, `Paid`) and are matched after serialization, so they behave exactly as the screen filters do. Each PDF states who generated it, when, the authorized scope, and the applied filters, and ends every table with an exported total. Amounts are recorded sale, order, and stock values, not collected cash or a returns-adjusted revenue calculation. `lib/server/pdf-document.ts` renders the page furniture and tables for both these exports and the Reports PDF.
 
 ## Personnel maintenance
 

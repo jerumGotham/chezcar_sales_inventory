@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  FileText,
   Loader2,
   PackageCheck,
   Warehouse,
@@ -394,6 +395,19 @@ export function InventoryClient({
     return Math.min(meta.page * meta.pageSize, meta.total);
   }, [meta]);
 
+  // The PDF copy follows the applied filters and covers every matching row,
+  // not just the page on screen.
+  const exportParams = useMemo(() => {
+    const params = new URLSearchParams({ format: "pdf" });
+    if (initialBalanceId) params.set("balanceId", initialBalanceId);
+    if (appliedItemCode) params.set("itemCode", appliedItemCode);
+    if (appliedName) params.set("name", appliedName);
+    if (appliedCategory !== "all") params.set("category", appliedCategory);
+    if (appliedLocation !== ALL_LOCATIONS_VALUE) params.set("location", appliedLocation);
+    if (appliedStatus !== "all") params.set("status", appliedStatus);
+    return params.toString();
+  }, [initialBalanceId, appliedItemCode, appliedName, appliedCategory, appliedLocation, appliedStatus]);
+
   const handleApplyFilters = () => {
     setPage(1);
     setAppliedItemCode(itemCode);
@@ -664,6 +678,19 @@ export function InventoryClient({
                 <p className="text-sm text-slate-500">
                   Showing {showingFrom} to {showingTo} of {meta.total} products
                   {isFetching && !isLoading ? " • Updating..." : ""}
+                </p>
+              </div>
+
+              <div className="flex flex-col items-end gap-1">
+                <a
+                  href={`/api/inventory?${exportParams}`}
+                  className={buttonVariants({ variant: "outline" })}
+                >
+                  <FileText aria-hidden="true" />
+                  Export PDF
+                </a>
+                <p className="text-xs text-muted-foreground">
+                  Exports every row matching the applied filters.
                 </p>
               </div>
             </div>

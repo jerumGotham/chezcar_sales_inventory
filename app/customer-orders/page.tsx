@@ -10,6 +10,7 @@ import type { StylesConfig } from "react-select";
 import {
   ChevronLeft,
   ChevronRight,
+  FileText,
   Loader2,
   ShoppingBag,
   Clock3,
@@ -555,6 +556,23 @@ export default function CustomerOrdersPage() {
     return Math.min(meta.page * meta.pageSize, meta.total);
   }, [meta]);
 
+  // PDF copies follow the applied filters and cover every matching row, not
+  // the 200-row recent window the screen paginates.
+  const orderExportParams = useMemo(() => {
+    const params = new URLSearchParams({ format: "pdf" });
+    if (appliedOrderNo.trim()) params.set("orderNo", appliedOrderNo.trim());
+    if (appliedCustomer.trim()) params.set("customer", appliedCustomer.trim());
+    if (appliedOrderStatus !== "all") params.set("orderStatus", appliedOrderStatus);
+    if (appliedPaymentStatus !== "all") params.set("paymentStatus", appliedPaymentStatus);
+    return params.toString();
+  }, [appliedOrderNo, appliedCustomer, appliedOrderStatus, appliedPaymentStatus]);
+
+  const salesExportParams = useMemo(() => {
+    const params = new URLSearchParams({ format: "pdf" });
+    if (saleSearch.trim()) params.set("search", saleSearch.trim());
+    return params.toString();
+  }, [saleSearch]);
+
   const handleApplyFilters = () => {
     setPage(1);
     setAppliedOrderNo(orderNo);
@@ -585,7 +603,18 @@ export default function CustomerOrdersPage() {
           {hasCapability(capabilities, "customer-orders:create") ? <Link href="/customer-orders/create" className={buttonVariants()}>
             Create Order
           </Link> : null}
-          {/* <Button variant="outline">Export</Button> */}
+          {activeView === "sales" && canViewSales ? (
+            <a href={`/api/sales?${salesExportParams}`} className={buttonVariants({ variant: "outline" })}>
+              <FileText aria-hidden="true" />
+              Export PDF
+            </a>
+          ) : null}
+          {activeView === "orders" && canViewOrders ? (
+            <a href={`/api/customer-orders?${orderExportParams}`} className={buttonVariants({ variant: "outline" })}>
+              <FileText aria-hidden="true" />
+              Export PDF
+            </a>
+          ) : null}
         </>
       }
     >
@@ -1187,7 +1216,7 @@ export default function CustomerOrdersPage() {
             <div className="flex flex-col gap-4 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 className="text-base font-semibold text-foreground">Direct Sales List</h3>
-                <p className="text-sm text-slate-500">Latest 200 posted direct sales. Search and pagination apply to this recent list only.</p>
+                <p className="text-sm text-slate-500">Latest 200 posted direct sales. Search and pagination apply to this recent list only; Export PDF covers every sale matching the search.</p>
               </div>
               <Input
                 className="sm:max-w-xs"
