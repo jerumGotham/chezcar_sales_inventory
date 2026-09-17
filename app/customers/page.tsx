@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { X } from "lucide-react";
 import Select from "react-select";
 import type { StylesConfig } from "react-select";
 
@@ -105,6 +106,11 @@ function getCustomerSummaryStatus(customer: CustomerRow) {
 function getStatusBadgeClass(status: string) {
   const normalized = status.toLowerCase();
 
+  // "Inactive" contains "active", so it has to be classified first.
+  if (normalized.includes("inactive") || normalized.includes("overdue")) {
+    return "border border-red-200 bg-red-50 text-red-700 hover:bg-red-50";
+  }
+
   if (
     normalized.includes("active") ||
     normalized.includes("vip") ||
@@ -119,10 +125,6 @@ function getStatusBadgeClass(status: string) {
     normalized.includes("job")
   ) {
     return "border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50";
-  }
-
-  if (normalized.includes("inactive") || normalized.includes("overdue")) {
-    return "border border-red-200 bg-red-50 text-red-700 hover:bg-red-50";
   }
 
   return "border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-50";
@@ -207,6 +209,7 @@ export default function CustomersPage() {
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [customerToDeactivate, setCustomerToDeactivate] =
     useState<CustomerRow | null>(null);
+  const [banner, setBanner] = useState<string | null>(null);
 
   const openCustomerForm = (customer: CustomerRow | null) => {
     setSelectedCustomer(customer);
@@ -289,14 +292,17 @@ export default function CustomersPage() {
   });
 
   const deleteCustomerMutation = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async (customer: CustomerRow) => {
       if (!canDeactivateCustomer) throw new Error("You do not have permission to deactivate customers.");
-      const response = await fetch(`/api/customers/${id}`, { method: "DELETE", credentials: "same-origin" });
+      const response = await fetch(`/api/customers/${customer.id}`, { method: "DELETE", credentials: "same-origin" });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error?.message ?? "Unable to deactivate customer");
       return json.data;
     },
-    onSuccess: invalidateCustomerQueries,
+    onSuccess: (_, customer) => {
+      invalidateCustomerQueries();
+      setBanner(`${customer.name} was deactivated and is no longer available for new transactions.`);
+    },
   });
 
   const showingFrom = useMemo(() => {
@@ -341,6 +347,18 @@ export default function CustomersPage() {
           ) : null
         }
       >
+        {banner ? (
+          <div role="status" className="border-primary/30 bg-primary/10 mb-4 flex items-start justify-between gap-3 rounded-xl border px-4 py-3">
+            <p className="text-primary break-words text-sm">{banner}</p>
+            <Button variant="ghost" size="icon-sm" aria-label="Dismiss notification" onClick={() => setBanner(null)}>
+              <X aria-hidden />
+            </Button>
+          </div>
+        ) : null}
+        {deleteCustomerMutation.error ? (
+          <p role="alert" className="mb-4 text-sm text-destructive">{(deleteCustomerMutation.error as Error).message}</p>
+        ) : null}
+
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Card>
             <CardContent className="p-5">
@@ -829,7 +847,8 @@ export default function CustomersPage() {
         }}
         onConfirm={() => {
           if (customerToDeactivate) {
-            deleteCustomerMutation.mutate(customerToDeactivate.id);
+            setBanner(null);
+            deleteCustomerMutation.mutate(customerToDeactivate);
           }
         }}
       />
