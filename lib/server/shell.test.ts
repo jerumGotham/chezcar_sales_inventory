@@ -49,7 +49,7 @@ const expectedMenu = {
   ADMIN: [
     "Dashboard",
     "Customers",
-    "Customer Sales",
+    "POS",
     "Receipt Verification",
     "Customer Orders",
     "Products",
@@ -75,7 +75,7 @@ const expectedMenu = {
   BRANCH_STAFF: [
     "Dashboard",
     "Customers",
-    "Customer Sales",
+    "POS",
     "Receipt Verification",
     "Customer Orders",
     "Inventory",

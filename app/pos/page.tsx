@@ -2260,7 +2260,7 @@ function JobOrderTab() {
 export default function SalesPage() {
   return (
     <PageShell
-      title="Customer Sales"
+      title="POS"
       subtitle="Post walk-in sales for the selected branch and customer."
       actions={
         <Link href="/customer-orders?view=orders" className={buttonVariants({ variant: "outline" })}>Customer Orders</Link>

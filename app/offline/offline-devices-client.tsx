@@ -137,7 +137,7 @@ export function OfflineDevicesClient({
           </CardHeader>
           <CardContent className="space-y-4 text-sm text-slate-700">
             <p>1. Sign in as the Branch Staff account assigned to the selected branch.</p>
-            <p>2. Open Customer Sales while online so the product and stock snapshot is cached.</p>
+            <p>2. Open POS while online so the product and stock snapshot is cached.</p>
             <p>3. If internet fails, direct sales are stored locally and uploaded automatically when the server is reachable again.</p>
             {activation ? <div className="rounded-lg border border-emerald-200 bg-white p-4"><div className="flex items-center justify-between gap-3"><span className="font-semibold">Active authorization</span><Badge className="bg-emerald-100 text-emerald-700">Active</Badge></div><p className="mt-2 text-xs text-slate-500">{activation.location.name} ({activation.location.code})</p><p className="mt-1 text-xs text-slate-500">Expires {formatExpiry(activation.expiresAt)}</p></div> : null}
           </CardContent>

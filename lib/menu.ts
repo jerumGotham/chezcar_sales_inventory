@@ -46,7 +46,7 @@ export const menus = [
     capability: "customers:view",
   },
   {
-    label: "Customer Sales",
+    label: "POS",
     href: "/pos",
     icon: ShoppingCart,
     iconId: "customer-sales",
