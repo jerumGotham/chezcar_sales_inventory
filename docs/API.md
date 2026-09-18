@@ -57,6 +57,7 @@ The complete list and Role Maintenance labels are generated from `CAPABILITY_CAT
 | `POST` | `/api/offline/sync` | Prisma OfflineSyncOperation/OfflineSaleSubmission/Sale | `offline-sales:sync`; assigned Branch scope only |
 | `GET`, `POST` | `/api/customers` | Prisma Customer | `customers:view` / `customers:create` |
 | `GET`, `PATCH`, `DELETE` | `/api/customers/:id` | Prisma Customer, sales, and customer orders | `customers:view` / `customers:update` / `customers:deactivate` |
+| `POST` | `/api/customers/:id/status` | Prisma Customer status; body `{ status: "ACTIVE" \| "INACTIVE" }` activates or deactivates | `customers:deactivate` |
 | `GET` | `/api/customer-orders/options?locationId=<branchId>&includeUnavailable=<boolean>` | Accessible branches, active customers, and selected-branch products | `customer-orders:create` or `sales:post`; target-location access applies when `locationId` is present |
 | `GET`, `POST` | `/api/customer-orders` | Prisma CustomerOrder/Customer/InventoryBalance | `customer-orders:view` / `customer-orders:create`; `format=pdf` uses `customer-orders:view` on the same authorized query |
 | `GET` | `/api/customer-orders/:orderId` | Single persisted customer order with lines and release/payment summary | `customer-orders:view`; Branch Staff restricted to assigned branch |

@@ -291,17 +291,24 @@ export default function CustomersPage() {
     },
   });
 
-  const deleteCustomerMutation = useMutation({
-    mutationFn: async (customer: CustomerRow) => {
-      if (!canDeactivateCustomer) throw new Error("You do not have permission to deactivate customers.");
-      const response = await fetch(`/api/customers/${customer.id}`, { method: "DELETE", credentials: "same-origin" });
+  const customerStatusMutation = useMutation({
+    mutationFn: async ({ customer, status }: { customer: CustomerRow; status: "ACTIVE" | "INACTIVE" }) => {
+      if (!canDeactivateCustomer) throw new Error("You do not have permission to change customer status.");
+      const response = await fetch(`/api/customers/${customer.id}/status`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
       const json = await response.json();
-      if (!response.ok) throw new Error(json.error?.message ?? "Unable to deactivate customer");
+      if (!response.ok) throw new Error(json.error?.message ?? `Unable to ${status === "ACTIVE" ? "activate" : "deactivate"} customer`);
       return json.data;
     },
-    onSuccess: (_, customer) => {
+    onSuccess: (_, { customer, status }) => {
       invalidateCustomerQueries();
-      setBanner(`${customer.name} was deactivated and is no longer available for new transactions.`);
+      setBanner(status === "ACTIVE"
+        ? `${customer.name} was activated and is available for new transactions again.`
+        : `${customer.name} was deactivated and is no longer available for new transactions.`);
     },
   });
 
@@ -355,8 +362,8 @@ export default function CustomersPage() {
             </Button>
           </div>
         ) : null}
-        {deleteCustomerMutation.error ? (
-          <p role="alert" className="mb-4 text-sm text-destructive">{(deleteCustomerMutation.error as Error).message}</p>
+        {customerStatusMutation.error ? (
+          <p role="alert" className="mb-4 text-sm text-destructive">{(customerStatusMutation.error as Error).message}</p>
         ) : null}
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -566,14 +573,28 @@ export default function CustomersPage() {
                             </Button>}
 
                             {canDeactivateCustomer && <div className="flex flex-wrap gap-2">
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                disabled={deleteCustomerMutation.isPending}
-                                onClick={() => setCustomerToDeactivate(customer)}
-                              >
-                                Delete
-                              </Button>
+                              {customer.status === "Inactive" ? (
+                                <Button
+                                  size="sm"
+                                  variant="workflow"
+                                  disabled={customerStatusMutation.isPending}
+                                  onClick={() => {
+                                    setBanner(null);
+                                    customerStatusMutation.mutate({ customer, status: "ACTIVE" });
+                                  }}
+                                >
+                                  Activate
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  disabled={customerStatusMutation.isPending}
+                                  onClick={() => setCustomerToDeactivate(customer)}
+                                >
+                                  Deactivate
+                                </Button>
+                              )}
                             </div>}
                           </div>
                         </td>
@@ -848,7 +869,7 @@ export default function CustomersPage() {
         onConfirm={() => {
           if (customerToDeactivate) {
             setBanner(null);
-            deleteCustomerMutation.mutate(customerToDeactivate);
+            customerStatusMutation.mutate({ customer: customerToDeactivate, status: "INACTIVE" });
           }
         }}
       />

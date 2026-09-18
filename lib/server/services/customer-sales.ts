@@ -388,10 +388,16 @@ export async function updateCustomer(actor: AuthContext, id: string, input: z.in
   }
 }
 
+export const customerStatusSchema = z.object({ status: z.enum(["ACTIVE", "INACTIVE"]) });
+
 export async function deactivateCustomer(actor: AuthContext, id: string) {
+  return setCustomerStatus(actor, id, "INACTIVE");
+}
+
+export async function setCustomerStatus(actor: AuthContext, id: string, status: "ACTIVE" | "INACTIVE") {
   assertCapability(actor, "customers:deactivate");
   try {
-    return await prisma.customer.update({ where: { id }, data: { status: "INACTIVE" } });
+    return await prisma.customer.update({ where: { id }, data: { status } });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") throw new CustomerSalesError("NOT_FOUND", "Customer not found", 404);
     throw error;
