@@ -866,7 +866,7 @@ function PosTab() {
                 setCart([]);
                 setProductPage(1);
               }}
-              isSearchable={false}
+              isSearchable
               placeholder="Select branch"
               styles={selectStyles}
             />
