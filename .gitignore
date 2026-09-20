@@ -54,3 +54,5 @@ next-env.d.ts
 # local OpenCode workspace configuration
 /opencode.json
 _*.mjs
+docs/manual/_manual.html
+docs/manual/*.pdf
