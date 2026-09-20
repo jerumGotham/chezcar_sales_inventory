@@ -2,7 +2,7 @@ import "server-only";
 
 import type { Prisma, PrismaClient } from "@prisma/client";
 
-import type { AuditCategory } from "@/lib/contracts/audit";
+import type { AuditCategory, AuditItemDto } from "@/lib/contracts/audit";
 import { prisma } from "@/lib/server/prisma";
 
 export type AuditLogInput = {
@@ -13,6 +13,9 @@ export type AuditLogInput = {
   reference?: string;
   locationLabel?: string;
   details: string;
+  /** Line items and extra label/value pairs shown in the entry's details view. */
+  items?: AuditItemDto[];
+  facts?: Array<{ label: string; value: string }>;
   ipAddress?: string | null;
   userAgent?: string | null;
 };
@@ -35,6 +38,9 @@ export async function recordAuditLog(input: AuditLogInput, db: Db = prisma): Pro
         reference: input.reference?.trim() || "-",
         locationLabel: input.locationLabel?.trim() || "-",
         details: input.details,
+        metadataJson: input.items?.length || input.facts?.length
+          ? JSON.stringify({ items: input.items, facts: input.facts })
+          : null,
         ipAddress: input.ipAddress ?? null,
         userAgent: input.userAgent ?? null,
       },

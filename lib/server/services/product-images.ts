@@ -9,6 +9,7 @@ import {
   type AuthContext,
 } from "@/lib/server/authorization";
 import { prisma } from "@/lib/server/prisma";
+import { recordAuditLog } from "./audit-log";
 
 const MAX_PRODUCT_IMAGE_BYTES = 6 * 1024 * 1024;
 const MIME_TYPES = new Map([
@@ -118,7 +119,7 @@ export async function uploadProductImage(
   assertImageUpdate(actor);
   const current = await prisma.product.findUnique({
     where: { id: productId },
-    select: { id: true, imageKey: true },
+    select: { id: true, imageKey: true, itemCode: true, name: true },
   });
   if (!current) {
     throw new ProductImageError("NOT_FOUND", "Product not found", 404);
@@ -144,6 +145,13 @@ export async function uploadProductImage(
       console.error("Unable to remove a replaced product image", cleanupError);
     });
   }
+  await recordAuditLog({
+    category: "Master Data",
+    action: current.imageKey ? "Product Image Replaced" : "Product Image Added",
+    actorId: actor.userId,
+    reference: current.itemCode,
+    details: current.name,
+  });
   return {
     imageUrl: `/api/products/${updated.id}/image?v=${updated.updatedAt.getTime()}`,
   };
@@ -153,7 +161,7 @@ export async function removeProductImage(actor: AuthContext, productId: string) 
   assertImageUpdate(actor);
   const current = await prisma.product.findUnique({
     where: { id: productId },
-    select: { imageKey: true },
+    select: { imageKey: true, itemCode: true, name: true },
   });
   if (!current) {
     throw new ProductImageError("NOT_FOUND", "Product not found", 404);
@@ -162,6 +170,13 @@ export async function removeProductImage(actor: AuthContext, productId: string) 
   await prisma.product.update({
     where: { id: productId },
     data: { imageKey: null, imageType: null },
+  });
+  await recordAuditLog({
+    category: "Master Data",
+    action: "Product Image Removed",
+    actorId: actor.userId,
+    reference: current.itemCode,
+    details: current.name,
   });
   if (current.imageKey) {
     await deleteStoredProductImage(current.imageKey).catch((cleanupError) => {

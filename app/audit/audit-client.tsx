@@ -18,7 +18,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { AUDIT_CATEGORIES, type AuditTrailDto } from "@/lib/contracts/audit";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { AUDIT_CATEGORIES, type AuditEntryDto, type AuditTrailDto } from "@/lib/contracts/audit";
 
 const PAGE_SIZE = 25;
 
@@ -40,6 +47,7 @@ export function AuditClient() {
   const [draft, setDraft] = useState<Filters>(EMPTY_FILTERS);
   const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS);
   const [page, setPage] = useState(1);
+  const [openEntry, setOpenEntry] = useState<AuditEntryDto | null>(null);
 
   const params = useMemo(() => {
     const search = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
@@ -143,12 +151,13 @@ export function AuditClient() {
                   <TableHead>Reference</TableHead>
                   <TableHead>Location</TableHead>
                   <TableHead>Details</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {rows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-muted-foreground py-8 text-center">
+                    <TableCell colSpan={8} className="text-muted-foreground py-8 text-center">
                       {query.isLoading ? "Loading the audit trail…" : "No recorded activity for these filters."}
                     </TableCell>
                   </TableRow>
@@ -162,6 +171,9 @@ export function AuditClient() {
                       <TableCell className="font-mono text-xs">{row.reference}</TableCell>
                       <TableCell>{row.location}</TableCell>
                       <TableCell className="max-w-md">{row.details}</TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="view" size="sm" onClick={() => setOpenEntry(row)}>View</Button>
+                      </TableCell>
                     </TableRow>
                   ))
                 )}
@@ -178,6 +190,68 @@ export function AuditClient() {
           </div>
         </CardContent>
       </Card>
+      <AuditEntryDialog entry={openEntry} onClose={() => setOpenEntry(null)} />
     </PageShell>
+  );
+}
+
+function AuditEntryDialog({ entry, onClose }: { entry: AuditEntryDto | null; onClose: () => void }) {
+  const facts = entry
+    ? [
+        { label: "When", value: formatMoment(entry.occurredAt) },
+        { label: "Module", value: entry.category },
+        { label: "User", value: entry.actor },
+        { label: "Reference", value: entry.reference },
+        { label: "Branch", value: entry.location },
+        ...(entry.facts ?? []),
+      ]
+    : [];
+
+  return (
+    <Dialog open={Boolean(entry)} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{entry?.action ?? "Entry"}</DialogTitle>
+          <DialogDescription>{entry?.details}</DialogDescription>
+        </DialogHeader>
+        {entry ? (
+          <div className="space-y-5">
+            <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+              {facts.map((fact) => (
+                <div key={`${fact.label}-${fact.value}`}>
+                  <dt className="text-muted-foreground text-xs uppercase tracking-wide">{fact.label}</dt>
+                  <dd className="text-sm break-words">{fact.value}</dd>
+                </div>
+              ))}
+            </dl>
+            {entry.items?.length ? (
+              <div>
+                <p className="mb-2 text-sm font-medium">Items</p>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Item</TableHead>
+                        <TableHead className="text-right">Quantity</TableHead>
+                        <TableHead className="text-right">Unit price</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {entry.items.map((item) => (
+                        <TableRow key={`${item.name}-${item.quantity ?? ""}`}>
+                          <TableCell>{item.name}</TableCell>
+                          <TableCell className="text-right">{item.quantity ?? "-"}</TableCell>
+                          <TableCell className="text-right">{item.amount ?? "-"}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
   );
 }

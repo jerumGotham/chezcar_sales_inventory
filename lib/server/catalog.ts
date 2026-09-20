@@ -433,7 +433,7 @@ export async function deleteProduct(actor: AuthContext, productId: string) {
   assertCapability(actor, "products:delete");
   const existing = await prisma.product.findUnique({
     where: { id: productId },
-    select: { imageKey: true },
+    select: { imageKey: true, itemCode: true, name: true },
   });
   if (!existing) {
     throw new ProductMutationError("NOT_FOUND", "Product not found", 404);
@@ -445,6 +445,13 @@ export async function deleteProduct(actor: AuthContext, productId: string) {
 
   try {
     await prisma.product.delete({ where: { id: productId } });
+    await recordAuditLog({
+      category: "Master Data",
+      action: "Product Deleted",
+      actorId: actor.userId,
+      reference: existing.itemCode,
+      details: `${existing.name} was deleted because it had no balances or history`,
+    });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
       throw new ProductMutationError("NOT_FOUND", "Product not found", 404);

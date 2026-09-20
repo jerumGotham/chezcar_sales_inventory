@@ -267,7 +267,7 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
               </div>
             </CardHeader>
 
-            <CardContent className="flex-1 overflow-y-auto p-3">
+            <CardContent className="flex-1 overflow-y-auto p-3 pb-8">
               {renderMenu(isDesktopExpanded)}
             </CardContent>
           </Card>
@@ -331,7 +331,7 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
             </div>
           </CardHeader>
 
-          <CardContent className="flex-1 overflow-y-auto p-3">
+          <CardContent className="flex-1 overflow-y-auto p-3 pb-8">
             {renderMenu(true)}
           </CardContent>
         </Card>

@@ -6,6 +6,7 @@ import {
   AUDIT_CATEGORIES,
   type AuditCategory,
   type AuditEntryDto,
+  type AuditItemDto,
   type AuditTrailDto,
 } from "@/lib/contracts/audit";
 import { assertCapability, type AuthContext } from "@/lib/server/authorization";
@@ -48,6 +49,7 @@ function entry(
   reference: string,
   location: string,
   details: string,
+  extra: { items?: AuditItemDto[]; facts?: Array<{ label: string; value: string }> } = {},
 ): AuditEntryDto {
   return {
     id,
@@ -58,6 +60,8 @@ function entry(
     reference,
     location,
     details,
+    ...(extra.items?.length ? { items: extra.items } : {}),
+    ...(extra.facts?.length ? { facts: extra.facts } : {}),
   };
 }
 
@@ -87,6 +91,13 @@ async function inventoryEntries(range: ReturnType<typeof occurredAtFilter>) {
     movement.reference ?? "-",
     movement.location?.name ?? "-",
     `${movement.quantity > 0 ? "+" : ""}${movement.quantity} ${movement.product.itemCode} ${movement.product.name}${movement.remarks ? `. ${movement.remarks}` : ""}`,
+    {
+      items: [{ name: `${movement.product.itemCode} ${movement.product.name}`, quantity: movement.quantity }],
+      facts: [
+        { label: "Movement type", value: humanize(movement.type) },
+        ...(movement.remarks ? [{ label: "Reason", value: movement.remarks }] : []),
+      ],
+    },
   ));
 }
 
@@ -123,11 +134,27 @@ async function saleEntries(range: ReturnType<typeof occurredAtFilter>) {
       customer: { select: { name: true } },
       postedBy: { select: { name: true } },
       correctedBy: { select: { name: true } },
+      lines: { select: { productItemCode: true, productName: true, quantity: true, unitPrice: true } },
     },
   });
   const rows: AuditEntryDto[] = [];
   for (const sale of sales) {
     const who = sale.customer?.name ?? "Guest";
+    const items = sale.lines.map((line) => ({
+      name: `${line.productItemCode} ${line.productName}`,
+      quantity: line.quantity,
+      amount: money(line.unitPrice),
+    }));
+    const pieces = sale.lines.reduce((sum, line) => sum + line.quantity, 0);
+    const saleFacts = [
+      { label: "Customer", value: who },
+      { label: "Receipt number", value: sale.manualReceiptNumber },
+      { label: "Pieces", value: String(pieces) },
+      { label: "Payment method", value: humanize(sale.paymentMethod) },
+      { label: "Discount", value: money(sale.discountAmount) },
+      { label: "Amount paid", value: money(sale.amountPaid) },
+      { label: "Sale total", value: money(sale.totalAmount) },
+    ];
     rows.push(entry(
       `sale-posted-${sale.id}`,
       sale.postedAt,
@@ -136,7 +163,8 @@ async function saleEntries(range: ReturnType<typeof occurredAtFilter>) {
       sale.postedBy.name,
       sale.reference,
       sale.location.name,
-      `Receipt ${sale.manualReceiptNumber} for ${who}, ${money(sale.totalAmount)}`,
+      `Receipt ${sale.manualReceiptNumber} for ${who}, ${pieces} ${pieces === 1 ? "piece" : "pieces"}, ${money(sale.totalAmount)}`,
+      { items, facts: saleFacts },
     ));
     if (sale.correctedAt) {
       rows.push(entry(
@@ -148,6 +176,7 @@ async function saleEntries(range: ReturnType<typeof occurredAtFilter>) {
         sale.reference,
         sale.location.name,
         `Receipt ${sale.manualReceiptNumber} for ${who}`,
+        { items, facts: saleFacts },
       ));
     }
   }
@@ -261,11 +290,17 @@ async function orderEntries(range: ReturnType<typeof occurredAtFilter>) {
       createdBy: { select: { name: true } },
       releasedBy: { select: { name: true } },
       cancelledBy: { select: { name: true } },
-      lines: { select: { id: true } },
+      lines: { select: { productItemCode: true, productName: true, quantity: true, finalUnitPrice: true } },
     },
   });
   const rows: AuditEntryDto[] = [];
   for (const order of orders) {
+    const items = order.lines.map((line) => ({
+      name: `${line.productItemCode} ${line.productName}`,
+      quantity: line.quantity,
+      amount: money(line.finalUnitPrice),
+    }));
+    const pieces = order.lines.reduce((sum, line) => sum + line.quantity, 0);
     rows.push(entry(
       `order-created-${order.id}`,
       order.createdAt,
@@ -274,7 +309,12 @@ async function orderEntries(range: ReturnType<typeof occurredAtFilter>) {
       order.createdBy.name,
       order.reference,
       order.location.name,
-      `${order.customer.name}, ${order.lines.length} item line${order.lines.length === 1 ? "" : "s"}, total ${money(order.totalAmount)}`,
+      `${order.customer.name}, ${pieces} ${pieces === 1 ? "piece" : "pieces"}, total ${money(order.totalAmount)}`,
+      { items, facts: [
+        { label: "Customer", value: order.customer.name },
+        { label: "Order type", value: humanize(order.type) },
+        { label: "Order total", value: money(order.totalAmount) },
+      ] },
     ));
     if (order.releasedAt) {
       rows.push(entry(
@@ -318,11 +358,17 @@ async function transferEntries(range: ReturnType<typeof occurredAtFilter>) {
       dispatchedBy: { select: { name: true } },
       receivedBy: { select: { name: true } },
       cancelledBy: { select: { name: true } },
+      lines: { select: { requestedQuantity: true, dispatchedQuantity: true, product: { select: { itemCode: true, name: true } } } },
     },
   });
   const rows: AuditEntryDto[] = [];
   for (const transfer of transfers) {
     const place = transfer.destination.name;
+    const items = transfer.lines.map((line) => ({
+      name: `${line.product.itemCode} ${line.product.name}`,
+      quantity: line.dispatchedQuantity || line.requestedQuantity,
+    }));
+    const pieces = items.reduce((sum, item) => sum + (item.quantity ?? 0), 0);
     const steps: Array<[string, Date | null, string | null | undefined]> = [
       ["Transfer Drafted", transfer.createdAt, transfer.createdBy.name],
       ["Transfer Finalized", transfer.finalizedAt, transfer.finalizedBy?.name],
@@ -340,15 +386,83 @@ async function transferEntries(range: ReturnType<typeof occurredAtFilter>) {
         actor,
         transfer.reference,
         place,
-        `Status ${humanize(transfer.status)}`,
+        `${pieces} ${pieces === 1 ? "piece" : "pieces"} to ${place}. Status ${humanize(transfer.status)}`,
+        { items, facts: [
+          { label: "Destination", value: place },
+          { label: "Status now", value: humanize(transfer.status) },
+        ] },
       ));
     }
   }
   return rows;
 }
 
+async function transferCaseEntries(range: ReturnType<typeof occurredAtFilter>) {
+  const [discrepancies, investigations, resolutions] = await Promise.all([
+    prisma.stockTransferDiscrepancy.findMany({
+      where: range ? { reportedAt: range } : undefined,
+      orderBy: { reportedAt: "desc" },
+      take: SOURCE_LIMIT,
+      include: {
+        reportedBy: { select: { name: true } },
+        transfer: { select: { reference: true, destination: { select: { name: true } } } },
+      },
+    }),
+    prisma.stockTransferInvestigation.findMany({
+      where: range ? { submittedAt: range } : undefined,
+      orderBy: { submittedAt: "desc" },
+      take: SOURCE_LIMIT,
+      include: {
+        submittedBy: { select: { name: true } },
+        transfer: { select: { reference: true, destination: { select: { name: true } } } },
+      },
+    }),
+    prisma.stockTransferResolution.findMany({
+      where: range ? { postedAt: range } : undefined,
+      orderBy: { postedAt: "desc" },
+      take: SOURCE_LIMIT,
+      include: {
+        postedBy: { select: { name: true } },
+        transfer: { select: { reference: true, destination: { select: { name: true } } } },
+      },
+    }),
+  ]);
+  return [
+    ...discrepancies.map((row) => entry(
+      `discrepancy-${row.id}`,
+      row.reportedAt,
+      "Stock Transfers",
+      "Discrepancy Reported",
+      row.reportedBy.name,
+      row.transfer.reference,
+      row.transfer.destination.name,
+      "Branch reported a difference between the delivery and the transfer",
+    )),
+    ...investigations.map((row) => entry(
+      `investigation-${row.id}`,
+      row.submittedAt,
+      "Stock Transfers",
+      "Discrepancy Investigated",
+      row.submittedBy.name,
+      row.transfer.reference,
+      row.transfer.destination.name,
+      "Investigation findings submitted",
+    )),
+    ...resolutions.map((row) => entry(
+      `resolution-${row.id}`,
+      row.postedAt,
+      "Stock Transfers",
+      "Discrepancy Resolved",
+      row.postedBy.name,
+      row.transfer.reference,
+      row.transfer.destination.name,
+      "Final stock allocation posted",
+    )),
+  ];
+}
+
 async function returnEntries(range: ReturnType<typeof occurredAtFilter>) {
-  const [backjobs, warranties] = await Promise.all([
+  const [backjobs, warranties, claims] = await Promise.all([
     prisma.backjobEvent.findMany({
       where: range ? { occurredAt: range } : undefined,
       orderBy: { occurredAt: "desc" },
@@ -367,6 +481,15 @@ async function returnEntries(range: ReturnType<typeof occurredAtFilter>) {
         warranty: { select: { reference: true, locationName: true, customerName: true } },
       },
     }),
+    prisma.supplierClaimAction.findMany({
+      where: range ? { createdAt: range } : undefined,
+      orderBy: { createdAt: "desc" },
+      take: SOURCE_LIMIT,
+      include: {
+        actor: { select: { name: true } },
+        claim: { select: { reference: true, locationName: true, supplierName: true } },
+      },
+    }),
   ]);
   return [
     ...backjobs.map((event) => entry(
@@ -378,6 +501,21 @@ async function returnEntries(range: ReturnType<typeof occurredAtFilter>) {
       event.backjob.reference,
       event.backjob.locationName,
       `${event.backjob.customerName}${event.toStatus ? `, now ${humanize(event.toStatus)}` : ""}${event.reason ? `. ${event.reason}` : ""}`,
+    )),
+    ...claims.map((action) => entry(
+      `claim-${action.id}`,
+      action.createdAt,
+      "Returns & Warranty",
+      `Supplier Claim ${humanize(action.action)}`,
+      action.actor.name,
+      action.claim.reference,
+      action.claim.locationName,
+      `${action.claim.supplierName}, ${humanize(action.fromStatus)} to ${humanize(action.toStatus)}`,
+      { facts: [
+        { label: "Supplier", value: action.claim.supplierName },
+        { label: "Status before", value: humanize(action.fromStatus) },
+        { label: "Status after", value: humanize(action.toStatus) },
+      ] },
     )),
     ...warranties.map((event) => entry(
       `warranty-${event.id}`,
@@ -392,6 +530,16 @@ async function returnEntries(range: ReturnType<typeof occurredAtFilter>) {
   ];
 }
 
+function parseMetadata(raw: string | null): { items?: AuditItemDto[]; facts?: Array<{ label: string; value: string }> } {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as { items?: AuditItemDto[]; facts?: Array<{ label: string; value: string }> };
+    return { items: parsed.items, facts: parsed.facts };
+  } catch {
+    return {};
+  }
+}
+
 async function loggedEntries(range: ReturnType<typeof occurredAtFilter>, category?: AuditCategory) {
   const rows = await prisma.auditLog.findMany({
     where: { ...(range ? { occurredAt: range } : {}), ...(category ? { category } : {}) },
@@ -399,16 +547,27 @@ async function loggedEntries(range: ReturnType<typeof occurredAtFilter>, categor
     take: SOURCE_LIMIT,
     include: { actor: { select: { name: true } } },
   });
-  return rows.map((row) => entry(
-    `log-${row.id}`,
-    row.occurredAt,
-    row.category as AuditCategory,
-    row.action,
-    row.actor?.name || row.actorLabel || null,
-    row.reference,
-    row.locationLabel,
-    row.details,
-  ));
+  return rows.map((row) => {
+    const stored = parseMetadata(row.metadataJson);
+    return entry(
+      `log-${row.id}`,
+      row.occurredAt,
+      row.category as AuditCategory,
+      row.action,
+      row.actor?.name || row.actorLabel || null,
+      row.reference,
+      row.locationLabel,
+      row.details,
+      {
+        items: stored.items,
+        facts: [
+          ...(stored.facts ?? []),
+          ...(row.ipAddress ? [{ label: "IP address", value: row.ipAddress }] : []),
+          ...(row.userAgent ? [{ label: "Device", value: row.userAgent }] : []),
+        ],
+      },
+    );
+  });
 }
 
 export async function getAuditTrail(
@@ -430,6 +589,7 @@ export async function getAuditTrail(
     ["Receipt Verification", () => reviewEntries(range)],
     ["Customer Orders", () => orderEntries(range)],
     ["Stock Transfers", () => transferEntries(range)],
+    ["Stock Transfers", () => transferCaseEntries(range)],
     ["Returns & Warranty", () => returnEntries(range)],
   ];
   const settled = await Promise.all(sources

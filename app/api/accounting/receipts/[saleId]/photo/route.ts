@@ -9,6 +9,7 @@ import {
   type AuthContext,
 } from "@/lib/server/authorization";
 import { prisma } from "@/lib/server/prisma";
+import { recordAuditLog } from "@/lib/server/services/audit-log";
 import { CustomerSalesError } from "@/lib/server/services/customer-sales";
 import { canAccessLocation } from "@/lib/server/policy/access";
 import {
@@ -138,6 +139,13 @@ export async function POST(request: Request, context: Context) {
         console.error("Unable to notify receipt evidence upload", notificationError);
       });
     }
+    await recordAuditLog({
+      category: "Receipt Verification",
+      action: review.receiptPhotoKey ? "Receipt Photo Replaced" : "Receipt Photo Uploaded",
+      actorId: actor.userId,
+      reference: sale.reference,
+      details: `Receipt ${sale.manualReceiptNumber}`,
+    });
     return Response.json({ data: evidence });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") return Response.json({ error: { code: "INVALID_STATE", message: "Receipt changed; reload before uploading" } }, { status: 409 });
@@ -225,6 +233,13 @@ export async function DELETE(request: Request, context: Context) {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     await removeReceiptEvidence(detachedKey).catch((cleanupError) => {
       console.error("Unable to remove detached receipt evidence", cleanupError);
+    });
+    await recordAuditLog({
+      category: "Receipt Verification",
+      action: "Receipt Photo Deleted",
+      actorId: actor.userId,
+      reference: saleId,
+      details: "The uploaded receipt photo was deleted before review",
     });
     return Response.json({ data: { deleted: true } });
   } catch (error) {

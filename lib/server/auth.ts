@@ -8,6 +8,18 @@ import { prisma } from "@/lib/server/prisma";
 import { resolveAuthTrustedOrigins } from "@/lib/server/auth-origins";
 import { recordAuditLog } from "@/lib/server/services/audit-log";
 
+/** The branches a signing-in user is scoped to, for the Access audit entries. */
+async function assignedLocationLabel(userId: string | null | undefined) {
+  if (!userId) return "-";
+  const assignments = await prisma.userLocation.findMany({
+    where: { userId },
+    select: { location: { select: { code: true, name: true } } },
+    orderBy: { locationId: "asc" },
+  });
+  if (assignments.length === 0) return "All locations";
+  return assignments.map((assignment) => assignment.location.name).join(", ");
+}
+
 // Sign-in, failed sign-in, and sign-out are recorded here because Better Auth
 // owns those routes; every other audited action is written by its own service.
 const authAudit = createAuthMiddleware(async (ctx) => {
@@ -33,12 +45,15 @@ const authAudit = createAuthMiddleware(async (ctx) => {
   }
 
   const user = ctx.context.newSession?.user;
+  const locationLabel = await assignedLocationLabel(user?.id);
   await recordAuditLog({
     category: "Access",
     action: "Signed In",
     actorId: user?.id ?? null,
     actorLabel: user?.name ?? attemptedEmail,
-    details: `Signed in ${user?.email ?? attemptedEmail}`,
+    locationLabel,
+    details: `Signed in ${user?.email ?? attemptedEmail} from ${locationLabel === "-" ? "an unknown branch" : locationLabel}`,
+    facts: [{ label: "Account", value: user?.email ?? attemptedEmail }, { label: "Assigned branches", value: locationLabel }],
     ...network,
   });
 });
@@ -54,12 +69,17 @@ const authAuditBefore = createAuthMiddleware(async (ctx) => {
   const session = token
     ? await prisma.session.findUnique({ where: { token }, select: { user: { select: { id: true, name: true, email: true } } } })
     : null;
+  const locationLabel = await assignedLocationLabel(session?.user.id);
   await recordAuditLog({
     category: "Access",
     action: "Signed Out",
     actorId: session?.user.id ?? null,
     actorLabel: session?.user.name ?? "Unknown user",
-    details: session?.user.email ? `Signed out ${session.user.email}` : "Signed out an unknown session",
+    locationLabel,
+    details: session?.user.email
+      ? `Signed out ${session.user.email} from ${locationLabel === "-" ? "an unknown branch" : locationLabel}`
+      : "Signed out an unknown session",
+    facts: session?.user.email ? [{ label: "Account", value: session.user.email }, { label: "Assigned branches", value: locationLabel }] : undefined,
     ipAddress: request?.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
     userAgent: request?.headers.get("user-agent") ?? null,
   });

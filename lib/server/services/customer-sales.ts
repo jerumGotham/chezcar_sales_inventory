@@ -539,6 +539,14 @@ export async function createCustomerOrder(actor: AuthContext, input: z.infer<typ
         reference: order.reference,
         locationLabel: order.location.name,
         details: `₱${input.downpaymentAmount.toLocaleString("en-PH", { minimumFractionDigits: 2 })} downpayment by ${order.customer.name}${input.downpaymentReceiptNumber ? ` on receipt ${input.downpaymentReceiptNumber}` : ""}. Balance ₱${order.remainingBalance.toNumber().toLocaleString("en-PH", { minimumFractionDigits: 2 })}`,
+        items: order.lines.map((line) => ({ name: `${line.productItemCode} ${line.productName}`, quantity: line.quantity, amount: `₱${line.finalUnitPrice.toNumber().toLocaleString("en-PH", { minimumFractionDigits: 2 })}` })),
+        facts: [
+          { label: "Customer", value: order.customer.name },
+          { label: "Payment", value: `₱${input.downpaymentAmount.toLocaleString("en-PH", { minimumFractionDigits: 2 })}` },
+          { label: "Receipt number", value: input.downpaymentReceiptNumber ?? "-" },
+          { label: "Order total", value: `₱${order.totalAmount.toNumber().toLocaleString("en-PH", { minimumFractionDigits: 2 })}` },
+          { label: "Balance after payment", value: `₱${order.remainingBalance.toNumber().toLocaleString("en-PH", { minimumFractionDigits: 2 })}` },
+        ],
       }, tx);
     }
     return serializeOrder(order);
@@ -813,6 +821,15 @@ export async function recordCustomerOrderPayment(
         reference: order.reference,
         locationLabel: updated.location.name,
         details: `₱${input.amount.toLocaleString("en-PH", { minimumFractionDigits: 2 })} paid by ${updated.customer.name}${input.reference ? ` on receipt ${input.reference}` : ""}. Balance ₱${updated.remainingBalance.toNumber().toLocaleString("en-PH", { minimumFractionDigits: 2 })}`,
+        items: updated.lines.map((line) => ({ name: `${line.productItemCode} ${line.productName}`, quantity: line.quantity, amount: `₱${line.finalUnitPrice.toNumber().toLocaleString("en-PH", { minimumFractionDigits: 2 })}` })),
+        facts: [
+          { label: "Customer", value: updated.customer.name },
+          { label: "Payment", value: `₱${input.amount.toLocaleString("en-PH", { minimumFractionDigits: 2 })}` },
+          { label: "Receipt number", value: input.reference ?? "-" },
+          { label: "Total paid to date", value: `₱${updated.downpaymentAmount.toNumber().toLocaleString("en-PH", { minimumFractionDigits: 2 })}` },
+          { label: "Order total", value: `₱${updated.totalAmount.toNumber().toLocaleString("en-PH", { minimumFractionDigits: 2 })}` },
+          { label: "Balance after payment", value: `₱${updated.remainingBalance.toNumber().toLocaleString("en-PH", { minimumFractionDigits: 2 })}` },
+        ],
       }, tx);
       return serializeOrder(updated);
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });

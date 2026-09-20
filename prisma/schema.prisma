@@ -1340,6 +1340,7 @@ model AuditLog {
   reference    String   @default("-")
   locationLabel String  @default("-")
   details      String   @db.Text
+  metadataJson String?  @db.Text
   ipAddress    String?
   userAgent    String?
   actor        User?    @relation("AuditLogActor", fields: [actorId], references: [id], onDelete: SetNull)

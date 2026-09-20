@@ -11,6 +11,12 @@ export const AUDIT_CATEGORIES = [
 
 export type AuditCategory = (typeof AUDIT_CATEGORIES)[number];
 
+export type AuditItemDto = {
+  name: string;
+  quantity?: number;
+  amount?: string;
+};
+
 export type AuditEntryDto = {
   id: string;
   occurredAt: string;
@@ -20,6 +26,10 @@ export type AuditEntryDto = {
   reference: string;
   location: string;
   details: string;
+  /** Line items behind the entry: products bought, moved, or claimed. */
+  items?: AuditItemDto[];
+  /** Extra label/value pairs shown only in the details view. */
+  facts?: Array<{ label: string; value: string }>;
 };
 
 export type AuditTrailDto = {
