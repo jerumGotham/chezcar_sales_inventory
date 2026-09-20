@@ -26,6 +26,7 @@ import {
   requireCapability,
 } from "@/lib/server/authorization";
 import { prisma } from "@/lib/server/prisma";
+import { recordAuditLog } from "./audit-log";
 import { findActiveOperationalLocation, listActiveOperationalLocations } from "@/lib/server/locations";
 import { canAccessLocation, hasAllLocationAccess } from "@/lib/server/policy/access";
 
@@ -536,7 +537,9 @@ export async function createStaffUser(
         where: { id: created.user.id },
         select: managedUserSelect,
       });
-      return toManagedUserDto(user);
+      const dto = toManagedUserDto(user);
+      await recordAuditLog({ category: "Master Data", action: "User Created", actorId: actor.userId, reference: dto.email, details: `${dto.name}, role ${dto.roleName}` }, tx);
+      return dto;
     });
   } catch (error) {
     if (createdUserId) {
@@ -635,7 +638,9 @@ export async function updateStaffUser(
     });
   });
 
-  return toManagedUserDto(updated);
+  const dto = toManagedUserDto(updated);
+  await recordAuditLog({ category: "Master Data", action: "User Updated", actorId: actor.userId, reference: dto.email, details: `${dto.name}, role ${dto.roleName}, ${dto.locations.length === 0 ? "all locations" : dto.locations.map((location) => location.code).join(", ")}` });
+  return dto;
 }
 
 export async function setStaffStatus(
@@ -667,7 +672,9 @@ export async function setStaffStatus(
     });
   });
 
-  return toManagedUserDto(updated);
+  const dto = toManagedUserDto(updated);
+  await recordAuditLog({ category: "Master Data", action: `User ${dto.status === "ACTIVE" ? "Activated" : "Deactivated"}`, actorId: actor.userId, reference: dto.email, details: `${dto.name}, role ${dto.roleName}` });
+  return dto;
 }
 
 export async function resetStaffPassword(
@@ -701,7 +708,9 @@ export async function resetStaffPassword(
       select: managedUserSelect,
     });
   });
-  return toManagedUserDto(user);
+  const dto = toManagedUserDto(user);
+  await recordAuditLog({ category: "Master Data", action: "User Password Reset", actorId: actor.userId, reference: dto.email, details: `Temporary password set for ${dto.name}` });
+  return dto;
 }
 
 /**

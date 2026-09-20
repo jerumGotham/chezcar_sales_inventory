@@ -391,6 +391,25 @@ async function returnEntries(range: ReturnType<typeof occurredAtFilter>) {
   ];
 }
 
+async function loggedEntries(range: ReturnType<typeof occurredAtFilter>, category?: AuditCategory) {
+  const rows = await prisma.auditLog.findMany({
+    where: { ...(range ? { occurredAt: range } : {}), ...(category ? { category } : {}) },
+    orderBy: { occurredAt: "desc" },
+    take: SOURCE_LIMIT,
+    include: { actor: { select: { name: true } } },
+  });
+  return rows.map((row) => entry(
+    `log-${row.id}`,
+    row.occurredAt,
+    row.category as AuditCategory,
+    row.action,
+    row.actor?.name || row.actorLabel || null,
+    row.reference,
+    row.locationLabel,
+    row.details,
+  ));
+}
+
 export async function getAuditTrail(
   actor: AuthContext,
   input: unknown = {},
@@ -400,6 +419,9 @@ export async function getAuditTrail(
   const range = occurredAtFilter(query);
 
   const sources: Array<[AuditCategory, () => Promise<AuditEntryDto[]>]> = [
+    ["Access", () => loggedEntries(range, "Access")],
+    ["Master Data", () => loggedEntries(range, "Master Data")],
+    ["Customer Orders", () => loggedEntries(range, "Customer Orders")],
     ["Inventory", () => inventoryEntries(range)],
     ["Inventory", () => receiptEntries(range)],
     ["Sales", () => saleEntries(range)],

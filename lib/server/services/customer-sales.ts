@@ -21,6 +21,7 @@ import {
   type AuthContext,
 } from "../authorization";
 import { prisma } from "../prisma";
+import { recordAuditLog } from "./audit-log";
 import { findActiveBranch, listActiveBranches } from "../locations";
 import { canAccessLocation, hasAllLocationAccess } from "../policy/access";
 import { createNotifications, notifyInventoryThresholdChange } from "./notifications";
@@ -372,16 +373,20 @@ async function activeProducts(tx: Prisma.TransactionClient, ids: string[]) {
 
 export async function createCustomer(actor: AuthContext, input: z.infer<typeof customerMutationSchema>) {
   assertCapability(actor, "customers:create");
-  return prisma.customer.create({ data: { name: input.name, mobile: input.mobile || null, email: input.email || null, address: input.address || null, source: input.source || null, notes: input.notes || null, createdById: actor.userId } });
+  const created = await prisma.customer.create({ data: { name: input.name, mobile: input.mobile || null, email: input.email || null, address: input.address || null, source: input.source || null, notes: input.notes || null, createdById: actor.userId } });
+  await recordAuditLog({ category: "Master Data", action: "Customer Created", actorId: actor.userId, reference: created.name, details: `${created.name}${created.mobile ? `, ${created.mobile}` : ""}` });
+  return created;
 }
 
 export async function updateCustomer(actor: AuthContext, id: string, input: z.infer<typeof customerMutationSchema>) {
   assertCapability(actor, "customers:update");
   try {
-    return await prisma.customer.update({
+    const updated = await prisma.customer.update({
       where: { id },
       data: { name: input.name, mobile: input.mobile || null, email: input.email || null, address: input.address || null, source: input.source || null, notes: input.notes || null },
     });
+    await recordAuditLog({ category: "Master Data", action: "Customer Updated", actorId: actor.userId, reference: updated.name, details: `${updated.name}${updated.mobile ? `, ${updated.mobile}` : ""}` });
+    return updated;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") throw new CustomerSalesError("NOT_FOUND", "Customer not found", 404);
     throw error;
@@ -397,7 +402,9 @@ export async function deactivateCustomer(actor: AuthContext, id: string) {
 export async function setCustomerStatus(actor: AuthContext, id: string, status: "ACTIVE" | "INACTIVE") {
   assertCapability(actor, "customers:deactivate");
   try {
-    return await prisma.customer.update({ where: { id }, data: { status } });
+    const changed = await prisma.customer.update({ where: { id }, data: { status } });
+    await recordAuditLog({ category: "Master Data", action: `Customer ${status === "ACTIVE" ? "Activated" : "Deactivated"}`, actorId: actor.userId, reference: changed.name, details: changed.name });
+    return changed;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") throw new CustomerSalesError("NOT_FOUND", "Customer not found", 404);
     throw error;
@@ -787,6 +794,14 @@ export async function recordCustomerOrderPayment(
         },
         include: ORDER_INCLUDE,
       });
+      await recordAuditLog({
+        category: "Customer Orders",
+        action: "Payment Recorded",
+        actorId: actor.userId,
+        reference: order.reference,
+        locationLabel: updated.location.name,
+        details: `₱${input.amount.toLocaleString("en-PH", { minimumFractionDigits: 2 })} paid by ${updated.customer.name}${input.reference ? ` on receipt ${input.reference}` : ""}. Balance ₱${updated.remainingBalance.toNumber().toLocaleString("en-PH", { minimumFractionDigits: 2 })}`,
+      }, tx);
       return serializeOrder(updated);
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {

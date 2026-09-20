@@ -24,6 +24,7 @@ import {
 } from "@/lib/server/authorization";
 import { canAccessLocation, hasAllLocationAccess } from "@/lib/server/policy/access";
 import { prisma } from "@/lib/server/prisma";
+import { recordAuditLog } from "./audit-log";
 
 const personnelSelect = {
   id: true,
@@ -175,10 +176,12 @@ export async function createPersonnel(
   assertCapability(actor, "personnel:create");
   const personnel = createPersonnelSchema.parse(input);
   await requireActiveBranch(actor, personnel.locationId);
-  return toDto(await prisma.personnel.create({
+  const created = toDto(await prisma.personnel.create({
     data: { ...personnel, createdById: actor.userId },
     select: personnelSelect,
   }));
+  await recordAuditLog({ category: "Master Data", action: "Personnel Created", actorId: actor.userId, reference: created.fullName, locationLabel: created.location.name, details: `${created.fullName} as ${created.type}` });
+  return created;
 }
 
 export async function updatePersonnel(
@@ -190,11 +193,13 @@ export async function updatePersonnel(
   const editable = updatePersonnelSchema.parse(input);
   await requireScopedPersonnel(actor, personnelId);
   if (editable.locationId) await requireActiveBranch(actor, editable.locationId);
-  return toDto(await prisma.personnel.update({
+  const updated = toDto(await prisma.personnel.update({
     where: { id: personnelId },
     data: { ...editable, updatedById: actor.userId },
     select: personnelSelect,
   }));
+  await recordAuditLog({ category: "Master Data", action: "Personnel Updated", actorId: actor.userId, reference: updated.fullName, locationLabel: updated.location.name, details: `${updated.fullName} as ${updated.type}` });
+  return updated;
 }
 
 export async function setPersonnelStatus(
@@ -206,13 +211,15 @@ export async function setPersonnelStatus(
   const { status } = personnelStatusRequestSchema.parse(input);
   const existing = await requireScopedPersonnel(actor, personnelId);
   if (status === "ACTIVE") await requireActiveBranch(actor, existing.locationId);
-  return toDto(await prisma.personnel.update({
+  const changed = toDto(await prisma.personnel.update({
     where: { id: personnelId },
     data: status === "ACTIVE"
       ? { status, reactivatedById: actor.userId, deactivatedById: null }
       : { status, deactivatedById: actor.userId, reactivatedById: null },
     select: personnelSelect,
   }));
+  await recordAuditLog({ category: "Master Data", action: `Personnel ${status === "ACTIVE" ? "Reactivated" : "Deactivated"}`, actorId: actor.userId, reference: changed.fullName, locationLabel: changed.location.name, details: changed.fullName });
+  return changed;
 }
 
 export function personnelErrorResponse(error: unknown, context: string): Response {

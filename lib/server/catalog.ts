@@ -28,6 +28,11 @@ import { prisma } from "@/lib/server/prisma";
 import { findActiveOperationalLocation } from "@/lib/server/locations";
 import { deleteStoredProductImage } from "./services/product-images";
 import { notifyInventoryThresholdChange } from "./services/notifications";
+import { recordAuditLog } from "./services/audit-log";
+
+function money(value: Prisma.Decimal | null) {
+  return value === null ? "no price" : `₱${value.toNumber().toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
+}
 
 const baseListQuery = {
   page: z.coerce.number().int().min(1).default(1),
@@ -356,7 +361,7 @@ export async function createProduct(actor: AuthContext, input: z.infer<typeof pr
   const data = normalizeProductInput(input);
 
   try {
-    return await prisma.product.create({
+    const product = await prisma.product.create({
       data: {
         ...data,
         vehicleCompatibilities: { create: data.vehicleCompatibilities },
@@ -364,6 +369,14 @@ export async function createProduct(actor: AuthContext, input: z.infer<typeof pr
         updatedById: actor.userId,
       },
     });
+    await recordAuditLog({
+      category: "Master Data",
+      action: "Product Created",
+      actorId: actor.userId,
+      reference: product.itemCode,
+      details: `${product.name} at ${money(product.price)}`,
+    });
+    return product;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       throw new ProductMutationError("DUPLICATE_ITEM_CODE", "Item code already exists", 409);
@@ -384,7 +397,7 @@ export async function updateProduct(actor: AuthContext, productId: string, input
   }
 
   try {
-    return await prisma.product.update({
+    const product = await prisma.product.update({
       where: { id: productId },
       data: {
         ...data,
@@ -397,6 +410,17 @@ export async function updateProduct(actor: AuthContext, productId: string, input
         reactivatedById: existing.status === "INACTIVE" && data.status === "ACTIVE" ? actor.userId : existing.reactivatedById,
       },
     });
+    const priceChanged = money(existing.price) !== money(product.price);
+    await recordAuditLog({
+      category: "Master Data",
+      action: existing.status !== product.status
+        ? `Product ${product.status === "ACTIVE" ? "Reactivated" : "Deactivated"}`
+        : "Product Updated",
+      actorId: actor.userId,
+      reference: product.itemCode,
+      details: `${product.name}${priceChanged ? `. Price ${money(existing.price)} to ${money(product.price)}` : ""}`,
+    });
+    return product;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       throw new ProductMutationError("DUPLICATE_ITEM_CODE", "Item code already exists", 409);

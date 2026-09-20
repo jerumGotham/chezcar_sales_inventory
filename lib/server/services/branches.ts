@@ -15,6 +15,7 @@ import {
 import { AuthorizationError, authorizationErrorResponse, type AuthContext } from "@/lib/server/authorization";
 import { canAccessLocation, hasAllLocationAccess } from "@/lib/server/policy/access";
 import { prisma } from "@/lib/server/prisma";
+import { recordAuditLog } from "./audit-log";
 
 const branchSelect = {
   id: true,
@@ -71,6 +72,7 @@ export async function createBranch(actor: AuthContext, input: CreateBranchReques
       data: { ...branch, type: "BRANCH", isActive: true },
       select: branchSelect,
     });
+    await recordAuditLog({ category: "Master Data", action: "Branch Created", actorId: actor.userId, reference: row.code, locationLabel: row.name, details: `${row.code} ${row.name}` });
     return toDto(row);
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {

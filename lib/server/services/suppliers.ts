@@ -21,6 +21,7 @@ import {
   type AuthContext,
 } from "@/lib/server/authorization";
 import { prisma } from "@/lib/server/prisma";
+import { recordAuditLog } from "./audit-log";
 
 const supplierSelect = {
   id: true,
@@ -95,10 +96,12 @@ export async function createSupplier(
   assertCapability(actor, "suppliers:create");
   const supplier = createSupplierSchema.parse(input);
   try {
-    return toDto(await prisma.supplier.create({
+    const created = toDto(await prisma.supplier.create({
       data: { ...supplier, createdById: actor.userId },
       select: supplierSelect,
     }));
+    await recordAuditLog({ category: "Master Data", action: "Supplier Created", actorId: actor.userId, reference: created.code ?? created.name, details: created.name });
+    return created;
   } catch (error) {
     return mapUniqueConflict(error);
   }
@@ -112,11 +115,13 @@ export async function updateSupplier(
   assertCapability(actor, "suppliers:update");
   const editable = updateSupplierSchema.parse(input);
   try {
-    return toDto(await prisma.supplier.update({
+    const updated = toDto(await prisma.supplier.update({
       where: { id: supplierId },
       data: { ...editable, updatedById: actor.userId },
       select: supplierSelect,
     }));
+    await recordAuditLog({ category: "Master Data", action: "Supplier Updated", actorId: actor.userId, reference: updated.code ?? updated.name, details: updated.name });
+    return updated;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
       throw new SupplierMaintenanceError(404, "SUPPLIER_NOT_FOUND", "Supplier not found");
@@ -133,13 +138,15 @@ export async function setSupplierStatus(
   assertCapability(actor, "suppliers:deactivate");
   const { status } = supplierStatusRequestSchema.parse(input);
   try {
-    return toDto(await prisma.supplier.update({
+    const changed = toDto(await prisma.supplier.update({
       where: { id: supplierId },
       data: status === "ACTIVE"
         ? { status, reactivatedById: actor.userId, deactivatedById: null }
         : { status, deactivatedById: actor.userId, reactivatedById: null },
       select: supplierSelect,
     }));
+    await recordAuditLog({ category: "Master Data", action: `Supplier ${status === "ACTIVE" ? "Reactivated" : "Deactivated"}`, actorId: actor.userId, reference: changed.code ?? changed.name, details: changed.name });
+    return changed;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
       throw new SupplierMaintenanceError(404, "SUPPLIER_NOT_FOUND", "Supplier not found");

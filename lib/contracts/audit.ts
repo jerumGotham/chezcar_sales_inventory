@@ -1,4 +1,6 @@
 export const AUDIT_CATEGORIES = [
+  "Access",
+  "Master Data",
   "Sales",
   "Receipt Verification",
   "Customer Orders",

@@ -18,6 +18,7 @@ import {
 } from "@/lib/server/authorization";
 import type { PersistedAccessContext } from "@/lib/server/policy/access";
 import { prisma } from "@/lib/server/prisma";
+import { recordAuditLog } from "./audit-log";
 
 export class RoleMaintenanceError extends Error {
   constructor(
@@ -155,7 +156,9 @@ export async function createRoleDefinition(
       },
       select: roleSelect,
     });
-    return toRoleDto(role);
+    const dto = toRoleDto(role);
+    await recordAuditLog({ category: "Master Data", action: "Role Created", actorId: actor.userId, reference: dto.name, details: `${dto.name} with ${dto.permissions.length} permissions` });
+    return dto;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       throw roleFailure(409, "ROLE_NAME_IN_USE", "A role with this name already exists");
@@ -253,7 +256,9 @@ export async function updateRoleDefinition(
         select: roleSelect,
       });
     });
-    return toRoleDto(role);
+    const dto = toRoleDto(role);
+    await recordAuditLog({ category: "Master Data", action: "Role Updated", actorId: actor.userId, reference: dto.name, details: `${dto.name} now has ${dto.permissions.length} permissions` });
+    return dto;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       throw roleFailure(409, "ROLE_NAME_IN_USE", "A role with this name already exists");

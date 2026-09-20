@@ -55,7 +55,7 @@ The complete list and Role Maintenance labels are generated from `CAPABILITY_CAT
 | `POST` | `/api/offline/activations` | Prisma OfflineDeviceActivation | `offline-sales:activate-device` plus target-location access |
 | `GET` | `/api/offline/snapshot?deviceId=<id>` | Prisma InventoryBalance/Product | `offline-sales:snapshot`; assigned Branch scope only |
 | `POST` | `/api/offline/sync` | Prisma OfflineSyncOperation/OfflineSaleSubmission/Sale | `offline-sales:sync`; assigned Branch scope only |
-| `GET` | `/api/audit?category=&search=&dateFrom=&dateTo=&page=&pageSize=` | Merged read-only activity from inventory movements, supplier receipts, sales, sale corrections, accounting reviews, customer orders, stock transfers, backjob and warranty events | `audit:view` |
+| `GET` | `/api/audit?category=&search=&dateFrom=&dateTo=&page=&pageSize=` | Merged read-only activity: AuditLog rows (sign-in, failed sign-in, sign-out, master-data changes, order payments) plus derived events from inventory movements, supplier receipts, sales, sale corrections, accounting reviews, customer orders, stock transfers, backjobs and warranties | `audit:view` |
 | `GET`, `POST` | `/api/customers` | Prisma Customer | `customers:view` / `customers:create` |
 | `GET`, `PATCH`, `DELETE` | `/api/customers/:id` | Prisma Customer, sales, and customer orders | `customers:view` / `customers:update` / `customers:deactivate` |
 | `POST` | `/api/customers/:id/status` | Prisma Customer status; body `{ status: "ACTIVE" \| "INACTIVE" }` activates or deactivates | `customers:deactivate` |

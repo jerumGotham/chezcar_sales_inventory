@@ -692,6 +692,7 @@ model User {
   location                 Location?                    @relation(fields: [locationId], references: [id])
   locationAssignments      UserLocation[]
   sessions                 Session[]
+  auditLogs                AuditLog[]                   @relation("AuditLogActor")
   accounts                 Account[]
   createdTransfers         StockTransfer[]              @relation("TransferCreatedBy")
   finalizedTransfers       StockTransfer[]              @relation("TransferFinalizedBy")
@@ -1327,6 +1328,25 @@ model SaleCorrectionRequest {
   @@index([saleId, status])
   @@index([requestedById])
   @@index([resolvedById])
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  occurredAt   DateTime @default(now())
+  category     String
+  action       String
+  actorId      String?
+  actorLabel   String
+  reference    String   @default("-")
+  locationLabel String  @default("-")
+  details      String   @db.Text
+  ipAddress    String?
+  userAgent    String?
+  actor        User?    @relation("AuditLogActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([occurredAt])
+  @@index([category, occurredAt])
+  @@index([actorId, occurredAt])
 }
 
 model Notification {
