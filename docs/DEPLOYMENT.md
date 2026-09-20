@@ -16,6 +16,16 @@ On 2026-09-08, Coolify successfully deployed immutable image `ghcr.io/jerumgotha
 - `/api/health` returned `200 {"status":"ok"}`; Admin sign-in returned 200. Sales by Salesperson loaded, its JSON returned the empty initialized dataset, and its PDF response returned 200 with PDF content type and signature. These are focused release checks, not a populated-data workflow or visual PDF regression suite. The destructive staging-reset tool itself remains unexecuted.
 - Warranty and Supplier Claim runtime storage paths are configured under the existing `/app/storage` volume. The same immutable image was redeployed to activate those environment settings; this did not rerun initialization or clear new data.
 
+### Customer Status Toggle And POS Rename Release
+
+On 2026-09-20, the operator deployed immutable image `ghcr.io/jerumgotham/chezcar_sales_inventory:a7b6059b780e80906cea90fbcb163082f78998b9`, replacing the previous `43a4a97e...` pin. The release renames the Customer Sales menu, page heading, and offline copy to POS, and replaces the customer Delete button with Activate/Deactivate backed by `POST /api/customers/:id/status`.
+
+- [CI run 35331896065](https://github.com/jerumGotham/chezcar_sales_inventory/actions/runs/35331896065) passed both `verify` and `publish`. Locally, typecheck, lint (existing warnings only), and 231 unit tests passed, and a Playwright run against the local database deactivated and reactivated a customer with the expected labels, status badge, and banners.
+- Coolify was updated by the operator through the Coolify UI, not through the API from a developer machine.
+- No schema change and no new migration are part of this release. No database backup, reset, or seed was performed, and no environment variables or storage settings were altered.
+- Post-deployment checks: `/api/health` returned `200 {"status":"ok"}`. Unauthenticated `POST /api/customers/<id>/status` returned `401 UNAUTHENTICATED`, which confirms the new route is present and gated, and `DELETE /api/customers/<id>` still returned `401`.
+- Not verified: no signed-in staging session exercised the Activate/Deactivate buttons or confirmed the renamed POS menu entry in the deployed shell.
+
 ### List PDF Export Release
 
 On 2026-09-18, Coolify deployed immutable image `ghcr.io/jerumgotham/chezcar_sales_inventory:43a4a97e546439f54ba8e1a2de9e3b68e4294831`, replacing the previous `f0eb4276...` pin. The release adds `format=pdf` list exports for Inventory, Direct Sales, and Customer Orders.
