@@ -386,7 +386,7 @@ async function transferEntries(range: ReturnType<typeof occurredAtFilter>) {
         actor,
         transfer.reference,
         place,
-        `${pieces} ${pieces === 1 ? "piece" : "pieces"} to ${place}. Status ${humanize(transfer.status)}`,
+        `${pieces} ${pieces === 1 ? "piece" : "pieces"} to ${place}`,
         { items, facts: [
           { label: "Destination", value: place },
           { label: "Status now", value: humanize(transfer.status) },
