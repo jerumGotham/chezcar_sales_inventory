@@ -132,6 +132,69 @@ const productSelectStyles: StylesConfig<Product, false> = {
   }),
 };
 
+type ChoiceOption = { value: string; label: string };
+
+const choiceSelectStyles: StylesConfig<ChoiceOption, false> = {
+  control: (base, state) => ({
+    ...base,
+    minHeight: "40px",
+    borderColor: state.isFocused ? "var(--ring)" : "var(--input)",
+    backgroundColor: "var(--background)",
+    boxShadow: "none",
+    "&:hover": { borderColor: "var(--ring)" },
+  }),
+  input: (base) => ({ ...base, color: "var(--foreground)" }),
+  singleValue: (base) => ({ ...base, color: "var(--foreground)" }),
+  placeholder: (base) => ({ ...base, color: "var(--muted-foreground)" }),
+  menu: (base) => ({ ...base, zIndex: 60, backgroundColor: "var(--popover)" }),
+  menuPortal: (base) => ({ ...base, zIndex: 100 }),
+  option: (base, state) => ({
+    ...base,
+    cursor: "pointer",
+    color: state.isSelected ? "var(--primary-foreground)" : "var(--popover-foreground)",
+    backgroundColor: state.isSelected
+      ? "var(--primary)"
+      : state.isFocused
+        ? "var(--accent)"
+        : "var(--popover)",
+  }),
+};
+
+/** The browser's own dropdown looked nothing like the rest of the app. */
+function ChoiceSelect({
+  id,
+  label,
+  options,
+  value,
+  onChange,
+  placeholder,
+  isSearchable = false,
+}: {
+  id: string;
+  label: string;
+  options: ChoiceOption[];
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  isSearchable?: boolean;
+}) {
+  return (
+    <Select<ChoiceOption, false>
+      instanceId={id}
+      inputId={id}
+      aria-label={label}
+      options={options}
+      value={options.find((option) => option.value === value) ?? null}
+      onChange={(option) => onChange(option?.value ?? "")}
+      placeholder={placeholder}
+      isSearchable={isSearchable}
+      styles={choiceSelectStyles}
+      menuPortalTarget={typeof document === "undefined" ? undefined : document.body}
+      menuPosition="fixed"
+    />
+  );
+}
+
 function productLabel(product: Product) {
   const availability =
     product.availableQuantity === null
@@ -218,16 +281,28 @@ async function request<T>(
   return json.data;
 }
 
+type TransferFilters = {
+  status: string;
+  sourceId: string;
+  destinationId: string;
+  reference: string;
+};
+
 async function fetchTransferPage(
   page: number,
   pageSize: number,
   transferId?: string,
+  filters?: TransferFilters,
 ): Promise<TransferPage> {
   const searchParams = new URLSearchParams({
     page: String(page),
     pageSize: String(pageSize),
   });
   if (transferId) searchParams.set("transferId", transferId);
+  if (filters?.status) searchParams.set("status", filters.status);
+  if (filters?.sourceId) searchParams.set("sourceId", filters.sourceId);
+  if (filters?.destinationId) searchParams.set("destinationId", filters.destinationId);
+  if (filters?.reference) searchParams.set("reference", filters.reference);
   const response = await fetch(`/api/stock-transfers?${searchParams}`, {
     credentials: "same-origin",
   });
@@ -294,6 +369,9 @@ export function StockTransfersClient({
   // One assigned location needs no choice; stock leaves where the user works.
   const [sourceId, setSourceId] = useState(sources.length === 1 ? sources[0].id : "");
   const [destinationId, setDestinationId] = useState("");
+  const emptyFilters: TransferFilters = { status: "", sourceId: "", destinationId: "", reference: "" };
+  const [draftFilters, setDraftFilters] = useState<TransferFilters>(emptyFilters);
+  const [appliedFilters, setAppliedFilters] = useState<TransferFilters>(emptyFilters);
   const [replacementForTransferId, setReplacementForTransferId] = useState("");
   const [draftLines, setDraftLines] = useState<DraftLine[]>([
     { productId: "", quantity: 1 },
@@ -323,8 +401,8 @@ export function StockTransfersClient({
   }
 
   const transfers = useQuery({
-    queryKey: ["stock-transfers", { page, pageSize, transferId: transferIdFilter }],
-    queryFn: () => fetchTransferPage(page, pageSize, transferIdFilter),
+    queryKey: ["stock-transfers", { page, pageSize, transferId: transferIdFilter, ...appliedFilters }],
+    queryFn: () => fetchTransferPage(page, pageSize, transferIdFilter, appliedFilters),
     placeholderData: (previousData) => previousData,
   });
   const productOptions = useQuery({
@@ -725,39 +803,31 @@ export function StockTransfersClient({
                 {productOptions.error.message}
               </p>
             )}
-            <select
-              aria-label="Source location"
-              className="h-10 min-w-0 rounded-md border px-3"
+            <ChoiceSelect
+              id="create-transfer-source"
+              label="Source location"
+              placeholder="Source location"
+              isSearchable
+              options={sources.map((source) => ({ value: source.id, label: `${source.name} (${source.code})` }))}
               value={sourceId}
-              onChange={(event) => {
+              onChange={(value) => {
                 setValidationErrors([]);
-                setSourceId(event.target.value);
+                setSourceId(value);
                 setDraftLines([{ productId: "", quantity: 1 }]);
               }}
-            >
-              <option value="">Source location</option>
-              {sources.map((source) => (
-                <option key={source.id} value={source.id}>
-                  {source.name} ({source.code})
-                </option>
-              ))}
-            </select>
-            <select
-              aria-label="Destination branch"
-              className="h-10 min-w-0 rounded-md border px-3"
+            />
+            <ChoiceSelect
+              id="create-transfer-destination"
+              label="Destination branch"
+              placeholder="Destination branch"
+              isSearchable
+              options={branches.map((branch) => ({ value: branch.id, label: `${branch.name} (${branch.code})` }))}
               value={destinationId}
-              onChange={(event) => {
+              onChange={(value) => {
                 setValidationErrors([]);
-                setDestinationId(event.target.value);
+                setDestinationId(value);
               }}
-            >
-              <option value="">Destination branch</option>
-              {branches.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name} ({branch.code})
-                </option>
-              ))}
-            </select>
+            />
             {draftLines.map((line, index) => (
               <div className="flex min-w-0 flex-col gap-2 sm:flex-row" key={`${line.productId}-${index}`}>
                 <div className="min-w-0 flex-1">
@@ -1310,25 +1380,14 @@ export function StockTransfersClient({
                 {canReportDiscrepancy && (
                   <div className="space-y-2">
                     <Label htmlFor="discrepancy-notes">What happened?</Label>
-                    <select
+                    <ChoiceSelect
                       id="discrepancy-notes"
+                      label="What happened"
+                      placeholder="Select what happened"
+                      options={["Items missing", "Wrong item delivered", "Items damaged", "Seal broken / tampered", "Short delivery", "Other"].map((reason) => ({ value: reason, label: reason }))}
                       value={discrepancyType}
-                      onChange={(event) =>
-                        setDiscrepancyType(event.target.value)
-                      }
-                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                    >
-                      <option value="Items missing">Items missing</option>
-                      <option value="Wrong item delivered">
-                        Wrong item delivered
-                      </option>
-                      <option value="Items damaged">Items damaged</option>
-                      <option value="Seal broken / tampered">
-                        Seal broken / tampered
-                      </option>
-                      <option value="Short delivery">Short delivery</option>
-                      <option value="Other">Other</option>
-                    </select>
+                      onChange={setDiscrepancyType}
+                    />
                   </div>
                 )}
                 {canReportDiscrepancy && (
@@ -1498,26 +1557,24 @@ export function StockTransfersClient({
                               <td className="py-3 pr-3">{shortageQuantity}</td>
                               <td className="py-3 pr-3">
                                 {shortageQuantity > 0 ? (
-                                  <select
-                                    className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-                                    value={
-                                      shortageResolutions[line.id] ?? "loss"
-                                    }
-                                    onChange={(event) =>
-                                      setShortageResolutions((current) => ({
-                                        ...current,
-                                        [line.id]: event.target
-                                          .value as ShortageResolution,
-                                      }))
-                                    }
-                                  >
-                                    <option value="loss">
-                                      Write off missing quantity as loss
-                                    </option>
-                                    <option value="restore">
-                                      Return missing quantity to the source location
-                                    </option>
-                                  </select>
+                                  <div className="min-w-64">
+                                    <ChoiceSelect
+                                      id={`shortage-resolution-${line.id}`}
+                                      label="Shortage resolution"
+                                      placeholder="Select resolution"
+                                      options={[
+                                        { value: "loss", label: "Write off missing quantity as loss" },
+                                        { value: "restore", label: "Return missing quantity to the source location" },
+                                      ]}
+                                      value={shortageResolutions[line.id] ?? "loss"}
+                                      onChange={(value) =>
+                                        setShortageResolutions((current) => ({
+                                          ...current,
+                                          [line.id]: value as ShortageResolution,
+                                        }))
+                                      }
+                                    />
+                                  </div>
                                 ) : (
                                   <span className="text-slate-500">
                                     No shortage
@@ -1638,12 +1695,70 @@ export function StockTransfersClient({
       )}
 
       <Card className="mt-6">
+        <CardContent className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-5">
+          <input
+            aria-label="Search reference"
+            className="h-10 min-w-0 rounded-md border px-3"
+            placeholder="Search reference"
+            value={draftFilters.reference}
+            onChange={(event) => setDraftFilters({ ...draftFilters, reference: event.target.value })}
+          />
+          <ChoiceSelect
+            id="transfer-filter-source"
+            label="Filter by source"
+            placeholder="All sources"
+            isSearchable
+            options={[{ value: "", label: "All sources" }, ...branches.map((branch) => ({ value: branch.id, label: `${branch.name} (${branch.code})` }))]}
+            value={draftFilters.sourceId}
+            onChange={(value) => setDraftFilters({ ...draftFilters, sourceId: value })}
+          />
+          <ChoiceSelect
+            id="transfer-filter-destination"
+            label="Filter by destination"
+            placeholder="All destinations"
+            isSearchable
+            options={[{ value: "", label: "All destinations" }, ...branches.map((branch) => ({ value: branch.id, label: `${branch.name} (${branch.code})` }))]}
+            value={draftFilters.destinationId}
+            onChange={(value) => setDraftFilters({ ...draftFilters, destinationId: value })}
+          />
+          <ChoiceSelect
+            id="transfer-filter-status"
+            label="Filter by status"
+            placeholder="All statuses"
+            options={[{ value: "", label: "All statuses" }, ...["DRAFT", "FOR_DISPATCH", "IN_TRANSIT", "RECEIVED", "DISCREPANCY_REPORTED", "UNDER_REVIEW", "RESOLVED", "CANCELLED"].map((status) => ({ value: status, label: getTransferStatusLabel(status) }))]}
+            value={draftFilters.status}
+            onChange={(value) => setDraftFilters({ ...draftFilters, status: value })}
+          />
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => {
+                setPage(1);
+                setAppliedFilters(draftFilters);
+              }}
+            >
+              Apply filters
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setPage(1);
+                setDraftFilters(emptyFilters);
+                setAppliedFilters(emptyFilters);
+              }}
+            >
+              Reset
+            </Button>
+          </div>
+        </CardContent>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[700px]">
               <thead className="bg-slate-50">
                 <tr>
                   <th className="p-3 text-left">Reference</th>
+                  <th className="p-3 text-left">Source</th>
                   <th className="p-3 text-left">Destination</th>
                   <th className="p-3 text-left">Status</th>
                   <th className="p-3 text-left">Products</th>
@@ -1653,7 +1768,7 @@ export function StockTransfersClient({
               <tbody>
                 {transfers.isLoading ? (
                   <tr>
-                    <td className="p-6" colSpan={5}>
+                    <td className="p-6" colSpan={6}>
                       Loading transfers...
                     </td>
                   </tr>
@@ -1661,6 +1776,9 @@ export function StockTransfersClient({
                   transfers.data.data.map((transfer) => (
                     <tr className="border-t" key={transfer.id}>
                       <td className="p-3 font-medium">{transfer.reference}</td>
+                      <td className="p-3">
+                        {transfer.source.name} ({transfer.source.code})
+                      </td>
                       <td className="p-3">
                         {transfer.destination.name} ({transfer.destination.code}
                         )
@@ -1708,7 +1826,7 @@ export function StockTransfersClient({
                   ))
                 ) : (
                   <tr>
-                    <td className="p-6 text-slate-500" colSpan={5}>
+                    <td className="p-6 text-slate-500" colSpan={6}>
                       No transfers yet.
                     </td>
                   </tr>

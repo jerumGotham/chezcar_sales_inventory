@@ -12,6 +12,10 @@ const listQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(10),
   transferId: z.string().trim().max(100).optional(),
+  status: z.enum(["DRAFT", "FOR_DISPATCH", "IN_TRANSIT", "RECEIVED", "DISCREPANCY_REPORTED", "UNDER_REVIEW", "RESOLVED", "CANCELLED"]).optional(),
+  sourceId: z.string().trim().max(100).optional(),
+  destinationId: z.string().trim().max(100).optional(),
+  reference: z.string().trim().max(100).optional(),
 });
 
 export async function GET(request: Request) {
@@ -22,6 +26,10 @@ export async function GET(request: Request) {
       page: searchParams.get("page") ?? undefined,
       pageSize: searchParams.get("pageSize") ?? undefined,
       transferId: searchParams.get("transferId") ?? undefined,
+      status: searchParams.get("status") || undefined,
+      sourceId: searchParams.get("sourceId") || undefined,
+      destinationId: searchParams.get("destinationId") || undefined,
+      reference: searchParams.get("reference") || undefined,
     });
     return Response.json(await listTransfers(actor, query));
   } catch (error) {

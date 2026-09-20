@@ -389,7 +389,15 @@ async function notifyUsersForTransfer(
 
 export async function listTransfers(
   actor: AuthContext,
-  query: { page: number; pageSize: number; transferId?: string } = {
+  query: {
+    page: number;
+    pageSize: number;
+    transferId?: string;
+    status?: StockTransferStatus;
+    sourceId?: string;
+    destinationId?: string;
+    reference?: string;
+  } = {
     page: 1,
     pageSize: 10,
   },
@@ -398,10 +406,16 @@ export async function listTransfers(
   const scoped = [...actor.locationIds];
   const where: Prisma.StockTransferWhereInput = {
     id: query.transferId,
+    status: query.status,
+    sourceId: query.sourceId,
+    destinationId: query.destinationId,
+    reference: query.reference
+      ? { contains: query.reference, mode: "insensitive" }
+      : undefined,
     // A transfer belongs to both ends, so either side may follow it.
     ...(hasAllLocationAccess(actor)
       ? {}
-      : { OR: [{ sourceId: { in: scoped } }, { destinationId: { in: scoped } }] }),
+      : { AND: [{ OR: [{ sourceId: { in: scoped } }, { destinationId: { in: scoped } }] }] }),
   };
   const [total, transfers] = await prisma.$transaction([
     prisma.stockTransfer.count({ where }),
@@ -441,7 +455,6 @@ export async function createTransfer(
   return prisma.$transaction(
     async (tx) => {
       const source = await resolveSourceLocation(actor, input.sourceId, tx);
-      await assertDraftLinesAvailable(tx, source.id, input.lines, source.name);
       const destination = await findActiveBranch(input.destinationId, tx);
       if (!destination)
         throw new TransferError(
@@ -449,6 +462,7 @@ export async function createTransfer(
           "Destination must be an active branch",
           400,
         );
+      // Check the route before the stock, so an impossible transfer says why.
       if (destination.id === source.id) {
         throw new TransferError(
           "INVALID_DESTINATION",
@@ -456,6 +470,7 @@ export async function createTransfer(
           400,
         );
       }
+      await assertDraftLinesAvailable(tx, source.id, input.lines, source.name);
 
       const existingDraft = await tx.stockTransfer.findFirst({
         where: { sourceId: source.id, destinationId: destination.id, status: "DRAFT" },

@@ -352,7 +352,8 @@ async function transferEntries(range: ReturnType<typeof occurredAtFilter>) {
     orderBy: { createdAt: "desc" },
     take: SOURCE_LIMIT,
     include: {
-      destination: { select: { name: true } },
+      source: { select: { name: true, code: true } },
+      destination: { select: { name: true, code: true } },
       createdBy: { select: { name: true } },
       finalizedBy: { select: { name: true } },
       dispatchedBy: { select: { name: true } },
@@ -388,7 +389,8 @@ async function transferEntries(range: ReturnType<typeof occurredAtFilter>) {
         place,
         `${pieces} ${pieces === 1 ? "piece" : "pieces"} to ${place}`,
         { items, facts: [
-          { label: "Destination", value: place },
+          { label: "From", value: `${transfer.source.name} (${transfer.source.code})` },
+          { label: "To", value: `${transfer.destination.name} (${transfer.destination.code})` },
           { label: "Status now", value: humanize(transfer.status) },
         ] },
       ));
@@ -405,7 +407,7 @@ async function transferCaseEntries(range: ReturnType<typeof occurredAtFilter>) {
       take: SOURCE_LIMIT,
       include: {
         reportedBy: { select: { name: true } },
-        transfer: { select: { reference: true, destination: { select: { name: true } } } },
+        transfer: { select: { reference: true, source: { select: { name: true, code: true } }, destination: { select: { name: true, code: true } } } },
       },
     }),
     prisma.stockTransferInvestigation.findMany({
@@ -414,7 +416,7 @@ async function transferCaseEntries(range: ReturnType<typeof occurredAtFilter>) {
       take: SOURCE_LIMIT,
       include: {
         submittedBy: { select: { name: true } },
-        transfer: { select: { reference: true, destination: { select: { name: true } } } },
+        transfer: { select: { reference: true, source: { select: { name: true, code: true } }, destination: { select: { name: true, code: true } } } },
       },
     }),
     prisma.stockTransferResolution.findMany({
@@ -423,7 +425,7 @@ async function transferCaseEntries(range: ReturnType<typeof occurredAtFilter>) {
       take: SOURCE_LIMIT,
       include: {
         postedBy: { select: { name: true } },
-        transfer: { select: { reference: true, destination: { select: { name: true } } } },
+        transfer: { select: { reference: true, source: { select: { name: true, code: true } }, destination: { select: { name: true, code: true } } } },
       },
     }),
   ]);
@@ -437,6 +439,10 @@ async function transferCaseEntries(range: ReturnType<typeof occurredAtFilter>) {
       row.transfer.reference,
       row.transfer.destination.name,
       "Branch reported a difference between the delivery and the transfer",
+      { facts: [
+        { label: "From", value: `${row.transfer.source.name} (${row.transfer.source.code})` },
+        { label: "To", value: `${row.transfer.destination.name} (${row.transfer.destination.code})` },
+      ] },
     )),
     ...investigations.map((row) => entry(
       `investigation-${row.id}`,
@@ -447,6 +453,10 @@ async function transferCaseEntries(range: ReturnType<typeof occurredAtFilter>) {
       row.transfer.reference,
       row.transfer.destination.name,
       "Investigation findings submitted",
+      { facts: [
+        { label: "From", value: `${row.transfer.source.name} (${row.transfer.source.code})` },
+        { label: "To", value: `${row.transfer.destination.name} (${row.transfer.destination.code})` },
+      ] },
     )),
     ...resolutions.map((row) => entry(
       `resolution-${row.id}`,
@@ -457,6 +467,10 @@ async function transferCaseEntries(range: ReturnType<typeof occurredAtFilter>) {
       row.transfer.reference,
       row.transfer.destination.name,
       "Final stock allocation posted",
+      { facts: [
+        { label: "From", value: `${row.transfer.source.name} (${row.transfer.source.code})` },
+        { label: "To", value: `${row.transfer.destination.name} (${row.transfer.destination.code})` },
+      ] },
     )),
   ];
 }
