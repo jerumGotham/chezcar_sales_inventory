@@ -53,3 +53,4 @@ next-env.d.ts
 
 # local OpenCode workspace configuration
 /opencode.json
+_*.mjs
