@@ -8,7 +8,8 @@ import {
   type AuthContext,
 } from "@/lib/server/authorization";
 import { prisma } from "@/lib/server/prisma";
-import { canAccessLocation, hasAllLocationAccess } from "@/lib/server/policy/access";
+import { hasAllLocationAccess } from "@/lib/server/policy/access";
+import { listAccessibleOperationalLocations } from "@/lib/server/locations";
 
 export class StockReceiptError extends Error {
   constructor(public readonly code: string, message: string, public readonly status = 409) {
@@ -54,6 +55,32 @@ export async function listStockReceipts(actor: AuthContext) {
   return receipts.map(serializeReceipt);
 }
 
+/**
+ * A delivery is received where it physically arrived, so the destination must be
+ * one of the actor's own locations. A single-location actor needs no choice.
+ */
+async function resolveReceivingLocation(
+  actor: AuthContext,
+  requestedId: string | undefined,
+  tx: Prisma.TransactionClient,
+) {
+  const accessible = await listAccessibleOperationalLocations(actor, tx);
+  if (accessible.length === 0) {
+    throw new StockReceiptError("FORBIDDEN", "No active location is assigned to your account", 403);
+  }
+  if (!requestedId) {
+    if (accessible.length > 1) {
+      throw new StockReceiptError("LOCATION_REQUIRED", "Select the location that received the delivery", 400);
+    }
+    return accessible[0];
+  }
+  const match = accessible.find((location) => location.id === requestedId);
+  if (!match) {
+    throw new StockReceiptError("FORBIDDEN", "That location is outside your assigned locations", 403);
+  }
+  return match;
+}
+
 export async function createStockReceipt(actor: AuthContext, input: CreateStockReceiptInput) {
   assertCapability(actor, "inventory-receiving:create");
   const productIds = input.lines.map((line) => line.productId);
@@ -63,16 +90,7 @@ export async function createStockReceipt(actor: AuthContext, input: CreateStockR
 
   try {
     return await prisma.$transaction(async (tx) => {
-      const stockRoom = await tx.location.findFirst({
-        where: { code: "SR", type: "WAREHOUSE", isActive: true },
-        select: { id: true, code: true, name: true },
-      });
-      if (!stockRoom) {
-        throw new StockReceiptError("FORBIDDEN", "Supplier receipts may only be posted to active Stock Room", 403);
-      }
-      if (!canAccessLocation(actor, stockRoom.id)) {
-        throw new StockReceiptError("FORBIDDEN", "Stock Room is outside your assigned locations", 403);
-      }
+      const destination = await resolveReceivingLocation(actor, input.locationId, tx);
 
       const supplier = await tx.supplier.findFirst({
         where: { id: input.supplierId, status: "ACTIVE" },
@@ -97,7 +115,7 @@ export async function createStockReceipt(actor: AuthContext, input: CreateStockR
           supplierId: supplier.id,
           supplierName: supplier.name,
           notes: input.notes || null,
-          locationId: stockRoom.id,
+          locationId: destination.id,
           receivedById: actor.userId,
           lines: {
             create: input.lines.map((line) => {
@@ -125,15 +143,15 @@ export async function createStockReceipt(actor: AuthContext, input: CreateStockR
         const receivedQuantity = line.acceptedQuantity + line.quarantinedQuantity;
         if (receivedQuantity === 0) continue;
         await tx.inventoryBalance.upsert({
-          where: { locationId_productId: { locationId: stockRoom.id, productId: line.productId } },
-            create: { locationId: stockRoom.id, productId: line.productId, onHand: receivedQuantity, quarantined: line.quarantinedQuantity, unitCost: new Prisma.Decimal(line.unitCost) },
+          where: { locationId_productId: { locationId: destination.id, productId: line.productId } },
+            create: { locationId: destination.id, productId: line.productId, onHand: receivedQuantity, quarantined: line.quarantinedQuantity, unitCost: new Prisma.Decimal(line.unitCost) },
             update: { onHand: { increment: receivedQuantity }, quarantined: { increment: line.quarantinedQuantity }, unitCost: new Prisma.Decimal(line.unitCost), version: { increment: 1 } },
         });
         await tx.inventoryMovement.create({
           data: {
             receiptId: receipt.id,
             productId: line.productId,
-            locationId: stockRoom.id,
+            locationId: destination.id,
             quantity: receivedQuantity,
             type: "SUPPLIER_RECEIPT",
             actorId: actor.userId,
@@ -150,9 +168,9 @@ export async function createStockReceipt(actor: AuthContext, input: CreateStockR
             idempotencyKey: `receipt:${receipt.id}`,
             supplierId: supplier.id,
             supplierName: supplier.name,
-            locationId: stockRoom.id,
-            locationCode: stockRoom.code,
-            locationName: stockRoom.name,
+            locationId: destination.id,
+            locationCode: destination.code,
+            locationName: destination.name,
             sourceReceiptId: receipt.id,
             notes: `Automatically created from affected receipt ${receipt.reference}.`,
             createdById: actor.userId,

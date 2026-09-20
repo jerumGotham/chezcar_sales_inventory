@@ -19,10 +19,10 @@ export async function postStockReceiptAction(
   if (!parsed.ok) return parsed;
 
   try {
-    await createStockReceipt(actor, {
+    const receipt = await createStockReceipt(actor, {
       ...parsed.input,
     });
-    return { ok: true, message: `Receipt ${parsed.input.reference} posted to Stock Room.` };
+    return { ok: true, message: `Receipt ${parsed.input.reference} posted to ${receipt.location.name}.` };
   } catch (error) {
     return {
       ok: false,

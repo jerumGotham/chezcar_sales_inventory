@@ -2,6 +2,8 @@ import { z } from "zod";
 
 export const createStockReceiptSchema = z.object({
   reference: z.string().trim().min(1, "Enter a receipt reference.").max(100),
+  /** Where the delivery physically arrived. Omitted when the actor has exactly one location. */
+  locationId: z.string().trim().min(1).optional(),
   supplierId: z.string().trim().min(1, "Select a supplier."),
   notes: z.string().trim().max(4_000).optional(),
   lines: z.array(z.object({

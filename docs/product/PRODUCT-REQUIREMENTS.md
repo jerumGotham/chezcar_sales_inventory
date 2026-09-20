@@ -18,7 +18,7 @@ The system seeds four default roles as a starting point; non-owner role names an
 
 Locations are managed data, not a fixed list. Branch Maintenance adds, updates, and deactivates branches, so the set below is only the initial seed:
 
-- `SR` - central Stock Room; not a retail branch
+- `SR` - central Stock Room; not a retail branch. Supplier deliveries may also be received directly at a branch by a user assigned to it, so the Stock Room is no longer the only entry point for stock
 - `QC` - Quezon City branch
 - `BL` - Biñan Laguna branch
 - `LU` - La Union branch

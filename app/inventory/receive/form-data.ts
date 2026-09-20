@@ -20,6 +20,7 @@ export function parseReceiptFormData(formData: FormData): ReceiptFormParseResult
   const result = createStockReceiptSchema.safeParse({
     reference: String(formData.get("reference") ?? ""),
     supplierId: String(formData.get("supplierId") ?? ""),
+    locationId: String(formData.get("locationId") ?? "").trim() || undefined,
     notes: String(formData.get("notes") ?? "").trim() || undefined,
     lines: Array.from({ length: lineCount }, (_, index) => ({
       productId: String(formData.get(`productId-${index}`) ?? ""),
