@@ -57,6 +57,7 @@ const expectedMenu = {
     "Returns & Warranty",
     "Stock Transfers",
     "Reports",
+    "Audit Trail",
     "Branch Maintenance",
     "Supplier Maintenance",
     "Personnel Maintenance",

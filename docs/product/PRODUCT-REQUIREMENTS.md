@@ -58,7 +58,7 @@ All MVP replenishment enters `SR`. Transfers are `SR` to branch only. Branch-to-
 - Individual-receipt Accounting verification
 - Durable in-app, live, and browser-push notifications
 - Limited offline branch sales and transfer confirmation/discrepancy capture
-- Audit history for stock-changing and corrective actions
+- Audit history for stock-changing and corrective actions, readable in one Audit Trail screen gated by `audit:view`
 - Non-login Personnel maintenance for Salesperson and Installer attribution
 - Supplier master data used by receiving and Supplier Claims
 - Backjob, Customer Warranty, Supplier Claim, and per-location quarantine workflows

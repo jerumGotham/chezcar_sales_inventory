@@ -21,6 +21,7 @@ import {
   Users,
   ShoppingCart,
   ShieldCheck,
+  ScrollText,
   Truck,
   Contact,
   RotateCcw,
@@ -54,6 +55,7 @@ const MENU_ICONS: Record<ShellMenuIcon, LucideIcon> = {
   "receipt-verification": FileText,
   "stock-transfers": ArrowLeftRight,
   "offline-devices": ShieldCheck,
+  audit: ScrollText,
 };
 
 export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {

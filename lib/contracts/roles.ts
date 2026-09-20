@@ -57,6 +57,7 @@ export const CAPABILITY_CATALOG = [
   { id: "offline-sales:snapshot", module: "Offline Sales", label: "View offline sales snapshot" },
   { id: "offline-sales:sync", module: "Offline Sales", label: "Sync offline sales" },
   { id: "offline-sales:activate-device", module: "Administration", label: "Activate offline devices" },
+  { id: "audit:view", module: "Administration", label: "View the audit trail" },
   { id: "users:view", module: "Administration", label: "View users" },
   { id: "users:create", module: "Administration", label: "Add users" },
   { id: "users:update", module: "Administration", label: "Edit users" },

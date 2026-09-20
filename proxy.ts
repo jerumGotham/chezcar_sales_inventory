@@ -19,6 +19,7 @@ const PAGE_CAPABILITIES = {
   inventory: CAPABILITIES.inventoryView,
   reports: CAPABILITIES.reportsView,
   users: CAPABILITIES.usersView,
+  audit: CAPABILITIES.auditView,
   branches: CAPABILITIES.branchesView,
   suppliers: CAPABILITIES.suppliersView,
   personnel: CAPABILITIES.personnelView,

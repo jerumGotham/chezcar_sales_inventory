@@ -35,6 +35,7 @@ export const CAPABILITIES = {
   inventoryView: "inventory:view",
   inventoryReceivingCreate: "inventory-receiving:create",
   reportsView: "reports:view",
+  auditView: "audit:view",
   usersView: "users:view",
   branchesView: "branches:view",
   suppliersView: "suppliers:view",

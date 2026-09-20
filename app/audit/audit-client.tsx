@@ -1,0 +1,183 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
+
+import { PageShell } from "@/components/page-shell";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { AUDIT_CATEGORIES, type AuditTrailDto } from "@/lib/contracts/audit";
+
+const PAGE_SIZE = 25;
+
+type Filters = { category: string; search: string; dateFrom: string; dateTo: string };
+
+const EMPTY_FILTERS: Filters = { category: "all", search: "", dateFrom: "", dateTo: "" };
+
+function formatMoment(value: string) {
+  return new Date(value).toLocaleString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export function AuditClient() {
+  const [draft, setDraft] = useState<Filters>(EMPTY_FILTERS);
+  const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS);
+  const [page, setPage] = useState(1);
+
+  const params = useMemo(() => {
+    const search = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
+    if (applied.category !== "all") search.set("category", applied.category);
+    if (applied.search) search.set("search", applied.search);
+    if (applied.dateFrom) search.set("dateFrom", applied.dateFrom);
+    if (applied.dateTo) search.set("dateTo", applied.dateTo);
+    return search.toString();
+  }, [applied, page]);
+
+  const query = useQuery({
+    queryKey: ["audit", params],
+    queryFn: async () => {
+      const response = await fetch(`/api/audit?${params}`, { credentials: "same-origin" });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error?.message ?? "Unable to load the audit trail");
+      return json.data as AuditTrailDto;
+    },
+    placeholderData: (previous) => previous,
+  });
+
+  const rows = query.data?.data ?? [];
+  const meta = query.data?.meta ?? { page: 1, pageSize: PAGE_SIZE, total: 0, totalPages: 1, truncated: false };
+
+  const apply = (next: Filters) => {
+    setApplied(next);
+    setDraft(next);
+    setPage(1);
+  };
+
+  return (
+    <PageShell
+      title="Audit Trail"
+      subtitle="Every recorded action across sales, orders, inventory, transfers, and returns."
+    >
+      <Card className="mb-4">
+        <CardContent className="grid gap-4 pt-6 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="space-y-2">
+            <Label htmlFor="audit-category">Module</Label>
+            <select
+              id="audit-category"
+              className="border-input bg-background h-10 w-full rounded-md border px-3 text-sm"
+              value={draft.category}
+              onChange={(event) => setDraft({ ...draft, category: event.target.value })}
+            >
+              <option value="all">All modules</option>
+              {AUDIT_CATEGORIES.map((category) => (
+                <option key={category} value={category}>{category}</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="audit-from">From</Label>
+            <Input id="audit-from" type="date" value={draft.dateFrom} onChange={(event) => setDraft({ ...draft, dateFrom: event.target.value })} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="audit-to">To</Label>
+            <Input id="audit-to" type="date" value={draft.dateTo} onChange={(event) => setDraft({ ...draft, dateTo: event.target.value })} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="audit-search">Search</Label>
+            <Input
+              id="audit-search"
+              placeholder="User, reference, or detail"
+              value={draft.search}
+              onChange={(event) => setDraft({ ...draft, search: event.target.value })}
+            />
+          </div>
+          <div className="flex items-end gap-2">
+            <Button onClick={() => apply(draft)}>Apply Filters</Button>
+            <Button variant="outline" onClick={() => apply(EMPTY_FILTERS)}>Reset</Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {query.error ? (
+        <p role="alert" className="text-destructive mb-4 text-sm">{(query.error as Error).message}</p>
+      ) : null}
+      {meta.truncated ? (
+        <p className="text-muted-foreground mb-4 text-sm">
+          Showing the most recent entries only. Narrow the date range to see older records.
+        </p>
+      ) : null}
+
+      <Card>
+        <CardContent className="pt-6">
+          <div className="mb-4 flex items-center justify-between">
+            <p className="text-muted-foreground text-sm">
+              {meta.total === 0 ? "No entries" : `Showing page ${meta.page} of ${meta.totalPages}, ${meta.total} entries`}
+            </p>
+            {query.isFetching ? <Loader2 className="text-muted-foreground size-4 animate-spin" /> : null}
+          </div>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>When</TableHead>
+                  <TableHead>Module</TableHead>
+                  <TableHead>Action</TableHead>
+                  <TableHead>User</TableHead>
+                  <TableHead>Reference</TableHead>
+                  <TableHead>Location</TableHead>
+                  <TableHead>Details</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-muted-foreground py-8 text-center">
+                      {query.isLoading ? "Loading the audit trail…" : "No recorded activity for these filters."}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  rows.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell className="whitespace-nowrap">{formatMoment(row.occurredAt)}</TableCell>
+                      <TableCell><Badge variant="outline">{row.category}</Badge></TableCell>
+                      <TableCell className="font-medium">{row.action}</TableCell>
+                      <TableCell>{row.actor}</TableCell>
+                      <TableCell className="font-mono text-xs">{row.reference}</TableCell>
+                      <TableCell>{row.location}</TableCell>
+                      <TableCell className="max-w-md">{row.details}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="mt-4 flex items-center justify-end gap-2">
+            <Button variant="outline" size="sm" disabled={meta.page <= 1 || query.isFetching} onClick={() => setPage((current) => Math.max(current - 1, 1))}>
+              Previous
+            </Button>
+            <Button variant="outline" size="sm" disabled={meta.page >= meta.totalPages || query.isFetching} onClick={() => setPage((current) => current + 1)}>
+              Next
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </PageShell>
+  );
+}

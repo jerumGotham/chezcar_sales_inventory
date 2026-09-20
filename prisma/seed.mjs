@@ -22,6 +22,7 @@ const LOCATION_DISPLAY_NAMES = Object.freeze({
 const ALL_CAPABILITIES = Object.freeze([
   "locations:all",
   "dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push",
+  "audit:view",
   "customers:view", "customers:create", "customers:update", "customers:deactivate",
   "customer-orders:view", "customer-orders:create", "customer-orders:reserve",
   "customer-orders:record-payment", "customer-orders:release", "customer-orders:cancel",
