@@ -70,7 +70,7 @@ A customer is never deleted. Use **Deactivate** instead: the record stays for hi
 
 POS records a sale that already happened on a handwritten receipt. Posting deducts branch stock immediately, so the entry must match the paper receipt.
 
-**Step 1. Choose the selling branch.** Products and stock come from this branch. You can type to search the branch list.
+**Step 1. Choose the selling branch.** Products and stock come from this branch. Type to narrow the list, then pick the branch.
 
 ![POS](images/23-pos-empty.png)
 ![Branch selected](images/24-pos-branch-selected.png)
@@ -100,41 +100,93 @@ What the system does on posting: it creates the sale, deducts stock at that bran
 
 Every posted sale waits here until someone checks it against the paper receipt.
 
-![Verification queue](images/30-receipt-verification-queue.png)
+![Verification queue](images/72-verification-queue.png)
 
-Open a sale to compare the encoded details with the uploaded photo.
+Press **Review** to open the sale beside its evidence.
 
-![Verification detail](images/31-receipt-verification-detail.png)
+![Verification detail](images/73-verification-detail.png)
 
-- **Confirm** when the encoded sale matches the receipt.
-- **Report a mismatch** when it does not. The branch can then respond, and an authorised user resolves it, keeping the sale or voiding and replacing it.
+**A sale cannot be verified without the receipt photo.** Until one is attached, both Confirm correct and Report mismatch stay disabled and the panel says the evidence is pending. Choose the file, then press **Attach receipt photo**.
+
+![Photo selected](images/74-verification-photo-selected.png)
+![Photo attached](images/75-verification-photo-attached.png)
+
+Then decide:
+
+- **Confirm correct** when the encoded sale matches the receipt. The sale becomes Verified and counts in the sales report.
+- **Report mismatch** when it does not. The branch can respond, and an authorised user resolves it, keeping the sale or voiding and replacing it.
+
+![Confirmed](images/76-verification-confirmed.png)
 
 Posted sales are never deleted. A correction is an auditable void-and-replace.
 
----
-
 ## 6. Customer orders
 
-An order is a booking: a reservation, a reservation with downpayment, or a waiting-stock order.
+An order is a booking made before the goods leave: a reservation, a reservation with downpayment, or a waiting-stock order.
 
 ![Orders](images/32-customer-orders-list.png)
-![Create order](images/33-customer-order-create.png)
 
-**Payments.** Record a payment any time before release. Each payment takes an amount and its own receipt number, and the balance updates. The order shows total paid and remaining balance; every payment appears in the audit trail.
+**Step 1. Open Create Order** and fill the header: branch, customer, salesperson, and order type.
 
-**Release.** On release, the final receipt number is recorded, stock is deducted, and the order is completed.
+![Order form](images/60-order-create-form.png)
+![Header filled](images/61-order-header-filled.png)
 
-**Cancellation.** An order with a downpayment needs a cancellation note.
+**Step 2. Add the items** with quantities. Prices come from the catalogue.
 
----
+![Item added](images/62-order-item-added.png)
+
+**Step 3. Save Order.** The order appears in the list with its balance and status.
+
+![Order saved](images/63-order-saved.png)
+
+**The row buttons** change with the order's state.
+
+![Row actions](images/64-orders-with-row-actions.png)
+
+**Downpayment and later payments.** Press **Downpayment**, or **Add Payment** once one exists. Each payment takes an amount and its own receipt number.
+
+![Payment dialog](images/65-order-payment-dialog.png)
+![Payment filled](images/66-order-payment-filled.png)
+![Payment recorded](images/67-order-payment-recorded.png)
+
+The order then reads Partial, with total paid and remaining balance. Every payment is a separate line in the audit trail, including the first downpayment.
+
+**Reserve Stock** holds the units for this customer. Available stock drops, on hand does not, so nobody else can sell the reserved pieces.
+
+![Reserved](images/68-order-reserved.png)
+
+**Release** hands the goods over. It asks for the final handwritten receipt number and any remarks.
+
+![Release page](images/69-order-release-page.png)
+![Release filled](images/70-order-release-filled.png)
+![Released](images/71-order-released.png)
+
+On release the system deducts stock, clears the reservation, records the final receipt, and completes the order.
+
+**Cancel** is available until release. An order with a downpayment requires a cancellation note.
 
 ## 7. Products
 
-The product catalogue holds item codes, names, categories, selling prices, reorder levels, images, and supplier links.
+The catalogue holds item codes, names, categories, brands, selling prices, reorder levels, warranty duration, images, and vehicle fitment.
 
 ![Products](images/07-products.png)
 
-A product with balances or history cannot be deleted; deactivate it instead. Price changes are recorded with the old and new value in the audit trail.
+**Add Product** opens the form. Item code and name are required; price, reorder level, warranty months, and an image are optional.
+
+![Product form](images/81-product-form.png)
+![Product filled](images/82-product-form-filled.png)
+![Product created](images/83-product-created.png)
+
+**Find a product** with the item code or name filter, then **Apply Filters**.
+
+![Filtered](images/84-products-filtered.png)
+
+**Edit** changes any field, including the selling price.
+
+![Edit price](images/85-product-edit-price.png)
+![Saved](images/86-product-price-saved.png)
+
+A price change is recorded in the audit trail with the old and the new value. **Delete** works only while a product has no balances and no history; otherwise set its status to inactive.
 
 ---
 
@@ -143,12 +195,22 @@ A product with balances or history cannot be deleted; deactivate it instead. Pri
 Inventory shows stock per location for the branches you are assigned to.
 
 ![Inventory](images/08-inventory.png)
-![Product detail](images/34-inventory-product-detail.png)
+
+**View** expands a product to show each branch holding it.
+
+![Expanded](images/77-inventory-expanded.png)
 
 - **Total on hand** is everything physically there, including quarantined units.
 - **Available** excludes reserved and quarantined units, and is what POS can sell.
-- **Stock Movement** lists every change with its reason and the person responsible.
-- **Adjust stock** corrects a count and always requires a reason.
+- **Quarantined** units are physically present but not sellable.
+
+**Adjust Stock** corrects a count. Pick the inventory balance, which names the product and its location, then the adjustment type, the quantity, a reference, and a reason. The reason is required.
+
+![Adjust dialog](images/78-inventory-adjust-dialog.png)
+![Adjust filled](images/79-inventory-adjust-filled.png)
+![Adjust saved](images/80-inventory-adjust-saved.png)
+
+Every adjustment becomes a stock movement carrying the reference, the reason, and the person who made it. **Edit Cost** updates the unit cost the same way. **Stock Movement** and **Inventory Availability** open the history and the per-branch availability views.
 
 ---
 
@@ -180,12 +242,12 @@ A transfer moves stock from one location to a branch. Any location you are assig
 
 ![Stock transfers](images/10-stock-transfers.png)
 
-**Step 1. Create the draft.** Choose source and destination, then add products and quantities. With one assigned location, the source is filled in for you. Products come from the selected source.
+**Step 1. Create the draft.** Choose source and destination, then add products and quantities. With one assigned location the source is filled in for you. Products come from the selected source, and changing the source clears the lines.
 
 ![Draft form](images/50-transfer-draft-form.png)
 ![Draft created](images/51-transfer-draft-created.png)
 
-**Step 2. Finalize**, which locks the draft for dispatch.
+**Step 2. Finalize**, which locks the draft for dispatch. A draft can also be edited or deleted until then.
 
 ![Finalized](images/52-transfer-finalized.png)
 
@@ -193,18 +255,36 @@ A transfer moves stock from one location to a branch. Any location you are assig
 
 ![Dispatched](images/53-transfer-dispatched.png)
 
-**Step 4. The destination counts the delivery.** Only the receiving branch sees these actions.
+**Step 4. The destination counts the delivery.** Only the receiving branch sees these two actions, and only the sending side sees cancel.
 
-![Incoming transfer](images/54-branch-incoming-transfer.png)
-![Checklist](images/55-branch-transfer-checklist.png)
+![Incoming](images/54-branch-incoming-transfer.png)
+![Checklist](images/115-branch-count-checklist.png)
+
+- **Confirm exact receipt** when the count matches. Stock lands at the destination and the transfer is complete.
+
 ![Received](images/56-branch-transfer-received.png)
 
-- **Confirm receipt** when the count matches. Stock lands at the destination and the transfer is complete.
-- **Report a discrepancy** when it does not. Nothing moves yet.
+- **Report discrepancy** when it does not. Enter what actually arrived and what happened. Nothing moves yet.
 
-**Step 5. Discrepancies.** The source side investigates, then a resolution allocates every missing piece: delivered to the destination, returned to the source, or written off as loss. Stock only moves when the resolution is posted.
+![Short count](images/116-branch-short-count.png)
+![Discrepancy form](images/117-branch-discrepancy-form.png)
+![Reported](images/118-branch-discrepancy-reported.png)
 
-**Cancelling** an in-transit transfer returns every in-transit piece to the source. Only the sending side can cancel.
+**Step 5. The sending side investigates.** Open the flagged transfer, write the findings, and submit.
+
+![Review](images/119-admin-discrepancy-review.png)
+![Findings](images/120-admin-investigation-form.png)
+![Submitted](images/121-admin-investigation-submitted.png)
+
+**Step 6. Post the stock resolution.** Every missing piece must be accounted for: delivered to the destination, returned to the source, or written off as loss. Stock moves only when this is posted.
+
+![Resolution form](images/122-admin-resolution-form.png)
+![Resolution filled](images/123-admin-resolution-filled.png)
+![Resolved](images/124-admin-resolution-posted.png)
+
+In the run shown, six pieces left Quezon City, four arrived at Biñan, and two were written off. The movements record exactly that: minus six at the source, plus four at the destination, and a two-piece loss.
+
+**Cancelling** an in-transit transfer returns every in-transit piece to the source and needs a reason. Only the sending side can cancel.
 
 The list can be filtered by reference, source, destination, and status.
 
@@ -212,19 +292,79 @@ The list can be filtered by reference, source, destination, and status.
 
 ## 11. Returns and warranty
 
-Three separate case types live here.
+Three case types share this screen: backjobs, customer warranties, and supplier claims.
 
-![Backjobs](images/39-returns-backjobs.png)
-![Warranties](images/40-returns-warranties.png)
+![Backjobs](images/96-backjob-list.png)
+
+### Backjob: rework on something already sold
+
+**Step 1. New Backjob.** Pick the posted sale, tick the purchased item, and describe the concern.
+
+![Backjob form](images/92-backjob-form.png)
+![Sale selected](images/93-backjob-sale-selected.png)
+![Concern filled](images/94-backjob-filled.png)
+
+The draft opens on its own page with the customer, receipt, and branch already filled.
+
+![Backjob draft](images/95-backjob-created.png)
+
+**Step 2. Schedule** it: choose the installer and the date and time.
+
+![Schedule](images/98-backjob-schedule-filled.png)
+![Scheduled](images/99-backjob-scheduled.png)
+
+**Step 3. Decide coverage**, covered or chargeable, and save it. A chargeable case records the amount and the charge sale.
+
+![Coverage saved](images/101-backjob-coverage-saved.png)
+
+![In progress](images/100-backjob-in-progress.png)
+
+**Step 4. Start work**, then record what was done, how the customer acknowledged it, and who acknowledged it.
+
+![Work recorded](images/102-backjob-work-recorded.png)
+
+**Complete Backjob** closes the case. It stays disabled until the work performed and the acknowledging name are filled.
+
+![Completed](images/103-backjob-completed.png)
+
+Parts issued to a backjob are deducted from branch stock, and unused parts are returned the same way. **Print** produces the form for the customer. A draft can be cancelled or rejected with a reason.
+
+### Customer warranty: an item returned under warranty
+
+**Step 1. Create the claim.** Pick the purchased item from a verified sale; the customer, product, and branch fill themselves. Enter the claim quantity and the concern. When the product has no warranty duration on file, the owner must state the warranty basis in months and why.
+
+![Warranty form](images/104-warranty-form.png)
+![Warranty filled](images/105-warranty-filled.png)
+![Warranty created](images/106-warranty-created.png)
+
+Creating a claim changes no stock yet.
+
+![Warranty list](images/107-warranty-list.png)
+![Case timeline](images/97-backjob-detail.png)
+![Warranty detail](images/108-warranty-detail.png)
+
+**Step 2. Confirm item received.** Only now does the item enter quarantine at that branch: present in on hand, excluded from available.
+
+![Received](images/109-warranty-received.png)
+
+**Step 3. Approve repair or replacement** with a target date, or reject the claim.
+
+![Target date](images/110-warranty-target-date.png)
+![Approved](images/111-warranty-approved.png)
+
+**Step 4. Mark ready for pickup**, then **Confirm handover to customer**, then **Complete claim**.
+
+![Ready](images/112-warranty-ready.png)
+![Handed over](images/113-warranty-handed-over.png)
+![Completed](images/114-warranty-completed.png)
+
+**Return unrepaired item** is there for a claim the customer takes back before any decision.
+
+### Supplier claim: damaged or missing stock from a delivery
+
 ![Supplier claims](images/41-returns-supplier-claims.png)
 
-- **Backjob**: rework on something already sold, scheduled to an installer, with parts issued and returned.
-- **Customer warranty**: a returned item received into quarantine, assessed, then repaired or replaced.
-- **Supplier claim**: damaged or missing stock claimed against a supplier, opened automatically from an affected receipt.
-
-![Create a backjob](images/42-backjob-create.png)
-
-Every case keeps its own timeline, and each printable form can be handed to the customer.
+A claim opens automatically whenever a supplier receipt records quarantined or missing units. From the claim you can send stock back to the supplier, receive a replacement, or record a repair, and each step keeps its own record.
 
 ---
 
@@ -264,14 +404,25 @@ Filter by module, date range, or free text.
 
 ## 14. Branch, supplier and personnel maintenance
 
+**Branches.** Add a branch at any time with its code and name. New branches appear immediately as transfer destinations and as receiving locations.
+
 ![Branches](images/14-branch-maintenance.png)
 ![Branch form](images/43-branch-form.png)
-![Suppliers](images/15-supplier-maintenance.png)
-![Supplier form](images/44-supplier-form.png)
-![Personnel](images/16-personnel-maintenance.png)
-![Personnel form](images/45-personnel-form.png)
 
-Branches can be added at any time. Suppliers and personnel are deactivated rather than deleted, so history stays attributable. Personnel are salespersons and installers, and they do not sign in.
+**Suppliers.** Code, name, contact person, number, email, address, and notes.
+
+![Suppliers](images/15-supplier-maintenance.png)
+![Supplier filled](images/87-supplier-form-filled.png)
+![Supplier created](images/88-supplier-created.png)
+
+**Personnel** are salespersons and installers. They do not sign in; they are named on sales, orders, and backjobs.
+
+![Personnel](images/16-personnel-maintenance.png)
+![Personnel form](images/89-personnel-form.png)
+![Personnel filled](images/90-personnel-form-filled.png)
+![Personnel created](images/91-personnel-created.png)
+
+Suppliers and personnel are deactivated, never deleted, so past records keep their names. **Deactivate** and **Edit** sit on each row.
 
 ---
 
