@@ -390,8 +390,11 @@ export function AppHeader({
                 <p className="truncate text-sm font-semibold text-foreground">
                   {access.identity.name}
                 </p>
-                <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                  Authenticated user
+                <p
+                  className="truncate text-xs text-slate-500 dark:text-slate-400"
+                  title={access.identity.roleName}
+                >
+                  {access.identity.roleName}
                 </p>
               </div>
               <ChevronDown
@@ -417,6 +420,9 @@ export function AppHeader({
                 </p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   {access.identity.email}
+                </p>
+                <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  {access.identity.roleName}
                 </p>
               </div>
               <button
