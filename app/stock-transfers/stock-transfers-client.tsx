@@ -349,16 +349,16 @@ export function StockTransfersClient({
     canManageSource && capabilities.includes("stock-transfers:create");
   const canUpdate =
     canManageSource && capabilities.includes("stock-transfers:update");
-  const canDelete = capabilities.includes("stock-transfers:delete");
-  const canFinalize = capabilities.includes("stock-transfers:finalize");
-  const canDispatch = capabilities.includes("stock-transfers:dispatch");
-  const canCancel = capabilities.includes("stock-transfers:cancel");
-  const canReceive = capabilities.includes("stock-transfers:receive");
-  const canReportDiscrepancy = capabilities.includes(
+  const holdsDelete = capabilities.includes("stock-transfers:delete");
+  const holdsFinalize = capabilities.includes("stock-transfers:finalize");
+  const holdsDispatch = capabilities.includes("stock-transfers:dispatch");
+  const holdsCancel = capabilities.includes("stock-transfers:cancel");
+  const holdsReceive = capabilities.includes("stock-transfers:receive");
+  const holdsReportDiscrepancy = capabilities.includes(
     "stock-transfers:report-discrepancy",
   );
-  const canInvestigate = capabilities.includes("stock-transfers:investigate");
-  const canResolve = capabilities.includes("stock-transfers:resolve");
+  const holdsInvestigate = capabilities.includes("stock-transfers:investigate");
+  const holdsResolve = capabilities.includes("stock-transfers:resolve");
   const canAudit = isAdmin;
   const [transferIdFilter, setTransferIdFilter] = useState(initialTransferId);
   const [selectedTransferId, setSelectedTransferId] = useState(
@@ -413,10 +413,24 @@ export function StockTransfersClient({
     staleTime: 0,
   });
   const sourceProducts = productOptions.data ?? [];
+  const accessibleLocationIds = new Set(sources.map((location) => location.id));
   const selected = selectedTransferId
     ? (transfers.data?.data.find((transfer) => transfer.id === selectedTransferId) ??
       null)
     : null;
+  // Which end of this transfer the viewer works at decides what they may do:
+  // the sender dispatches and cancels, the receiver counts and reports.
+  const holdsSourceSide = selected ? accessibleLocationIds.has(selected.source.id) : false;
+  const holdsDestinationSide = selected ? accessibleLocationIds.has(selected.destination.id) : false;
+  const canDelete = holdsDelete && holdsSourceSide;
+  const canFinalize = holdsFinalize && holdsSourceSide;
+  const canDispatch = holdsDispatch && holdsSourceSide;
+  const canCancel = holdsCancel && holdsSourceSide;
+  const canInvestigate = holdsInvestigate && holdsSourceSide;
+  const canReceive = holdsReceive && holdsDestinationSide;
+  const canReportDiscrepancy = holdsReportDiscrepancy && holdsDestinationSide;
+  const canResolve = holdsResolve && holdsDestinationSide;
+  const canEditSelectedDraft = canUpdate && holdsSourceSide;
   const rememberTransfer = (transfer: Transfer, clearFilter = false) => {
     const nextPage = clearFilter ? 1 : page;
     const nextTransferId = clearFilter ? undefined : transferIdFilter;
@@ -929,7 +943,7 @@ export function StockTransfersClient({
                 </Badge>
               </div>
             </div>
-            {canUpdate && editLines.length > 0 && (
+            {canEditSelectedDraft && editLines.length > 0 && (
               <div className="space-y-3">
                 {productOptions.isError && (
                   <p className="text-sm text-red-600">
@@ -1095,7 +1109,7 @@ export function StockTransfersClient({
                 </div>
               </div>
             )}
-            {!canUpdate && (
+            {!canEditSelectedDraft && (
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left">
@@ -1802,7 +1816,7 @@ export function StockTransfersClient({
                               ? "Hide details"
                               : "View details"}
                           </Button>
-                          {transfer.status === "DRAFT" && canDelete && (
+                          {transfer.status === "DRAFT" && holdsDelete && accessibleLocationIds.has(transfer.source.id) && (
                               <Button
                                 size="sm"
                                 variant="destructive"
