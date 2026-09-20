@@ -128,8 +128,8 @@ export default function DashboardPage() {
                </>
               ) : summary.capabilities.includes("inventory-receiving:create") && !summary.capabilities.includes("sales:post") ? (
                <>
-                 <MetricCard icon={<Warehouse className="h-5 w-5 text-sky-600" />} label="SR Available Stock" value={String(summary.availableStock)} hint="Available units in Stock Room" />
-                  <MetricCard icon={<ReceiptText className="h-5 w-5 text-emerald-600" />} label="Supplier Receipts Today" value={String(summary.supplierReceiptsToday)} hint="Posted into Stock Room" />
+                 <MetricCard icon={<Warehouse className="h-5 w-5 text-sky-600" />} label="Available Stock" value={String(summary.availableStock)} hint="Available units across your locations" />
+                  <MetricCard icon={<ReceiptText className="h-5 w-5 text-emerald-600" />} label="Supplier Receipts Today" value={String(summary.supplierReceiptsToday)} hint="Deliveries posted today in your locations" />
                   <MetricCard icon={<ClipboardList className="h-5 w-5 text-violet-600" />} label="Transfer Drafts" value={String(summary.transferDrafts)} hint="Drafts to complete" />
                   <MetricCard icon={<AlertTriangle className="h-5 w-5 text-amber-600" />} label="Low / Out Stock" value={String(summary.lowStockCount)} hint={`${summary.outOfStockCount} out of stock`} />
                </>

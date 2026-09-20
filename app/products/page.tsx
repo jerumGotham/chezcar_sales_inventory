@@ -1027,7 +1027,7 @@ export default function ProductsPage() {
                   disabled={Boolean(selectedProduct && !canUpdate)}
                   onChange={(event) => setForm((current) => ({ ...current, reorderLevel: event.target.value }))}
                 />
-                <p className="text-xs text-slate-500">Applied to this product across Stock Room and branches.</p>
+                <p className="text-xs text-slate-500">Applied to this product across every location.</p>
               </div>
 
               <div className="space-y-2">
@@ -1105,7 +1105,7 @@ export default function ProductsPage() {
             {!selectedProduct && (
               <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-700">
                 After creating this product, use the Inventory module to receive
-                opening stock into Stock Room through the Inventory module.
+                opening stock through the Inventory module's Receive from Supplier screen.
               </div>
             )}
           </div>
