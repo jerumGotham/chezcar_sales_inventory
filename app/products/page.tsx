@@ -1105,7 +1105,7 @@ export default function ProductsPage() {
             {!selectedProduct && (
               <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-700">
                 After creating this product, use the Inventory module to receive
-                opening stock through the Inventory module's Receive from Supplier screen.
+                opening stock through the Receive from Supplier screen in Inventory.
               </div>
             )}
           </div>

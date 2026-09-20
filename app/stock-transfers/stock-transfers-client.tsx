@@ -62,6 +62,7 @@ type Transfer = {
   reference: string;
   status: string;
   version: number;
+  source: { id: string; code: string; name: string };
   destination: { id: string; code: string; name: string };
   lines: TransferLine[];
   discrepancy: { notes: string } | null;
@@ -160,7 +161,7 @@ function ProductSelect({
       getOptionValue={(product) => product.id}
       isClearable
       isLoading={isLoading}
-      noOptionsMessage={() => "No available Stock Room products"}
+      noOptionsMessage={() => "No available products at this location"}
       onChange={(product) => onChange(product?.id ?? "")}
       options={products}
       placeholder="Search by item code or product name"
@@ -237,15 +238,16 @@ async function fetchTransferPage(
   return json as TransferPage;
 }
 
-async function fetchTransferProductOptions(): Promise<Product[]> {
-  const response = await fetch("/api/stock-transfers/options", {
+async function fetchTransferProductOptions(sourceId: string): Promise<Product[]> {
+  const query = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : "";
+  const response = await fetch(`/api/stock-transfers/options${query}`, {
     cache: "no-store",
     credentials: "same-origin",
   });
   const json = await response.json();
   if (!response.ok) {
     throw new Error(
-      json.error?.message ?? "Unable to load Stock Room products",
+      json.error?.message ?? "Unable to load products for this location",
     );
   }
   return json.data as Product[];
@@ -254,12 +256,14 @@ async function fetchTransferProductOptions(): Promise<Product[]> {
 export function StockTransfersClient({
   capabilities,
   branches,
+  sources,
   canManageSource,
   initialTransferId,
   isAdmin,
 }: {
   capabilities: ReadonlyArray<CapabilityId>;
   branches: Option[];
+  sources: Option[];
   canManageSource: boolean;
   initialTransferId?: string;
   isAdmin: boolean;
@@ -287,6 +291,8 @@ export function StockTransfersClient({
   );
   const [page, setPage] = useState(1);
   const pageSize = 10;
+  // One assigned location needs no choice; stock leaves where the user works.
+  const [sourceId, setSourceId] = useState(sources.length === 1 ? sources[0].id : "");
   const [destinationId, setDestinationId] = useState("");
   const [replacementForTransferId, setReplacementForTransferId] = useState("");
   const [draftLines, setDraftLines] = useState<DraftLine[]>([
@@ -322,9 +328,9 @@ export function StockTransfersClient({
     placeholderData: (previousData) => previousData,
   });
   const productOptions = useQuery({
-    queryKey: ["stock-transfer-product-options"],
-    queryFn: fetchTransferProductOptions,
-    enabled: canCreate || canUpdate,
+    queryKey: ["stock-transfer-product-options", sourceId],
+    queryFn: () => fetchTransferProductOptions(sourceId),
+    enabled: (canCreate || canUpdate) && (sources.length === 1 || Boolean(sourceId)),
     refetchOnWindowFocus: true,
     staleTime: 0,
   });
@@ -461,7 +467,7 @@ export function StockTransfersClient({
         create: "Transfer draft created successfully.",
         finalize: "Transfer finalized for dispatch.",
         dispatch: "Transfer dispatched successfully.",
-        cancel: "Transfer cancelled and stock restored to Stock Room.",
+        cancel: "Transfer cancelled and stock restored to its source location.",
         "confirm-receipt": "Transfer receipt confirmed.",
         "report-discrepancy": "Receiving issue reported.",
         investigate: "Investigation submitted.",
@@ -523,8 +529,16 @@ export function StockTransfersClient({
   const createTransfer = () => {
     const errors: string[] = [];
 
+    if (!sourceId) {
+      errors.push("Select the location the stock leaves from.");
+    }
+
     if (!destinationId) {
       errors.push("Select a destination branch.");
+    }
+
+    if (sourceId && sourceId === destinationId) {
+      errors.push("Source and destination must be different locations.");
     }
 
     draftLines.forEach((line, index) => {
@@ -545,7 +559,7 @@ export function StockTransfersClient({
         line.quantity > product.availableQuantity
       ) {
         errors.push(
-          `${product.itemCode} has only ${product.availableQuantity} available in Stock Room.`,
+          `${product.itemCode} has only ${product.availableQuantity} available at the selected source.`,
         );
       }
     });
@@ -566,6 +580,7 @@ export function StockTransfersClient({
     mutation.mutate({
       action: "create",
       body: {
+        sourceId,
         destinationId,
         lines: draftLines,
         replacementForTransferId: replacementForTransferId || undefined,
@@ -676,7 +691,7 @@ export function StockTransfersClient({
   return (
     <PageShell
       title="Stock Transfers"
-      subtitle="Move stock from Stock Room to a branch, confirm delivery, and resolve any discrepancy."
+      subtitle="Move stock from one location to a branch, confirm delivery, and resolve any discrepancy."
     >
       {message && (
         <div
@@ -704,13 +719,31 @@ export function StockTransfersClient({
       {canCreate && (
         <Card className="mb-6 min-w-0">
           <CardContent className="grid min-w-0 gap-3 p-5">
-            <h2 className="font-semibold">Create Stock Room Transfer</h2>
+            <h2 className="font-semibold">Create Transfer</h2>
             {productOptions.isError && (
               <p className="text-sm text-red-600">
                 {productOptions.error.message}
               </p>
             )}
             <select
+              aria-label="Source location"
+              className="h-10 min-w-0 rounded-md border px-3"
+              value={sourceId}
+              onChange={(event) => {
+                setValidationErrors([]);
+                setSourceId(event.target.value);
+                setDraftLines([{ productId: "", quantity: 1 }]);
+              }}
+            >
+              <option value="">Source location</option>
+              {sources.map((source) => (
+                <option key={source.id} value={source.id}>
+                  {source.name} ({source.code})
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label="Destination branch"
               className="h-10 min-w-0 rounded-md border px-3"
               value={destinationId}
               onChange={(event) => {
@@ -972,7 +1005,7 @@ export function StockTransfersClient({
                           line.quantity > product.availableQuantity
                         ) {
                           errs.push(
-                            `${product.itemCode} has only ${product.availableQuantity} available in Stock Room.`,
+                            `${product.itemCode} has only ${product.availableQuantity} available at the selected source.`,
                           );
                         }
                       }
@@ -1067,13 +1100,13 @@ export function StockTransfersClient({
             </div>
             <p className="text-sm text-slate-500">
               {selected.status === "CANCELLED"
-                ? "This transfer was cancelled and all in-transit stock was restored to Stock Room."
-                : "Source is Stock Room. In-transit stock cannot be sold until the branch confirms receipt or stock staff resolves a discrepancy."}
+                ? "This transfer was cancelled and all in-transit stock was restored to its source."
+                : "In-transit stock cannot be sold until the destination confirms receipt or a discrepancy is resolved."}
             </p>
             <div className="flex flex-col gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm sm:flex-row sm:items-center sm:gap-2">
               <span className="font-medium text-emerald-900">Transfer route:</span>
               <span className="text-emerald-800">
-                Stock Room (SR) to {selected.destination.name} ({selected.destination.code})
+                {selected.source.name} ({selected.source.code}) to {selected.destination.name} ({selected.destination.code})
               </span>
             </div>
             <table className="w-full text-sm">
@@ -1197,7 +1230,7 @@ export function StockTransfersClient({
                     disabled={mutation.isPending}
                     onClick={() => act("dispatch", {})}
                   >
-                    Dispatch from Stock Room
+                    Dispatch from source
                   </Button>
                 )}
                 {canDelete && (
@@ -1371,7 +1404,7 @@ export function StockTransfersClient({
                 <div>
                   <p className="font-medium text-red-900">Cancel in-transit transfer</p>
                   <p className="text-sm text-red-800">
-                    Use only when the shipment will not be received. All in-transit quantities will be returned to Stock Room.
+                    Use only when the shipment will not be received. All in-transit quantities will be returned to the source location.
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -1429,7 +1462,7 @@ export function StockTransfersClient({
                     </p>
                     <p className="text-sm text-slate-500">
                       Actual received stock goes to the branch. Choose whether
-                      each shortage is returned to Stock Room or written off as
+                      each shortage is returned to the source location or written off as
                       a loss.
                     </p>
                   </div>
@@ -1482,7 +1515,7 @@ export function StockTransfersClient({
                                       Write off missing quantity as loss
                                     </option>
                                     <option value="restore">
-                                      Return missing quantity to Stock Room (SR)
+                                      Return missing quantity to the source location
                                     </option>
                                   </select>
                                 ) : (
@@ -1729,7 +1762,7 @@ export function StockTransfersClient({
         }
         description={
           confirmation?.kind === "cancel"
-            ? `${confirmation.reference} will be cancelled and all in-transit quantities will be restored to Stock Room. This action cannot be undone.`
+            ? `${confirmation.reference} will be cancelled and all in-transit quantities will be restored to its source location. This action cannot be undone.`
             : `${confirmation?.reference ?? "This draft"} will be permanently deleted. This action cannot be undone.`
         }
         confirmLabel={

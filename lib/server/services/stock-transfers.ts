@@ -18,7 +18,7 @@ import type {
   TransferProductOptionDto,
 } from "@/lib/contracts/stock-transfers";
 import { prisma } from "@/lib/server/prisma";
-import { findActiveBranch } from "@/lib/server/locations";
+import { findActiveBranch, listAccessibleOperationalLocations } from "@/lib/server/locations";
 import { canAccessLocation, hasAllLocationAccess } from "@/lib/server/policy/access";
 import { createNotifications } from "./notifications";
 
@@ -33,6 +33,7 @@ export class TransferError extends Error {
 }
 
 const TRANSFER_INCLUDE = {
+  source: { select: { id: true, code: true, name: true } },
   destination: { select: { id: true, code: true, name: true } },
   lines: {
     include: { product: { select: { id: true, itemCode: true, name: true } } },
@@ -68,20 +69,30 @@ type TransferRecord = Prisma.StockTransferGetPayload<{
   include: typeof TRANSFER_INCLUDE;
 }>;
 
-async function assertSourceActor(actor: AuthContext) {
-  const stockRoom = await prisma.location.findFirst({
-    where: { code: "SR", type: "WAREHOUSE", isActive: true },
-    select: { id: true },
-  });
-  if (!stockRoom || !canAccessLocation(actor, stockRoom.id)) {
-    throw new TransferError(
-      "FORBIDDEN",
-      "Owner or Stock Room scope is required",
-      403,
-    );
+/**
+ * Stock leaves a location, so the actor must hold that location. With no
+ * source named, a single-location actor sends from the one they work at.
+ */
+async function resolveSourceLocation(
+  actor: AuthContext,
+  requestedId: string | undefined,
+  db: Prisma.TransactionClient | typeof prisma = prisma,
+) {
+  const accessible = await listAccessibleOperationalLocations(actor, db);
+  if (accessible.length === 0) {
+    throw new TransferError("FORBIDDEN", "No active location is assigned to your account", 403);
   }
-
-  return stockRoom.id;
+  if (!requestedId) {
+    if (accessible.length > 1) {
+      throw new TransferError("SOURCE_REQUIRED", "Select the location the stock leaves from", 400);
+    }
+    return accessible[0];
+  }
+  const match = accessible.find((location) => location.id === requestedId);
+  if (!match) {
+    throw new TransferError("FORBIDDEN", "That source location is outside your assigned locations", 403);
+  }
+  return match;
 }
 
 export function canAccessTransferRecord(
@@ -113,6 +124,17 @@ async function lockTransfer(tx: Prisma.TransactionClient, id: string) {
   if (!transfer)
     throw new TransferError("NOT_FOUND", "Transfer not found", 404);
   return transfer;
+}
+
+/** Source-side work needs the location the stock leaves from. */
+function ensureSourceScope(actor: AuthContext, sourceId: string, sourceName: string) {
+  if (!canAccessLocation(actor, sourceId)) {
+    throw new TransferError(
+      "FORBIDDEN",
+      `${sourceName} is outside your assigned locations`,
+      403,
+    );
+  }
 }
 
 function ensureBranchScope(actor: AuthContext, destinationId: string) {
@@ -193,19 +215,11 @@ async function activeUsersForCapability(
   });
 }
 
-async function stockRoomId(tx: Prisma.TransactionClient) {
-  const stockRoom = await tx.location.findFirstOrThrow({
-    where: { code: "SR", type: "WAREHOUSE", isActive: true },
-    select: { id: true },
-  });
-
-  return stockRoom.id;
-}
-
 async function assertDraftLinesAvailable(
   tx: Prisma.TransactionClient,
   sourceId: string,
   lines: Array<{ productId: string; quantity: number }>,
+  sourceName: string,
 ) {
   if (lines.some((line) => !Number.isInteger(line.quantity) || line.quantity < 1)) {
     throw new TransferError(
@@ -248,7 +262,7 @@ async function assertDraftLinesAvailable(
     if (available < line.quantity) {
       throw new TransferError(
         "INSUFFICIENT_STOCK",
-        `${product.itemCode} has only ${available} available in Stock Room`,
+        `${product.itemCode} has only ${available} available in ${sourceName}`,
       );
     }
   }
@@ -256,15 +270,16 @@ async function assertDraftLinesAvailable(
 
 export async function listTransferProductOptions(
   actor: AuthContext,
+  sourceLocationId?: string,
 ): Promise<TransferProductOptionDto[]> {
   assertAnyCapability(actor, [
     "stock-transfers:create",
     "stock-transfers:update",
   ]);
-  const sourceId = await assertSourceActor(actor);
+  const source = await resolveSourceLocation(actor, sourceLocationId);
   const balances = await prisma.inventoryBalance.findMany({
     where: {
-      locationId: sourceId,
+      locationId: source.id,
       onHand: { gt: 0 },
       product: { status: "ACTIVE" },
     },
@@ -292,19 +307,16 @@ export async function getTransferChecklist(
   id: string,
 ) {
   assertCapability(actor, "stock-transfers:view");
-  const [source, transfer] = await prisma.$transaction([
-    prisma.location.findFirst({
-      where: { code: "SR", type: "WAREHOUSE", isActive: true },
-      select: { id: true, code: true, name: true },
-    }),
-    prisma.stockTransfer.findFirst({
+  const transfer = await prisma.stockTransfer.findFirst({
       where: { id },
       select: {
         reference: true,
         status: true,
+        sourceId: true,
         destinationId: true,
         createdAt: true,
         dispatchedAt: true,
+        source: { select: { id: true, code: true, name: true } },
         destination: { select: { code: true, name: true } },
         lines: {
           select: {
@@ -315,16 +327,15 @@ export async function getTransferChecklist(
           orderBy: { product: { itemCode: "asc" } },
         },
       },
-    }),
-  ]);
+  });
 
   if (
-    !source ||
     !transfer ||
-    !canAccessTransferRecord(actor, source.id, transfer.destinationId)
+    !canAccessTransferRecord(actor, transfer.sourceId, transfer.destinationId)
   ) {
     return null;
   }
+  const source = transfer.source;
 
   return {
     reference: transfer.reference,
@@ -384,13 +395,13 @@ export async function listTransfers(
   },
 ) {
   assertCapability(actor, "stock-transfers:view");
-  const stockRoom = await prisma.location.findFirst({ where: { code: "SR", isActive: true }, select: { id: true } });
-  const canAccessSource = Boolean(stockRoom && canAccessLocation(actor, stockRoom.id));
+  const scoped = [...actor.locationIds];
   const where: Prisma.StockTransferWhereInput = {
     id: query.transferId,
-    destinationId: canAccessSource || hasAllLocationAccess(actor)
-      ? undefined
-      : { in: [...actor.locationIds] },
+    // A transfer belongs to both ends, so either side may follow it.
+    ...(hasAllLocationAccess(actor)
+      ? {}
+      : { OR: [{ sourceId: { in: scoped } }, { destinationId: { in: scoped } }] }),
   };
   const [total, transfers] = await prisma.$transaction([
     prisma.stockTransfer.count({ where }),
@@ -420,7 +431,6 @@ export async function createTransfer(
   input: CreateTransferInput,
 ) {
   assertCapability(actor, "stock-transfers:create");
-  await assertSourceActor(actor);
   const productIds = input.lines.map((line) => line.productId);
   if (new Set(productIds).size !== productIds.length)
     throw new TransferError(
@@ -430,8 +440,8 @@ export async function createTransfer(
     );
   return prisma.$transaction(
     async (tx) => {
-      const sourceId = await stockRoomId(tx);
-      await assertDraftLinesAvailable(tx, sourceId, input.lines);
+      const source = await resolveSourceLocation(actor, input.sourceId, tx);
+      await assertDraftLinesAvailable(tx, source.id, input.lines, source.name);
       const destination = await findActiveBranch(input.destinationId, tx);
       if (!destination)
         throw new TransferError(
@@ -439,9 +449,16 @@ export async function createTransfer(
           "Destination must be an active branch",
           400,
         );
+      if (destination.id === source.id) {
+        throw new TransferError(
+          "INVALID_DESTINATION",
+          "A transfer cannot send stock to the location it came from",
+          400,
+        );
+      }
 
       const existingDraft = await tx.stockTransfer.findFirst({
-        where: { destinationId: destination.id, status: "DRAFT" },
+        where: { sourceId: source.id, destinationId: destination.id, status: "DRAFT" },
         select: { id: true },
       });
       if (existingDraft) {
@@ -471,6 +488,7 @@ export async function createTransfer(
       const transfer = await tx.stockTransfer.create({
         data: {
           reference: `ST-${randomUUID()}`,
+          sourceId: source.id,
           destinationId: destination.id,
           createdById: actor.userId,
           lines: {
@@ -496,7 +514,6 @@ export async function updateDraftTransfer(
   lines: { productId: string; quantity: number }[],
 ) {
   assertCapability(actor, "stock-transfers:update");
-  await assertSourceActor(actor);
   if (new Set(lines.map((l) => l.productId)).size !== lines.length)
     throw new TransferError(
       "INVALID_LINES",
@@ -506,14 +523,14 @@ export async function updateDraftTransfer(
   return prisma.$transaction(
     async (tx) => {
       const transfer = await lockTransfer(tx, id);
+      ensureSourceScope(actor, transfer.sourceId, transfer.source.name);
       if (transfer.status !== "DRAFT")
         throw new TransferError(
           "INVALID_STATE",
           "Only draft transfers can be edited",
         );
       assertVersion(transfer.version, version);
-      const sourceId = await stockRoomId(tx);
-      await assertDraftLinesAvailable(tx, sourceId, lines);
+      await assertDraftLinesAvailable(tx, transfer.sourceId, lines, transfer.source.name);
       await tx.stockTransferLine.deleteMany({ where: { transferId: id } });
       await tx.stockTransferLine.createMany({
         data: lines.map((line) => ({
@@ -535,10 +552,10 @@ export async function updateDraftTransfer(
 
 export async function deleteDraftTransfer(actor: AuthContext, id: string, version: number) {
   assertCapability(actor, "stock-transfers:delete");
-  await assertSourceActor(actor);
   await prisma.$transaction(
     async (tx) => {
       const transfer = await lockTransfer(tx, id);
+      ensureSourceScope(actor, transfer.sourceId, transfer.source.name);
       if (transfer.status !== "DRAFT" && transfer.status !== "FOR_DISPATCH")
         throw new TransferError(
           "INVALID_STATE",
@@ -562,10 +579,10 @@ export async function finalizeTransfer(
   version: number,
 ) {
   assertCapability(actor, "stock-transfers:finalize");
-  await assertSourceActor(actor);
   return prisma.$transaction(
     async (tx) => {
       const transfer = await lockTransfer(tx, id);
+      ensureSourceScope(actor, transfer.sourceId, transfer.source.name);
       if (transfer.status === "FOR_DISPATCH")
         return serializeTransfer(transfer, canViewTransferAudit(actor));
       assertVersion(transfer.version, version);
@@ -587,10 +604,10 @@ export async function finalizeTransfer(
       await notifyUsersForTransfer(
         tx,
         updated,
-        [{ capability: "stock-transfers:dispatch", locationId: await stockRoomId(tx) }],
+        [{ capability: "stock-transfers:dispatch", locationId: updated.sourceId }],
         {
           title: "Transfer ready to dispatch",
-          description: `${updated.reference} to ${updated.destination.name} is finalized and waiting for Stock Room dispatch.`,
+          description: `${updated.reference} to ${updated.destination.name} is finalized and waiting for dispatch from ${updated.source.name}.`,
           type: "INFO",
         },
       );
@@ -606,10 +623,10 @@ export async function dispatchTransfer(
   version: number,
 ) {
   assertCapability(actor, "stock-transfers:dispatch");
-  await assertSourceActor(actor);
   return prisma.$transaction(
     async (tx) => {
       const transfer = await lockTransfer(tx, id);
+      ensureSourceScope(actor, transfer.sourceId, transfer.source.name);
       if (transfer.status === "IN_TRANSIT")
         return serializeTransfer(transfer, canViewTransferAudit(actor));
       assertVersion(transfer.version, version);
@@ -618,11 +635,11 @@ export async function dispatchTransfer(
           "INVALID_STATE",
           "Only finalized transfers can be dispatched",
         );
-      const sr = await stockRoomId(tx);
+      const sourceId = transfer.sourceId;
       for (const line of transfer.lines) {
         await decreaseAvailableBalance(
           tx,
-          sr,
+          sourceId,
           line.productId,
           line.requestedQuantity,
         );
@@ -637,7 +654,7 @@ export async function dispatchTransfer(
           data: {
             transferId: id,
             productId: line.productId,
-            locationId: sr,
+            locationId: sourceId,
             quantity: -line.requestedQuantity,
             type: "TRANSFER_DISPATCH",
             actorId: actor.userId,
@@ -660,7 +677,7 @@ export async function dispatchTransfer(
         [{ capability: "stock-transfers:receive", locationId: updated.destinationId }],
         {
           title: "Transfer ready for receiving",
-          description: `${updated.reference} from Stock Room is in transit to ${updated.destination.name}. Count items before confirming.`,
+          description: `${updated.reference} from ${updated.source.name} is in transit to ${updated.destination.name}. Count items before confirming.`,
           type: "INFO",
         },
       );
@@ -723,7 +740,7 @@ export async function confirmReceipt(
       await notifyUsersForTransfer(
         tx,
         updated,
-        [{ capability: "stock-transfers:investigate", locationId: await stockRoomId(tx) }],
+        [{ capability: "stock-transfers:investigate", locationId: updated.sourceId }],
         {
           title: "Transfer receipt confirmed",
           description: `${updated.reference} was counted and received by ${updated.destination.name} with no discrepancy.`,
@@ -812,7 +829,7 @@ export async function reportDiscrepancy(
       await notifyUsersForTransfer(
         tx,
         updated,
-        [{ capability: "stock-transfers:investigate", locationId: await stockRoomId(tx) }],
+        [{ capability: "stock-transfers:investigate", locationId: updated.sourceId }],
         {
           title: "Discrepancy needs investigation",
           description: `${updated.reference} from ${updated.destination.name} has a reported receiving discrepancy.`,
@@ -831,10 +848,10 @@ export async function submitInvestigation(
   input: InvestigationInput,
 ) {
   assertCapability(actor, "stock-transfers:investigate");
-  await assertSourceActor(actor);
   return prisma.$transaction(
     async (tx) => {
       const transfer = await lockTransfer(tx, id);
+      ensureSourceScope(actor, transfer.sourceId, transfer.source.name);
       if (transfer.status === "UNDER_REVIEW")
         return serializeTransfer(transfer, canViewTransferAudit(actor));
       assertVersion(transfer.version, input.version);
@@ -872,7 +889,6 @@ export async function resolveTransfer(
   input: ResolutionInput,
 ) {
   assertCapability(actor, "stock-transfers:resolve");
-  await assertSourceActor(actor);
   return prisma.$transaction(
     async (tx) => {
       const transfer = await lockTransfer(tx, id);
@@ -918,10 +934,6 @@ export async function resolveTransfer(
             400,
           );
       }
-      const sr = await tx.location.findFirstOrThrow({
-        where: { code: "SR", type: "WAREHOUSE", isActive: true },
-        select: { id: true },
-      });
       await tx.stockTransferResolution.create({
         data: {
           transferId: id,
@@ -931,7 +943,7 @@ export async function resolveTransfer(
             create: input.lines.map((line) => ({
               transferLineId: line.lineId,
               destinationQty: line.destinationQuantity,
-              restoreToSrQty: line.restoreToSrQuantity,
+              restoreToSourceQty: line.restoreToSrQuantity,
               lossQty: line.lossQuantity,
             })),
           },
@@ -962,7 +974,7 @@ export async function resolveTransfer(
         if (item.restoreToSrQuantity) {
           await increaseBalance(
             tx,
-            sr.id,
+            transfer.sourceId,
             line.productId,
             item.restoreToSrQuantity,
           );
@@ -970,7 +982,7 @@ export async function resolveTransfer(
             data: {
               transferId: id,
               productId: line.productId,
-              locationId: sr.id,
+              locationId: transfer.sourceId,
               quantity: item.restoreToSrQuantity,
               type: "TRANSFER_RESTORATION",
               actorId: actor.userId,
@@ -1026,10 +1038,10 @@ export async function cancelTransfer(
   input: CancelTransferInput,
 ) {
   assertCapability(actor, "stock-transfers:cancel");
-  await assertSourceActor(actor);
   return prisma.$transaction(
     async (tx) => {
       const transfer = await lockTransfer(tx, id);
+      ensureSourceScope(actor, transfer.sourceId, transfer.source.name);
       if (transfer.status === "CANCELLED")
         return serializeTransfer(transfer, canViewTransferAudit(actor));
       assertVersion(transfer.version, input.version);
@@ -1039,15 +1051,15 @@ export async function cancelTransfer(
           "Only in-transit transfers can be cancelled",
         );
 
-      const sr = await stockRoomId(tx);
+      const sourceId = transfer.sourceId;
       for (const line of transfer.lines) {
         if (line.inTransitQuantity > 0) {
-          await increaseBalance(tx, sr, line.productId, line.inTransitQuantity);
+          await increaseBalance(tx, sourceId, line.productId, line.inTransitQuantity);
           await tx.inventoryMovement.create({
             data: {
               transferId: id,
               productId: line.productId,
-              locationId: sr,
+              locationId: sourceId,
               quantity: line.inTransitQuantity,
               type: "TRANSFER_CANCELLATION",
               actorId: actor.userId,
@@ -1079,12 +1091,12 @@ export async function cancelTransfer(
         tx,
         updated,
         [
-          { capability: "stock-transfers:dispatch", locationId: sr },
+          { capability: "stock-transfers:dispatch", locationId: updated.sourceId },
           { capability: "stock-transfers:receive", locationId: updated.destinationId },
         ],
         {
           title: "Transfer cancelled",
-          description: `${updated.reference} to ${updated.destination.name} was cancelled and its in-transit stock was restored to Stock Room.`,
+          description: `${updated.reference} to ${updated.destination.name} was cancelled and its in-transit stock was restored to ${updated.source.name}.`,
           type: "WARNING",
         },
       );
@@ -1111,7 +1123,7 @@ function serializeTransfer(transfer: TransferRecord, includeAudit = false) {
           : null,
         transfer.dispatchedAt
           ? {
-              label: "Dispatched from Stock Room",
+              label: `Dispatched from ${transfer.source.name}`,
               actor: actorLabel(transfer.dispatchedBy),
               at: transfer.dispatchedAt.toISOString(),
             }
@@ -1163,6 +1175,7 @@ function serializeTransfer(transfer: TransferRecord, includeAudit = false) {
     reference: transfer.reference,
     status: transfer.status as StockTransferStatus,
     version: transfer.version,
+    source: transfer.source,
     destination: transfer.destination,
     createdAt: transfer.createdAt.toISOString(),
     lines: transfer.lines.map((line) => ({

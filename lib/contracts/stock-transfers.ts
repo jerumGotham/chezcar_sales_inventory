@@ -3,6 +3,8 @@ import { z } from "zod";
 const positiveInt = z.number().int().positive();
 
 export const createTransferSchema = z.object({
+  /** Where the stock leaves from. Omitted when the actor has one location. */
+  sourceId: z.string().min(1).optional(),
   destinationId: z.string().min(1),
   lines: z.array(z.object({ productId: z.string().min(1), quantity: positiveInt })).min(1),
   replacementForTransferId: z.string().min(1).optional(),

@@ -87,6 +87,8 @@ Migrations `20260907130000_backjob_workflow`, `20260907140000_customer_warranty`
 
 The additive `20260920070642_add_audit_log` migration adds `AuditLog`, the explicit record for events that leave no other trace: sign-in, failed sign-in, sign-out, customer-order payments, and master-data changes to products, customers, suppliers, personnel, branches, users, and roles. Rows keep an optional `metadataJson` payload of line items and label/value facts for the entry's details view, plus the actor relation and a stored `actorLabel` so a failed sign-in and a later-deleted user stay attributable. Writes never abort their caller; a failed audit insert is logged and swallowed. The Audit Trail screen merges these rows with events derived from existing records.
 
+The additive `20260920200500_transfer_source_location` migration adds `StockTransfer.sourceId`, backfilled with the Stock Room for every existing row, so a transfer now records where its stock came from instead of assuming `SR`. Dispatch deducts the source, cancellation and resolution restore to it, and `StockTransferResolutionLine.restoreToSrQty` is renamed `restoreToSourceQty` to match. Branch-to-branch transfers are therefore ordinary transfers whose source is a branch.
+
 Admin manual corrections use `InventoryMovement.type = MANUAL_ADJUSTMENT` with optional `reference` and required reason stored in `remarks`. The additive `20260826040000_inventory_manual_adjustment_constraint` migration relaxes the movement source check only for source-less manual adjustment rows; transfer and receipt movements must still keep exactly one source.
 
 ### Notifications

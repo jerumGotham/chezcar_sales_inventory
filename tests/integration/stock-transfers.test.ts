@@ -103,6 +103,51 @@ describe("stock transfer posting", () => {
     });
   }, 30_000);
 
+  it("moves stock branch to branch and refuses a source the actor does not hold", async () => {
+    await withDisposableDatabase(async ({ prisma }) => {
+      const fixture = await createAuthFixture(prisma, { namespace: "branch-to-branch" });
+      const product = await prisma.product.create({ data: { itemCode: "B2B-ITEM", name: "Branch To Branch", status: "ACTIVE" } });
+      await prisma.inventoryBalance.create({ data: { locationId: fixture.locations.branches.QC.id, productId: product.id, onHand: 10, unitCost: 5 } });
+      const { createTransfer, finalizeTransfer, dispatchTransfer, confirmReceipt } =
+        await import("../../lib/server/services/stock-transfers");
+      // Stock Staff scoped to Quezon City stands in for a branch sender.
+      const qcSender = actor(fixture.users.stockStaff, fixture.locations.branches.QC);
+
+      const draft = await createTransfer(qcSender, {
+        destinationId: fixture.locations.branches.BL.id,
+        lines: [{ productId: product.id, quantity: 4 }],
+      });
+      expect(draft).toMatchObject({
+        source: { code: fixture.locations.branches.QC.code },
+        destination: { code: fixture.locations.branches.BL.code },
+      });
+
+      // A source the sender does not hold is refused even when named explicitly.
+      await expect(createTransfer(qcSender, {
+        sourceId: fixture.locations.branches.LU.id,
+        destinationId: fixture.locations.branches.BL.id,
+        lines: [{ productId: product.id, quantity: 1 }],
+      })).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+      // Nor can a transfer loop back to where it started.
+      await expect(createTransfer(qcSender, {
+        destinationId: fixture.locations.branches.QC.id,
+        lines: [{ productId: product.id, quantity: 1 }],
+      })).rejects.toMatchObject({ code: "INVALID_DESTINATION" });
+
+      const finalized = await finalizeTransfer(qcSender, draft.id, draft.version);
+      const dispatched = await dispatchTransfer(qcSender, draft.id, finalized.version);
+      expect(dispatched.status).toBe("IN_TRANSIT");
+      expect(await prisma.inventoryBalance.findUniqueOrThrow({ where: { locationId_productId: { locationId: fixture.locations.branches.QC.id, productId: product.id } } })).toMatchObject({ onHand: 6 });
+      expect(await prisma.inventoryMovement.findFirst({ where: { transferId: draft.id, type: "TRANSFER_DISPATCH" } })).toMatchObject({ locationId: fixture.locations.branches.QC.id, quantity: -4 });
+
+      const blReceiver = actor(fixture.users.branchStaff, fixture.locations.branches.BL);
+      const received = await confirmReceipt(blReceiver, draft.id, dispatched.version);
+      expect(received.status).toBe("RECEIVED");
+      expect(await prisma.inventoryBalance.findUniqueOrThrow({ where: { locationId_productId: { locationId: fixture.locations.branches.BL.id, productId: product.id } } })).toMatchObject({ onHand: 4 });
+    });
+  }, 30_000);
+
   it("lets Admin cover SR dispatch and moves stock only after exact receipt", async () => {
     await withDisposableDatabase(async ({ prisma }) => {
       const fixture = await createAuthFixture(prisma, {
@@ -126,6 +171,7 @@ describe("stock transfer posting", () => {
       const adminActor = actor(fixture.users.admin, null);
 
       const draft = await createTransfer(adminActor, {
+        sourceId: fixture.locations.stockRoom.id,
         destinationId: fixture.locations.branches.QC.id,
         lines: [{ productId: product.id, quantity: 5 }],
       });
@@ -270,6 +316,7 @@ describe("stock transfer posting", () => {
       });
 
       const replacement = await createTransfer(adminActor, {
+        sourceId: fixture.locations.stockRoom.id,
         destinationId: fixture.locations.branches.QC.id,
         replacementForTransferId: draft.id,
         lines: [{ productId: product.id, quantity: 1 }],

@@ -81,7 +81,7 @@ The complete list and Role Maintenance labels are generated from `CAPABILITY_CAT
 | `PATCH` | `/api/inventory/:balanceId` | Prisma Product/InventoryBalance | `inventory:cost:update`; non-owner actors remain location-scoped |
 | `POST` | `/api/inventory/:balanceId/adjustment` | Prisma InventoryBalance/InventoryMovement/Notification | `inventory:adjust`; non-owner actors remain location-scoped |
 | `GET` | `/api/inventory/movements` | Prisma InventoryMovement | `inventory-movements:view` |
-| `GET`, `POST` | `/api/stock-transfers?page=1&pageSize=10` | Prisma transfer ledger | `stock-transfers:view` / `stock-transfers:create`; server-paginated list |
+| `GET`, `POST` | `/api/stock-transfers?page=1&pageSize=10` | Prisma transfer ledger | `stock-transfers:view` / `stock-transfers:create`; server-paginated list. `POST` takes an optional `sourceId`, which must be one of the actor's assigned locations and cannot equal the destination; a single-location actor may omit it. The list returns transfers where the actor holds either end |
 | `POST` | `/api/stock-transfers/:id/:action` | Prisma transfer/inventory transaction | Matching `stock-transfers:update/delete/finalize/dispatch/cancel/receive/report-discrepancy/investigate/resolve` plus scope/state policy |
 | `POST` | `/api/accounting/receipts/:saleId/branch-response` | Prisma Accounting review | Assigned Branch Staff for an unresolved own-branch mismatch |
 | `GET`, `POST` | `/api/stock-receipts` | Prisma supplier-receipt/inventory transaction | `stock-receipts:view` / `inventory-receiving:create`; the destination must be one of the actor's assigned operational locations |

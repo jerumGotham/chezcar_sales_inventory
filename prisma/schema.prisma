@@ -272,6 +272,7 @@ model Location {
   inventoryBalances    InventoryBalance[]
   users                User[]
   userAssignments      UserLocation[]
+  sourceTransfers      StockTransfer[]     @relation("TransferSource")
   destinationTransfers StockTransfer[]     @relation("TransferDestination")
   inventoryMovements   InventoryMovement[]
   stockReceipts        StockReceipt[]
@@ -784,6 +785,7 @@ model UserLocation {
 model StockTransfer {
   id                 String                      @id @default(cuid())
   reference          String                      @unique
+  sourceId           String
   destinationId      String
   status             StockTransferStatus         @default(DRAFT)
   version            Int                         @default(1)
@@ -797,6 +799,7 @@ model StockTransfer {
   cancelledAt        DateTime?
   cancellationReason String?                     @db.Text
   receivedAt         DateTime?
+  source             Location                    @relation("TransferSource", fields: [sourceId], references: [id])
   destination        Location                    @relation("TransferDestination", fields: [destinationId], references: [id])
   createdBy          User                        @relation("TransferCreatedBy", fields: [createdById], references: [id])
   finalizedBy        User?                       @relation("TransferFinalizedBy", fields: [finalizedById], references: [id])
@@ -811,6 +814,7 @@ model StockTransfer {
   createdAt          DateTime                    @default(now())
   updatedAt          DateTime                    @updatedAt
 
+  @@index([sourceId, status])
   @@index([destinationId, status])
   @@index([status])
 }
@@ -879,9 +883,9 @@ model StockTransferResolutionLine {
   id             String                  @id @default(cuid())
   resolutionId   String
   transferLineId String
-  destinationQty Int
-  restoreToSrQty Int
-  lossQty        Int
+  destinationQty     Int
+  restoreToSourceQty Int
+  lossQty            Int
   resolution     StockTransferResolution @relation(fields: [resolutionId], references: [id], onDelete: Restrict)
   transferLine   StockTransferLine       @relation(fields: [transferLineId], references: [id])
 

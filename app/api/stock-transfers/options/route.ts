@@ -14,8 +14,9 @@ export async function GET(request: Request) {
       "stock-transfers:update",
     ]);
 
+    const sourceId = new URL(request.url).searchParams.get("sourceId") ?? undefined;
     return Response.json(
-      { data: await listTransferProductOptions(actor) },
+      { data: await listTransferProductOptions(actor, sourceId) },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (error) {

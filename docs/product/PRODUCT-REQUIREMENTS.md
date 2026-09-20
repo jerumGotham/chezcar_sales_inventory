@@ -25,7 +25,7 @@ Locations are managed data, not a fixed list. Branch Maintenance adds, updates, 
 - `VC` - Vigan City branch
 - `SP` - San Fernando Pampanga branch
 
-All MVP replenishment enters `SR`. Transfers are `SR` to branch only. Branch-to-branch transfers and direct supplier-to-branch receipts are deferred.
+Supplier deliveries are received at the location that physically took them, and a transfer moves stock from any location the sender holds to any active branch, so branch-to-branch movement is supported.
 
 ## Goals
 
