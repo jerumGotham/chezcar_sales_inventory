@@ -121,6 +121,29 @@ describe("supplier receipt posting", () => {
     });
   }, 30_000);
 
+  it("points a mixed delivery's alert at the receiving branch's inventory", async () => {
+    await withDisposableDatabase(async ({ prisma }) => {
+      const fixture = await createAuthFixture(prisma, { namespace: "stock-receipt-mixed" });
+      const first = await prisma.product.create({ data: { itemCode: "MIXED-A", name: "Mixed A", status: "ACTIVE" } });
+      const second = await prisma.product.create({ data: { itemCode: "MIXED-B", name: "Mixed B", status: "ACTIVE" } });
+      const supplier = await prisma.supplier.create({ data: { name: "Mixed Supplier" } });
+      const { createStockReceipt } = await import("../../lib/server/services/stock-receipts");
+
+      await createStockReceipt(actor(fixture.users.stockStaff, fixture.locations.branches.QC), {
+        reference: "DR-MIXED-1", supplierId: supplier.id,
+        lines: [
+          { productId: first.id, expectedQuantity: 2, acceptedQuantity: 2, quarantinedQuantity: 0, missingQuantity: 0, unitCost: 10 },
+          { productId: second.id, expectedQuantity: 3, acceptedQuantity: 3, quarantinedQuantity: 0, missingQuantity: 0, unitCost: 20 },
+        ],
+      });
+
+      const notification = await prisma.notification.findFirstOrThrow({ where: { relatedReference: "DR-MIXED-1" } });
+      expect(notification).toMatchObject({ relatedType: "INVENTORY_LOCATION", relatedId: fixture.locations.branches.QC.code });
+      const { notificationDestination } = await import("../../lib/notification-links");
+      expect(notificationDestination(notification)).toBe(`/inventory?location=${fixture.locations.branches.QC.code}`);
+    });
+  }, 30_000);
+
   it("posts a branch delivery into the receiver's own branch and refuses another branch", async () => {
     await withDisposableDatabase(async ({ prisma }) => {
       const fixture = await createAuthFixture(prisma, { namespace: "stock-receipt-branch" });

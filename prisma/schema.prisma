@@ -232,6 +232,7 @@ enum NotificationType {
 enum NotificationRelatedType {
   STOCK_TRANSFER
   INVENTORY_BALANCE
+  INVENTORY_LOCATION
   SALE
   BACKJOB
   CUSTOMER_WARRANTY

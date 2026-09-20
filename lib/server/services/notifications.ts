@@ -77,7 +77,7 @@ export async function createNotifications(
     title: string;
     description: string;
     type: NotificationType;
-    relatedType?: "STOCK_TRANSFER" | "INVENTORY_BALANCE" | "SALE" | "BACKJOB" | "CUSTOMER_WARRANTY" | "SUPPLIER_CLAIM";
+    relatedType?: "STOCK_TRANSFER" | "INVENTORY_BALANCE" | "INVENTORY_LOCATION" | "SALE" | "BACKJOB" | "CUSTOMER_WARRANTY" | "SUPPLIER_CLAIM";
     relatedId?: string;
     relatedReference?: string;
   }>,
@@ -106,6 +106,7 @@ export async function notifyStockReceived(
     balanceId: string | null;
     reference: string;
     locationId: string;
+    locationCode: string;
     locationName: string;
     supplierName: string;
     receivedByName: string;
@@ -132,7 +133,7 @@ export async function notifyStockReceived(
     type: "SUCCESS" as const,
     ...(input.balanceId
       ? { relatedType: "INVENTORY_BALANCE" as const, relatedId: input.balanceId }
-      : {}),
+      : { relatedType: "INVENTORY_LOCATION" as const, relatedId: input.locationCode }),
     relatedReference: input.reference,
   })));
 }

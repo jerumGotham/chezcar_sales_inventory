@@ -195,6 +195,7 @@ export async function createStockReceipt(actor: AuthContext, input: CreateStockR
           balanceId: touchedBalanceIds.length === 1 ? touchedBalanceIds[0] : null,
           reference: receipt.reference,
           locationId: destination.id,
+          locationCode: destination.code,
           locationName: destination.name,
           supplierName: supplier.name,
           receivedByName: receiver?.name ?? "A user",

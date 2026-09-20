@@ -13,11 +13,11 @@ import {
 export default async function InventoryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ balanceId?: string }>;
+  searchParams: Promise<{ balanceId?: string; location?: string }>;
 }) {
   const requestHeaders = await headers();
   const access = await loadShellAccess(requestHeaders);
-  const { balanceId } = await searchParams;
+  const { balanceId, location } = await searchParams;
 
   if (!access.authenticated) {
     redirect("/sign-in");
@@ -38,6 +38,7 @@ export default async function InventoryPage({
       scope={access.scope}
       locations={orderedLocations}
       initialBalanceId={balanceId}
+      initialLocationCode={location}
     />
   );
 }

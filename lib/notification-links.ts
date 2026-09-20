@@ -17,6 +17,10 @@ export function notificationDestination(
   if (notification.relatedType === "INVENTORY_BALANCE") {
     return `/inventory?balanceId=${id}`;
   }
+  if (notification.relatedType === "INVENTORY_LOCATION") {
+    // A mixed delivery has no single stock row, so open that branch's inventory.
+    return `/inventory?location=${id}`;
+  }
   if (notification.relatedType === "BACKJOB") {
     return `/inventory/returns-warranty/${id}`;
   }

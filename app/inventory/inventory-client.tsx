@@ -72,6 +72,8 @@ export type InventoryClientProps = {
   scope: LocationScopeDto;
   locations: readonly InventoryLocationOption[];
   initialBalanceId?: string;
+  /** Location code preselected by a notification link. */
+  initialLocationCode?: string;
 };
 
 const ALL_LOCATIONS_VALUE = "all";
@@ -85,6 +87,7 @@ export function InventoryClient({
   scope,
   locations,
   initialBalanceId,
+  initialLocationCode,
 }: InventoryClientProps) {
   const queryClient = useQueryClient();
   const canSelectLocations = scope.kind !== "location";
@@ -117,8 +120,13 @@ export function InventoryClient({
   const [itemCode, setItemCode] = useState("");
   const [name, setName] = useState("");
   const [category, setCategory] = useState<SelectOption>(CATEGORY_OPTIONS[0]);
+  const initialLocationValue =
+    canSelectLocations && initialLocationCode &&
+    locations.some((item) => item.code === initialLocationCode)
+      ? initialLocationCode
+      : scopedLocationValue;
   const [location, setLocation] = useState<SelectOption>(() =>
-    optionForValue(scopedLocationValue),
+    optionForValue(initialLocationValue),
   );
   const [status, setStatus] = useState<SelectOption>(STATUS_OPTIONS[0]);
 
@@ -126,7 +134,7 @@ export function InventoryClient({
   const [appliedName, setAppliedName] = useState("");
   const [appliedCategory, setAppliedCategory] = useState("all");
   const [appliedLocation, setAppliedLocation] =
-    useState(scopedLocationValue);
+    useState(initialLocationValue);
   const [appliedStatus, setAppliedStatus] = useState("all");
 
   const summaryScopeLabel = canSelectLocations
