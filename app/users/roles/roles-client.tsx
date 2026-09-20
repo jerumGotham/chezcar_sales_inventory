@@ -65,6 +65,8 @@ function RoleEditor({
       groups.set(capability.module, items);
       return groups;
     }, new Map<string, Array<(typeof ASSIGNABLE_CAPABILITY_CATALOG)[number]>>()),
+  ).sort(
+    ([left], [right]) => moduleRank(left) - moduleRank(right) || left.localeCompare(right),
   );
 
   const mutation = useMutation({
@@ -248,6 +250,34 @@ function RoleEditor({
       </DialogContent>
     </Dialog>
   );
+}
+
+// Permissions read in the order people see the menu, so a role is checked the
+// same way it is used.
+const MODULE_ORDER = [
+  "Dashboard",
+  "Customers",
+  "POS",
+  "Receipt Verification",
+  "Customer Orders",
+  "Products",
+  "Inventory",
+  "Returns & Warranty",
+  "Stock Transfers",
+  "Reports",
+  "Audit Trail",
+  "Branch Maintenance",
+  "Supplier Maintenance",
+  "Personnel Maintenance",
+  "Role Maintenance",
+  "User Management",
+  "Notifications",
+  "Offline Sales",
+];
+
+function moduleRank(module: string) {
+  const index = MODULE_ORDER.indexOf(module);
+  return index === -1 ? MODULE_ORDER.length : index;
 }
 
 export function RolesClient({
