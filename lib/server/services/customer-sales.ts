@@ -529,6 +529,18 @@ export async function createCustomerOrder(actor: AuthContext, input: z.infer<typ
       include: ORDER_INCLUDE,
     });
     if (input.downpaymentReceiptNumber) await registerReceipt(tx, input.downpaymentReceiptNumber, "CUSTOMER_ORDER_DOWNPAYMENT", { orderId: order.id, locationId, receiptBooklet: "" });
+    if (input.downpaymentAmount > 0) {
+      // The booking entry is derived from the order row, whose downpayment total
+      // moves with later payments, so the first one needs its own fixed record.
+      await recordAuditLog({
+        category: "Customer Orders",
+        action: "Payment Recorded",
+        actorId: actor.userId,
+        reference: order.reference,
+        locationLabel: order.location.name,
+        details: `₱${input.downpaymentAmount.toLocaleString("en-PH", { minimumFractionDigits: 2 })} downpayment by ${order.customer.name}${input.downpaymentReceiptNumber ? ` on receipt ${input.downpaymentReceiptNumber}` : ""}. Balance ₱${order.remainingBalance.toNumber().toLocaleString("en-PH", { minimumFractionDigits: 2 })}`,
+      }, tx);
+    }
     return serializeOrder(order);
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {

@@ -261,6 +261,7 @@ async function orderEntries(range: ReturnType<typeof occurredAtFilter>) {
       createdBy: { select: { name: true } },
       releasedBy: { select: { name: true } },
       cancelledBy: { select: { name: true } },
+      lines: { select: { id: true } },
     },
   });
   const rows: AuditEntryDto[] = [];
@@ -273,7 +274,7 @@ async function orderEntries(range: ReturnType<typeof occurredAtFilter>) {
       order.createdBy.name,
       order.reference,
       order.location.name,
-      `${order.customer.name}, total ${money(order.totalAmount)}, downpayment ${money(order.downpaymentAmount)}`,
+      `${order.customer.name}, ${order.lines.length} item line${order.lines.length === 1 ? "" : "s"}, total ${money(order.totalAmount)}`,
     ));
     if (order.releasedAt) {
       rows.push(entry(
