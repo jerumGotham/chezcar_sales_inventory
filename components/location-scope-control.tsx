@@ -1,7 +1,9 @@
 "use client";
 
 import { Lock } from "lucide-react";
+import ReactSelect from "react-select";
 
+import { reactSelectStyles } from "@/app/inventory/_data";
 import type { LocationScopeDto } from "@/lib/contracts/access";
 import { cn } from "@/lib/utils";
 
@@ -47,20 +49,20 @@ export function LocationScopeControl({
   id,
 }: LocationScopeControlProps) {
   if (scope.kind !== "location") {
+    const options = scopeOptions(locations);
     return (
-      <select
-        id={id}
+      <ReactSelect
+        instanceId={id}
+        inputId={id}
         aria-label="Inventory location scope"
-        className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        value={value}
-        onChange={(event) => onValueChange?.(event.target.value)}
-      >
-        {scopeOptions(locations).map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+        options={options}
+        value={options.find((option) => option.value === value) ?? options[0]}
+        onChange={(option) => onValueChange?.(option?.value ?? "all")}
+        isSearchable
+        styles={reactSelectStyles}
+        menuPortalTarget={typeof document === "undefined" ? undefined : document.body}
+        menuPosition="fixed"
+      />
     );
   }
 

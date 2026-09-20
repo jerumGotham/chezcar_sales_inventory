@@ -146,6 +146,24 @@ describe("supplier receipt posting", () => {
         lines: [{ productId: product.id, expectedQuantity: 1, acceptedQuantity: 1, quarantinedQuantity: 0, missingQuantity: 0, unitCost: 15 }],
       })).rejects.toMatchObject({ code: "FORBIDDEN" });
       expect(await prisma.stockReceipt.count()).toBe(1);
+
+      // Only the receiving branch and business-wide accounts hear about it.
+      const notified = await prisma.notification.findMany({ where: { relatedReference: "DR-BRANCH-1" }, select: { userId: true, title: true, description: true, relatedType: true, relatedId: true } });
+      expect(notified.length).toBeGreaterThan(0);
+      expect(notified[0]).toMatchObject({ title: `Stock received at ${fixture.locations.branches.QC.name}` });
+      expect(notified[0].description).toContain("4 piece(s)");
+      // A single-product delivery links to that product's stock row, not the receipt.
+      const branchBalance = await prisma.inventoryBalance.findUniqueOrThrow({ where: { locationId_productId: { locationId: fixture.locations.branches.QC.id, productId: product.id } }, select: { id: true } });
+      expect(notified[0]).toMatchObject({ relatedType: "INVENTORY_BALANCE", relatedId: branchBalance.id });
+      const notifiedIds = notified.map((row) => row.userId);
+      expect(notifiedIds).toContain(fixture.users.admin.id);
+      // Assigned to Quezon City, so this is their delivery.
+      expect(notifiedIds).toContain(fixture.users.branchStaff.id);
+      // Business-wide account: sees every branch.
+      expect(notifiedIds).toContain(fixture.users.accountingStaff.id);
+      // Stock Room only, and an inactive Biñan account: neither is told.
+      expect(notifiedIds).not.toContain(fixture.users.stockStaff.id);
+      expect(notifiedIds).not.toContain(fixture.users.inactiveBranchStaff.id);
     });
   }, 30_000);
 });

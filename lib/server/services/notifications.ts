@@ -96,6 +96,47 @@ export async function findWorkflowNotificationRecipients(tx: Prisma.TransactionC
   });
 }
 
+/**
+ * Everyone who works at the receiving location learns that stock arrived, plus
+ * owners and business-wide accounts. Other branches are not told.
+ */
+export async function notifyStockReceived(
+  tx: Prisma.TransactionClient,
+  input: {
+    balanceId: string | null;
+    reference: string;
+    locationId: string;
+    locationName: string;
+    supplierName: string;
+    receivedByName: string;
+    pieces: number;
+    productCount: number;
+  },
+) {
+  const recipients = await tx.user.findMany({
+    where: {
+      status: "ACTIVE",
+      accessRole: { OR: [{ isOwner: true }, { permissions: { has: "notifications:view" } }] },
+      OR: [
+        { accessRole: { isOwner: true } },
+        { accessRole: { permissions: { has: "locations:all" } } },
+        { locationAssignments: { some: { locationId: input.locationId } } },
+      ],
+    },
+    select: { id: true },
+  });
+  await createNotifications(tx, recipients.map((recipient) => ({
+    userId: recipient.id,
+    title: `Stock received at ${input.locationName}`,
+    description: `${input.receivedByName} received ${input.pieces} piece(s) across ${input.productCount} product(s) from ${input.supplierName} on receipt ${input.reference}.`,
+    type: "SUCCESS" as const,
+    ...(input.balanceId
+      ? { relatedType: "INVENTORY_BALANCE" as const, relatedId: input.balanceId }
+      : {}),
+    relatedReference: input.reference,
+  })));
+}
+
 function inventoryAlertStatus(available: number, reorderLevel: number) {
   if (available <= 0) return "Out of Stock" as const;
   if (available <= reorderLevel) return "Low Stock" as const;

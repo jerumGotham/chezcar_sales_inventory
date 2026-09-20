@@ -10,6 +10,7 @@ import {
 import { prisma } from "@/lib/server/prisma";
 import { hasAllLocationAccess } from "@/lib/server/policy/access";
 import { listAccessibleOperationalLocations } from "@/lib/server/locations";
+import { notifyStockReceived } from "./notifications";
 
 export class StockReceiptError extends Error {
   constructor(public readonly code: string, message: string, public readonly status = 409) {
@@ -139,14 +140,17 @@ export async function createStockReceipt(actor: AuthContext, input: CreateStockR
         },
       });
 
+      const touchedBalanceIds: string[] = [];
       for (const line of input.lines) {
         const receivedQuantity = line.acceptedQuantity + line.quarantinedQuantity;
         if (receivedQuantity === 0) continue;
-        await tx.inventoryBalance.upsert({
+        const balance = await tx.inventoryBalance.upsert({
           where: { locationId_productId: { locationId: destination.id, productId: line.productId } },
             create: { locationId: destination.id, productId: line.productId, onHand: receivedQuantity, quarantined: line.quarantinedQuantity, unitCost: new Prisma.Decimal(line.unitCost) },
             update: { onHand: { increment: receivedQuantity }, quarantined: { increment: line.quarantinedQuantity }, unitCost: new Prisma.Decimal(line.unitCost), version: { increment: 1 } },
+            select: { id: true },
         });
+        touchedBalanceIds.push(balance.id);
         await tx.inventoryMovement.create({
           data: {
             receiptId: receipt.id,
@@ -179,6 +183,23 @@ export async function createStockReceipt(actor: AuthContext, input: CreateStockR
               return { productId: line.productId, reason: line.claimReason!, claimedQuantity: line.quarantinedQuantity + line.missingQuantity, quarantinedQuantity: line.quarantinedQuantity, missingQuantity: line.missingQuantity, openQuarantinedQuantity: line.quarantinedQuantity, openMissingQuantity: line.missingQuantity, productItemCode: product.itemCode, productName: product.name, unitCost: new Prisma.Decimal(line.unitCost), notes: line.claimNotes };
             }) },
           },
+        });
+      }
+
+      const receivedPieces = input.lines.reduce((sum, line) => sum + line.acceptedQuantity + line.quarantinedQuantity, 0);
+      if (receivedPieces > 0) {
+        const receiver = await tx.user.findUnique({ where: { id: actor.userId }, select: { name: true } });
+        await notifyStockReceived(tx, {
+          // One product opens straight to its stock row; a mixed delivery has no
+          // single row to open, so the alert stays informational.
+          balanceId: touchedBalanceIds.length === 1 ? touchedBalanceIds[0] : null,
+          reference: receipt.reference,
+          locationId: destination.id,
+          locationName: destination.name,
+          supplierName: supplier.name,
+          receivedByName: receiver?.name ?? "A user",
+          pieces: receivedPieces,
+          productCount: input.lines.length,
         });
       }
 
