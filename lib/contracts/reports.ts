@@ -8,13 +8,26 @@ export const REPORT_TYPES = [
 
 export const SALE_SOURCES = ["DIRECT_SALE", "CUSTOMER_ORDER"] as const;
 /**
- * Which date the sales period is measured on. SALE_DATE is the day the receipt
- * was issued, so a printed month stops changing as Accounting catches up;
- * VERIFIED_DATE is the day Accounting confirmed it, which is what Accounting
- * itself reconciles against.
+ * One choice decides both which receipts the sales period contains and which
+ * date it is measured on, because the two are not independent: a receipt
+ * Accounting has not confirmed has no verification date to be measured by.
+ *
+ * - SALE_DATE, the default, dates every receipt by the day it was issued and
+ *   shows confirmed and unconfirmed side by side, with an unconfirmed receipt
+ *   marked in place of its verification date.
+ * - VERIFIED_DATE dates by the day Accounting confirmed the receipt, so only
+ *   confirmed receipts can appear and every row is Y.
+ * - UNVERIFIED dates by the day the receipt was issued and shows only what
+ *   Accounting has not confirmed, so every row is N.
  */
-export const SALE_DATE_BASES = ["SALE_DATE", "VERIFIED_DATE"] as const;
-export type SaleDateBasis = (typeof SALE_DATE_BASES)[number];
+export const SALES_VIEWS = ["SALE_DATE", "VERIFIED_DATE", "UNVERIFIED"] as const;
+export type SalesView = (typeof SALES_VIEWS)[number];
+
+export const SALES_VIEW_LABELS: Record<SalesView, string> = {
+  SALE_DATE: "Sale date (all receipts)",
+  VERIFIED_DATE: "Verification date (verified only)",
+  UNVERIFIED: "Not verified only",
+};
 export const PAYMENT_METHODS = ["CASH", "GCASH", "MAYA", "BANK_TRANSFER", "CREDIT_CARD", "SPLIT"] as const;
 export const PRODUCT_STATUSES = ["ACTIVE", "INACTIVE"] as const;
 export const RETURN_CASE_TYPES = ["BACKJOB", "CUSTOMER_WARRANTY", "SUPPLIER_CLAIM"] as const;
@@ -56,13 +69,20 @@ export type ReportMeta = {
 
 export type SalesReport = ReportMeta & {
   type: "sales";
-  dateBasis: SaleDateBasis;
+  view: SalesView;
   /** Receipts issued inside the period that Accounting has not confirmed yet. */
   pending: { count: number; amount: number };
+  /**
+   * The verified and unverified halves of what is on the page, kept apart so a
+   * combined view can never be read as confirmed revenue.
+   */
+  verifiedTotal: { transactionCount: number; totalAmount: number };
+  unverifiedTotal: { transactionCount: number; totalAmount: number };
   rows: Array<{
     id: string;
     soldAt: string;
-    verifiedAt: string;
+    /** Null until Accounting confirms the receipt. */
+    verifiedAt: string | null;
     manualReceiptNumber: string;
     branch: string;
     customer: string;
@@ -77,7 +97,7 @@ export type SalesReport = ReportMeta & {
     units: number;
     discountAmount: number;
     totalAmount: number;
-    verificationStatus: "VERIFIED";
+    verificationStatus: "VERIFIED" | "UNVERIFIED" | "MISMATCH_REPORTED";
   }>;
   branchTotals: Array<{ branch: string; transactionCount: number; units: number; totalAmount: number; percentage: number }>;
   grandTotal: { transactionCount: number; units: number; totalDiscount: number; averageSale: number; totalAmount: number };

@@ -7,7 +7,8 @@ import type { BackjobItemDto } from "@/lib/contracts/backjobs";
 import {
   PAYMENT_METHODS,
   PRODUCT_STATUSES,
-  SALE_DATE_BASES,
+  SALES_VIEWS,
+  SALES_VIEW_LABELS,
   STOCK_MOVEMENT_GRADES,
   stockMovementGrade,
   REPORT_TYPES,
@@ -43,7 +44,7 @@ const reportQueryBaseSchema = z.object({
   salespersonId: optionalText,
   source: z.enum(SALE_SOURCES).optional(),
   paymentMethod: z.enum(PAYMENT_METHODS).optional(),
-  dateBasis: z.enum(SALE_DATE_BASES).optional(),
+  view: z.enum(SALES_VIEWS).optional(),
   search: optionalText,
   category: optionalText,
   brand: optionalText,
@@ -54,7 +55,7 @@ const reportQueryBaseSchema = z.object({
   entitySearch: optionalText,
   movement: z.enum(STOCK_MOVEMENT_GRADES).optional(),
 }).strict().superRefine((value, context) => {
-  const salesFilters = new Set(["type", "dateFrom", "dateTo", "locationId", "salespersonId", "source", "paymentMethod", "dateBasis"]);
+  const salesFilters = new Set(["type", "dateFrom", "dateTo", "locationId", "salespersonId", "source", "paymentMethod", "view"]);
   const allowed: Record<(typeof REPORT_TYPES)[number], ReadonlySet<string>> = {
     sales: salesFilters,
     "salesperson-sales": salesFilters,
@@ -160,7 +161,7 @@ function selectedFilters(query: ReportQuery, filters: Awaited<ReturnType<typeof 
   const result: Array<{ label: string; value: string }> = [];
   if (range.dateFrom || range.dateTo) result.push({ label: "Date range", value: `${range.dateFrom ?? "Start"} to ${range.dateTo ?? "Today"}` });
   if (query.type === "sales" || query.type === "salesperson-sales") {
-    result.push({ label: "Dates counted on", value: (query.dateBasis ?? "SALE_DATE") === "SALE_DATE" ? "Sale date" : "Verification date" });
+    result.push({ label: "View", value: SALES_VIEW_LABELS[query.view ?? "SALE_DATE"] });
   }
   if (query.locationId) result.push({ label: "Location", value: query.type === "inventory-summary" && query.locationId === "all" ? "All authorized branches" : optionLabel(filters.locations, query.locationId) });
   if (query.salespersonId) result.push({ label: "Salesperson", value: optionLabel(filters.salespersons, query.salespersonId) });
@@ -286,7 +287,11 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
 
   if (query.type === "sales" || query.type === "salesperson-sales") {
     const range = dateRange(query, true);
-    const dateBasis = query.dateBasis ?? "SALE_DATE";
+    const view = query.view ?? "SALE_DATE";
+    // Only a confirmed receipt has a verification date, so measuring on that
+    // date already restricts the set; the other two views date by issue day.
+    const reviewStatusFilter: Prisma.EnumAccountingReviewStatusFilter | undefined =
+      view === "VERIFIED_DATE" ? { equals: "VERIFIED" } : view === "UNVERIFIED" ? { not: "VERIFIED" } : undefined;
     // The report reads the payment ledger, so every verified receipt is counted
     // once, on the day it was verified: a downpayment on its own date, the
     // balance settled at release on its own, and a forfeited downpayment on a
@@ -299,20 +304,20 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
         salespersonId: query.salespersonId,
         kind: query.source === "DIRECT_SALE" ? "DIRECT_SALE" : query.source === "CUSTOMER_ORDER" ? { in: [...orderKinds] } : undefined,
         method: query.paymentMethod,
-        reviewStatus: "VERIFIED",
+        reviewStatus: reviewStatusFilter,
         // The period is measured on the day the receipt was issued by default,
         // so a printed month stops moving while Accounting works through its
         // queue. Accounting can switch it to its own verification dates.
-        ...(dateBasis === "SALE_DATE" ? { collectedAt: range.where } : { verifiedAt: range.where }),
+        ...(view === "VERIFIED_DATE" ? { verifiedAt: range.where } : { collectedAt: range.where }),
       },
       select: {
         id: true, kind: true, receiptNumber: true, receiptBooklet: true, amount: true, method: true,
-        salespersonId: true, salespersonName: true, verifiedAt: true, collectedAt: true,
+        salespersonId: true, salespersonName: true, verifiedAt: true, collectedAt: true, reviewStatus: true,
         customer: { select: { name: true } }, location: { select: { code: true, name: true } },
         collectedBy: { select: { name: true } },
         sale: { select: { discountAmount: true, lines: { select: { quantity: true } } } },
       },
-      orderBy: dateBasis === "SALE_DATE" ? [{ collectedAt: "desc" }, { id: "desc" }] : [{ verifiedAt: "desc" }, { id: "desc" }],
+      orderBy: view === "VERIFIED_DATE" ? [{ verifiedAt: "desc" }, { id: "desc" }] : [{ collectedAt: "desc" }, { id: "desc" }],
     });
     // What the branch collected inside the period but Accounting has not
     // confirmed yet, so a printed report never hides its own gap.
@@ -339,7 +344,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
     const rows = records.map((row) => ({
       id: row.id,
       soldAt: row.collectedAt.toISOString(),
-      verifiedAt: row.verifiedAt!.toISOString(),
+      verifiedAt: row.verifiedAt?.toISOString() ?? null,
       manualReceiptNumber: row.receiptBooklet ? `${row.receiptBooklet}-${row.receiptNumber}` : row.receiptNumber,
       branch: `${row.location.code} - ${row.location.name}`,
       customer: row.customer?.name ?? "Guest",
@@ -353,7 +358,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
       units: row.sale?.lines.reduce((sum, line) => sum + line.quantity, 0) ?? 0,
       discountAmount: row.sale?.discountAmount.toNumber() ?? 0,
       totalAmount: row.amount.toNumber(),
-      verificationStatus: "VERIFIED" as const,
+      verificationStatus: row.reviewStatus,
     }));
     const grandAmount = rows.reduce((sum, row) => sum + row.totalAmount, 0);
     const totals = new Map<string, { branch: string; transactionCount: number; units: number; totalAmount: number; percentage: number }>();
@@ -366,7 +371,15 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
     }
     for (const total of totals.values()) total.percentage = grandAmount ? (total.totalAmount / grandAmount) * 100 : 0;
     const salesReport: SalesReport = {
-      ...base, type: "sales", dateFrom: range.dateFrom, dateTo: range.dateTo, dateBasis, pending,
+      ...base, type: "sales", dateFrom: range.dateFrom, dateTo: range.dateTo, view, pending,
+      verifiedTotal: {
+        transactionCount: rows.filter((row) => row.verificationStatus === "VERIFIED").length,
+        totalAmount: rows.filter((row) => row.verificationStatus === "VERIFIED").reduce((sum, row) => sum + row.totalAmount, 0),
+      },
+      unverifiedTotal: {
+        transactionCount: rows.filter((row) => row.verificationStatus !== "VERIFIED").length,
+        totalAmount: rows.filter((row) => row.verificationStatus !== "VERIFIED").reduce((sum, row) => sum + row.totalAmount, 0),
+      },
       appliedFilters: selectedFilters(query, filters, range), rows,
       branchTotals: [...totals.values()].sort((a, b) => a.branch.localeCompare(b.branch)),
       grandTotal: {

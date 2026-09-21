@@ -135,7 +135,7 @@ describe("sales and salesperson sales reports", () => {
   function sale(id: string, salespersonId: string | null, salespersonName: string | null, amount: number, units = 1) {
     return {
       id, salespersonId, salespersonName, kind: "DIRECT_SALE", receiptNumber: id, receiptBooklet: null, method: "CASH",
-      amount: { toNumber: () => amount }, verifiedAt: new Date("2026-09-10T00:00:00Z"), collectedAt: new Date("2026-09-08T00:00:00Z"),
+      amount: { toNumber: () => amount }, verifiedAt: new Date("2026-09-10T00:00:00Z"), collectedAt: new Date("2026-09-08T00:00:00Z"), reviewStatus: "VERIFIED",
       customer: null, location: { code: "B", name: "Branch" }, collectedBy: { name: "Encoder" },
       sale: { discountAmount: { toNumber: () => amount / 10 }, lines: [{ quantity: units }] },
     };
@@ -170,7 +170,7 @@ describe("sales and salesperson sales reports", () => {
     expect(reportPrisma.payment.findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
       where: {
         locationId: { in: ["branch"] }, status: "ACTIVE", salespersonId: undefined, kind: undefined, method: undefined,
-        reviewStatus: "VERIFIED", collectedAt: { gte: new Date("2026-08-31T16:00:00Z"), lt: new Date("2026-09-30T16:00:00Z") },
+        reviewStatus: undefined, collectedAt: { gte: new Date("2026-08-31T16:00:00Z"), lt: new Date("2026-09-30T16:00:00Z") },
       },
       select: expect.objectContaining({ salespersonId: true, salespersonName: true }),
       orderBy: [{ collectedAt: "desc" }, { id: "desc" }],
@@ -212,7 +212,7 @@ describe("sales and salesperson sales reports", () => {
     function receipt(id: string, kind: string, amount: number, units = 0) {
       return {
         id, salespersonId: "person-1", salespersonName: "Same name", kind, receiptNumber: id, receiptBooklet: null, method: "CASH",
-        amount: { toNumber: () => amount }, verifiedAt: new Date("2026-09-10T00:00:00Z"), collectedAt: new Date("2026-09-08T00:00:00Z"),
+        amount: { toNumber: () => amount }, verifiedAt: new Date("2026-09-10T00:00:00Z"), collectedAt: new Date("2026-09-08T00:00:00Z"), reviewStatus: "VERIFIED",
         customer: { name: "Buyer" }, location: { code: "B", name: "Branch" }, collectedBy: { name: "Cashier" },
         sale: units ? { discountAmount: { toNumber: () => 0 }, lines: [{ quantity: units }] } : null,
       };
@@ -237,7 +237,7 @@ describe("sales and salesperson sales reports", () => {
     expect(report.grandTotal.units).toBe(3);
   });
 
-  it("measures the period on the sale date by default and on verification when asked", async () => {
+  it("dates by the sale day by default and by verification only when that view is chosen", async () => {
     // The first query of each report builds the salesperson filter; the second
     // fetches the receipts themselves, and this test only cares about the where.
     reportPrisma.payment.findMany.mockImplementation((args) => Promise.resolve(args.distinct ? attribution : []));
@@ -248,22 +248,63 @@ describe("sales and salesperson sales reports", () => {
       collectedAt: { gte: new Date("2026-08-31T16:00:00Z"), lt: new Date("2026-09-30T16:00:00Z") },
     });
     expect(reportPrisma.payment.findMany.mock.calls[1][0].where.verifiedAt).toBeUndefined();
+    // The default view holds back nothing, so it has no review-status filter.
+    expect(reportPrisma.payment.findMany.mock.calls[1][0].where.reviewStatus).toBeUndefined();
     if (onSaleDate.type !== "sales") throw new Error("Expected sales report");
-    expect(onSaleDate.dateBasis).toBe("SALE_DATE");
-    // A printed report never hides what Accounting has not caught up on.
-    expect(onSaleDate.pending).toEqual({ count: 2, amount: 45_000 });
-    expect(onSaleDate.appliedFilters).toContainEqual({ label: "Dates counted on", value: "Sale date" });
+    expect(onSaleDate.view).toBe("SALE_DATE");
+    expect(onSaleDate.appliedFilters).toContainEqual({ label: "View", value: "Sale date (all receipts)" });
 
-    const onVerifiedDate = await reports.getReport(actor, { type: "sales", ...query, dateBasis: "VERIFIED_DATE" });
+    const onVerifiedDate = await reports.getReport(actor, { type: "sales", ...query, view: "VERIFIED_DATE" });
     expect(reportPrisma.payment.findMany.mock.calls[3][0].where).toMatchObject({
       verifiedAt: { gte: new Date("2026-08-31T16:00:00Z"), lt: new Date("2026-09-30T16:00:00Z") },
+      reviewStatus: { equals: "VERIFIED" },
     });
     expect(reportPrisma.payment.findMany.mock.calls[3][0].where.collectedAt).toBeUndefined();
     if (onVerifiedDate.type !== "sales") throw new Error("Expected sales report");
-    expect(onVerifiedDate.appliedFilters).toContainEqual({ label: "Dates counted on", value: "Verification date" });
-    // Whichever basis is chosen, the pending figure is always about receipts
-    // issued in the period, which is the money the branch is still holding.
+    expect(onVerifiedDate.appliedFilters).toContainEqual({ label: "View", value: "Verification date (verified only)" });
+    // Only the verified view hides anything, so only it reports a gap.
     expect(onVerifiedDate.pending).toEqual({ count: 2, amount: 45_000 });
+  });
+
+  it("shows verified and unverified side by side, keeping the two totals apart", async () => {
+    function receipt(id: string, amount: number, reviewStatus: string) {
+      return {
+        id, salespersonId: "person-1", salespersonName: "Same name", kind: "DIRECT_SALE", receiptNumber: id, receiptBooklet: null, method: "CASH",
+        amount: { toNumber: () => amount }, collectedAt: new Date("2026-09-08T00:00:00Z"), reviewStatus,
+        verifiedAt: reviewStatus === "VERIFIED" ? new Date("2026-09-10T00:00:00Z") : null,
+        customer: null, location: { code: "B", name: "Branch" }, collectedBy: { name: "Cashier" },
+        sale: { discountAmount: { toNumber: () => 0 }, lines: [{ quantity: 1 }] },
+      };
+    }
+    reportPrisma.payment.findMany.mockResolvedValueOnce(attribution).mockResolvedValueOnce([
+      receipt("OR-1", 10_000, "VERIFIED"),
+      receipt("OR-2", 4_000, "UNVERIFIED"),
+      receipt("OR-3", 1_000, "MISMATCH_REPORTED"),
+    ]);
+    const report = await reports.getReport(actor, { type: "sales", ...query });
+    if (report.type !== "sales") throw new Error("Expected sales report");
+
+    expect(reportPrisma.payment.findMany.mock.calls[1][0].where.reviewStatus).toBeUndefined();
+    // A confirmed figure and an unconfirmed one are never merged into one number.
+    expect(report.verifiedTotal).toEqual({ transactionCount: 1, totalAmount: 10_000 });
+    expect(report.unverifiedTotal).toEqual({ transactionCount: 2, totalAmount: 5_000 });
+    expect(report.grandTotal.totalAmount).toBe(15_000);
+    // An unverified receipt has no verification date to print.
+    expect(report.rows.map((row) => [row.verificationStatus, row.verifiedAt])).toEqual([
+      ["VERIFIED", "2026-09-10T00:00:00.000Z"], ["UNVERIFIED", null], ["MISMATCH_REPORTED", null],
+    ]);
+    expect(report.appliedFilters).toContainEqual({ label: "View", value: "Sale date (all receipts)" });
+  });
+
+  it("dates the not-verified view by the sale day, because those receipts have no verification date", async () => {
+    reportPrisma.payment.findMany.mockImplementation((args) => Promise.resolve(args.distinct ? attribution : []));
+    const report = await reports.getReport(actor, { type: "sales", ...query, view: "UNVERIFIED" });
+    if (report.type !== "sales") throw new Error("Expected sales report");
+
+    expect(reportPrisma.payment.findMany.mock.calls[1][0].where.reviewStatus).toEqual({ not: "VERIFIED" });
+    expect(reportPrisma.payment.findMany.mock.calls[1][0].where.collectedAt).toBeDefined();
+    expect(reportPrisma.payment.findMany.mock.calls[1][0].where.verifiedAt).toBeUndefined();
+    expect(report.appliedFilters).toContainEqual({ label: "View", value: "Not verified only" });
   });
 
   it("keeps salesperson percentages finite when all sale amounts are zero", async () => {

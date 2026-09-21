@@ -12,6 +12,8 @@ import { Input } from "@/components/ui/input";
 import {
   PAYMENT_METHODS,
   PRODUCT_STATUSES,
+  SALES_VIEWS,
+  SALES_VIEW_LABELS,
   REPORT_TYPES,
   RETURN_CASE_TYPES,
   RETURN_RESOLUTIONS,
@@ -51,7 +53,7 @@ type Filters = {
   salespersonId: string;
   source: string;
   paymentMethod: string;
-  dateBasis: string;
+  view: string;
   search: string;
   category: string;
   brand: string;
@@ -64,7 +66,7 @@ type Filters = {
 };
 
 const EMPTY_FILTERS: Omit<Filters, "type" | "dateFrom" | "dateTo"> = {
-  locationId: "", salespersonId: "", source: "", paymentMethod: "", dateBasis: "", search: "", category: "", brand: "",
+  locationId: "", salespersonId: "", source: "", paymentMethod: "", view: "", search: "", category: "", brand: "",
   productStatus: "", caseType: "", status: "", resolution: "", entitySearch: "", movement: "",
 };
 
@@ -198,7 +200,7 @@ function ReportsContent() {
 
         <Card><CardContent className="p-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
-            {isDated(draft.type) && <Field label="From" helper={salesFilters ? (draft.dateBasis === "VERIFIED_DATE" ? "Based on verification date (Manila)." : "Based on sale date (Manila).") : movementFilters ? "Sales counted inside this period (Manila)." : "Based on case creation date (Manila)."}><Input type="date" value={draft.dateFrom} onChange={(event) => changeDateFrom(event.target.value)} /></Field>}
+            {isDated(draft.type) && <Field label="From" helper={salesFilters ? (draft.view === "VERIFIED_DATE" ? "Based on verification date (Manila)." : "Based on sale date (Manila).") : movementFilters ? "Sales counted inside this period (Manila)." : "Based on case creation date (Manila)."}><Input type="date" value={draft.dateFrom} onChange={(event) => changeDateFrom(event.target.value)} /></Field>}
             {isDated(draft.type) && <Field label="To" helper="Inclusive; defaults to month-end."><Input type="date" value={draft.dateTo} onChange={(event) => { setCustomDateTo(Boolean(event.target.value)); change("dateTo", event.target.value); }} /></Field>}
             <Field label={inventoryFilters ? "Branch" : "Location"} helper={inventoryFilters ? "Defaults to one branch. Select All Branches to compare." : undefined}>
               <NativeSelect
@@ -212,7 +214,7 @@ function ReportsContent() {
             {salesFilters && <Field label="Salesperson"><NativeSelect value={draft.salespersonId} onChange={(value) => change("salespersonId", value)} options={filterOptions?.salespersons ?? []} disabled={optionsLoading || !filterOptions} allLabel={optionsLoading ? "Loading salespersons..." : "All salespersons"} /></Field>}
             {salesFilters && <Field label="Source"><NativeSelect value={draft.source} onChange={(value) => change("source", value)} options={options(SALE_SOURCES)} allLabel="All sources" /></Field>}
             {salesFilters && <Field label="Payment"><NativeSelect value={draft.paymentMethod} onChange={(value) => change("paymentMethod", value)} options={options(PAYMENT_METHODS)} allLabel="All methods" /></Field>}
-            {salesFilters && <Field label="Dates counted on" helper="Sale date keeps a printed month from changing later."><NativeSelect value={draft.dateBasis} onChange={(value) => change("dateBasis", value)} options={[{ id: "SALE_DATE", label: "Sale date" }, { id: "VERIFIED_DATE", label: "Verification date" }]} allLabel="Sale date" /></Field>}
+            {salesFilters && <Field label="View"><NativeSelect value={draft.view} onChange={(value) => change("view", value)} options={SALES_VIEWS.filter((id) => id !== "SALE_DATE").map((id) => ({ id, label: SALES_VIEW_LABELS[id] }))} allLabel={SALES_VIEW_LABELS.SALE_DATE} /></Field>}
 
             {(inventoryFilters || movementFilters) && <Field label="Item code or name"><Input value={draft.search} onChange={(event) => change("search", event.target.value)} placeholder="Search product" /></Field>}
             {(inventoryFilters || movementFilters) && <Field label="Category"><NativeSelect value={draft.category} onChange={(value) => change("category", value)} options={filterOptions?.categories ?? []} disabled={optionsLoading || !filterOptions} allLabel="All categories" /></Field>}
@@ -252,11 +254,31 @@ function NativeSelect({ value, onChange, options: rows, allLabel, disabled = fal
  * inside the period that Accounting has not confirmed, and so is not counted.
  */
 function PendingNotice({ report }: { report: SalesReport | SalespersonSalesReport }) {
-  if (report.pending.count === 0) return null;
+  // Once unverified receipts are on the page they speak for themselves; the
+  // banner is for the default view, where they are missing without a word.
+  if (report.view === "VERIFIED_DATE") {
+    if (report.pending.count === 0) return null;
+    return (
+      <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/30">
+        <CardContent className="p-4 text-sm text-amber-900 dark:text-amber-200">
+          <strong>{report.pending.count} receipt(s)</strong> issued in this period are still unverified, worth {peso.format(report.pending.amount)}. They are not counted in the totals below and will appear once Accounting confirms them.
+        </CardContent>
+      </Card>
+    );
+  }
+  if (report.view === "UNVERIFIED") {
+    return (
+      <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/30">
+        <CardContent className="p-4 text-sm text-amber-900 dark:text-amber-200">
+          Every receipt here is waiting on Accounting. Nothing on this page is verified revenue: it is {peso.format(report.unverifiedTotal.totalAmount)} the branches say they collected.
+        </CardContent>
+      </Card>
+    );
+  }
   return (
     <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/30">
       <CardContent className="p-4 text-sm text-amber-900 dark:text-amber-200">
-        <strong>{report.pending.count} receipt(s)</strong> issued in this period are still unverified, worth {peso.format(report.pending.amount)}. They are not counted in the totals below and will appear once Accounting confirms them.
+        This view mixes both. Verified: <strong>{peso.format(report.verifiedTotal.totalAmount)}</strong> across {report.verifiedTotal.transactionCount} receipt(s). Not verified: <strong>{peso.format(report.unverifiedTotal.totalAmount)}</strong> across {report.unverifiedTotal.transactionCount} receipt(s). Present the verified figure as revenue; the rest is money the branch says it holds.
       </CardContent>
     </Card>
   );
@@ -301,6 +323,13 @@ function StockMovementView({ report }: { report: StockMovementReport }) {
 
 const MOVEMENT_LABELS = { FAST: "Fast", SLOW: "Slow", NO_MOVEMENT: "NO MOVEMENT" } as const;
 
+// The headline figure names what it actually adds up in each view.
+const TOTAL_LABELS: Record<string, string> = {
+  SALE_DATE: "Combined total",
+  VERIFIED_DATE: "Verified sales",
+  UNVERIFIED: "Not verified total",
+};
+
 function State({ children, destructive = false }: { children: React.ReactNode; destructive?: boolean }) {
   return <Card><CardContent className={`flex items-center gap-2 p-6 text-sm ${destructive ? "text-destructive" : "text-muted-foreground"}`}>{children}</CardContent></Card>;
 }
@@ -316,16 +345,16 @@ function ReportView({ report }: { report: ReportResult }) {
     return <>
       <PendingNotice report={report} />
       <p className="text-sm text-muted-foreground">See which receipts belong to each salesperson and their total verified sales. This is sales attribution, not a commission or payment report. Older sales without attribution appear under Not recorded (legacy).</p>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Metric label="Verified transactions" value={String(report.grandTotal.transactionCount)} /><Metric label="Units sold" value={String(report.grandTotal.units)} /><Metric label="Discounts" value={peso.format(report.grandTotal.totalDiscount)} /><Metric label="Average sale" value={peso.format(report.grandTotal.averageSale)} /><Metric label="Grand total" value={peso.format(report.grandTotal.totalAmount)} /></div>
-      <Table title="Salesperson totals" numericFrom={1} headers={["Salesperson", "Transactions", "Units", "Discounts", "Average sale", "Sales", "% of grand total"]} rows={report.salespersonTotals.map((row) => [row.salesperson, String(row.transactionCount), String(row.units), peso.format(row.totalDiscount), peso.format(row.averageSale), peso.format(row.totalAmount), `${row.percentage.toFixed(1)}%`])} footerRow={["OVERALL TOTAL", String(report.grandTotal.transactionCount), String(report.grandTotal.units), peso.format(report.grandTotal.totalDiscount), peso.format(report.grandTotal.averageSale), peso.format(report.grandTotal.totalAmount), report.grandTotal.totalAmount ? "100.0%" : "0.0%"]} />
-      {report.salespersonTotals.map((group) => <Table key={group.salespersonId ?? "unattributed"} title={`${group.salesperson} - ${group.transactionCount} receipt(s)`} numericFrom={8} headers={["Sold", "Verified", "Manual receipt", "Branch", "Customer", "Salesperson on receipt", "Encoder", "Source", "Payment", "Units", "Discount", "Final amount", "Status"]} rows={(salesByPerson.get(group.salespersonId) ?? []).map((row) => [dateTime.format(new Date(row.soldAt)), dateTime.format(new Date(row.verifiedAt)), row.manualReceiptNumber, row.branch, row.customer, row.salesperson, row.encoder, row.source, humanize(row.paymentMethod), String(row.units), peso.format(row.discountAmount), peso.format(row.totalAmount), humanize(row.verificationStatus)])} footerRow={["SALESPERSON TOTAL", "", "", "", "", "", "", "", "", String(group.units), peso.format(group.totalDiscount), peso.format(group.totalAmount), ""]} />)}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Metric label="Receipts" value={String(report.grandTotal.transactionCount)} /><Metric label="Units sold" value={String(report.grandTotal.units)} /><Metric label="Discounts" value={peso.format(report.grandTotal.totalDiscount)} /><Metric label="Average sale" value={peso.format(report.grandTotal.averageSale)} /><Metric label={TOTAL_LABELS[report.view]} value={peso.format(report.grandTotal.totalAmount)} /></div>
+      <Table title="Salesperson totals" numericFrom={1} headers={["Salesperson", "Receipts", "Units", "Discounts", "Average sale", "Sales", "% of grand total"]} rows={report.salespersonTotals.map((row) => [row.salesperson, String(row.transactionCount), String(row.units), peso.format(row.totalDiscount), peso.format(row.averageSale), peso.format(row.totalAmount), `${row.percentage.toFixed(1)}%`])} footerRow={["OVERALL TOTAL", String(report.grandTotal.transactionCount), String(report.grandTotal.units), peso.format(report.grandTotal.totalDiscount), peso.format(report.grandTotal.averageSale), peso.format(report.grandTotal.totalAmount), report.grandTotal.totalAmount ? "100.0%" : "0.0%"]} />
+      {report.salespersonTotals.map((group) => <Table key={group.salespersonId ?? "unattributed"} title={`${group.salesperson} - ${group.transactionCount} receipt(s)`} numericFrom={8} headers={["Sold", "Verified on", "Manual receipt", "Branch", "Customer", "Salesperson on receipt", "Encoder", "Source", "Payment", "Units", "Discount", "Final amount"]} rows={(salesByPerson.get(group.salespersonId) ?? []).map((row) => [dateTime.format(new Date(row.soldAt)), row.verifiedAt ? dateTime.format(new Date(row.verifiedAt)) : <span className="font-medium text-red-600 dark:text-red-400">Not verified</span>, row.manualReceiptNumber, row.branch, row.customer, row.salesperson, row.encoder, row.source, humanize(row.paymentMethod), String(row.units), peso.format(row.discountAmount), peso.format(row.totalAmount)])} footerRow={["SALESPERSON TOTAL", "", "", "", "", "", "", "", "", String(group.units), peso.format(group.totalDiscount), peso.format(group.totalAmount)]} />)}
     </>;
   }
   if (report.type === "sales") return <>
     <PendingNotice report={report} />
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Metric label="Verified transactions" value={String(report.grandTotal.transactionCount)} /><Metric label="Units sold" value={String(report.grandTotal.units)} /><Metric label="Discounts" value={peso.format(report.grandTotal.totalDiscount)} /><Metric label="Average sale" value={peso.format(report.grandTotal.averageSale)} /><Metric label="Grand total" value={peso.format(report.grandTotal.totalAmount)} /></div>
-    <Table headers={["Sold", "Verified", "Manual receipt", "Branch", "Customer", "Salesperson", "Encoder", "Source", "Payment", "Units", "Discount", "Final amount", "Status"]} rows={report.rows.map((row) => [dateTime.format(new Date(row.soldAt)), dateTime.format(new Date(row.verifiedAt)), row.manualReceiptNumber, row.branch, row.customer, row.salesperson, row.encoder, row.source, humanize(row.paymentMethod), String(row.units), peso.format(row.discountAmount), peso.format(row.totalAmount), humanize(row.verificationStatus)])} />
-    <Table title="Branch totals" headers={["Branch", "Transactions", "Units", "Sales", "% of grand total"]} rows={report.branchTotals.map((row) => [row.branch, String(row.transactionCount), String(row.units), peso.format(row.totalAmount), `${row.percentage.toFixed(1)}%`])} />
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Metric label="Receipts" value={String(report.grandTotal.transactionCount)} /><Metric label="Units sold" value={String(report.grandTotal.units)} /><Metric label="Discounts" value={peso.format(report.grandTotal.totalDiscount)} /><Metric label="Average sale" value={peso.format(report.grandTotal.averageSale)} /><Metric label={TOTAL_LABELS[report.view]} value={peso.format(report.grandTotal.totalAmount)} /></div>
+    <Table headers={["Sold", "Verified on", "Manual receipt", "Branch", "Customer", "Salesperson", "Encoder", "Source", "Payment", "Units", "Discount", "Final amount"]} rows={report.rows.map((row) => [dateTime.format(new Date(row.soldAt)), row.verifiedAt ? dateTime.format(new Date(row.verifiedAt)) : <span className="font-medium text-red-600 dark:text-red-400">Not verified</span>, row.manualReceiptNumber, row.branch, row.customer, row.salesperson, row.encoder, row.source, humanize(row.paymentMethod), String(row.units), peso.format(row.discountAmount), peso.format(row.totalAmount)])} />
+    <Table title="Branch totals" headers={["Branch", "Receipts", "Units", "Sales", "% of grand total"]} rows={report.branchTotals.map((row) => [row.branch, String(row.transactionCount), String(row.units), peso.format(row.totalAmount), `${row.percentage.toFixed(1)}%`])} />
   </>;
   if (report.type === "inventory-summary") return <InventoryView report={report} />;
   if (report.type === "stock-movement") return <StockMovementView report={report} />;
@@ -367,6 +396,6 @@ function Metric({ label, value }: { label: string; value: string }) {
   return <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-xl font-semibold">{value}</p></CardContent></Card>;
 }
 
-function Table({ title, headers, rows, footerRow, numericFrom = Infinity }: { title?: string; headers: string[]; rows: string[][]; footerRow?: string[]; numericFrom?: number }) {
-  return <Card className="min-w-0"><CardContent className="p-0">{title && <h2 className="px-4 pt-4 font-semibold">{title}</h2>}<div className="overflow-x-auto"><table className="w-full min-w-max text-sm"><thead><tr className="border-b bg-muted/40">{headers.map((header, index) => <th key={header} className={`px-3 py-2 text-xs font-medium text-muted-foreground ${index >= numericFrom ? "text-right" : "text-left"}`}>{header}</th>)}</tr></thead><tbody>{rows.length ? rows.map((row, index) => <tr key={index} className="border-b last:border-0">{row.map((cell, cellIndex) => <td key={`${index}-${cellIndex}`} className={`max-w-72 px-3 py-2 ${cellIndex >= numericFrom ? "text-right tabular-nums" : ""}`}>{cell}</td>)}</tr>) : <tr><td colSpan={headers.length} className="px-4 py-8 text-center text-muted-foreground">No rows in the applied scope.</td></tr>}</tbody>{footerRow && <tfoot><tr className="border-t bg-muted/40 font-semibold">{footerRow.map((cell, index) => <td key={index} className={`px-3 py-2 ${index >= numericFrom ? "text-right tabular-nums" : ""}`}>{cell}</td>)}</tr></tfoot>}</table></div></CardContent></Card>;
+function Table({ title, headers, rows, footerRow, numericFrom = Infinity }: { title?: string; headers: string[]; rows: React.ReactNode[][]; footerRow?: string[]; numericFrom?: number }) {
+  return <Card className="min-w-0"><CardContent className="p-0">{title && <h2 className="px-4 pt-4 font-semibold">{title}</h2>}<div className="overflow-x-auto"><table className="w-full min-w-max text-sm"><thead><tr className="border-b bg-muted/40">{headers.map((header, index) => <th key={`${header}-${index}`} className={`px-3 py-2 text-xs font-medium text-muted-foreground ${index >= numericFrom ? "text-right" : "text-left"}`}>{header}</th>)}</tr></thead><tbody>{rows.length ? rows.map((row, index) => <tr key={index} className="border-b last:border-0">{row.map((cell, cellIndex) => <td key={`${index}-${cellIndex}`} className={`max-w-72 px-3 py-2 ${cellIndex >= numericFrom ? "text-right tabular-nums" : ""}`}>{cell}</td>)}</tr>) : <tr><td colSpan={headers.length} className="px-4 py-8 text-center text-muted-foreground">No rows in the applied scope.</td></tr>}</tbody>{footerRow && <tfoot><tr className="border-t bg-muted/40 font-semibold">{footerRow.map((cell, index) => <td key={index} className={`px-3 py-2 ${index >= numericFrom ? "text-right tabular-nums" : ""}`}>{cell}</td>)}</tr></tfoot>}</table></div></CardContent></Card>;
 }

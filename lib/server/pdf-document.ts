@@ -4,6 +4,16 @@ import { PDFDocument, PageSizes, StandardFonts, rgb, type PDFFont, type PDFPage 
 
 export type PdfColumn = { header: string; width: number; numeric?: boolean };
 
+/**
+ * A table cell. Passing an object marks the cell as a warning so it prints in
+ * red, which is how a printed sheet flags a figure that is not confirmed.
+ */
+export type PdfCell = string | { text: string; tone: "danger" };
+
+function cellText(cell: PdfCell) {
+  return typeof cell === "string" ? cell : cell.text;
+}
+
 const PAGE_WIDTH = PageSizes.A4[1];
 const PAGE_HEIGHT = PageSizes.A4[0];
 const MARGIN = 36;
@@ -16,6 +26,7 @@ const INK = rgb(0.13, 0.16, 0.2);
 const MUTED = rgb(0.36, 0.4, 0.44);
 const RULE = rgb(0.82, 0.85, 0.86);
 const TINT = rgb(0.93, 0.96, 0.95);
+const DANGER = rgb(0.72, 0.11, 0.11);
 
 export function safe(value: unknown) {
   return String(value ?? "").normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^\x20-\x7E\n]/g, "?");
@@ -63,7 +74,7 @@ export type PdfBuilder = {
   /** One wrapped paragraph at the current cursor; `bold` selects the bold face. */
   text: (value: string, size?: number, bold?: boolean) => void;
   /** Heading plus a bordered table; repeats column labels on every continuation page. */
-  table: (heading: string, columns: PdfColumn[], rows: string[][], emphasizeLast?: boolean) => void;
+  table: (heading: string, columns: PdfColumn[], rows: PdfCell[][], emphasizeLast?: boolean) => void;
   /** Extra vertical gap at the current cursor. */
   space: (amount: number) => void;
   /** Stamps the footer on every page and returns the serialized document. */
@@ -105,13 +116,13 @@ export async function createPdfBuilder(options: {
     }
   };
 
-  const table = (heading: string, columns: PdfColumn[], rows: string[][], emphasizeLast = false) => {
+  const table = (heading: string, columns: PdfColumn[], rows: PdfCell[][], emphasizeLast = false) => {
     const totalWidth = columns.reduce((sum, column) => sum + column.width, 0);
     const widths = columns.map((column) => CONTENT_WIDTH * column.width / totalWidth);
     const headerLines = columns.map((column, index) => wrap(column.header, bold, BODY_SIZE, widths[index] - PADDING * 2));
     const headerHeight = Math.max(...headerLines.map((cell) => cell.length)) * LINE_HEIGHT + PADDING * 2;
     const headingHeight = wrap(`${heading} (continued)`, bold, 12, CONTENT_WIDTH).length * 18 + 5;
-    const drawCells = (cells: string[][], font: PDFFont, background?: ReturnType<typeof rgb>, header = false) => {
+    const drawCells = (cells: string[][], font: PDFFont, background?: ReturnType<typeof rgb>, header = false, tones: Array<"danger" | undefined> = []) => {
       const height = Math.max(...cells.map((cell) => cell.length), 1) * LINE_HEIGHT + PADDING * 2;
       if (background) page.drawRectangle({ x: MARGIN, y: y - height, width: CONTENT_WIDTH, height, color: background });
       let x = MARGIN;
@@ -119,7 +130,7 @@ export async function createPdfBuilder(options: {
         cell.forEach((line, lineIndex) => page.drawText(line, {
           x: columns[index].numeric && !header ? x + widths[index] - PADDING - font.widthOfTextAtSize(line, BODY_SIZE) : x + PADDING,
           y: y - PADDING - BODY_SIZE - lineIndex * LINE_HEIGHT,
-          size: BODY_SIZE, font, color: INK,
+          size: BODY_SIZE, font, color: tones[index] === "danger" ? DANGER : INK,
         }));
         x += widths[index];
       });
@@ -141,7 +152,8 @@ export async function createPdfBuilder(options: {
     }
     rows.forEach((row, rowIndex) => {
       const font = emphasizeLast && rowIndex === rows.length - 1 ? bold : regular;
-      const wrapped = row.map((cell, index) => wrap(cell, font, BODY_SIZE, widths[index] - PADDING * 2));
+      const tones = row.map((cell) => (typeof cell === "string" ? undefined : cell.tone));
+      const wrapped = row.map((cell, index) => wrap(cellText(cell), font, BODY_SIZE, widths[index] - PADDING * 2));
       const totalLines = Math.max(...wrapped.map((cell) => cell.length), 1);
       const height = totalLines * LINE_HEIGHT + PADDING * 2;
       const freshPageRoom = PAGE_HEIGHT - MARGIN - 32 - BOTTOM - headerHeight - headingHeight;
@@ -154,7 +166,7 @@ export async function createPdfBuilder(options: {
         const availableLines = Math.max(1, Math.floor((y - BOTTOM - PADDING * 2) / LINE_HEIGHT));
         const count = Math.min(totalLines - offset, availableLines);
         const background = emphasizeLast && rowIndex === rows.length - 1 ? TINT : rowIndex % 2 ? rgb(0.97, 0.98, 0.98) : undefined;
-        drawCells(wrapped.map((cell) => cell.slice(offset, offset + count)), font, background);
+        drawCells(wrapped.map((cell) => cell.slice(offset, offset + count)), font, background, false, tones);
         offset += count;
         if (offset < totalLines) { addPage(); header(true); }
       }

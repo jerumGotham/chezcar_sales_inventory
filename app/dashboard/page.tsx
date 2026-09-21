@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import type { Route } from "next";
@@ -17,7 +17,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Line, LineChart, Tooltip, XAxis, YAxis } from "recharts";
+
+const CHART_HEIGHT = 280;
+
+/**
+ * Recharts' ResponsiveContainer starts at width -1 and warns about it on its
+ * first render, and its warning helper is hardcoded on, so the message reaches
+ * a real browser console rather than staying in development. Measuring the
+ * frame here and handing the chart a real pixel width avoids that render
+ * entirely while keeping the chart responsive through the resize observer.
+ */
+function ChartFrame({ className, children }: { className?: string; children: (width: number) => React.ReactNode }) {
+  const [width, setWidth] = useState(0);
+  const measure = useCallback((node: HTMLDivElement | null) => {
+    if (!node) return;
+    const update = () => setWidth(node.clientWidth);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  return <div ref={measure} className={className}>{width > 0 ? children(width) : null}</div>;
+}
 
 type SalesPeriod = "today" | "last7Days" | "monthToDate";
 type SalesBranch = { id: string; code: string; name: string };
@@ -163,17 +185,17 @@ export default function DashboardPage() {
                       </div>
                       <Badge variant="outline">{summary.salesFilter.periodLabel}</Badge>
                    </div>
-                   <div className="mt-5 h-[280px]">
-                     <ResponsiveContainer width="100%" height="100%">
-                       <LineChart data={summary.salesTrend} margin={{ top: 8, right: 12, left: 8, bottom: 8 }}>
+                   <ChartFrame className="mt-5 h-[280px] min-w-0">
+                     {(chartWidth) => (
+                       <LineChart width={chartWidth} height={CHART_HEIGHT} data={summary.salesTrend} margin={{ top: 8, right: 12, left: 8, bottom: 8 }}>
                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
                           <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} tickFormatter={(value) => summary.salesFilter.period === "today" ? String(value) : String(value).slice(5)} />
                          <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11 }} tickFormatter={(value) => `₱${Math.round(Number(value) / 1000)}k`} width={52} />
                          <Tooltip formatter={(value) => formatPeso(Number(value))} />
                          <Line type="monotone" dataKey="sales" name="Sales" stroke="#059669" strokeWidth={3} dot={false} />
                        </LineChart>
-                     </ResponsiveContainer>
-                   </div>
+                     )}
+                   </ChartFrame>
                  </CardContent>
                </Card>
                <Card>
@@ -187,19 +209,17 @@ export default function DashboardPage() {
                       </div>
                       <Badge variant="outline">{summary.salesFilter.branchLabel}</Badge>
                    </div>
-                   <div className="mt-5 h-[280px]">
-                     {summary.branchPerformance.length === 0 ? <p className="flex h-full items-center justify-center text-sm text-slate-500">No sales data yet.</p> : (
-                       <ResponsiveContainer width="100%" height="100%">
-                         <BarChart data={summary.branchPerformance} layout="vertical" margin={{ top: 8, right: 12, left: 8, bottom: 8 }}>
+                   <ChartFrame className="mt-5 h-[280px] min-w-0">
+                     {(chartWidth) => summary.branchPerformance.length === 0 ? <p className="flex h-full items-center justify-center text-sm text-slate-500">No sales data yet.</p> : (
+                         <BarChart width={chartWidth} height={CHART_HEIGHT} data={summary.branchPerformance} layout="vertical" margin={{ top: 8, right: 12, left: 8, bottom: 8 }}>
                            <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                            <XAxis type="number" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} tickFormatter={(value) => `₱${Math.round(Number(value) / 1000)}k`} />
                            <YAxis type="category" dataKey="branch" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} width={72} />
                            <Tooltip formatter={(value) => formatPeso(Number(value))} />
                            <Bar dataKey="sales" name="Sales" fill="#0ea5e9" radius={[0, 6, 6, 0]} />
                          </BarChart>
-                       </ResponsiveContainer>
                      )}
-                   </div>
+                   </ChartFrame>
                  </CardContent>
                </Card>
              </div>

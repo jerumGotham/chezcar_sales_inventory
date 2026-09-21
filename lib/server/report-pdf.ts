@@ -29,7 +29,7 @@ export async function createReportPdf(report: ReportResult, metadata: { generate
     ? "Current branch snapshot. Available = on hand - reserved - quarantined. Positive available stock only; Stock Room and in-transit stock excluded. Comparison cells with no positive stock show 0."
     : `From ${report.dateFrom} to ${report.dateTo}, inclusive. Based on ${
         report.type === "sales" || report.type === "salesperson-sales"
-          ? report.dateBasis === "VERIFIED_DATE" ? "verification" : "sale"
+          ? report.view === "VERIFIED_DATE" ? "verification" : "sale"
           : report.type === "stock-movement" ? "sale" : "case creation"
       } date in Asia/Manila.`);
   text(`Applied filters: ${report.appliedFilters.map((filter) => `${filter.label}: ${filter.value}`).join("; ") || "None"}`);
@@ -37,22 +37,32 @@ export async function createReportPdf(report: ReportResult, metadata: { generate
 
   if (report.type === "sales" || report.type === "salesperson-sales") {
     const total = report.grandTotal;
-    text(report.dateBasis === "VERIFIED_DATE"
-      ? "Period measured on the date Accounting verified each receipt."
-      : "Period measured on the date each receipt was issued, so this printout does not change as Accounting works through its queue.");
-    // The printed copy states its own gap rather than quietly understating.
-    if (report.pending.count > 0) {
-      text(`Still unverified: ${report.pending.count} receipt(s) issued in this period worth ${money(report.pending.amount)}. They are excluded from every total below.`);
+    if (report.view === "VERIFIED_DATE") {
+      text("Period measured on the date Accounting verified each receipt, so every row below is verified.");
+      // The printed copy states its own gap rather than quietly understating.
+      if (report.pending.count > 0) {
+        text(`Still unverified: ${report.pending.count} receipt(s) issued in this period worth ${money(report.pending.amount)}. They are excluded from every total below.`);
+      }
+    } else if (report.view === "UNVERIFIED") {
+      text("Period measured on the date each receipt was issued. This sheet shows only receipts Accounting has not confirmed, so nothing below is verified revenue.");
+    } else {
+      // A mixed sheet must never be read as one confirmed number.
+      text("Period measured on the date each receipt was issued, so this printout does not change as Accounting works through its queue. A receipt Accounting has not confirmed reads Not verified in place of its verification date.");
+      text(`Verified: ${money(report.verifiedTotal.totalAmount)} across ${report.verifiedTotal.transactionCount} receipt(s). Not verified: ${money(report.unverifiedTotal.totalAmount)} across ${report.unverifiedTotal.transactionCount} receipt(s). Present the verified figure as revenue.`);
     }
     table("Sales overview", [{ header: "Measure", width: 3 }, { header: "Total", width: 2, numeric: true }], [
-      ["Verified transactions", String(total.transactionCount)], ["Units sold", String(total.units)],
+      ["Receipts on this sheet", String(total.transactionCount)], ["Units sold", String(total.units)],
       ["Discounts", money(total.totalDiscount)], ["Average sale", money(total.averageSale)],
-      ["Overall verified sales", money(total.totalAmount)],
+      ...(report.view === "SALE_DATE" ? [
+        ["Verified sales", money(report.verifiedTotal.totalAmount)],
+        ["Not verified", money(report.unverifiedTotal.totalAmount)],
+      ] : []),
+      [report.view === "VERIFIED_DATE" ? "Overall verified sales" : report.view === "UNVERIFIED" ? "Total not yet verified" : "Combined total on this sheet", money(total.totalAmount)],
     ], true);
     if (report.type === "salesperson-sales") {
       text("Verified sales attributed to each salesperson, not commissions or collected payments. Older unattributed sales remain under Not recorded (legacy).");
       table("Salesperson subtotals", [
-        { header: "Salesperson", width: 3 }, { header: "Transactions", width: 1.1, numeric: true },
+        { header: "Salesperson", width: 3 }, { header: "Receipts", width: 1.1, numeric: true },
         { header: "Units", width: 0.8, numeric: true }, { header: "Discounts", width: 1.5, numeric: true },
         { header: "Average sale", width: 1.5, numeric: true }, { header: "Verified sales", width: 1.6, numeric: true },
         { header: "Share", width: 0.8, numeric: true },
@@ -62,8 +72,8 @@ export async function createReportPdf(report: ReportResult, metadata: { generate
       ], true);
     }
     table("Branch subtotals", [
-      { header: "Branch", width: 4 }, { header: "Transactions", width: 1.3, numeric: true },
-      { header: "Units", width: 1, numeric: true }, { header: "Verified sales", width: 2, numeric: true },
+      { header: "Branch", width: 4 }, { header: "Receipts", width: 1.3, numeric: true },
+      { header: "Units", width: 1, numeric: true }, { header: "Sales", width: 2, numeric: true },
       { header: "Share", width: 1, numeric: true },
     ], [
       ...report.branchTotals.map((row) => [row.branch, String(row.transactionCount), String(row.units), money(row.totalAmount), `${row.percentage.toFixed(1)}%`]),
@@ -77,16 +87,20 @@ export async function createReportPdf(report: ReportResult, metadata: { generate
     }
     const detailGroups = report.type === "salesperson-sales"
       ? report.salespersonTotals.map((group) => ({ heading: `Salesperson: ${group.salesperson} - ${group.transactionCount} receipt(s)`, rows: salesByPerson.get(group.salespersonId) ?? [], subtotal: group }))
-      : [{ heading: "Verified sales detail", rows: report.rows, subtotal: null }];
+      : [{ heading: report.view === "VERIFIED_DATE" ? "Verified sales detail" : report.view === "UNVERIFIED" ? "Not yet verified detail" : "Sales detail", rows: report.rows, subtotal: null }];
     for (const group of detailGroups) table(group.heading, [
-      { header: "Receipt / sold / verified", width: 1.7 }, { header: "Branch", width: 1.25 },
-      { header: "Customer / personnel", width: 2.3 }, { header: "Source / payment / status", width: 1.5 },
+      { header: "Receipt / sold / verified", width: 1.8 }, { header: "Branch", width: 1.35 },
+      { header: "Customer / personnel", width: 2.3 }, { header: "Source / payment", width: 1.45 },
       { header: "Units", width: 0.6, numeric: true }, { header: "Discount", width: 1.25, numeric: true },
       { header: "Final amount", width: 1.4, numeric: true },
     ], [...group.rows.map((row) => [
-      `${row.manualReceiptNumber}\nSold ${dateTime(row.soldAt)}\nVerified ${dateTime(row.verifiedAt)}`, row.branch,
+      // An unconfirmed receipt prints in red, the same signal the screen gives.
+      row.verifiedAt
+        ? `${row.manualReceiptNumber}\nSold ${dateTime(row.soldAt)}\nVerified ${dateTime(row.verifiedAt)}`
+        : { text: `${row.manualReceiptNumber}\nSold ${dateTime(row.soldAt)}\nNot verified`, tone: "danger" as const },
+      row.branch,
       `Customer: ${row.customer}\nSalesperson: ${row.salesperson}\nEncoder: ${row.encoder}`,
-      `${row.source}\n${humanize(row.paymentMethod)}\n${humanize(row.verificationStatus)}`,
+      `${row.source}\n${humanize(row.paymentMethod)}`,
       String(row.units), money(row.discountAmount), money(row.totalAmount),
     ]), ...(group.subtotal ? [["SALESPERSON TOTAL", "", "", "", String(group.subtotal.units), money(group.subtotal.totalDiscount), money(group.subtotal.totalAmount)]] : [])], group.subtotal !== null);
   } else if (report.type === "inventory-summary") {
