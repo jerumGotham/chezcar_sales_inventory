@@ -38,11 +38,30 @@ type Backjob = {
   options: { installers: Array<{ id: string; fullName: string }>; products: ProductOption[]; chargeSales: Array<{ id: string; reference: string; manualReceiptNumber: string; totalAmount: number }> };
 };
 
+/**
+ * An action only refreshed the record, so a press that worked looked the same
+ * as one that did nothing. Each action now says what it did, with the stock
+ * ones naming where the parts went.
+ */
+const ACTION_RESULTS: Record<string, string> = {
+  schedule: "Visit scheduled.",
+  start: "Work started.",
+  coverage: "Coverage updated.",
+  "plan-parts": "Parts plan saved.",
+  "issue-part": "Part issued and taken out of sellable stock.",
+  "reconcile-part": "Parts used recorded.",
+  "return-part": "Unused part returned to sellable stock.",
+  complete: "Backjob completed.",
+  cancel: "Backjob cancelled.",
+  reject: "Backjob rejected.",
+};
+
 export function BackjobDetailClient({ backjobId, capabilities }: { backjobId: string; capabilities: readonly string[] }) {
   const router = useRouter();
   const client = useQueryClient();
   const query = useQuery({ queryKey: ["backjob", backjobId], queryFn: async () => { const response = await fetch(`/api/backjobs/${backjobId}`); const body = await response.json(); if (!response.ok) throw new Error(body.error?.message ?? "Unable to load Backjob"); return body.data as Backjob; } });
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [reason, setReason] = useState("");
@@ -59,16 +78,17 @@ export function BackjobDetailClient({ backjobId, capabilities }: { backjobId: st
 
   async function action(name: string, payload: Record<string, unknown> = {}) {
     if (!query.data) return;
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setMessage("");
     const response = await fetch(`/api/backjobs/${backjobId}/${name}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ version: query.data.version, ...payload }) });
     const body = await response.json(); setBusy(false);
     if (!response.ok) return setError(body.error?.message ?? "Unable to update Backjob");
+    setMessage(ACTION_RESULTS[name] ?? "Backjob updated.");
     await client.invalidateQueries({ queryKey: ["backjob", backjobId] });
   }
 
   async function deleteDraft() {
     if (!query.data || busy) return;
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setMessage("");
     try {
       const response = await fetch(`/api/backjobs/${backjobId}`, { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ version: query.data.version }) });
       const body = await response.json();
@@ -93,6 +113,7 @@ export function BackjobDetailClient({ backjobId, capabilities }: { backjobId: st
   return <PageShell title={row.reference} subtitle={`${row.customerName} · ${row.locationCode}`} actions={<div className="flex flex-wrap gap-2"><Link className={buttonVariants({ variant: "outline" })} href="/inventory/returns-warranty"><ArrowLeft aria-hidden="true" />Back to list</Link>{capabilities.includes("backjobs:print") ? <Link className={buttonVariants({ variant: "outline" })} href={`/inventory/returns-warranty/${row.id}/print`} target="_blank" rel="noopener noreferrer"><Printer aria-hidden="true" />Print</Link> : null}{row.status === "DRAFT" && capabilities.includes("backjobs:delete") ? <Button variant="destructive" disabled={busy} onClick={() => { setError(""); setConfirmDelete(true); }}><Trash2 aria-hidden="true" />Delete draft</Button> : null}</div>}>
     <Dialog open={confirmDelete} onOpenChange={(open) => { if (!busy) setConfirmDelete(open); }}><DialogContent showCloseButton={!busy}><DialogHeader><DialogTitle>Delete this Backjob draft?</DialogTitle><DialogDescription>{row.reference} will be permanently deleted, including its purchased-item selections and unused parts plan. Only drafts without stock, financial, scheduling, attachment, or work evidence can be deleted. The original sale is not changed.</DialogDescription></DialogHeader>{error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}<DialogFooter><Button variant="outline" disabled={busy} onClick={() => setConfirmDelete(false)}>Keep draft</Button><Button variant="destructive" disabled={busy || row.status !== "DRAFT"} onClick={() => void deleteDraft()}><Trash2 aria-hidden="true" />{busy ? "Deleting..." : "Delete permanently"}</Button></DialogFooter></DialogContent></Dialog>
     <div className="mb-4 flex flex-wrap gap-2"><Badge>{row.status.replaceAll("_", " ")}</Badge><Badge variant="secondary">{row.coverage}</Badge>{row.originalReceiptNumber ? <Badge variant="outline">Receipt {row.originalReceiptNumber}</Badge> : <Badge variant="outline">Legacy</Badge>}</div>
+    {message ? <p role="status" className="mb-4 rounded-md bg-muted p-3 text-sm">{message}</p> : null}
     {error ? <p className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</p> : null}
     <div className="grid gap-4 xl:grid-cols-3">
       <div className="grid content-start gap-4 xl:col-span-2">
