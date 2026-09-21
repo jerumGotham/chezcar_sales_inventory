@@ -305,7 +305,7 @@ A transfer moves stock from one location to a branch. Any location you are assig
 ![Resolution filled](images/123-admin-resolution-filled.png)
 ![Resolved](images/124-admin-resolution-posted.png)
 
-In the run shown, six pieces left Quezon City, four arrived at Biñan, and two were written off. The movements record exactly that: minus six at the source, plus four at the destination, and a two-piece loss.
+In the run shown, ten pieces left the Stock Room, eight arrived at Quezon City, and two were written off. The movements record exactly that: minus ten at the source, plus eight at the destination, and a two-piece loss.
 
 **Cancelling** an in-transit transfer returns every in-transit piece to the source and needs a reason. Only the sending side can cancel.
 
