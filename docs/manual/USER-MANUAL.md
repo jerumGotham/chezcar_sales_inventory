@@ -39,7 +39,11 @@ After signing in, the name and role appear at the top right of every screen. The
 
 Anyone can change their own password without asking an admin. Open the account menu at the top right, the one showing your name and role, and press **Change password**, which sits just above Logout.
 
-The dialog asks for the current password, then the new one twice. The new password must be **at least 8 characters, with a letter and a number**, and it has to be different from the current one. A wrong current password, a mistyped repeat, or a password that breaks a rule stops the change and says which rule it broke. On success the dialog says so, and the new password works from the next sign-in.
+![Change password](images/125-change-password.png)
+
+The dialog asks for the current password, then the new one twice. Each of the three boxes has an **eye button** on the right to show what you typed, so a long password can be checked before sending it. The new password must be **at least 8 characters, with a letter and a number**, and it has to be different from the current one.
+
+Nothing is sent until the three boxes agree. If they do not, the dialog names the box to fix rather than saying only that something is wrong: a wrong current password, two new passwords that do not match, a new password that repeats the current one, or one that breaks the length rule. On success the dialog says the password was changed, and the new one works from the next sign-in.
 
 Changing your own password here does **not** sign you out anywhere else. Sessions already open on your other devices keep working.
 
@@ -377,7 +381,7 @@ Parts issued to a backjob are deducted from branch stock, and unused parts are r
 
 ### Customer warranty: an item returned under warranty
 
-**Step 1. Create the claim.** Pick the purchased item from a verified sale; the customer, product, and branch fill themselves. Enter the claim quantity and the concern. When the product has no warranty duration on file, the owner must state the warranty basis in months and why.
+**Step 1. Create the claim.** Pick the purchased item from a verified sale; the customer, product, and branch fill themselves. An item whose whole purchased quantity is already covered by open claims no longer appears in the list. Enter the claim quantity and the concern. When the product has no warranty duration on file, the owner must state the warranty basis in months and why.
 
 ![Warranty form](images/104-warranty-form.png)
 ![Warranty filled](images/105-warranty-filled.png)
@@ -393,7 +397,9 @@ Creating a claim changes no stock yet.
 
 ![Received](images/109-warranty-received.png)
 
-**Step 3. Approve repair or replacement** with a target date, or reject the claim.
+**Step 3. Approve repair or replacement** with a target date, or close the claim without repairing it.
+
+Two ways to close it, and the difference matters. **Reject claim** records that the claim was assessed and turned down, and it **requires a written reason** — the button stays disabled until the reason box is filled, and the server refuses a rejection without one. **Cancel claim** withdraws the case as if it had never been filed, and takes no reason. Neither counts against the purchased quantity, so the customer can still file a new claim on the same item. Both also require that any item already held in quarantine be returned or otherwise settled first.
 
 ![Target date](images/110-warranty-target-date.png)
 ![Approved](images/111-warranty-approved.png)
@@ -450,7 +456,7 @@ Filters stay pending until you press **Apply Filters**.
 
 ## 13. Audit trail
 
-Admin only. One time-ordered list of everything that happened.
+Admin only. Opened from the **icon in the header**, beside the notification bell, rather than from the sidebar. One time-ordered list of everything that happened.
 
 ![Audit trail](images/58-audit-trail-list.png)
 
@@ -491,6 +497,8 @@ Suppliers and personnel are deactivated, never deleted, so past records keep the
 ## 15. Roles and users
 
 **Roles** decide what an account may do. Permissions are grouped by menu entry and read in sidebar order, so a role is checked the same way it is used.
+
+Four roles come with the system: **Admin**, **Accounting Staff**, **Branch Staff** and **Stock Staff**. Admin holds every permission and cannot be edited; the other three are starting points you can change. Any further role is one you create and name yourself.
 
 ![Roles](images/17-role-maintenance.png)
 ![Role permissions](images/47-role-permissions.png)
