@@ -22,6 +22,13 @@ const receiptMoneySchema = z.number().finite().min(0).max(9_999_999_999.99).mult
 
 export const receiptComparisonLineSchema = z.object({
   itemCode: z.string().trim().min(1).max(100),
+  /**
+   * Filled in when the sale is read, not when the comparison is stored: what
+   * Accounting types off the photo is the item code, and the name is only the
+   * readable form of it. Deriving it also names the items on comparisons that
+   * were saved before this.
+   */
+  name: z.string().trim().max(200).optional(),
   quantity: z.number().int().positive(),
   unitPrice: receiptMoneySchema,
 });
