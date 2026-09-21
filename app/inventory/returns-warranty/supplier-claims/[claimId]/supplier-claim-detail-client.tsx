@@ -22,20 +22,21 @@ const SIMPLE_ACTIONS: readonly SupplierClaimAction[] = ["submit", "reject", "com
 const QUANTITY_ACTIONS: readonly SupplierClaimAction[] = ["return-to-supplier", "send-repair", "receive-replacement", "release-repaired", "receive-repaired", "writeoff"];
 
 /**
- * Colour carries the meaning here, because ten identical buttons in one row is
- * a guessing game: violet moves the claim forward, blue sends stock away, cyan
- * brings stock back, and red destroys or ends something.
+ * Colour still groups the actions — cool shades send stock away, warm-leaning
+ * greens bring it back or free it, red destroys — but the six stock actions
+ * appear together, so each one carries its own shade rather than three of them
+ * sharing cyan and two sharing blue.
  */
-const ACTION_VARIANTS: Record<SupplierClaimAction, "workflow" | "view" | "edit" | "destructive"> = {
+const ACTION_VARIANTS: Record<SupplierClaimAction, "workflow" | "view" | "edit" | "destructive" | "indigo" | "teal" | "emerald"> = {
   submit: "workflow",
   complete: "workflow",
   reject: "destructive",
   cancel: "destructive",
   "return-to-supplier": "view",
-  "send-repair": "view",
+  "send-repair": "indigo",
   "receive-replacement": "edit",
-  "receive-repaired": "edit",
-  "release-repaired": "edit",
+  "receive-repaired": "teal",
+  "release-repaired": "emerald",
   writeoff: "destructive",
 };
 

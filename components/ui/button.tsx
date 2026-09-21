@@ -27,6 +27,13 @@ const buttonVariants = cva(
           "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 hover:text-amber-800 focus-visible:border-amber-500 focus-visible:ring-amber-500/30 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-300 dark:hover:bg-amber-900/70 dark:hover:text-amber-200 dark:focus-visible:border-amber-400 dark:focus-visible:ring-amber-400/40",
         workflow:
           "border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 hover:text-violet-800 focus-visible:border-violet-500 focus-visible:ring-violet-500/30 dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-300 dark:hover:bg-violet-900/70 dark:hover:text-violet-200 dark:focus-visible:border-violet-400 dark:focus-visible:ring-violet-400/40",
+        // Added so actions that sit side by side do not share one colour.
+        indigo:
+          "border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 focus-visible:border-indigo-500 focus-visible:ring-indigo-500/30 dark:border-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-900/70 dark:hover:text-indigo-200 dark:focus-visible:border-indigo-400 dark:focus-visible:ring-indigo-400/40",
+        teal:
+          "border-teal-200 bg-teal-50 text-teal-700 hover:bg-teal-100 hover:text-teal-800 focus-visible:border-teal-500 focus-visible:ring-teal-500/30 dark:border-teal-800 dark:bg-teal-950/60 dark:text-teal-300 dark:hover:bg-teal-900/70 dark:hover:text-teal-200 dark:focus-visible:border-teal-400 dark:focus-visible:ring-teal-400/40",
+        emerald:
+          "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 focus-visible:border-emerald-500 focus-visible:ring-emerald-500/30 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 dark:hover:bg-emerald-900/70 dark:hover:text-emerald-200 dark:focus-visible:border-emerald-400 dark:focus-visible:ring-emerald-400/40",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
