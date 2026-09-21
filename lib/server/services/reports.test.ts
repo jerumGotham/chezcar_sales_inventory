@@ -339,7 +339,7 @@ describe("stock movement report", () => {
     ]);
   });
 
-  it("grades each product by what it sold and puts the dead stock first", async () => {
+  it("grades each product by how often it sold and puts the dead stock first", async () => {
     const report = await reports.getReport(actor, query);
     if (report.type !== "stock-movement") throw new Error("Expected stock movement report");
 
@@ -351,11 +351,13 @@ describe("stock movement report", () => {
     ]);
     // A product this branch never stocked and never sold is not on the sheet.
     expect(report.rows.some((row) => row.itemCode === "N-1")).toBe(false);
-    // 8 units across two sales, latest wins for "last sold".
-    expect(report.rows[2]).toMatchObject({ soldAmount: 8_000, available: 8, coverPeriods: 1, lastSoldAt: "2026-09-27T00:00:00.000Z" });
-    // 40 available against 1 sold is 40 periods of cover, far past slow.
-    expect(report.rows[1]).toMatchObject({ coverPeriods: 40, lastSoldAt: "2026-09-03T00:00:00.000Z" });
-    expect(report.rows[0]).toMatchObject({ coverPeriods: null, lastSoldAt: null });
+    // The applied filter covers the 30 days of September.
+    expect(report.periodDays).toBe(30);
+    // 8 units across 30 days is one every 3.75 days, inside the weekly pace.
+    expect(report.rows[2]).toMatchObject({ soldAmount: 8_000, available: 8, daysPerSale: 3.75, lastSoldAt: "2026-09-27T00:00:00.000Z" });
+    // A single sale in a month is one every 30 days, well past a week.
+    expect(report.rows[1]).toMatchObject({ daysPerSale: 30, lastSoldAt: "2026-09-03T00:00:00.000Z" });
+    expect(report.rows[0]).toMatchObject({ daysPerSale: null, lastSoldAt: null });
     expect(report.totals).toMatchObject({ noMovementCount: 1, slowCount: 1, fastCount: 1, soldUnits: 9, soldAmount: 8_500, onHand: 76 });
     expect(report.appliedFilters).toContainEqual({ label: "Sold counted on", value: "Posted sales, voided excluded" });
   });

@@ -25,7 +25,8 @@ export default function AccessDeniedPage() {
             Your account does not have access to this page. Return to the
             dashboard to continue.
           </p>
-          <Button variant="view" render={<Link href="/dashboard" />}>
+          {/* Rendering as a link produces an anchor, not a native button. */}
+          <Button variant="view" nativeButton={false} render={<Link href="/dashboard" />}>
             Back to Dashboard
           </Button>
         </CardContent>

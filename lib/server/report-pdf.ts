@@ -2,7 +2,7 @@ import "server-only";
 
 import { createPdfBuilder, dateTime, humanize, money, type PdfColumn } from "@/lib/server/pdf-document";
 
-import type { ReportResult, SalesReport } from "@/lib/contracts/reports";
+import { FAST_MOVING_DAYS_PER_SALE, type ReportResult, type SalesReport } from "@/lib/contracts/reports";
 
 export async function createReportPdf(report: ReportResult, metadata: { generatedBy: string }): Promise<ArrayBuffer> {
   const TITLES: Record<ReportResult["type"], string> = {
@@ -127,7 +127,7 @@ export async function createReportPdf(report: ReportResult, metadata: { generate
     }
   } else if (report.type === "stock-movement") {
     const totals = report.totals;
-    text("Sold counts every posted sale in the period, voided sales excluded, so it matches what left the shelf whether or not Accounting has verified the receipt. Cover is how many more periods the available stock lasts at this period's rate.");
+    text(`Sold counts every posted sale in the period, voided sales excluded, so it matches what left the shelf whether or not Accounting has verified the receipt. Sells every is how often one unit moved across the ${report.periodDays} days in this period: at least once every ${FAST_MOVING_DAYS_PER_SALE} days is Fast, slower is Slow, and nothing sold at all is NO MOVEMENT.`);
     text("Write the shelf count in the Actual column and the difference in Variance. Rows are ordered slowest first.");
     table("Movement overview", [{ header: "Measure", width: 3 }, { header: "Total", width: 2, numeric: true }], [
       ["No movement", String(totals.noMovementCount)], ["Slow moving", String(totals.slowCount)],
@@ -139,14 +139,14 @@ export async function createReportPdf(report: ReportResult, metadata: { generate
       { header: "Item code", width: 1.2 }, { header: "Product", width: 2.6 }, { header: "Branch", width: 1.4 },
       { header: "Movement", width: 1.1 }, { header: "On hand", width: 0.8, numeric: true },
       { header: "Available", width: 0.9, numeric: true }, { header: "Sold", width: 0.7, numeric: true },
-      { header: "Cover", width: 0.8, numeric: true }, { header: "Last sold", width: 1.2 },
+      { header: "Sells every", width: 0.9, numeric: true }, { header: "Last sold", width: 1.2 },
       { header: "Actual", width: 0.9, numeric: true }, { header: "Variance", width: 0.9, numeric: true },
     ], [
       ...report.rows.map((row) => [
         row.itemCode, row.product, row.branch,
         row.grade === "NO_MOVEMENT" ? "NO MOVEMENT" : row.grade === "SLOW" ? "Slow" : "Fast",
         String(row.onHand), String(row.available), String(row.soldUnits),
-        row.coverPeriods === null ? "-" : `${row.coverPeriods.toFixed(1)}x`,
+        row.daysPerSale === null ? "-" : `${row.daysPerSale.toFixed(1)} days`,
         row.lastSoldAt ? dateTime(row.lastSoldAt) : "Never",
         "", "",
       ]),

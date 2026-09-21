@@ -13,6 +13,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   PAYMENT_METHODS,
+  FAST_MOVING_DAYS_PER_SALE,
   PRODUCT_STATUSES,
   SALES_VIEWS,
   SALES_VIEW_LABELS,
@@ -303,7 +304,7 @@ function StockMovementView({ report }: { report: StockMovementReport }) {
   const { totals } = report;
   return <>
     <p className="text-sm text-muted-foreground">
-      Sold counts every posted sale in the period, voided sales excluded, so it matches what actually left the shelf whether or not Accounting has verified the receipt yet. Cover is how many more periods the available stock lasts at this period&apos;s rate. Print this to count against: the PDF carries blank Actual and Variance columns.
+      Sold counts every posted sale in the period, voided sales excluded, so it matches what actually left the shelf whether or not Accounting has verified the receipt yet. Sells every is how often one unit moved across the {report.periodDays} days in this period: a product selling at least once every {FAST_MOVING_DAYS_PER_SALE} days is Fast, slower than that is Slow, and nothing sold at all is NO MOVEMENT. Print this to count against: the PDF carries blank Actual and Variance columns.
     </p>
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <Metric label="No movement" value={String(totals.noMovementCount)} />
@@ -317,12 +318,12 @@ function StockMovementView({ report }: { report: StockMovementReport }) {
     </div>
     <Table
       numericFrom={4}
-      headers={["Item code", "Product", "Branch", "Movement", "On hand", "Reserved", "Available", "Sold", "Sales value", "Cover", "Last sold", "Actual", "Variance"]}
+      headers={["Item code", "Product", "Branch", "Movement", "On hand", "Reserved", "Available", "Sold", "Sales value", "Sells every", "Last sold", "Actual", "Variance"]}
       rows={report.rows.map((row) => [
         row.itemCode, row.product, row.branch, MOVEMENT_LABELS[row.grade],
         String(row.onHand), String(row.reserved), String(row.available), String(row.soldUnits),
         peso.format(row.soldAmount),
-        row.coverPeriods === null ? "-" : `${row.coverPeriods.toFixed(1)}x`,
+        row.daysPerSale === null ? "-" : `${row.daysPerSale.toFixed(1)} days`,
         row.lastSoldAt ? dateTime.format(new Date(row.lastSoldAt)) : "Never",
         "", "",
       ])}

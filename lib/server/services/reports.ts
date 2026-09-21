@@ -10,6 +10,7 @@ import {
   SALES_VIEWS,
   SALES_VIEW_LABELS,
   STOCK_MOVEMENT_GRADES,
+  daysPerSale,
   stockMovementGrade,
   REPORT_TYPES,
   RETURN_CASE_TYPES,
@@ -450,6 +451,10 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
 
   if (query.type === "stock-movement") {
     const movementRange = dateRange(query, true);
+    // Pace is measured against the days actually covered by the filter.
+    const periodDays = movementRange.dateFrom && movementRange.dateTo
+      ? Math.max(1, Math.round((dateBoundary(movementRange.dateTo, true).getTime() - dateBoundary(movementRange.dateFrom).getTime()) / 86_400_000))
+      : 30;
     const productWhere: Prisma.ProductWhereInput = {
       ...(query.search ? { OR: [{ itemCode: { contains: query.search, mode: "insensitive" } }, { name: { contains: query.search, mode: "insensitive" } }] } : {}),
       category: query.category,
@@ -521,8 +526,8 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
           soldUnits,
           soldAmount: sold?.amount ?? 0,
           lastSoldAt: sold?.lastSoldAt.toISOString() ?? null,
-          coverPeriods: soldUnits > 0 ? available / soldUnits : null,
-          grade: stockMovementGrade(soldUnits, available),
+          daysPerSale: daysPerSale(soldUnits, periodDays),
+          grade: stockMovementGrade(soldUnits, periodDays),
         });
       }
     }
@@ -531,7 +536,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
     filtered.sort((left, right) => left.soldUnits - right.soldUnits || right.available - left.available || left.itemCode.localeCompare(right.itemCode) || left.branch.localeCompare(right.branch));
     return {
       ...base, type: "stock-movement", dateFrom: movementRange.dateFrom, dateTo: movementRange.dateTo,
-      appliedFilters: selectedFilters(query, filters, movementRange), rows: filtered,
+      appliedFilters: selectedFilters(query, filters, movementRange), rows: filtered, periodDays,
       totals: {
         productCount: new Set(filtered.map((row) => row.productId)).size,
         locationCount: new Set(filtered.map((row) => row.locationId)).size,

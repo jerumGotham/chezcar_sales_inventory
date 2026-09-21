@@ -141,19 +141,26 @@ export type InventorySummaryReport = ReportMeta & {
 };
 
 /**
- * How a product behaved at one branch over the period. MOVEMENT_NONE is the one
- * that matters most in a monthly review: stock sitting on the shelf that nobody
- * bought. The rest is a plain cover calculation, not a hidden score.
+ * How quickly a product sold at one branch over the period, measured as the
+ * average number of days between sales. NO_MOVEMENT is the one that matters
+ * most in a monthly review: stock nobody bought at all.
  */
 export const STOCK_MOVEMENT_GRADES = ["FAST", "SLOW", "NO_MOVEMENT"] as const;
 export type StockMovementGrade = (typeof STOCK_MOVEMENT_GRADES)[number];
 
-/** A product with stock left to cover more than this many periods is slow. */
-export const SLOW_MOVING_COVER_PERIODS = 3;
+/** Selling at least this often counts as fast. One a week by default. */
+export const FAST_MOVING_DAYS_PER_SALE = 7;
 
-export function stockMovementGrade(soldUnits: number, available: number): StockMovementGrade {
-  if (soldUnits <= 0) return "NO_MOVEMENT";
-  return available / soldUnits > SLOW_MOVING_COVER_PERIODS ? "SLOW" : "FAST";
+/** Average days between sales; null when the product did not sell at all. */
+export function daysPerSale(soldUnits: number, periodDays: number) {
+  if (soldUnits <= 0 || periodDays <= 0) return null;
+  return periodDays / soldUnits;
+}
+
+export function stockMovementGrade(soldUnits: number, periodDays: number): StockMovementGrade {
+  const pace = daysPerSale(soldUnits, periodDays);
+  if (pace === null) return "NO_MOVEMENT";
+  return pace > FAST_MOVING_DAYS_PER_SALE ? "SLOW" : "FAST";
 }
 
 export type StockMovementReport = ReportMeta & {
@@ -174,10 +181,12 @@ export type StockMovementReport = ReportMeta & {
     soldUnits: number;
     soldAmount: number;
     lastSoldAt: string | null;
-    /** Periods of stock left at this period's rate; null when nothing sold. */
-    coverPeriods: number | null;
+    /** Average days between sales in the period; null when nothing sold. */
+    daysPerSale: number | null;
     grade: StockMovementGrade;
   }>;
+  /** Days in the applied period, which is what the pace is measured against. */
+  periodDays: number;
   totals: {
     productCount: number;
     locationCount: number;
