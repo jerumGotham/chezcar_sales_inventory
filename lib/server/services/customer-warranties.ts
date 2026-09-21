@@ -220,7 +220,10 @@ export async function actOnCustomerWarranty(actor: AuthContext, warrantyId: stri
       if (updated.count !== 1) throw new CustomerWarrantyError("INVENTORY_CONFLICT", "Inventory changed before warranty release; reload and retry", 409);
       await tx.inventoryMovement.create({ data: { warrantyId, productId: releaseProductId, locationId: warranty.locationId, quantity: -warranty.claimQuantity, type: "WARRANTY_RELEASE", actorId: actor.userId, reference: warranty.reference, remarks: repair ? "Repaired customer item released" : "Warranty replacement released" } });
     } else if (action === "complete" && warranty.status === "RELEASED") { toStatus = "COMPLETED"; data.completedAt = new Date(); }
-    else if (action === "reject" && warranty.status === "ASSESSMENT") { if ((await warrantyQuarantine(tx, warranty)).unresolvedQuantity > 0) throw new CustomerWarrantyError("QUARANTINE_UNRESOLVED", "Current warranty quarantine must be physically resolved before rejection", 409); toStatus = "REJECTED"; data.assessmentNotes = input.notes; }
+    // A rejection is a judgement the customer is owed an explanation for, which
+    // is what separates it from a cancellation; without the reason the two are
+    // the same act under different names.
+    else if (action === "reject" && warranty.status === "ASSESSMENT") { if (!input.notes?.trim()) throw new CustomerWarrantyError("REJECT_REASON_REQUIRED", "Enter why this claim is rejected", 400); if ((await warrantyQuarantine(tx, warranty)).unresolvedQuantity > 0) throw new CustomerWarrantyError("QUARANTINE_UNRESOLVED", "Current warranty quarantine must be physically resolved before rejection", 409); toStatus = "REJECTED"; data.assessmentNotes = input.notes; }
     else if (action === "cancel" && warranty.status === "ASSESSMENT") { if ((await warrantyQuarantine(tx, warranty)).unresolvedQuantity > 0) throw new CustomerWarrantyError("QUARANTINE_UNRESOLVED", "Current warranty quarantine must be physically resolved before cancellation", 409); toStatus = "CANCELLED"; }
     else throw new CustomerWarrantyError("INVALID_STATE", `Cannot ${action} a ${warranty.status.toLowerCase()} warranty`, 409);
     data.status = toStatus;

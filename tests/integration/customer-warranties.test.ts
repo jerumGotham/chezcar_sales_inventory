@@ -77,7 +77,7 @@ describe("customer warranties", () => {
 
       let warranty = (await createCustomerWarranty(actor, { idempotencyKey: crypto.randomUUID(), locationId: location.id, productId: product.id, claimQuantity: 2, concern: "Supplier-covered defect", warrantyBasisMonths: 12, warrantyBasisReason: "Legacy test basis", legacyCustomerName: "Legacy Customer", legacyReason: "Legacy test sale" }, { key: `${crypto.randomUUID()}.jpg`, contentHash: "c".repeat(64), contentType: "image/jpeg", fileName: "warranty.jpg" })).warranty;
       warranty = await actOnCustomerWarranty(actor, warranty.id, "receive-quarantine", { idempotencyKey: crypto.randomUUID(), version: warranty.version, quantity: 2 });
-      await expect(actOnCustomerWarranty(actor, warranty.id, "reject", { idempotencyKey: crypto.randomUUID(), version: warranty.version })).rejects.toMatchObject({ code: "QUARANTINE_UNRESOLVED" });
+      await expect(actOnCustomerWarranty(actor, warranty.id, "reject", { idempotencyKey: crypto.randomUUID(), version: warranty.version, notes: "Outside warranty coverage" })).rejects.toMatchObject({ code: "QUARANTINE_UNRESOLVED" });
       await expect(createSupplierClaim(actor, { idempotencyKey: crypto.randomUUID(), supplierId: supplier.id, locationId: location.id, lines: [{ productId: product.id, reason: "WARRANTY", quarantinedQuantity: 1, missingQuantity: 0, unitCost: 10 }] })).rejects.toMatchObject({ code: "QUARANTINE_EXCEEDED" });
 
       const claimInput = { idempotencyKey: crypto.randomUUID(), supplierId: supplier.id, locationId: location.id, customerWarrantyId: warranty.id, lines: [{ productId: product.id, reason: "WARRANTY" as const, quarantinedQuantity: 2, missingQuantity: 0, unitCost: 10 }] };
@@ -97,7 +97,7 @@ describe("customer warranties", () => {
       expect(settlementReplay.id).toBe(settlement.id);
 
       await prisma.customerWarranty.update({ where: { id: warranty.id }, data: { status: "ASSESSMENT" } });
-      const rejected = await actOnCustomerWarranty(actor, warranty.id, "reject", { idempotencyKey: crypto.randomUUID(), version: warranty.version });
+      const rejected = await actOnCustomerWarranty(actor, warranty.id, "reject", { idempotencyKey: crypto.randomUUID(), version: warranty.version, notes: "Outside warranty coverage" });
       expect(rejected.status).toBe("REJECTED");
     });
   }, 30_000);
@@ -125,13 +125,33 @@ describe("customer warranties", () => {
       expect(replay.version).toBe(returned.version);
       await expect(prisma.inventoryBalance.findUniqueOrThrow({ where: { locationId_productId: { locationId: location.id, productId: product.id } } })).resolves.toMatchObject({ onHand: 1, quarantined: 1 });
       await expect(actOnCustomerWarranty(actor, warranty.id, "approve-repair", { idempotencyKey: crypto.randomUUID(), version: returned.version, targetDate: new Date(Date.now() + 86_400_000).toISOString() })).rejects.toMatchObject({ code: "RETURN_ALREADY_STARTED" });
-      await expect(actOnCustomerWarranty(actor, warranty.id, "reject", { idempotencyKey: crypto.randomUUID(), version: returned.version })).rejects.toMatchObject({ code: "QUARANTINE_UNRESOLVED" });
+      await expect(actOnCustomerWarranty(actor, warranty.id, "reject", { idempotencyKey: crypto.randomUUID(), version: returned.version, notes: "Outside warranty coverage" })).rejects.toMatchObject({ code: "QUARANTINE_UNRESOLVED" });
 
       const fullyReturned = await actOnCustomerWarranty(actor, warranty.id, "return-to-customer", { idempotencyKey: crypto.randomUUID(), version: returned.version, quantity: 1, notes: "Returned remaining unrepaired item" });
       const rejected = await actOnCustomerWarranty(actor, warranty.id, "reject", { idempotencyKey: crypto.randomUUID(), version: fullyReturned.version, notes: "Customer declined warranty service" });
       expect(rejected.status).toBe("REJECTED");
       await expect(prisma.inventoryBalance.findUniqueOrThrow({ where: { locationId_productId: { locationId: location.id, productId: product.id } } })).resolves.toMatchObject({ onHand: 0, quarantined: 0 });
       await expect(prisma.inventoryMovement.aggregate({ where: { warrantyId: warranty.id, type: "WARRANTY_RELEASE" }, _sum: { quantity: true }, _count: true })).resolves.toMatchObject({ _sum: { quantity: -2 }, _count: 2 });
+    });
+  }, 30_000);
+
+  it("refuses a rejection with no reason, and keeps the reason it is given", async () => {
+    await withDisposableDatabase(async ({ prisma }) => {
+      const fixture = await createAuthFixture(prisma, { namespace: "warranty-reject-reason" });
+      const location = fixture.locations.branches.QC;
+      const actor = authContextFor(fixture.users.admin, null);
+      const product = await prisma.product.create({ data: { itemCode: "WARRANTY-REJECT", name: "Warranty Reject Item" } });
+      const { actOnCustomerWarranty, createCustomerWarranty } = await import("../../lib/server/services/customer-warranties");
+      const { warranty } = await createCustomerWarranty(actor, { idempotencyKey: crypto.randomUUID(), locationId: location.id, productId: product.id, claimQuantity: 1, concern: "Cracked on arrival", warrantyBasisMonths: 12, warrantyBasisReason: "Legacy test basis", legacyCustomerName: "Reject Customer", legacyReason: "Legacy test sale" });
+
+      // Nothing was received, so quarantine is clear and the reason is the only
+      // thing standing between this and a rejection.
+      await expect(actOnCustomerWarranty(actor, warranty.id, "reject", { idempotencyKey: crypto.randomUUID(), version: warranty.version })).rejects.toMatchObject({ code: "REJECT_REASON_REQUIRED" });
+      await expect(actOnCustomerWarranty(actor, warranty.id, "reject", { idempotencyKey: crypto.randomUUID(), version: warranty.version, notes: "   " })).rejects.toMatchObject({ code: "REJECT_REASON_REQUIRED" });
+
+      const rejected = await actOnCustomerWarranty(actor, warranty.id, "reject", { idempotencyKey: crypto.randomUUID(), version: warranty.version, notes: "Damage is not covered by the warranty" });
+      expect(rejected.status).toBe("REJECTED");
+      await expect(prisma.customerWarranty.findUniqueOrThrow({ where: { id: warranty.id }, select: { assessmentNotes: true } })).resolves.toMatchObject({ assessmentNotes: "Damage is not covered by the warranty" });
     });
   }, 30_000);
 });
