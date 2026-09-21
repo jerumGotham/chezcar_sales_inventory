@@ -4,6 +4,7 @@ const reportPrisma = vi.hoisted(() => ({
   location: { findMany: vi.fn() },
   backjob: { findMany: vi.fn() },
   sale: { findMany: vi.fn() },
+  payment: { findMany: vi.fn() },
 }));
 
 vi.mock("server-only", () => ({}));
@@ -121,20 +122,22 @@ describe("sales and salesperson sales reports", () => {
 
   beforeEach(() => {
     reportPrisma.location.findMany.mockReset().mockResolvedValue([{ id: "branch", code: "B", name: "Branch" }]);
-    reportPrisma.sale.findMany.mockReset();
+    reportPrisma.payment.findMany.mockReset();
   });
 
+  // One verified receipt in the payment ledger: a direct sale carries the goods,
+  // so its units and discount come from the sale it settled.
   function sale(id: string, salespersonId: string | null, salespersonName: string | null, amount: number, units = 1) {
     return {
-      id, salespersonId, salespersonName, manualReceiptNumber: id, receiptBooklet: null, orderId: null, paymentMethod: "CASH",
-      totalAmount: { toNumber: () => amount }, discountAmount: { toNumber: () => amount / 10 }, lines: [{ quantity: units }],
-      customer: null, location: { code: "B", name: "Branch" }, postedBy: { name: "Encoder" },
-      accountingReview: { verifiedAt: new Date("2026-09-10T00:00:00Z") },
+      id, salespersonId, salespersonName, kind: "DIRECT_SALE", receiptNumber: id, receiptBooklet: null, method: "CASH",
+      amount: { toNumber: () => amount }, verifiedAt: new Date("2026-09-10T00:00:00Z"),
+      customer: null, location: { code: "B", name: "Branch" }, collectedBy: { name: "Encoder" },
+      sale: { discountAmount: { toNumber: () => amount / 10 }, lines: [{ quantity: units }] },
     };
   }
 
   it.each(["sales", "salesperson-sales"] as const)("shares verified sales rows and totals for %s, grouping identities rather than snapshot names", async (type) => {
-    reportPrisma.sale.findMany.mockResolvedValueOnce(attribution).mockResolvedValueOnce([
+    reportPrisma.payment.findMany.mockResolvedValueOnce(attribution).mockResolvedValueOnce([
       sale("5", "person-1", "Same name", 120, 2),
       sale("4", "person-2", "Same name", 60),
       sale("3", "person-1", "Old name", 60),
@@ -158,32 +161,32 @@ describe("sales and salesperson sales reports", () => {
     } else {
       expect(report).not.toHaveProperty("salespersonTotals");
     }
-    expect(reportPrisma.sale.findMany).toHaveBeenCalledTimes(2);
-    expect(reportPrisma.sale.findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
+    expect(reportPrisma.payment.findMany).toHaveBeenCalledTimes(2);
+    expect(reportPrisma.payment.findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
       where: {
-        locationId: { in: ["branch"] }, status: "POSTED", salespersonId: undefined, orderId: undefined, paymentMethod: undefined,
-        accountingReview: { status: "VERIFIED", verifiedAt: { gte: new Date("2026-08-31T16:00:00Z"), lt: new Date("2026-09-30T16:00:00Z") } },
+        locationId: { in: ["branch"] }, status: "ACTIVE", salespersonId: undefined, kind: undefined, method: undefined,
+        reviewStatus: "VERIFIED", verifiedAt: { gte: new Date("2026-08-31T16:00:00Z"), lt: new Date("2026-09-30T16:00:00Z") },
       },
       select: expect.objectContaining({ salespersonId: true, salespersonName: true }),
-      orderBy: [{ accountingReview: { verifiedAt: "desc" } }, { id: "desc" }],
+      orderBy: [{ verifiedAt: "desc" }, { id: "desc" }],
     }));
   });
 
   it.each(["sales", "salesperson-sales"] as const)("offers scoped historical identities for %s regardless of current personnel status/home branch or other filters", async (type) => {
-    reportPrisma.sale.findMany.mockResolvedValueOnce(attribution).mockResolvedValueOnce([]);
+    reportPrisma.payment.findMany.mockResolvedValueOnce(attribution).mockResolvedValueOnce([]);
     const report = await reports.getReport(actor, { type, ...query, salespersonId: "person-1", source: "CUSTOMER_ORDER", paymentMethod: "GCASH" });
     expect(report.filters.salespersons).toEqual([
       { id: "person-1", label: "Later historical name" }, { id: "person-2", label: "Same name" },
     ]);
     expect(report.appliedFilters).toContainEqual({ label: "Salesperson", value: "Later historical name" });
-    expect(reportPrisma.sale.findMany).toHaveBeenNthCalledWith(1, {
-      where: { locationId: { in: ["branch"] }, status: "POSTED", salespersonId: { not: null }, accountingReview: { status: "VERIFIED", verifiedAt: { not: null } } },
+    expect(reportPrisma.payment.findMany).toHaveBeenNthCalledWith(1, {
+      where: { locationId: { in: ["branch"] }, status: "ACTIVE", salespersonId: { not: null }, reviewStatus: "VERIFIED", verifiedAt: { not: null } },
       select: { salespersonId: true, salespersonName: true }, distinct: ["salespersonId"],
-      orderBy: [{ accountingReview: { verifiedAt: "desc" } }, { id: "desc" }],
+      orderBy: [{ verifiedAt: "desc" }, { id: "desc" }],
     });
     expect(reportPrisma.location.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ["branch"] }, isActive: true } }));
-    expect(reportPrisma.sale.findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      where: expect.objectContaining({ locationId: { in: ["branch"] }, salespersonId: "person-1", orderId: { not: null }, paymentMethod: "GCASH" }),
+    expect(reportPrisma.payment.findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: expect.objectContaining({ locationId: { in: ["branch"] }, salespersonId: "person-1", kind: { in: ["ORDER_DOWNPAYMENT", "ORDER_PAYMENT", "ORDER_FINAL"] }, method: "GCASH" }),
     }));
     if (report.type !== "sales" && report.type !== "salesperson-sales") throw new Error("Expected sales report");
     expect(report.rows).toEqual([]);
@@ -194,14 +197,43 @@ describe("sales and salesperson sales reports", () => {
 
   it.each(["sales", "salesperson-sales"] as const)("rejects unauthorized locations and arbitrary salesperson IDs for %s before querying sale details", async (type) => {
     await expect(reports.getReport(actor, { type, ...query, locationId: "hidden" })).rejects.toThrow("Report location is not an active authorized location");
-    expect(reportPrisma.sale.findMany).not.toHaveBeenCalled();
-    reportPrisma.sale.findMany.mockResolvedValueOnce(attribution);
+    expect(reportPrisma.payment.findMany).not.toHaveBeenCalled();
+    reportPrisma.payment.findMany.mockResolvedValueOnce(attribution);
     await expect(reports.getReport(actor, { type, ...query, salespersonId: "hidden-person" })).rejects.toThrow("Salesperson has no verified sales in the selected report scope");
-    expect(reportPrisma.sale.findMany).toHaveBeenCalledTimes(1);
+    expect(reportPrisma.payment.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("counts each verified receipt once, so an order total is never double counted", async () => {
+    function receipt(id: string, kind: string, amount: number, units = 0) {
+      return {
+        id, salespersonId: "person-1", salespersonName: "Same name", kind, receiptNumber: id, receiptBooklet: null, method: "CASH",
+        amount: { toNumber: () => amount }, verifiedAt: new Date("2026-09-10T00:00:00Z"),
+        customer: { name: "Buyer" }, location: { code: "B", name: "Branch" }, collectedBy: { name: "Cashier" },
+        sale: units ? { discountAmount: { toNumber: () => 0 }, lines: [{ quantity: units }] } : null,
+      };
+    }
+    // A 50,000 order paid 10,000 down, 5,000 later, 35,000 at release, plus a
+    // 10,000 downpayment forfeited on an order that was cancelled and so never
+    // produced a release receipt at all.
+    reportPrisma.payment.findMany.mockResolvedValueOnce(attribution).mockResolvedValueOnce([
+      receipt("OR-2210", "ORDER_DOWNPAYMENT", 10_000),
+      receipt("OR-2288", "ORDER_PAYMENT", 5_000),
+      receipt("OR-2350", "ORDER_FINAL", 35_000, 3),
+      receipt("OR-2240", "ORDER_DOWNPAYMENT", 10_000),
+    ]);
+    const report = await reports.getReport(actor, { type: "sales", ...query });
+    if (report.type !== "sales") throw new Error("Expected sales report");
+    expect(report.rows.map((row) => [row.source, row.totalAmount])).toEqual([
+      ["Order Downpayment", 10_000], ["Order Payment", 5_000], ["Order Release", 35_000], ["Order Downpayment", 10_000],
+    ]);
+    // 50,000 for the released order and 10,000 kept from the cancelled one.
+    expect(report.grandTotal.totalAmount).toBe(60_000);
+    // Goods change hands once, on the receipt that completed the sale.
+    expect(report.grandTotal.units).toBe(3);
   });
 
   it("keeps salesperson percentages finite when all sale amounts are zero", async () => {
-    reportPrisma.sale.findMany.mockResolvedValueOnce(attribution).mockResolvedValueOnce([sale("zero", "person-1", "Same name", 0)]);
+    reportPrisma.payment.findMany.mockResolvedValueOnce(attribution).mockResolvedValueOnce([sale("zero", "person-1", "Same name", 0)]);
     const report = await reports.getReport(actor, { type: "salesperson-sales", ...query });
     if (report.type !== "salesperson-sales") throw new Error("Expected salesperson sales report");
     expect(report.salespersonTotals).toEqual([{ salespersonId: "person-1", salesperson: "Same name", transactionCount: 1, units: 1, totalDiscount: 0, averageSale: 0, totalAmount: 0, percentage: 0 }]);

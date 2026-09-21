@@ -98,6 +98,10 @@ What the system does on posting: it creates the sale, deducts stock at that bran
 
 ## 5. Receipt verification
 
+Every receipt the business issues waits here until someone checks it against the paper. The screen has two tabs, because there are two kinds of receipt.
+
+### Sale Receipts
+
 Every posted sale waits here until someone checks it against the paper receipt.
 
 ![Verification queue](images/72-verification-queue.png)
@@ -119,6 +123,19 @@ Then decide:
 ![Confirmed](images/76-verification-confirmed.png)
 
 Posted sales are never deleted. A correction is an auditable void-and-replace.
+
+### Payment Receipts
+
+Downpayments and later order payments come here instead. They are money received before any sale exists, so they have their own receipt and their own check. The cycle is the same but shorter: there are no item lines to compare, only the amount and the receipt number.
+
+1. Pick the receipt from the list. The panel shows what the branch recorded: the amount, the payment method, the customer, the order, the order total, and the balance right now.
+2. **Attach the receipt photo.** Confirm Correct and Report Mismatch stay disabled until one is there.
+3. Enter what the paper actually says — the amount and the receipt number — then **Confirm Correct**, or **Report Mismatch** with a reason and notes.
+4. A mismatch goes to the branch, which files its finding. Only then can it be resolved: **Confirm As Recorded** accepts the branch's answer and verifies the receipt, while **Void Payment** cancels it and puts the amount back on the order balance so the branch can record it again with the right receipt.
+
+A verified payment counts in the Sales report on the day it was verified. A voided one stays on the list marked Voided with its reason, and counts nowhere.
+
+A receipt that settles a sale — a direct sale, or the balance paid at release — is checked on the Sale Receipts tab, never here. The same piece of paper is never reviewed twice.
 
 ## 6. Customer orders
 
@@ -143,13 +160,13 @@ An order is a booking made before the goods leave: a reservation, a reservation 
 
 ![Row actions](images/64-orders-with-row-actions.png)
 
-**Downpayment and later payments.** Press **Downpayment**, or **Add Payment** once one exists. Each payment takes an amount and its own receipt number.
+**Downpayment and later payments.** Press **Downpayment**, or **Add Payment** once one exists. Each payment takes an amount, its payment method, and **its own receipt number, which is required** — the payment cannot be saved without one, because Accounting has to check that receipt against its photo.
 
 ![Payment dialog](images/65-order-payment-dialog.png)
 ![Payment filled](images/66-order-payment-filled.png)
 ![Payment recorded](images/67-order-payment-recorded.png)
 
-The order then reads Partial, with total paid and remaining balance. Every payment is a separate line in the audit trail, including the first downpayment.
+The order then reads Partial, with total paid and remaining balance. Every payment is a separate line in the audit trail, including the first downpayment, and every one of them turns up on the Payment Receipts tab of Receipt Verification for checking.
 
 **Reserve Stock** holds the units for this customer. Available stock drops, on hand does not, so nobody else can sell the reserved pieces.
 
@@ -161,7 +178,7 @@ The order then reads Partial, with total paid and remaining balance. Every payme
 ![Release filled](images/70-order-release-filled.png)
 ![Released](images/71-order-released.png)
 
-On release the system deducts stock, clears the reservation, records the final receipt, and completes the order.
+On release the system deducts stock, clears the reservation, records the final receipt, and completes the order. The release receipt covers only the balance paid that day; the downpayment and any payments before it were already counted on their own receipts, so the order's total is never counted twice.
 
 **Cancel** is available until release. An order with a downpayment requires a cancellation note.
 
@@ -377,8 +394,8 @@ Four read-only reports, each limited to the locations you may see, each exportab
 ![Inventory summary](images/37-reports-inventory.png)
 ![Returns and warranty](images/38-reports-returns.png)
 
-- **Sales** covers direct sales and customer orders, filtered by date, branch, salesperson, source, and payment method. Only verified, non-voided sales are counted.
-- **Sales by Salesperson** groups the same sales by the personnel recorded at the time.
+- **Sales** counts every verified receipt on the day Accounting verified it, filtered by date, branch, salesperson, source, and payment method. The Source column says which kind of receipt each row is: Direct Sale, Order Downpayment, Order Payment, or Order Release. A ₱50,000 order paid ₱10,000 down, ₱5,000 later, and ₱35,000 at release appears as three rows adding to exactly ₱50,000 — nothing is counted twice. An order cancelled after a verified downpayment still shows that forfeited amount, because the money was never returned. Units and discounts sit on the receipt that completed the sale, so a downpayment row shows zero units. Voided receipts count nowhere.
+- **Sales by Salesperson** groups the same receipts by the personnel recorded at the time.
 - **Inventory Summary** shows current available stock per branch.
 - **Returns & Warranty** covers cases by date.
 

@@ -40,7 +40,9 @@ describe("customer orders, direct sales, accounting", () => {
 
       expect(order).toMatchObject({ status: "Reserved", statusCode: "RESERVED", downpayment: 50, balance: 150 });
       await expect(recordCustomerOrderPayment(branchActor, order.id, { amount: 25, reference: "DP-0002" })).resolves.toMatchObject({ downpayment: 75, balance: 125 });
-      await expect(recordCustomerOrderPayment(branchActor, order.id, { amount: 5 })).resolves.toMatchObject({ downpayment: 80, balance: 120 });
+      // Every peso collected is backed by a receipt Accounting has to verify.
+      await expect(recordCustomerOrderPayment(branchActor, order.id, { amount: 5 } as never)).rejects.toBeTruthy();
+      await expect(recordCustomerOrderPayment(branchActor, order.id, { amount: 5, reference: "DP-0003" })).resolves.toMatchObject({ downpayment: 80, balance: 120 });
       await expect(recordCustomerOrderPayment(branchActor, order.id, { amount: 121, reference: "DP-TOO-MUCH" })).rejects.toMatchObject({ code: "INVALID_PAYMENT" });
       await expect(recordCustomerOrderPayment(branchActor, order.id, { amount: 5, reference: "DP-0002" })).rejects.toMatchObject({ code: "DUPLICATE_RECEIPT" });
       await expect(prisma.inventoryBalance.findFirstOrThrow({ where: { productId: product.id } })).resolves.toMatchObject({ onHand: 5, reserved: 2 });
@@ -60,6 +62,19 @@ describe("customer orders, direct sales, accounting", () => {
       await expect(prisma.inventoryBalance.findFirstOrThrow({ where: { productId: product.id } })).resolves.toMatchObject({ onHand: 3, reserved: 0 });
       await expect(prisma.sale.findFirstOrThrow({ where: { manualReceiptNumber: "FINAL-0001" }, include: { accountingReview: true } })).resolves.toMatchObject({ totalAmount: expect.anything(), accountingReview: { status: "UNVERIFIED" } });
       await expect(prisma.inventoryMovement.findMany({ where: { productId: product.id, type: "CUSTOMER_ORDER_RELEASE" } })).resolves.toHaveLength(1);
+
+      // The ledger holds one row per receipt and adds up to the order total
+      // exactly once: 50 + 25 + 5 collected before release, 120 at release.
+      const ledger = await prisma.payment.findMany({ where: { orderId: order.id }, orderBy: { collectedAt: "asc" } });
+      expect(ledger.map((row) => [row.kind, row.amount.toNumber(), row.receiptNumber])).toEqual([
+        ["ORDER_DOWNPAYMENT", 50, "DP-0001"],
+        ["ORDER_PAYMENT", 25, "DP-0002"],
+        ["ORDER_PAYMENT", 5, "DP-0003"],
+        ["ORDER_FINAL", 120, "FINAL-0001"],
+      ]);
+      expect(ledger.reduce((sum, row) => sum + row.amount.toNumber(), 0)).toBe(200);
+      expect(ledger.every((row) => row.reviewStatus === "UNVERIFIED")).toBe(true);
+      expect(ledger.filter((row) => row.saleId !== null)).toHaveLength(1);
     });
   }, 30_000);
 

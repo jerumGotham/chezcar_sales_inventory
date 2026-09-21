@@ -3,6 +3,8 @@
 import { Suspense, useEffect, useEffectEvent, useMemo, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
+import Link from "next/link";
+import type { Route } from "next";
 import { useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
@@ -18,6 +20,7 @@ import {
 
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { PageShell } from "@/components/page-shell";
+import { PaymentReceiptsClient } from "./payment-receipts-client";
 import { useCan } from "@/components/shell-access-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -341,8 +344,55 @@ function comparisonDifferences(sale: Sale, comparison: ReceiptComparison) {
 export default function ReceiptVerificationPage() {
   return (
     <Suspense fallback={<div className="p-6 text-sm text-slate-500">Loading receipt...</div>}>
-      <ReceiptVerificationContent />
+      <VerificationTabRouter />
     </Suspense>
+  );
+}
+
+/**
+ * Sale receipts and payment receipts are two different reviews of two different
+ * pieces of paper, so each keeps its own queue rather than sharing one list.
+ */
+function VerificationTabRouter() {
+  const searchParams = useSearchParams();
+  if (searchParams.get("tab") === "payments") return <PaymentVerificationContent />;
+  return <ReceiptVerificationContent />;
+}
+
+function VerificationTabs({ active }: { active: "sales" | "payments" }) {
+  const tabs = [
+    { key: "sales" as const, label: "Sale Receipts", href: "/accounting/receipt-verification" as Route },
+    { key: "payments" as const, label: "Payment Receipts", href: "/accounting/receipt-verification?tab=payments" as Route },
+  ];
+  return (
+    <div className="mb-6 inline-flex rounded-xl border bg-muted/40 p-1">
+      {tabs.map((tab) => (
+        <Link
+          key={tab.key}
+          href={tab.href}
+          className={
+            tab.key === active
+              ? "rounded-lg bg-background px-4 py-2 text-sm font-medium shadow-sm"
+              : "rounded-lg px-4 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          }
+        >
+          {tab.label}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+function PaymentVerificationContent() {
+  const searchParams = useSearchParams();
+  return (
+    <PageShell
+      title="Receipt Verification"
+      subtitle="Check every downpayment and order payment receipt against the amount the branch recorded."
+    >
+      <VerificationTabs active="payments" />
+      <PaymentReceiptsClient linkedPaymentId={searchParams.get("paymentId") ?? ""} />
+    </PageShell>
   );
 }
 
@@ -921,6 +971,7 @@ function ReceiptVerificationContent() {
       title="Receipt Verification"
       subtitle="Compare posted manual receipts with the branch encoding before closing the accounting queue."
     >
+      <VerificationTabs active="sales" />
       <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard label="Evidence pending" value={meta.missingEvidence} tone="amber" />
         <SummaryCard label="Unverified" value={meta.unverified} tone="amber" />

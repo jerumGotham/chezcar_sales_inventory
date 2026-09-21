@@ -141,6 +141,15 @@ const ORDER_STATUS_OPTIONS: SelectOption[] = [
   { value: "Cancelled", label: "Cancelled" },
 ];
 
+const PAYMENT_METHOD_OPTIONS: SelectOption[] = [
+  { value: "CASH", label: "Cash" },
+  { value: "GCASH", label: "GCash" },
+  { value: "MAYA", label: "Maya" },
+  { value: "BANK_TRANSFER", label: "Bank Transfer" },
+  { value: "CREDIT_CARD", label: "Credit Card" },
+  { value: "SPLIT", label: "Split Payment" },
+];
+
 const PAYMENT_STATUS_OPTIONS: SelectOption[] = [
   { value: "all", label: "All Payment Statuses" },
   { value: "Unpaid", label: "Unpaid" },
@@ -355,6 +364,7 @@ export default function CustomerOrdersPage() {
   );
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentReference, setPaymentReference] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<SelectOption>(PAYMENT_METHOD_OPTIONS[0]);
   const [isCancelOpen, setIsCancelOpen] = useState(false);
   const [cancellationNote, setCancellationNote] = useState("");
 
@@ -438,7 +448,8 @@ export default function CustomerOrdersPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             amount: Number(paymentAmount),
-            reference: paymentReference,
+            reference: paymentReference.trim(),
+            method: paymentMethod.value,
           }),
         },
       );
@@ -460,6 +471,7 @@ export default function CustomerOrdersPage() {
       setSelectedOrder(null);
       setPaymentAmount("");
       setPaymentReference("");
+      setPaymentMethod(PAYMENT_METHOD_OPTIONS[0]);
     },
   });
   const reserveMutation = useMutation({
@@ -1018,6 +1030,7 @@ export default function CustomerOrdersPage() {
             setSelectedOrder(null);
             setPaymentAmount("");
             setPaymentReference("");
+            setPaymentMethod(PAYMENT_METHOD_OPTIONS[0]);
           }
         }}
       >
@@ -1107,14 +1120,31 @@ export default function CustomerOrdersPage() {
 
             <div className="space-y-2">
               <Label htmlFor="order-payment-reference">
-                Payment Receipt / Reference (optional)
+                Receipt Number (required)
               </Label>
               <Input
                 id="order-payment-reference"
-                placeholder="OR-000123 or transfer reference"
+                placeholder="OR-000123"
                 value={paymentReference}
                 onChange={(event) => setPaymentReference(event.target.value)}
                 maxLength={100}
+              />
+              <p className="text-xs text-muted-foreground">
+                Accounting verifies this receipt against its photo, so every payment needs its own number.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="order-payment-method">Payment Method</Label>
+              <Select
+                inputId="order-payment-method"
+                instanceId="customer-orders-payment-method"
+                options={PAYMENT_METHOD_OPTIONS}
+                value={paymentMethod}
+                onChange={(option) => setPaymentMethod(option ?? PAYMENT_METHOD_OPTIONS[0])}
+                isSearchable
+                placeholder="Select payment method"
+                styles={reactSelectStyles}
               />
             </div>
             {paymentMutation.error ? (
@@ -1138,7 +1168,8 @@ export default function CustomerOrdersPage() {
               disabled={
                 paymentMutation.isPending ||
                 Number(paymentAmount) <= 0 ||
-                Number(paymentAmount) > (selectedOrder?.balance ?? 0)
+                Number(paymentAmount) > (selectedOrder?.balance ?? 0) ||
+                !paymentReference.trim()
               }
             >
               {paymentMutation.isPending ? "Saving..." : "Save Payment"}

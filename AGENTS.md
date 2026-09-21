@@ -11,7 +11,8 @@ Current gaps are intentional and material:
 - Better Auth email/password sessions, active-account checks, action-only RoleDefinition grants, explicit owner identity, and UserLocation authorization are implemented. Public sign-up is disabled; `UserRole`, `User.locationId`, and `RoleDefinition.scope` remain compatibility storage only.
 - Products, Suppliers, Personnel master data, Salesperson attribution for Direct Sales/Customer Orders, quarantine-aware Inventory and Availability, customers/orders/sales/accounting, stock receiving/transfers, Backjobs, Customer Warranty, Supplier Claims, focused reports, notifications, users, roles, and branches use PostgreSQL through Prisma. General Job Orders and some supporting panels remain mock/local behavior.
 - Receipt verification is manual side-by-side review of persisted sale details and private uploaded evidence. Verification requires evidence-view access in addition to the verification capability; receipt OCR and automatic extraction are intentionally absent.
-- The Reports module has four live location-scoped reports in source: Sales, Sales by Salesperson, branch-only available Inventory Summary, and Returns & Warranty. Inventory Movements and Low Stock remain deferred; operational inventory history is intact. Consult `docs/product/REPORTS-SPEC.md` for shared sales filters, historical attribution/grouping, draft/Apply dates, and PDF semantics. This 2026-09-08 revision is source-only, with no tests/build or runtime verification; Sales by Salesperson needs no new migration and leaves existing pending migrations unresolved.
+- A `Payment` ledger records one row per receipt issued for money received. Order downpayments and later order payments are verified on their own Receipt Verification tab; a receipt that settles a sale mirrors that sale's review instead of being reviewed twice. Sales and Sales by Salesperson count verified receipts on their verification date, so an order's total is never double counted and a cancelled order's forfeited downpayment still appears.
+- The Reports module has four live location-scoped reports in source: Sales, Sales by Salesperson, branch-only available Inventory Summary, and Returns & Warranty. Sales and Sales by Salesperson read the `Payment` ledger, counting each verified receipt once on its verification date. Inventory Movements and Low Stock remain deferred; operational inventory history is intact. Consult `docs/product/REPORTS-SPEC.md` for shared sales filters, historical attribution/grouping, draft/Apply dates, and PDF semantics. This 2026-09-08 revision is source-only, with no tests/build or runtime verification; Sales by Salesperson needs no new migration and leaves existing pending migrations unresolved.
 - Checked-in additive migrations and an environment-driven development seed exist. The seed provisions reference catalog data, deterministic built-in roles, and the first Admin without committed credentials.
 - Vitest unit and serial disposable-PostgreSQL integration suites run locally and in GitHub Actions CI. Coverage and automated browser tests do not exist.
 - An earlier Node.js 20 baseline passed `npm run build`, `npm run typecheck`, and both Vitest projects; this is not verification of the current source-only changes.
@@ -126,3 +127,13 @@ Do not begin with high-risk stock or payment mutations merely because their UI a
 ## Documentation maintenance
 
 When a change alters routes, commands, environment variables, API contracts, schema/runtime database status, authentication, tests, or architectural boundaries, update the corresponding root or `docs/*.md` file in the same change. Preserve the distinction between implemented facts and future recommendations, remove stale warnings only after verifying the replacement behavior, and keep this file operational rather than duplicating detailed inventories from the linked documents.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

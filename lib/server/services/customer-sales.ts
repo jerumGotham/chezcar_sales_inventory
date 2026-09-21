@@ -27,6 +27,7 @@ import { canAccessLocation, hasAllLocationAccess } from "../policy/access";
 import { createNotifications, notifyInventoryThresholdChange } from "./notifications";
 import { parseReceiptOcrDraft } from "./receipt-ocr";
 import { receiptEvidenceVersion } from "./receipt-evidence";
+import { recordPayment, syncSalePaymentReview, voidSalePayment } from "./payments";
 import { resolveActiveSalespersonForTransaction } from "./personnel";
 
 const positiveInt = z.coerce.number().int().positive();
@@ -74,6 +75,7 @@ export const customerOrderMutationSchema = z.object({
   notes: z.string().trim().max(1_000).optional(),
   downpaymentAmount: money.default(0),
   downpaymentReceiptNumber: z.string().trim().max(100).optional(),
+  downpaymentMethod: z.enum(["CASH", "GCASH", "MAYA", "BANK_TRANSFER", "CREDIT_CARD", "SPLIT"]).optional(),
   lines: z.array(z.object({ productId: z.string().min(1), quantity: positiveInt, finalUnitPrice: money.optional() })).min(1),
 });
 
@@ -92,7 +94,10 @@ export const cancelOrderSchema = z.object({ note: z.string().trim().max(1_000).o
 
 export const orderPaymentSchema = z.object({
   amount: z.coerce.number().positive().max(9_999_999_999.99),
-  reference: z.string().trim().max(100).optional(),
+  // Every peso collected is backed by a receipt the branch hands over, and
+  // Accounting verifies that receipt, so the number is not optional.
+  reference: z.string().trim().min(1, "Receipt number is required").max(100),
+  method: z.enum(["CASH", "GCASH", "MAYA", "BANK_TRANSFER", "CREDIT_CARD", "SPLIT"]).optional(),
 });
 
 export const directSaleSchema = z.object({
@@ -529,6 +534,25 @@ export async function createCustomerOrder(actor: AuthContext, input: z.infer<typ
       include: ORDER_INCLUDE,
     });
     if (input.downpaymentReceiptNumber) await registerReceipt(tx, input.downpaymentReceiptNumber, "CUSTOMER_ORDER_DOWNPAYMENT", { orderId: order.id, locationId, receiptBooklet: "" });
+    if (input.downpaymentAmount > 0 && input.downpaymentReceiptNumber) {
+      await recordPayment(tx, {
+        kind: "ORDER_DOWNPAYMENT",
+        locationId,
+        customerId,
+        orderId: order.id,
+        amount: input.downpaymentAmount,
+        method: (input.downpaymentMethod ?? "CASH") as PaymentMethod,
+        receiptNumber: input.downpaymentReceiptNumber,
+        salesperson: {
+          id: salesperson.id,
+          name: salesperson.fullName,
+          locationId: salesperson.location.id,
+          locationCode: salesperson.location.code,
+          locationName: salesperson.location.name,
+        },
+        collectedById: actor.userId,
+      });
+    }
     if (input.downpaymentAmount > 0) {
       // The booking entry is derived from the order row, whose downpayment total
       // moves with later payments, so the first one needs its own fixed record.
@@ -721,6 +745,28 @@ export async function releaseCustomerOrder(actor: AuthContext, id: string, input
     const warrantyProducts = await tx.product.findMany({ where: { id: { in: order.lines.map((line) => line.productId) } }, select: { id: true, warrantyDurationMonths: true } });
     for (const product of warrantyProducts) await tx.saleLine.updateMany({ where: { saleId: sale.id, productId: product.id }, data: { warrantyDurationMonths: product.warrantyDurationMonths } });
     await registerReceipt(tx, input.finalReceiptNumber, "CUSTOMER_ORDER_FINAL", { orderId: order.id, saleId: sale.id, locationId: order.locationId, receiptBooklet: "" });
+    // Only the balance settled at release goes on this row. The downpayment and
+    // any later payment already have their own rows, so the order's ledger adds
+    // up to its total exactly once.
+    await recordPayment(tx, {
+      kind: "ORDER_FINAL",
+      locationId: order.locationId,
+      customerId: order.customerId,
+      orderId: order.id,
+      saleId: sale.id,
+      amount: input.amountPaid,
+      method: input.paymentMethod as PaymentMethod,
+      receiptNumber: input.finalReceiptNumber,
+      salesperson: {
+        id: order.salespersonId,
+        name: order.salespersonName,
+        locationId: order.salespersonLocationId,
+        locationCode: order.salespersonLocationCode,
+        locationName: order.salespersonLocationName,
+      },
+      collectedById: actor.userId,
+      mirrorsSaleReview: true,
+    });
     for (const line of order.lines) await tx.inventoryMovement.create({ data: { productId: line.productId, locationId: order.locationId, quantity: -line.quantity, type: "CUSTOMER_ORDER_RELEASE", actorId: actor.userId, reference: input.finalReceiptNumber, remarks: `Released order ${order.reference}` } });
     const updated = await tx.customerOrder.update({ where: { id: order.id }, data: { status: "COMPLETED", finalReceiptNumber: input.finalReceiptNumber, remainingBalance: decimal(0), releasedById: actor.userId, releasedAt: new Date() }, include: ORDER_INCLUDE });
     return serializeOrder(updated);
@@ -792,13 +838,28 @@ export async function recordCustomerOrderPayment(
         );
       }
 
-      if (input.reference) {
-        await registerReceipt(tx, input.reference, "CUSTOMER_ORDER_PAYMENT", {
-          orderId: order.id,
-          locationId: order.locationId,
-          receiptBooklet: "",
-        });
-      }
+      await registerReceipt(tx, input.reference, "CUSTOMER_ORDER_PAYMENT", {
+        orderId: order.id,
+        locationId: order.locationId,
+        receiptBooklet: "",
+      });
+      await recordPayment(tx, {
+        kind: "ORDER_PAYMENT",
+        locationId: order.locationId,
+        customerId: order.customerId,
+        orderId: order.id,
+        amount: input.amount,
+        method: (input.method ?? "CASH") as PaymentMethod,
+        receiptNumber: input.reference,
+        salesperson: {
+          id: order.salespersonId,
+          name: order.salespersonName,
+          locationId: order.salespersonLocationId,
+          locationCode: order.salespersonLocationCode,
+          locationName: order.salespersonLocationName,
+        },
+        collectedById: actor.userId,
+      });
       const currentDownpayment = order.downpaymentAmount.toNumber();
       const updated = await tx.customerOrder.update({
         where: { id: order.id },
@@ -806,7 +867,7 @@ export async function recordCustomerOrderPayment(
           downpaymentAmount: decimal(currentDownpayment + input.amount),
           remainingBalance: decimal(remainingBalance - input.amount),
           downpaymentReceiptNumber:
-            order.downpaymentReceiptNumber ?? input.reference ?? null,
+            order.downpaymentReceiptNumber ?? input.reference,
           type:
             order.type === "RESERVATION_NO_DP"
               ? "RESERVATION_WITH_DP"
@@ -820,12 +881,12 @@ export async function recordCustomerOrderPayment(
         actorId: actor.userId,
         reference: order.reference,
         locationLabel: updated.location.name,
-        details: `₱${input.amount.toLocaleString("en-PH", { minimumFractionDigits: 2 })} paid by ${updated.customer.name}${input.reference ? ` on receipt ${input.reference}` : ""}. Balance ₱${updated.remainingBalance.toNumber().toLocaleString("en-PH", { minimumFractionDigits: 2 })}`,
+        details: `₱${input.amount.toLocaleString("en-PH", { minimumFractionDigits: 2 })} paid by ${updated.customer.name} on receipt ${input.reference}. Balance ₱${updated.remainingBalance.toNumber().toLocaleString("en-PH", { minimumFractionDigits: 2 })}`,
         items: updated.lines.map((line) => ({ name: `${line.productItemCode} ${line.productName}`, quantity: line.quantity, amount: `₱${line.finalUnitPrice.toNumber().toLocaleString("en-PH", { minimumFractionDigits: 2 })}` })),
         facts: [
           { label: "Customer", value: updated.customer.name },
           { label: "Payment", value: `₱${input.amount.toLocaleString("en-PH", { minimumFractionDigits: 2 })}` },
-          { label: "Receipt number", value: input.reference ?? "-" },
+          { label: "Receipt number", value: input.reference },
           { label: "Total paid to date", value: `₱${updated.downpaymentAmount.toNumber().toLocaleString("en-PH", { minimumFractionDigits: 2 })}` },
           { label: "Order total", value: `₱${updated.totalAmount.toNumber().toLocaleString("en-PH", { minimumFractionDigits: 2 })}` },
           { label: "Balance after payment", value: `₱${updated.remainingBalance.toNumber().toLocaleString("en-PH", { minimumFractionDigits: 2 })}` },
@@ -880,6 +941,25 @@ async function createDirectSaleForActor(actor: AuthContext, rawInput: z.input<ty
     const sale = await tx.sale.create({ data: { reference: `SALE-${randomUUID()}`, manualReceiptNumber: input.manualReceiptNumber, receiptBooklet: input.receiptBooklet ?? "", locationId, customerId, salespersonId: salesperson.id, salespersonName: salesperson.fullName, salespersonLocationId: salesperson.location.id, salespersonLocationCode: salesperson.location.code, salespersonLocationName: salesperson.location.name, paymentMethod: input.paymentMethod as PaymentMethod, totalAmount: decimal(total), discountAmount: decimal(input.discountAmount), amountPaid: decimal(input.amountPaid), notes: input.notes || null, postedById: actor.userId, lines: { create: input.lines.map((line) => { const product = products.get(line.productId)!; return { productId: product.id, productItemCode: product.itemCode, productName: product.name, quantity: line.quantity, unitPrice: decimal(line.unitPrice ?? product.price?.toNumber() ?? 0) }; }) }, accountingReview: { create: {} } }, include: SALE_INCLUDE });
     for (const product of products.values()) await tx.saleLine.updateMany({ where: { saleId: sale.id, productId: product.id }, data: { warrantyDurationMonths: product.warrantyDurationMonths } });
     await registerReceipt(tx, input.manualReceiptNumber, "DIRECT_SALE", { saleId: sale.id, locationId, receiptBooklet: input.receiptBooklet ?? "" });
+    await recordPayment(tx, {
+      kind: "DIRECT_SALE",
+      locationId,
+      customerId,
+      saleId: sale.id,
+      amount: input.amountPaid,
+      method: input.paymentMethod as PaymentMethod,
+      receiptNumber: input.manualReceiptNumber,
+      receiptBooklet: input.receiptBooklet ?? "",
+      salesperson: {
+        id: salesperson.id,
+        name: salesperson.fullName,
+        locationId: salesperson.location.id,
+        locationCode: salesperson.location.code,
+        locationName: salesperson.location.name,
+      },
+      collectedById: actor.userId,
+      mirrorsSaleReview: true,
+    });
     for (const line of input.lines) await tx.inventoryMovement.create({ data: { productId: line.productId, locationId, quantity: -line.quantity, type: "DIRECT_SALE", actorId: actor.userId, reference: input.receiptBooklet ? `${input.receiptBooklet}-${input.manualReceiptNumber}` : input.manualReceiptNumber, remarks: `Direct sale ${sale.reference}` } });
     return serializeSaleWithCorrection(sale);
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -1145,6 +1225,7 @@ export async function resolveSaleCorrection(
         where: { id: sale.id },
         data: { status: "VOIDED", correctedById: actor.userId, correctedAt: now },
       });
+      await voidSalePayment(tx, sale.id, `Correction request ${request.id} was approved`, actor.userId);
     }
 
     const updated = await tx.saleCorrectionRequest.update({
@@ -1228,6 +1309,12 @@ export async function reviewSale(actor: AuthContext, saleId: string, input: z.in
         notes: input.status === "MISMATCH_REPORTED" ? input.notes : null,
         comparisonJson: JSON.stringify({ comparison: input.comparison, differences }),
       },
+    });
+    await syncSalePaymentReview(tx, sale.id, {
+      status: input.status,
+      verifiedAt: updated.verifiedAt,
+      reviewedById: actor.userId,
+      reviewedAt,
     });
     if (input.status === "MISMATCH_REPORTED") {
       await notifySaleParties(tx, sale, "Receipt mismatch reported", `${sale.manualReceiptNumber} was flagged for ${input.mismatchCategory}.`);
@@ -1369,6 +1456,7 @@ export async function resolveSale(actor: AuthContext, saleId: string, input: z.i
     const now = new Date();
     if (input.action === "CONFIRMED_CORRECT") {
       const updated = await tx.saleAccountingReview.update({ where: { id: review.id }, data: { status: "VERIFIED", verifiedAt: now, resolutionAction: "CONFIRMED_CORRECT", resolutionNote: input.note, resolvedById: actor.userId, resolvedAt: now } });
+      await syncSalePaymentReview(tx, sale.id, { status: "VERIFIED", verifiedAt: now, reviewedById: actor.userId, reviewedAt: now });
       await notifySaleParties(tx, sale, "Receipt mismatch resolved", `${sale.manualReceiptNumber} was confirmed correct.`);
       return { action: input.action, review: updated };
     }
@@ -1386,6 +1474,7 @@ export async function resolveSale(actor: AuthContext, saleId: string, input: z.i
         where: { id: sale.id },
         data: { status: "VOIDED", correctedById: actor.userId, correctedAt: now },
       });
+      await voidSalePayment(tx, sale.id, `Sale ${sale.reference} was voided as incorrectly encoded`, actor.userId);
       const updated = await tx.saleAccountingReview.update({
         where: { id: review.id },
         data: {
@@ -1451,6 +1540,27 @@ export async function resolveSale(actor: AuthContext, saleId: string, input: z.i
     });
     for (const product of products) await tx.saleLine.updateMany({ where: { saleId: replacementSale.id, productId: product.id }, data: { warrantyDurationMonths: product.warrantyDurationMonths } });
     await registerReceipt(tx, replacement.receiptNumber, "SALE_CORRECTION", { saleId: replacementSale.id, locationId: sale.locationId, receiptBooklet: replacement.receiptBooklet });
+    await voidSalePayment(tx, sale.id, `Receipt ${sale.manualReceiptNumber} was replaced by ${replacement.receiptNumber}`, actor.userId);
+    await recordPayment(tx, {
+      kind: sale.orderId ? "ORDER_FINAL" : "DIRECT_SALE",
+      locationId: sale.locationId,
+      customerId: sale.customerId,
+      orderId: sale.orderId,
+      saleId: replacementSale.id,
+      amount: replacement.amountPaid,
+      method: replacement.paymentMethod,
+      receiptNumber: replacement.receiptNumber,
+      receiptBooklet: replacement.receiptBooklet,
+      salesperson: {
+        id: sale.salespersonId,
+        name: sale.salespersonName,
+        locationId: sale.salespersonLocationId,
+        locationCode: sale.salespersonLocationCode,
+        locationName: sale.salespersonLocationName,
+      },
+      collectedById: sale.postedById,
+      mirrorsSaleReview: true,
+    });
     await tx.sale.update({ where: { id: sale.id }, data: { status: "VOIDED", correctedById: actor.userId, correctedAt: now } });
     await tx.saleAccountingReview.update({ where: { id: review.id }, data: { resolutionAction: "VOIDED_REPLACED", resolutionNote: input.note, resolvedById: actor.userId, resolvedAt: now } });
     await notifySaleParties(tx, sale, "Receipt mismatch corrected", `${sale.manualReceiptNumber} was voided and replaced by ${replacement.receiptNumber}.`);

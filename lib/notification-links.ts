@@ -14,6 +14,9 @@ export function notificationDestination(
   if (notification.relatedType === "SALE") {
     return `/accounting/receipt-verification?saleId=${id}`;
   }
+  if (notification.relatedType === "PAYMENT") {
+    return `/accounting/receipt-verification?tab=payments&paymentId=${id}`;
+  }
   if (notification.relatedType === "INVENTORY_BALANCE") {
     return `/inventory?balanceId=${id}`;
   }

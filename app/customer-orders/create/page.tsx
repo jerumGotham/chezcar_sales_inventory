@@ -34,6 +34,15 @@ const STATUS_OPTIONS: SelectOption[] = [
   { value: "WAITING_STOCK", label: "Waiting for stock" },
 ];
 
+const DOWNPAYMENT_METHOD_OPTIONS: SelectOption[] = [
+  { value: "CASH", label: "Cash" },
+  { value: "GCASH", label: "GCash" },
+  { value: "MAYA", label: "Maya" },
+  { value: "BANK_TRANSFER", label: "Bank Transfer" },
+  { value: "CREDIT_CARD", label: "Credit Card" },
+  { value: "SPLIT", label: "Split Payment" },
+];
+
 const reactSelectStyles: StylesConfig<SelectOption, false> = {
   control: (base, state) => ({
     ...base,
@@ -118,6 +127,7 @@ export default function CreateCustomerOrderPage() {
   const [salesperson, setSalesperson] = useState<SelectOption | null>(null);
   const [downpayment, setDownpayment] = useState("0");
   const [downpaymentReceiptNumber, setDownpaymentReceiptNumber] = useState("");
+  const [downpaymentMethod, setDownpaymentMethod] = useState<SelectOption>(DOWNPAYMENT_METHOD_OPTIONS[0]);
   const [releaseDate, setReleaseDate] = useState("");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<OrderItemRow[]>([
@@ -168,6 +178,7 @@ export default function CreateCustomerOrderPage() {
           notes: notes || undefined,
           downpaymentAmount: orderType === "RESERVATION_WITH_DP" ? Number(downpayment) : 0,
           downpaymentReceiptNumber: orderType === "RESERVATION_WITH_DP" ? downpaymentReceiptNumber : undefined,
+          downpaymentMethod: orderType === "RESERVATION_WITH_DP" ? downpaymentMethod.value : undefined,
           lines: items.map((item) => ({ productId: item.item!.value, quantity: item.quantity, finalUnitPrice: item.unitPrice })),
         }),
       });
@@ -348,6 +359,19 @@ export default function CreateCustomerOrderPage() {
                     <div className="space-y-2">
                       <Label>Downpayment Receipt No.</Label>
                       <Input value={downpaymentReceiptNumber} onChange={(e) => setDownpaymentReceiptNumber(e.target.value)} placeholder="OR-000123" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Downpayment Method</Label>
+                      <Select
+                        inputId="downpayment-method"
+                        instanceId="customer-order-downpayment-method"
+                        options={DOWNPAYMENT_METHOD_OPTIONS}
+                        value={downpaymentMethod}
+                        onChange={(option) => setDownpaymentMethod(option ?? DOWNPAYMENT_METHOD_OPTIONS[0])}
+                        isSearchable
+                        placeholder="Select payment method"
+                        styles={reactSelectStyles}
+                      />
                     </div>
                   </>
                 ) : null}

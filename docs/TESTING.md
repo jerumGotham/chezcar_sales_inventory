@@ -112,6 +112,19 @@ Integration project (`npm run test:integration`, serial over disposable PostgreS
 
 Shared helpers live under `tests/helpers/`: `database.ts` (disposable PostgreSQL lifecycle), `factories.ts` (persisted authorization fixtures), and `requests.ts` (direct Request construction preserving hostile query/body/header input).
 
+## Payment ledger verification (2026-09-21)
+
+This change was verified locally, not just written:
+
+- `npm test` — 232 unit tests pass, including a new case proving that a ₱50,000 order paid ₱10,000 down, ₱5,000 later and ₱35,000 at release reports ₱50,000 once, plus ₱10,000 forfeited on a cancelled order.
+- `npm run test:integration` — 92 tests pass, including a new case asserting the ledger holds one row per receipt for an order and that they sum to its total exactly once.
+- `npm run typecheck` — clean. `npm run lint` — 0 errors, 26 warnings, identical to the pre-change baseline.
+- Browser walkthrough against the local PostgreSQL instance: booked an order with a ₱10,000 GCash downpayment, confirmed the Add Payment dialog refuses to save without a receipt number, attached a receipt photo, verified the downpayment, and saw the Sales report show it on that date with a ₱60,000 grand total across three receipts and no double counting. Then reported a mismatch on a ₱5,000 payment, filed the branch finding, voided it, and confirmed the order balance returned from ₱10,000 to ₱15,000 and the voided receipt disappeared from the report while remaining visible and labelled Voided in the queue. Every step appears in the audit trail.
+
+Three defects were found and fixed during that walkthrough: a voided payment vanished from the queue instead of staying visible; the audit screen never read logged Receipt Verification rows, which had also been hiding the pre-existing receipt-photo entries; and a duplicate migration would have failed a fresh deployment.
+
+Not covered: automated browser tests, and coverage reporting, both of which still do not exist.
+
 ## Manual verification available now
 
 Start the prototype:

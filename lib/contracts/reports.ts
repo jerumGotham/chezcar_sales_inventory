@@ -56,7 +56,10 @@ export type SalesReport = ReportMeta & {
     salespersonId: string | null;
     salesperson: string;
     encoder: string;
-    source: "Direct Sale" | "Customer Order";
+    // One row per verified receipt: the money is counted on the day Accounting
+    // verified that receipt, so a downpayment and its order's release are
+    // separate rows and no peso is counted twice.
+    source: "Direct Sale" | "Order Downpayment" | "Order Payment" | "Order Release";
     paymentMethod: string;
     units: number;
     discountAmount: number;

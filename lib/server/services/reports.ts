@@ -107,12 +107,12 @@ async function options(query: ReportQuery, locations: ReportLocation[], effectiv
   const scopedLocation = { in: effectiveLocations.map((location) => location.id) };
   const inventoryProductStatus = query.type === "inventory-summary" ? query.productStatus : "ACTIVE";
   const [salespersons, categories, brands] = await Promise.all([
-    (query.type !== "sales" && query.type !== "salesperson-sales") || !effectiveLocations.length ? Promise.resolve([]) : prisma.sale.findMany({
-      where: { locationId: scopedLocation, status: "POSTED", salespersonId: { not: null }, accountingReview: { status: "VERIFIED", verifiedAt: { not: null } } },
+    (query.type !== "sales" && query.type !== "salesperson-sales") || !effectiveLocations.length ? Promise.resolve([]) : prisma.payment.findMany({
+      where: { locationId: scopedLocation, status: "ACTIVE", salespersonId: { not: null }, reviewStatus: "VERIFIED", verifiedAt: { not: null } },
       // Historical attribution, independent of date/source/payment filters or current personnel assignments.
       select: { salespersonId: true, salespersonName: true },
       distinct: ["salespersonId"],
-      orderBy: [{ accountingReview: { verifiedAt: "desc" } }, { id: "desc" }],
+      orderBy: [{ verifiedAt: "desc" }, { id: "desc" }],
     }),
     query.type !== "inventory-summary" || !effectiveLocations.length ? Promise.resolve([]) : prisma.product.findMany({ where: { ...(inventoryProductStatus ? { status: inventoryProductStatus } : {}), category: { not: null } }, distinct: ["category"], select: { category: true }, orderBy: { category: "asc" } }),
     query.type !== "inventory-summary" || !effectiveLocations.length ? Promise.resolve([]) : prisma.product.findMany({ where: { ...(inventoryProductStatus ? { status: inventoryProductStatus } : {}), brand: { not: null } }, distinct: ["brand"], select: { brand: true }, orderBy: { brand: "asc" } }),
@@ -272,37 +272,52 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
 
   if (query.type === "sales" || query.type === "salesperson-sales") {
     const range = dateRange(query, true);
-    const records = await prisma.sale.findMany({
+    // The report reads the payment ledger, so every verified receipt is counted
+    // once, on the day it was verified: a downpayment on its own date, the
+    // balance settled at release on its own, and a forfeited downpayment on a
+    // cancelled order without any release to hide behind.
+    const orderKinds = ["ORDER_DOWNPAYMENT", "ORDER_PAYMENT", "ORDER_FINAL"] as const;
+    const records = await prisma.payment.findMany({
       where: {
         locationId: scopedLocation,
-        status: "POSTED",
+        status: "ACTIVE",
         salespersonId: query.salespersonId,
-        orderId: query.source === "DIRECT_SALE" ? null : query.source === "CUSTOMER_ORDER" ? { not: null } : undefined,
-        paymentMethod: query.paymentMethod,
-        accountingReview: { status: "VERIFIED", verifiedAt: range.where },
+        kind: query.source === "DIRECT_SALE" ? "DIRECT_SALE" : query.source === "CUSTOMER_ORDER" ? { in: [...orderKinds] } : undefined,
+        method: query.paymentMethod,
+        reviewStatus: "VERIFIED",
+        verifiedAt: range.where,
       },
       select: {
-        id: true, manualReceiptNumber: true, receiptBooklet: true, orderId: true, paymentMethod: true,
-        totalAmount: true, discountAmount: true, salespersonId: true, salespersonName: true, lines: { select: { quantity: true } },
-        customer: { select: { name: true } }, location: { select: { code: true, name: true } }, postedBy: { select: { name: true } },
-        accountingReview: { select: { verifiedAt: true } },
+        id: true, kind: true, receiptNumber: true, receiptBooklet: true, amount: true, method: true,
+        salespersonId: true, salespersonName: true, verifiedAt: true,
+        customer: { select: { name: true } }, location: { select: { code: true, name: true } },
+        collectedBy: { select: { name: true } },
+        sale: { select: { discountAmount: true, lines: { select: { quantity: true } } } },
       },
-      orderBy: [{ accountingReview: { verifiedAt: "desc" } }, { id: "desc" }],
+      orderBy: [{ verifiedAt: "desc" }, { id: "desc" }],
     });
+    const sourceLabels = {
+      DIRECT_SALE: "Direct Sale",
+      ORDER_DOWNPAYMENT: "Order Downpayment",
+      ORDER_PAYMENT: "Order Payment",
+      ORDER_FINAL: "Order Release",
+    } as const;
     const rows = records.map((row) => ({
       id: row.id,
-      verifiedAt: row.accountingReview!.verifiedAt!.toISOString(),
-      manualReceiptNumber: row.receiptBooklet ? `${row.receiptBooklet}-${row.manualReceiptNumber}` : row.manualReceiptNumber,
+      verifiedAt: row.verifiedAt!.toISOString(),
+      manualReceiptNumber: row.receiptBooklet ? `${row.receiptBooklet}-${row.receiptNumber}` : row.receiptNumber,
       branch: `${row.location.code} - ${row.location.name}`,
       customer: row.customer?.name ?? "Guest",
       salespersonId: row.salespersonId,
       salesperson: row.salespersonName ?? "Unassigned",
-      encoder: row.postedBy.name,
-      source: row.orderId ? "Customer Order" as const : "Direct Sale" as const,
-      paymentMethod: row.paymentMethod,
-      units: row.lines.reduce((sum, line) => sum + line.quantity, 0),
-      discountAmount: row.discountAmount.toNumber(),
-      totalAmount: row.totalAmount.toNumber(),
+      encoder: row.collectedBy.name,
+      source: sourceLabels[row.kind],
+      paymentMethod: row.method,
+      // Units and discounts belong to the goods, which change hands once, on the
+      // receipt that completes the sale. A downpayment moves money, not stock.
+      units: row.sale?.lines.reduce((sum, line) => sum + line.quantity, 0) ?? 0,
+      discountAmount: row.sale?.discountAmount.toNumber() ?? 0,
+      totalAmount: row.amount.toNumber(),
       verificationStatus: "VERIFIED" as const,
     }));
     const grandAmount = rows.reduce((sum, row) => sum + row.totalAmount, 0);

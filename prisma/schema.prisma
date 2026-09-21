@@ -186,6 +186,18 @@ enum PaymentMethod {
   SPLIT
 }
 
+enum PaymentKind {
+  ORDER_DOWNPAYMENT
+  ORDER_PAYMENT
+  ORDER_FINAL
+  DIRECT_SALE
+}
+
+enum PaymentStatus {
+  ACTIVE
+  VOIDED
+}
+
 enum AccountingReviewStatus {
   UNVERIFIED
   VERIFIED
@@ -234,6 +246,8 @@ enum NotificationRelatedType {
   INVENTORY_BALANCE
   INVENTORY_LOCATION
   SALE
+  PAYMENT
+  PAYMENT
   BACKJOB
   CUSTOMER_WARRANTY
   SUPPLIER_CLAIM
@@ -283,6 +297,7 @@ model Location {
   backjobs             Backjob[]
   customerWarranties   CustomerWarranty[]
   supplierClaims       SupplierClaim[]
+  payments             Payment[]
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
 }
@@ -331,27 +346,27 @@ model Product {
 }
 
 model Supplier {
-  id              String         @id @default(cuid())
+  id              String          @id @default(cuid())
   code            String?
   name            String
   contactPerson   String?
   contactNumber   String?
   email           String?
   address         String?
-  notes           String?        @db.Text
-  status          SupplierStatus @default(ACTIVE)
+  notes           String?         @db.Text
+  status          SupplierStatus  @default(ACTIVE)
   createdById     String?
   updatedById     String?
   deactivatedById String?
   reactivatedById String?
-  createdBy       User?          @relation("SupplierCreatedBy", fields: [createdById], references: [id])
-  updatedBy       User?          @relation("SupplierUpdatedBy", fields: [updatedById], references: [id])
-  deactivatedBy   User?          @relation("SupplierDeactivatedBy", fields: [deactivatedById], references: [id])
-  reactivatedBy   User?          @relation("SupplierReactivatedBy", fields: [reactivatedById], references: [id])
+  createdBy       User?           @relation("SupplierCreatedBy", fields: [createdById], references: [id])
+  updatedBy       User?           @relation("SupplierUpdatedBy", fields: [updatedById], references: [id])
+  deactivatedBy   User?           @relation("SupplierDeactivatedBy", fields: [deactivatedById], references: [id])
+  reactivatedBy   User?           @relation("SupplierReactivatedBy", fields: [reactivatedById], references: [id])
   stockReceipts   StockReceipt[]
   supplierClaims  SupplierClaim[]
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   @@index([status, name])
   @@index([createdById])
@@ -377,6 +392,7 @@ model Personnel {
   reactivatedBy   User?           @relation("PersonnelReactivatedBy", fields: [reactivatedById], references: [id])
   customerOrders  CustomerOrder[]
   sales           Sale[]
+  payments        Payment[]
   backjobs        Backjob[]
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
@@ -406,81 +422,81 @@ model ProductVehicleCompatibility {
 }
 
 model InventoryBalance {
-  id         String   @id @default(cuid())
-  locationId String
-  productId  String
-  onHand     Int      @default(0)
-  reserved   Int      @default(0)
-  quarantined Int     @default(0)
-  unitCost   Decimal  @default(0) @db.Decimal(12, 2)
-  version    Int      @default(1)
-  location   Location @relation(fields: [locationId], references: [id])
-  product    Product  @relation(fields: [productId], references: [id])
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id          String   @id @default(cuid())
+  locationId  String
+  productId   String
+  onHand      Int      @default(0)
+  reserved    Int      @default(0)
+  quarantined Int      @default(0)
+  unitCost    Decimal  @default(0) @db.Decimal(12, 2)
+  version     Int      @default(1)
+  location    Location @relation(fields: [locationId], references: [id])
+  product     Product  @relation(fields: [productId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@unique([locationId, productId])
   @@index([productId])
 }
 
 model CustomerWarranty {
-  id                       String                     @id @default(cuid())
-  reference                String                     @unique
-  idempotencyKey           String                     @unique
-  requestHash              String?
-  version                  Int                        @default(1)
-  status                   CustomerWarrantyStatus     @default(ASSESSMENT)
-  resolution               CustomerWarrantyResolution?
-  locationId               String
-  customerId               String?
-  saleId                   String?
-  saleLineId               String?
-  productId                String?
-  replacementProductId     String?
-  isLegacy                 Boolean                    @default(false)
-  legacyCustomerName       String?
-  legacySaleReference      String?
-  legacyReason             String?                    @db.Text
-  customerName             String
-  locationCode             String
-  locationName             String
-  saleReference            String?
-  receiptNumber            String?
-  productItemCode          String
-  productName              String
-  soldQuantity             Int?
-  warrantyDurationMonths   Int?
-  warrantyExpiresAt        DateTime?
-  claimQuantity            Int
-  receivedQuantity         Int                        @default(0)
-  returnedQuantity         Int                        @default(0)
-  concern                  String                     @db.Text
-  assessmentNotes          String?                    @db.Text
-  replacementReason        String?                    @db.Text
-  replacementItemCode      String?
-  replacementProductName   String?
-  intakePhotoKey           String?                    @unique
-  intakePhotoType          String?
-  intakePhotoName          String?
-  receivedAt               DateTime?
-  targetDate               DateTime?
-  readyAt                  DateTime?
-  releasedAt               DateTime?
-  completedAt              DateTime?
-  createdById              String
-  location                 Location                   @relation(fields: [locationId], references: [id], onDelete: Restrict)
-  customer                 Customer?                  @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  sale                     Sale?                      @relation(fields: [saleId], references: [id], onDelete: Restrict)
-  saleLine                 SaleLine?                  @relation(fields: [saleLineId], references: [id], onDelete: Restrict)
-  product                  Product?                   @relation("WarrantyClaimProduct", fields: [productId], references: [id], onDelete: Restrict)
-  replacementProduct       Product?                   @relation("WarrantyReplacementProduct", fields: [replacementProductId], references: [id], onDelete: Restrict)
-  createdBy                User                       @relation("WarrantyCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  events                   CustomerWarrantyEvent[]
-  actions                  CustomerWarrantyAction[]
-  movements                InventoryMovement[]
-  supplierClaims           SupplierClaim[]
-  createdAt                DateTime                   @default(now())
-  updatedAt                DateTime                   @updatedAt
+  id                     String                      @id @default(cuid())
+  reference              String                      @unique
+  idempotencyKey         String                      @unique
+  requestHash            String?
+  version                Int                         @default(1)
+  status                 CustomerWarrantyStatus      @default(ASSESSMENT)
+  resolution             CustomerWarrantyResolution?
+  locationId             String
+  customerId             String?
+  saleId                 String?
+  saleLineId             String?
+  productId              String?
+  replacementProductId   String?
+  isLegacy               Boolean                     @default(false)
+  legacyCustomerName     String?
+  legacySaleReference    String?
+  legacyReason           String?                     @db.Text
+  customerName           String
+  locationCode           String
+  locationName           String
+  saleReference          String?
+  receiptNumber          String?
+  productItemCode        String
+  productName            String
+  soldQuantity           Int?
+  warrantyDurationMonths Int?
+  warrantyExpiresAt      DateTime?
+  claimQuantity          Int
+  receivedQuantity       Int                         @default(0)
+  returnedQuantity       Int                         @default(0)
+  concern                String                      @db.Text
+  assessmentNotes        String?                     @db.Text
+  replacementReason      String?                     @db.Text
+  replacementItemCode    String?
+  replacementProductName String?
+  intakePhotoKey         String?                     @unique
+  intakePhotoType        String?
+  intakePhotoName        String?
+  receivedAt             DateTime?
+  targetDate             DateTime?
+  readyAt                DateTime?
+  releasedAt             DateTime?
+  completedAt            DateTime?
+  createdById            String
+  location               Location                    @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  customer               Customer?                   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  sale                   Sale?                       @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  saleLine               SaleLine?                   @relation(fields: [saleLineId], references: [id], onDelete: Restrict)
+  product                Product?                    @relation("WarrantyClaimProduct", fields: [productId], references: [id], onDelete: Restrict)
+  replacementProduct     Product?                    @relation("WarrantyReplacementProduct", fields: [replacementProductId], references: [id], onDelete: Restrict)
+  createdBy              User                        @relation("WarrantyCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  events                 CustomerWarrantyEvent[]
+  actions                CustomerWarrantyAction[]
+  movements              InventoryMovement[]
+  supplierClaims         SupplierClaim[]
+  createdAt              DateTime                    @default(now())
+  updatedAt              DateTime                    @updatedAt
 
   @@index([locationId, status, createdAt])
   @@index([targetDate, status])
@@ -519,71 +535,71 @@ model CustomerWarrantyAction {
 }
 
 model Backjob {
-  id                            String                        @id @default(cuid())
-  reference                     String                        @unique
-  version                       Int                           @default(1)
-  status                        BackjobStatus                 @default(DRAFT)
-  coverage                      BackjobCoverage               @default(PENDING)
-  locationId                    String
-  customerId                    String
-  originalSaleId                String?
-  originalSaleLineId            String?
-  affectedProductId             String?
-  chargeSaleId                  String?
-  isLegacy                      Boolean                       @default(false)
-  legacyReference               String?
-  legacyReason                  String?                       @db.Text
-  legacyProductDescription      String?
-  originalSaleReference         String?
-  originalReceiptNumber         String?
-  customerName                  String
-  customerMobile                String?
-  affectedProductItemCode       String?
-  affectedProductName           String?
-  locationCode                  String
-  locationName                  String
-  concern                       String                        @db.Text
-  notes                         String?                       @db.Text
-  installerId                   String?
-  installerName                 String?
-  installerLocationId           String?
-  installerLocationCode         String?
-  installerLocationName         String?
-  scheduledFor                  DateTime?
-  workPerformed                 String?                       @db.Text
-  completionNotes               String?                       @db.Text
-  chargeableAmount              Decimal                       @default(0) @db.Decimal(12, 2)
-  acknowledgementMethod         BackjobAcknowledgementMethod?
-  acknowledgedByName            String?
-  acknowledgementNote           String?                       @db.Text
-  acknowledgedAt                DateTime?
-  createdById                   String
-  updatedById                   String?
-  completedById                 String?
-  cancelledById                 String?
-  rejectedById                  String?
-  completedAt                   DateTime?
-  cancelledAt                   DateTime?
-  rejectedAt                    DateTime?
-  location                      Location                      @relation(fields: [locationId], references: [id], onDelete: Restrict)
-  customer                      Customer                      @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  originalSale                  Sale?                         @relation("BackjobOriginalSale", fields: [originalSaleId], references: [id], onDelete: Restrict)
-  originalSaleLine              SaleLine?                     @relation(fields: [originalSaleLineId], references: [id], onDelete: Restrict)
-  affectedProduct               Product?                      @relation("BackjobAffectedProduct", fields: [affectedProductId], references: [id], onDelete: Restrict)
-  chargeSale                    Sale?                         @relation("BackjobChargeSale", fields: [chargeSaleId], references: [id], onDelete: Restrict)
-  installer                     Personnel?                    @relation(fields: [installerId], references: [id], onDelete: Restrict)
-  createdBy                     User                          @relation("BackjobCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  updatedBy                     User?                         @relation("BackjobUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
-  completedBy                   User?                         @relation("BackjobCompletedBy", fields: [completedById], references: [id], onDelete: Restrict)
-  cancelledBy                   User?                         @relation("BackjobCancelledBy", fields: [cancelledById], references: [id], onDelete: Restrict)
-  rejectedBy                    User?                         @relation("BackjobRejectedBy", fields: [rejectedById], references: [id], onDelete: Restrict)
-  items                         BackjobItem[]
-  parts                         BackjobPart[]
-  events                        BackjobEvent[]
-  schedules                     BackjobScheduleHistory[]
-  attachments                   BackjobAttachment[]
-  createdAt                     DateTime                      @default(now())
-  updatedAt                     DateTime                      @updatedAt
+  id                       String                        @id @default(cuid())
+  reference                String                        @unique
+  version                  Int                           @default(1)
+  status                   BackjobStatus                 @default(DRAFT)
+  coverage                 BackjobCoverage               @default(PENDING)
+  locationId               String
+  customerId               String
+  originalSaleId           String?
+  originalSaleLineId       String?
+  affectedProductId        String?
+  chargeSaleId             String?
+  isLegacy                 Boolean                       @default(false)
+  legacyReference          String?
+  legacyReason             String?                       @db.Text
+  legacyProductDescription String?
+  originalSaleReference    String?
+  originalReceiptNumber    String?
+  customerName             String
+  customerMobile           String?
+  affectedProductItemCode  String?
+  affectedProductName      String?
+  locationCode             String
+  locationName             String
+  concern                  String                        @db.Text
+  notes                    String?                       @db.Text
+  installerId              String?
+  installerName            String?
+  installerLocationId      String?
+  installerLocationCode    String?
+  installerLocationName    String?
+  scheduledFor             DateTime?
+  workPerformed            String?                       @db.Text
+  completionNotes          String?                       @db.Text
+  chargeableAmount         Decimal                       @default(0) @db.Decimal(12, 2)
+  acknowledgementMethod    BackjobAcknowledgementMethod?
+  acknowledgedByName       String?
+  acknowledgementNote      String?                       @db.Text
+  acknowledgedAt           DateTime?
+  createdById              String
+  updatedById              String?
+  completedById            String?
+  cancelledById            String?
+  rejectedById             String?
+  completedAt              DateTime?
+  cancelledAt              DateTime?
+  rejectedAt               DateTime?
+  location                 Location                      @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  customer                 Customer                      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  originalSale             Sale?                         @relation("BackjobOriginalSale", fields: [originalSaleId], references: [id], onDelete: Restrict)
+  originalSaleLine         SaleLine?                     @relation(fields: [originalSaleLineId], references: [id], onDelete: Restrict)
+  affectedProduct          Product?                      @relation("BackjobAffectedProduct", fields: [affectedProductId], references: [id], onDelete: Restrict)
+  chargeSale               Sale?                         @relation("BackjobChargeSale", fields: [chargeSaleId], references: [id], onDelete: Restrict)
+  installer                Personnel?                    @relation(fields: [installerId], references: [id], onDelete: Restrict)
+  createdBy                User                          @relation("BackjobCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy                User?                         @relation("BackjobUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+  completedBy              User?                         @relation("BackjobCompletedBy", fields: [completedById], references: [id], onDelete: Restrict)
+  cancelledBy              User?                         @relation("BackjobCancelledBy", fields: [cancelledById], references: [id], onDelete: Restrict)
+  rejectedBy               User?                         @relation("BackjobRejectedBy", fields: [rejectedById], references: [id], onDelete: Restrict)
+  items                    BackjobItem[]
+  parts                    BackjobPart[]
+  events                   BackjobEvent[]
+  schedules                BackjobScheduleHistory[]
+  attachments              BackjobAttachment[]
+  createdAt                DateTime                      @default(now())
+  updatedAt                DateTime                      @updatedAt
 
   @@index([locationId, status, scheduledFor])
   @@index([customerId, createdAt])
@@ -593,16 +609,16 @@ model Backjob {
 }
 
 model BackjobItem {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   backjobId          String
   originalSaleLineId String?
   productId          String?
   productItemCode    String?
   productName        String
   position           Int
-  backjob            Backjob  @relation(fields: [backjobId], references: [id], onDelete: Restrict)
+  backjob            Backjob   @relation(fields: [backjobId], references: [id], onDelete: Restrict)
   originalSaleLine   SaleLine? @relation(fields: [originalSaleLineId], references: [id], onDelete: Restrict)
-  product            Product? @relation(fields: [productId], references: [id], onDelete: Restrict)
+  product            Product?  @relation(fields: [productId], references: [id], onDelete: Restrict)
 
   @@unique([backjobId, originalSaleLineId])
   @@unique([backjobId, position])
@@ -631,31 +647,31 @@ model BackjobPart {
 }
 
 model BackjobEvent {
-  id         String        @id @default(cuid())
-  backjobId  String
-  type       String
-  fromStatus BackjobStatus?
-  toStatus   BackjobStatus?
-  reason     String?       @db.Text
+  id          String         @id @default(cuid())
+  backjobId   String
+  type        String
+  fromStatus  BackjobStatus?
+  toStatus    BackjobStatus?
+  reason      String?        @db.Text
   detailsJson Json?
-  actorId    String
-  occurredAt DateTime      @default(now())
-  backjob    Backjob       @relation(fields: [backjobId], references: [id], onDelete: Restrict)
-  actor      User          @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  actorId     String
+  occurredAt  DateTime       @default(now())
+  backjob     Backjob        @relation(fields: [backjobId], references: [id], onDelete: Restrict)
+  actor       User           @relation(fields: [actorId], references: [id], onDelete: Restrict)
 
   @@index([backjobId, occurredAt])
 }
 
 model BackjobScheduleHistory {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   backjobId        String
   previousSchedule DateTime?
   newSchedule      DateTime
-  reason           String?  @db.Text
+  reason           String?   @db.Text
   actorId          String
-  recordedAt       DateTime @default(now())
-  backjob          Backjob  @relation(fields: [backjobId], references: [id], onDelete: Restrict)
-  actor             User     @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  recordedAt       DateTime  @default(now())
+  backjob          Backjob   @relation(fields: [backjobId], references: [id], onDelete: Restrict)
+  actor            User      @relation(fields: [actorId], references: [id], onDelete: Restrict)
 
   @@index([backjobId, recordedAt])
 }
@@ -676,79 +692,84 @@ model BackjobAttachment {
 }
 
 model User {
-  id                       String                       @id @default(cuid())
-  name                     String
-  email                    String                       @unique
-  emailVerified            Boolean                      @default(false)
-  image                    String?
-  role                     UserRole                     @default(BRANCH_STAFF)
-  roleDefinitionId         String
-  accessRole               RoleDefinition               @relation(fields: [roleDefinitionId], references: [id], onDelete: Restrict)
+  id                             String                          @id @default(cuid())
+  name                           String
+  email                          String                          @unique
+  emailVerified                  Boolean                         @default(false)
+  image                          String?
+  role                           UserRole                        @default(BRANCH_STAFF)
+  roleDefinitionId               String
+  accessRole                     RoleDefinition                  @relation(fields: [roleDefinitionId], references: [id], onDelete: Restrict)
   /// Application activation is governed only by status. Lifecycle services keep the plugin ban fields false/null.
-  status                   UserStatus                   @default(ACTIVE)
-  credentialSetupRequired  Boolean                      @default(false)
-  banned                   Boolean                      @default(false)
-  banReason                String?
-  banExpires               DateTime?
-  locationId               String?
-  location                 Location?                    @relation(fields: [locationId], references: [id])
-  locationAssignments      UserLocation[]
-  sessions                 Session[]
-  auditLogs                AuditLog[]                   @relation("AuditLogActor")
-  accounts                 Account[]
-  createdTransfers         StockTransfer[]              @relation("TransferCreatedBy")
-  finalizedTransfers       StockTransfer[]              @relation("TransferFinalizedBy")
-  dispatchedTransfers      StockTransfer[]              @relation("TransferDispatchedBy")
-  cancelledTransfers       StockTransfer[]              @relation("TransferCancelledBy")
-  receivedTransfers        StockTransfer[]              @relation("TransferReceivedBy")
-  discrepancyReports       StockTransferDiscrepancy[]   @relation("DiscrepancyReportedBy")
-  investigations           StockTransferInvestigation[] @relation("InvestigationSubmittedBy")
-  resolutions              StockTransferResolution[]    @relation("ResolutionPostedBy")
-  inventoryMovements       InventoryMovement[]
-  stockReceipts            StockReceipt[]               @relation("ReceiptReceivedBy")
-  notifications            Notification[]
-  createdCustomers         Customer[]                   @relation("CustomerCreatedBy")
-  createdCustomerOrders    CustomerOrder[]              @relation("CustomerOrderCreatedBy")
-  releasedCustomerOrders   CustomerOrder[]              @relation("CustomerOrderReleasedBy")
-  cancelledCustomerOrders  CustomerOrder[]              @relation("CustomerOrderCancelledBy")
-  salespersonUpdatedOrders CustomerOrder[]               @relation("CustomerOrderSalespersonUpdatedBy")
+  status                         UserStatus                      @default(ACTIVE)
+  credentialSetupRequired        Boolean                         @default(false)
+  banned                         Boolean                         @default(false)
+  banReason                      String?
+  banExpires                     DateTime?
+  locationId                     String?
+  location                       Location?                       @relation(fields: [locationId], references: [id])
+  locationAssignments            UserLocation[]
+  sessions                       Session[]
+  auditLogs                      AuditLog[]                      @relation("AuditLogActor")
+  accounts                       Account[]
+  createdTransfers               StockTransfer[]                 @relation("TransferCreatedBy")
+  finalizedTransfers             StockTransfer[]                 @relation("TransferFinalizedBy")
+  dispatchedTransfers            StockTransfer[]                 @relation("TransferDispatchedBy")
+  cancelledTransfers             StockTransfer[]                 @relation("TransferCancelledBy")
+  receivedTransfers              StockTransfer[]                 @relation("TransferReceivedBy")
+  discrepancyReports             StockTransferDiscrepancy[]      @relation("DiscrepancyReportedBy")
+  investigations                 StockTransferInvestigation[]    @relation("InvestigationSubmittedBy")
+  resolutions                    StockTransferResolution[]       @relation("ResolutionPostedBy")
+  inventoryMovements             InventoryMovement[]
+  stockReceipts                  StockReceipt[]                  @relation("ReceiptReceivedBy")
+  notifications                  Notification[]
+  createdCustomers               Customer[]                      @relation("CustomerCreatedBy")
+  createdCustomerOrders          CustomerOrder[]                 @relation("CustomerOrderCreatedBy")
+  releasedCustomerOrders         CustomerOrder[]                 @relation("CustomerOrderReleasedBy")
+  cancelledCustomerOrders        CustomerOrder[]                 @relation("CustomerOrderCancelledBy")
+  salespersonUpdatedOrders       CustomerOrder[]                 @relation("CustomerOrderSalespersonUpdatedBy")
   customerOrderSalespersonEvents CustomerOrderSalespersonEvent[] @relation("CustomerOrderSalespersonEventActor")
-  postedSales              Sale[]                       @relation("SalePostedBy")
-  reviewedSales            SaleAccountingReview[]       @relation("SaleReviewedBy")
-  branchMismatchResponses  SaleAccountingReview[]       @relation("SaleBranchRespondedBy")
-  requestedSaleCorrections SaleCorrectionRequest[]      @relation("SaleCorrectionRequestedBy")
-  resolvedSaleCorrections  SaleCorrectionRequest[]      @relation("SaleCorrectionResolvedBy")
-  correctedSales           Sale[]                       @relation("SaleCorrectedBy")
-  resolvedReviews          SaleAccountingReview[]       @relation("SaleResolvedBy")
-  createdProducts          Product[]                    @relation("ProductCreatedBy")
-  updatedProducts          Product[]                    @relation("ProductUpdatedBy")
-  deactivatedProducts      Product[]                    @relation("ProductDeactivatedBy")
-  reactivatedProducts      Product[]                    @relation("ProductReactivatedBy")
-  createdSuppliers         Supplier[]                   @relation("SupplierCreatedBy")
-  updatedSuppliers         Supplier[]                   @relation("SupplierUpdatedBy")
-  deactivatedSuppliers     Supplier[]                   @relation("SupplierDeactivatedBy")
-  reactivatedSuppliers     Supplier[]                   @relation("SupplierReactivatedBy")
-  createdPersonnel         Personnel[]                  @relation("PersonnelCreatedBy")
-  updatedPersonnel         Personnel[]                  @relation("PersonnelUpdatedBy")
-  deactivatedPersonnel     Personnel[]                  @relation("PersonnelDeactivatedBy")
-  reactivatedPersonnel     Personnel[]                  @relation("PersonnelReactivatedBy")
-  createdBackjobs          Backjob[]                    @relation("BackjobCreatedBy")
-  updatedBackjobs          Backjob[]                    @relation("BackjobUpdatedBy")
-  completedBackjobs        Backjob[]                    @relation("BackjobCompletedBy")
-  cancelledBackjobs        Backjob[]                    @relation("BackjobCancelledBy")
-  rejectedBackjobs         Backjob[]                    @relation("BackjobRejectedBy")
-  backjobEvents            BackjobEvent[]
-  backjobSchedules         BackjobScheduleHistory[]
-  backjobAttachments       BackjobAttachment[]
-  createdWarranties        CustomerWarranty[]           @relation("WarrantyCreatedBy")
-  warrantyEvents           CustomerWarrantyEvent[]      @relation("WarrantyEventActor")
-  warrantyActions          CustomerWarrantyAction[]     @relation("WarrantyActionActor")
-  createdSupplierClaims    SupplierClaim[]               @relation("SupplierClaimCreatedBy")
-  supplierClaimActions     SupplierClaimAction[]         @relation("SupplierClaimActionActor")
-  supplierClaimEvidence    SupplierClaimEvidence[]       @relation("SupplierClaimEvidenceActor")
-  supplierClaimSettlements SupplierClaimSettlement[]     @relation("SupplierClaimSettlementActor")
-  createdAt                DateTime                     @default(now())
-  updatedAt                DateTime                     @updatedAt
+  postedSales                    Sale[]                          @relation("SalePostedBy")
+  collectedPayments              Payment[]                       @relation("PaymentCollectedBy")
+  reviewedPayments               Payment[]                       @relation("PaymentReviewedBy")
+  paymentBranchResponses         Payment[]                       @relation("PaymentBranchRespondedBy")
+  resolvedPayments               Payment[]                       @relation("PaymentResolvedBy")
+  voidedPayments                 Payment[]                       @relation("PaymentVoidedBy")
+  reviewedSales                  SaleAccountingReview[]          @relation("SaleReviewedBy")
+  branchMismatchResponses        SaleAccountingReview[]          @relation("SaleBranchRespondedBy")
+  requestedSaleCorrections       SaleCorrectionRequest[]         @relation("SaleCorrectionRequestedBy")
+  resolvedSaleCorrections        SaleCorrectionRequest[]         @relation("SaleCorrectionResolvedBy")
+  correctedSales                 Sale[]                          @relation("SaleCorrectedBy")
+  resolvedReviews                SaleAccountingReview[]          @relation("SaleResolvedBy")
+  createdProducts                Product[]                       @relation("ProductCreatedBy")
+  updatedProducts                Product[]                       @relation("ProductUpdatedBy")
+  deactivatedProducts            Product[]                       @relation("ProductDeactivatedBy")
+  reactivatedProducts            Product[]                       @relation("ProductReactivatedBy")
+  createdSuppliers               Supplier[]                      @relation("SupplierCreatedBy")
+  updatedSuppliers               Supplier[]                      @relation("SupplierUpdatedBy")
+  deactivatedSuppliers           Supplier[]                      @relation("SupplierDeactivatedBy")
+  reactivatedSuppliers           Supplier[]                      @relation("SupplierReactivatedBy")
+  createdPersonnel               Personnel[]                     @relation("PersonnelCreatedBy")
+  updatedPersonnel               Personnel[]                     @relation("PersonnelUpdatedBy")
+  deactivatedPersonnel           Personnel[]                     @relation("PersonnelDeactivatedBy")
+  reactivatedPersonnel           Personnel[]                     @relation("PersonnelReactivatedBy")
+  createdBackjobs                Backjob[]                       @relation("BackjobCreatedBy")
+  updatedBackjobs                Backjob[]                       @relation("BackjobUpdatedBy")
+  completedBackjobs              Backjob[]                       @relation("BackjobCompletedBy")
+  cancelledBackjobs              Backjob[]                       @relation("BackjobCancelledBy")
+  rejectedBackjobs               Backjob[]                       @relation("BackjobRejectedBy")
+  backjobEvents                  BackjobEvent[]
+  backjobSchedules               BackjobScheduleHistory[]
+  backjobAttachments             BackjobAttachment[]
+  createdWarranties              CustomerWarranty[]              @relation("WarrantyCreatedBy")
+  warrantyEvents                 CustomerWarrantyEvent[]         @relation("WarrantyEventActor")
+  warrantyActions                CustomerWarrantyAction[]        @relation("WarrantyActionActor")
+  createdSupplierClaims          SupplierClaim[]                 @relation("SupplierClaimCreatedBy")
+  supplierClaimActions           SupplierClaimAction[]           @relation("SupplierClaimActionActor")
+  supplierClaimEvidence          SupplierClaimEvidence[]         @relation("SupplierClaimEvidenceActor")
+  supplierClaimSettlements       SupplierClaimSettlement[]       @relation("SupplierClaimSettlementActor")
+  createdAt                      DateTime                        @default(now())
+  updatedAt                      DateTime                        @updatedAt
 
   @@index([locationId])
   @@index([roleDefinitionId])
@@ -880,32 +901,32 @@ model StockTransferResolution {
 }
 
 model StockTransferResolutionLine {
-  id             String                  @id @default(cuid())
-  resolutionId   String
-  transferLineId String
+  id                 String                  @id @default(cuid())
+  resolutionId       String
+  transferLineId     String
   destinationQty     Int
   restoreToSourceQty Int
   lossQty            Int
-  resolution     StockTransferResolution @relation(fields: [resolutionId], references: [id], onDelete: Restrict)
-  transferLine   StockTransferLine       @relation(fields: [transferLineId], references: [id])
+  resolution         StockTransferResolution @relation(fields: [resolutionId], references: [id], onDelete: Restrict)
+  transferLine       StockTransferLine       @relation(fields: [transferLineId], references: [id])
 
   @@unique([resolutionId, transferLineId])
 }
 
 model StockReceipt {
-  id           String              @id @default(cuid())
-  reference    String              @unique
-  supplierId   String
-  supplierName String              @map("supplier")
-  notes        String?             @db.Text
-  locationId   String
-  receivedById String
-  receivedAt   DateTime            @default(now())
-  supplier     Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  location     Location            @relation(fields: [locationId], references: [id])
-  receivedBy   User                @relation("ReceiptReceivedBy", fields: [receivedById], references: [id])
-  lines        StockReceiptLine[]
-  movements    InventoryMovement[]
+  id            String              @id @default(cuid())
+  reference     String              @unique
+  supplierId    String
+  supplierName  String              @map("supplier")
+  notes         String?             @db.Text
+  locationId    String
+  receivedById  String
+  receivedAt    DateTime            @default(now())
+  supplier      Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  location      Location            @relation(fields: [locationId], references: [id])
+  receivedBy    User                @relation("ReceiptReceivedBy", fields: [receivedById], references: [id])
+  lines         StockReceiptLine[]
+  movements     InventoryMovement[]
   supplierClaim SupplierClaim?
 
   @@index([locationId, receivedAt])
@@ -914,52 +935,52 @@ model StockReceipt {
 }
 
 model StockReceiptLine {
-  id              String       @id @default(cuid())
-  receiptId       String
-  productId       String
-  quantity        Int
-  acceptedQuantity Int
-  quarantinedQuantity Int @default(0)
-  missingQuantity Int @default(0)
-  productItemCode String
-  productName     String
-  receipt         StockReceipt @relation(fields: [receiptId], references: [id], onDelete: Restrict)
-  product         Product      @relation(fields: [productId], references: [id])
+  id                  String       @id @default(cuid())
+  receiptId           String
+  productId           String
+  quantity            Int
+  acceptedQuantity    Int
+  quarantinedQuantity Int          @default(0)
+  missingQuantity     Int          @default(0)
+  productItemCode     String
+  productName         String
+  receipt             StockReceipt @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  product             Product      @relation(fields: [productId], references: [id])
 
   @@unique([receiptId, productId])
 }
 
 model SupplierClaim {
-  id                 String              @id @default(cuid())
-  reference          String              @unique
-  idempotencyKey     String              @unique
-  version            Int                 @default(1)
-  reason             SupplierClaimReason @default(SUPPLIER_DAMAGE)
-  status             SupplierClaimStatus @default(DRAFT)
+  id                 String                    @id @default(cuid())
+  reference          String                    @unique
+  idempotencyKey     String                    @unique
+  version            Int                       @default(1)
+  reason             SupplierClaimReason       @default(SUPPLIER_DAMAGE)
+  status             SupplierClaimStatus       @default(DRAFT)
   supplierId         String
   locationId         String
-  sourceReceiptId    String?             @unique
+  sourceReceiptId    String?                   @unique
   customerWarrantyId String?
   supplierName       String
   locationCode       String
   locationName       String
-  notes              String?             @db.Text
+  notes              String?                   @db.Text
   targetDate         DateTime?
   createdById        String
   submittedAt        DateTime?
   completedAt        DateTime?
-  supplier           Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  location           Location            @relation(fields: [locationId], references: [id], onDelete: Restrict)
-  sourceReceipt      StockReceipt?        @relation(fields: [sourceReceiptId], references: [id], onDelete: Restrict)
-  customerWarranty   CustomerWarranty?    @relation(fields: [customerWarrantyId], references: [id], onDelete: Restrict)
-  createdBy          User                @relation("SupplierClaimCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  supplier           Supplier                  @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  location           Location                  @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  sourceReceipt      StockReceipt?             @relation(fields: [sourceReceiptId], references: [id], onDelete: Restrict)
+  customerWarranty   CustomerWarranty?         @relation(fields: [customerWarrantyId], references: [id], onDelete: Restrict)
+  createdBy          User                      @relation("SupplierClaimCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   lines              SupplierClaimLine[]
   actions            SupplierClaimAction[]
   evidence           SupplierClaimEvidence[]
   settlements        SupplierClaimSettlement[]
   movements          InventoryMovement[]
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
 
   @@index([locationId, status, createdAt])
   @@index([targetDate, status])
@@ -968,27 +989,27 @@ model SupplierClaim {
 }
 
 model SupplierClaimLine {
-  id                    String                  @id @default(cuid())
-  claimId               String
-  productId             String
-  reason                SupplierClaimLineReason
-  claimedQuantity       Int
-  quarantinedQuantity   Int
-  missingQuantity       Int
+  id                      String                  @id @default(cuid())
+  claimId                 String
+  productId               String
+  reason                  SupplierClaimLineReason
+  claimedQuantity         Int
+  quarantinedQuantity     Int
+  missingQuantity         Int
   openQuarantinedQuantity Int
-  openMissingQuantity   Int
-  productItemCode       String
-  productName           String
-  unitCost              Decimal                 @db.Decimal(12, 2)
-  notes                 String?                 @db.Text
-  claim                 SupplierClaim           @relation(fields: [claimId], references: [id], onDelete: Restrict)
-  product               Product                 @relation(fields: [productId], references: [id], onDelete: Restrict)
+  openMissingQuantity     Int
+  productItemCode         String
+  productName             String
+  unitCost                Decimal                 @db.Decimal(12, 2)
+  notes                   String?                 @db.Text
+  claim                   SupplierClaim           @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  product                 Product                 @relation(fields: [productId], references: [id], onDelete: Restrict)
 
   @@unique([claimId, productId])
 }
 
 model SupplierClaimAction {
-  id             String        @id @default(cuid())
+  id             String              @id @default(cuid())
   claimId        String
   idempotencyKey String
   action         String
@@ -997,26 +1018,26 @@ model SupplierClaimAction {
   toStatus       SupplierClaimStatus
   detailsJson    Json?
   actorId        String
-  createdAt      DateTime      @default(now())
-  claim          SupplierClaim @relation(fields: [claimId], references: [id], onDelete: Restrict)
-  actor          User          @relation("SupplierClaimActionActor", fields: [actorId], references: [id], onDelete: Restrict)
+  createdAt      DateTime            @default(now())
+  claim          SupplierClaim       @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  actor          User                @relation("SupplierClaimActionActor", fields: [actorId], references: [id], onDelete: Restrict)
 
   @@unique([claimId, idempotencyKey])
   @@index([claimId, createdAt])
 }
 
 model SupplierClaimEvidence {
-  id          String        @id @default(cuid())
-  claimId     String
-  storageKey  String        @unique
-  fileName    String
-  contentType String
-  size        Int
-  caption     String?
+  id           String        @id @default(cuid())
+  claimId      String
+  storageKey   String        @unique
+  fileName     String
+  contentType  String
+  size         Int
+  caption      String?
   uploadedById String
-  createdAt   DateTime      @default(now())
-  claim       SupplierClaim @relation(fields: [claimId], references: [id], onDelete: Restrict)
-  uploadedBy  User          @relation("SupplierClaimEvidenceActor", fields: [uploadedById], references: [id], onDelete: Restrict)
+  createdAt    DateTime      @default(now())
+  claim        SupplierClaim @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  uploadedBy   User          @relation("SupplierClaimEvidenceActor", fields: [uploadedById], references: [id], onDelete: Restrict)
 
   @@index([claimId, createdAt])
 }
@@ -1040,30 +1061,30 @@ model SupplierClaimSettlement {
 }
 
 model InventoryMovement {
-  id         String                @id @default(cuid())
-  transferId String?
-  receiptId  String?
-  backjobPartId String?
-  warrantyId String?
-  supplierClaimId String?
-  productId  String
-  locationId String?
-  quantity   Int
-  type       InventoryMovementType
-  actorId    String
-  reference  String?
-  remarks    String?               @db.Text
-  occurredAt DateTime              @default(now())
-  createdAt  DateTime              @default(now())
-  serverRecordedAt DateTime?       @default(now())
-  transfer   StockTransfer?        @relation(fields: [transferId], references: [id], onDelete: Restrict)
-  receipt    StockReceipt?         @relation(fields: [receiptId], references: [id], onDelete: Restrict)
-  backjobPart BackjobPart?         @relation(fields: [backjobPartId], references: [id], onDelete: Restrict)
-  warranty   CustomerWarranty?     @relation(fields: [warrantyId], references: [id], onDelete: Restrict)
-  supplierClaim SupplierClaim?     @relation(fields: [supplierClaimId], references: [id], onDelete: Restrict)
-  product    Product               @relation(fields: [productId], references: [id])
-  location   Location?             @relation(fields: [locationId], references: [id])
-  actor      User                  @relation(fields: [actorId], references: [id])
+  id               String                @id @default(cuid())
+  transferId       String?
+  receiptId        String?
+  backjobPartId    String?
+  warrantyId       String?
+  supplierClaimId  String?
+  productId        String
+  locationId       String?
+  quantity         Int
+  type             InventoryMovementType
+  actorId          String
+  reference        String?
+  remarks          String?               @db.Text
+  occurredAt       DateTime              @default(now())
+  createdAt        DateTime              @default(now())
+  serverRecordedAt DateTime?             @default(now())
+  transfer         StockTransfer?        @relation(fields: [transferId], references: [id], onDelete: Restrict)
+  receipt          StockReceipt?         @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  backjobPart      BackjobPart?          @relation(fields: [backjobPartId], references: [id], onDelete: Restrict)
+  warranty         CustomerWarranty?     @relation(fields: [warrantyId], references: [id], onDelete: Restrict)
+  supplierClaim    SupplierClaim?        @relation(fields: [supplierClaimId], references: [id], onDelete: Restrict)
+  product          Product               @relation(fields: [productId], references: [id])
+  location         Location?             @relation(fields: [locationId], references: [id])
+  actor            User                  @relation(fields: [actorId], references: [id])
 
   @@index([transferId])
   @@index([receiptId])
@@ -1076,22 +1097,23 @@ model InventoryMovement {
 }
 
 model Customer {
-  id          String          @id @default(cuid())
+  id          String             @id @default(cuid())
   name        String
   mobile      String?
   email       String?
   address     String?
   source      String?
-  notes       String?         @db.Text
-  status      CustomerStatus  @default(ACTIVE)
+  notes       String?            @db.Text
+  status      CustomerStatus     @default(ACTIVE)
   createdById String?
-  createdBy   User?           @relation("CustomerCreatedBy", fields: [createdById], references: [id])
+  createdBy   User?              @relation("CustomerCreatedBy", fields: [createdById], references: [id])
   orders      CustomerOrder[]
   sales       Sale[]
   backjobs    Backjob[]
   warranties  CustomerWarranty[]
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  payments    Payment[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
 
   @@index([name])
   @@index([mobile])
@@ -1116,21 +1138,21 @@ model ManualReceipt {
 }
 
 model CustomerOrder {
-  id                       String              @id @default(cuid())
-  reference                String              @unique
+  id                       String                          @id @default(cuid())
+  reference                String                          @unique
   locationId               String
   customerId               String
-  status                   CustomerOrderStatus @default(RESERVED)
+  status                   CustomerOrderStatus             @default(RESERVED)
   type                     CustomerOrderType
-  downpaymentAmount        Decimal             @default(0) @db.Decimal(12, 2)
-  downpaymentReceiptNumber String?             @unique
-  finalReceiptNumber       String?             @unique
-  totalAmount              Decimal             @db.Decimal(12, 2)
-  remainingBalance         Decimal             @db.Decimal(12, 2)
+  downpaymentAmount        Decimal                         @default(0) @db.Decimal(12, 2)
+  downpaymentReceiptNumber String?                         @unique
+  finalReceiptNumber       String?                         @unique
+  totalAmount              Decimal                         @db.Decimal(12, 2)
+  remainingBalance         Decimal                         @db.Decimal(12, 2)
   expectedReleaseDate      DateTime?
   source                   String?
-  notes                    String?             @db.Text
-  cancellationNote         String?             @db.Text
+  notes                    String?                         @db.Text
+  cancellationNote         String?                         @db.Text
   createdById              String
   releasedById             String?
   cancelledById            String?
@@ -1143,18 +1165,19 @@ model CustomerOrder {
   salespersonUpdatedAt     DateTime?
   releasedAt               DateTime?
   cancelledAt              DateTime?
-  location                 Location            @relation(fields: [locationId], references: [id])
-  customer                 Customer            @relation(fields: [customerId], references: [id])
-  createdBy                User                @relation("CustomerOrderCreatedBy", fields: [createdById], references: [id])
-  releasedBy               User?               @relation("CustomerOrderReleasedBy", fields: [releasedById], references: [id])
-  cancelledBy              User?               @relation("CustomerOrderCancelledBy", fields: [cancelledById], references: [id])
-  salesperson              Personnel?          @relation(fields: [salespersonId], references: [id], onDelete: Restrict)
-  salespersonUpdatedBy     User?               @relation("CustomerOrderSalespersonUpdatedBy", fields: [salespersonUpdatedById], references: [id])
+  location                 Location                        @relation(fields: [locationId], references: [id])
+  customer                 Customer                        @relation(fields: [customerId], references: [id])
+  createdBy                User                            @relation("CustomerOrderCreatedBy", fields: [createdById], references: [id])
+  releasedBy               User?                           @relation("CustomerOrderReleasedBy", fields: [releasedById], references: [id])
+  cancelledBy              User?                           @relation("CustomerOrderCancelledBy", fields: [cancelledById], references: [id])
+  salesperson              Personnel?                      @relation(fields: [salespersonId], references: [id], onDelete: Restrict)
+  salespersonUpdatedBy     User?                           @relation("CustomerOrderSalespersonUpdatedBy", fields: [salespersonUpdatedById], references: [id])
   salespersonEvents        CustomerOrderSalespersonEvent[]
   lines                    CustomerOrderLine[]
   sale                     Sale?
-  createdAt                DateTime            @default(now())
-  updatedAt                DateTime            @updatedAt
+  payments                 Payment[]
+  createdAt                DateTime                        @default(now())
+  updatedAt                DateTime                        @updatedAt
 
   @@index([locationId, status])
   @@index([customerId])
@@ -1164,22 +1187,22 @@ model CustomerOrder {
 }
 
 model CustomerOrderSalespersonEvent {
-  id                            String        @id @default(cuid())
-  orderId                       String
-  previousSalespersonId         String?
-  previousSalespersonName       String?
-  previousSalespersonLocationId String?
+  id                              String        @id @default(cuid())
+  orderId                         String
+  previousSalespersonId           String?
+  previousSalespersonName         String?
+  previousSalespersonLocationId   String?
   previousSalespersonLocationCode String?
   previousSalespersonLocationName String?
-  newSalespersonId              String
-  newSalespersonName            String
-  newSalespersonLocationId      String
-  newSalespersonLocationCode    String
-  newSalespersonLocationName    String
-  actorId                       String
-  occurredAt                    DateTime      @default(now())
-  order                         CustomerOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  actor                         User          @relation("CustomerOrderSalespersonEventActor", fields: [actorId], references: [id], onDelete: Restrict)
+  newSalespersonId                String
+  newSalespersonName              String
+  newSalespersonLocationId        String
+  newSalespersonLocationCode      String
+  newSalespersonLocationName      String
+  actorId                         String
+  occurredAt                      DateTime      @default(now())
+  order                           CustomerOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  actor                           User          @relation("CustomerOrderSalespersonEventActor", fields: [actorId], references: [id], onDelete: Restrict)
 
   @@index([orderId, occurredAt])
 }
@@ -1201,46 +1224,47 @@ model CustomerOrderLine {
 }
 
 model Sale {
-  id                  String                  @id @default(cuid())
-  reference           String                  @unique
-  manualReceiptNumber String
-  receiptBooklet      String                  @default("")
-  version             Int                     @default(1)
-  locationId          String
-  customerId          String?
-  orderId             String?                 @unique
-  correctionOfId      String?
-  correctedById       String?
-  correctedAt         DateTime?
-  status              SaleStatus              @default(POSTED)
-  paymentMethod       PaymentMethod
-  totalAmount         Decimal                 @db.Decimal(12, 2)
-  discountAmount      Decimal                 @default(0) @db.Decimal(12, 2)
-  amountPaid          Decimal                 @db.Decimal(12, 2)
-  notes               String?                 @db.Text
-  postedById          String
-  salespersonId       String?
-  salespersonName     String?
-  salespersonLocationId String?
+  id                      String                  @id @default(cuid())
+  reference               String                  @unique
+  manualReceiptNumber     String
+  receiptBooklet          String                  @default("")
+  version                 Int                     @default(1)
+  locationId              String
+  customerId              String?
+  orderId                 String?                 @unique
+  correctionOfId          String?
+  correctedById           String?
+  correctedAt             DateTime?
+  status                  SaleStatus              @default(POSTED)
+  paymentMethod           PaymentMethod
+  totalAmount             Decimal                 @db.Decimal(12, 2)
+  discountAmount          Decimal                 @default(0) @db.Decimal(12, 2)
+  amountPaid              Decimal                 @db.Decimal(12, 2)
+  notes                   String?                 @db.Text
+  postedById              String
+  salespersonId           String?
+  salespersonName         String?
+  salespersonLocationId   String?
   salespersonLocationCode String?
   salespersonLocationName String?
-  postedAt            DateTime                @default(now())
-  location            Location                @relation(fields: [locationId], references: [id])
-  customer            Customer?               @relation(fields: [customerId], references: [id])
-  order               CustomerOrder?          @relation(fields: [orderId], references: [id])
-  postedBy            User                    @relation("SalePostedBy", fields: [postedById], references: [id])
-  salesperson         Personnel?              @relation(fields: [salespersonId], references: [id], onDelete: Restrict)
-  correctionOf        Sale?                   @relation("SaleCorrections", fields: [correctionOfId], references: [id], onDelete: Restrict)
-  corrections         Sale[]                  @relation("SaleCorrections")
-  originalBackjobs    Backjob[]               @relation("BackjobOriginalSale")
-  chargeBackjobs      Backjob[]               @relation("BackjobChargeSale")
-  warranties          CustomerWarranty[]
-  correctedBy         User?                   @relation("SaleCorrectedBy", fields: [correctedById], references: [id])
-  lines               SaleLine[]
-  accountingReview    SaleAccountingReview?
-  correctionRequests  SaleCorrectionRequest[]
-  createdAt           DateTime                @default(now())
-  updatedAt           DateTime                @updatedAt
+  postedAt                DateTime                @default(now())
+  location                Location                @relation(fields: [locationId], references: [id])
+  customer                Customer?               @relation(fields: [customerId], references: [id])
+  order                   CustomerOrder?          @relation(fields: [orderId], references: [id])
+  postedBy                User                    @relation("SalePostedBy", fields: [postedById], references: [id])
+  salesperson             Personnel?              @relation(fields: [salespersonId], references: [id], onDelete: Restrict)
+  correctionOf            Sale?                   @relation("SaleCorrections", fields: [correctionOfId], references: [id], onDelete: Restrict)
+  corrections             Sale[]                  @relation("SaleCorrections")
+  originalBackjobs        Backjob[]               @relation("BackjobOriginalSale")
+  chargeBackjobs          Backjob[]               @relation("BackjobChargeSale")
+  warranties              CustomerWarranty[]
+  correctedBy             User?                   @relation("SaleCorrectedBy", fields: [correctedById], references: [id])
+  lines                   SaleLine[]
+  accountingReview        SaleAccountingReview?
+  correctionRequests      SaleCorrectionRequest[]
+  payment                 Payment?
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
 
   @@unique([locationId, receiptBooklet, manualReceiptNumber])
   @@index([locationId, postedAt])
@@ -1252,23 +1276,91 @@ model Sale {
 }
 
 model SaleLine {
-  id              String  @id @default(cuid())
-  saleId          String
-  productId       String
-  productItemCode String
-  productName     String
-  quantity        Int
-  unitPrice       Decimal @db.Decimal(12, 2)
+  id                     String             @id @default(cuid())
+  saleId                 String
+  productId              String
+  productItemCode        String
+  productName            String
+  quantity               Int
+  unitPrice              Decimal            @db.Decimal(12, 2)
   warrantyDurationMonths Int?
-  warrantyExpiresAt DateTime?
-  sale            Sale    @relation(fields: [saleId], references: [id], onDelete: Restrict)
-  product         Product @relation(fields: [productId], references: [id])
-  backjobs        Backjob[]
-  warranties      CustomerWarranty[]
-  backjobItems    BackjobItem[]
+  warrantyExpiresAt      DateTime?
+  sale                   Sale               @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  product                Product            @relation(fields: [productId], references: [id])
+  backjobs               Backjob[]
+  warranties             CustomerWarranty[]
+  backjobItems           BackjobItem[]
 
   @@index([saleId])
   @@index([productId])
+}
+
+model Payment {
+  id                             String                      @id @default(cuid())
+  reference                      String                      @unique
+  kind                           PaymentKind
+  status                         PaymentStatus               @default(ACTIVE)
+  locationId                     String
+  customerId                     String?
+  orderId                        String?
+  saleId                         String?                     @unique
+  amount                         Decimal                     @db.Decimal(12, 2)
+  method                         PaymentMethod
+  receiptBooklet                 String                      @default("")
+  receiptNumber                  String
+  notes                          String?                     @db.Text
+  salespersonId                  String?
+  salespersonName                String?
+  salespersonLocationId          String?
+  salespersonLocationCode        String?
+  salespersonLocationName        String?
+  collectedById                  String
+  collectedAt                    DateTime                    @default(now())
+  reviewStatus                   AccountingReviewStatus      @default(UNVERIFIED)
+  verifiedAt                     DateTime?
+  mismatchCategory               String?
+  reviewNotes                    String?                     @db.Text
+  receiptPhotoKey                String?
+  receiptPhotoType               String?
+  evidenceUploadedAt             DateTime?
+  reviewedById                   String?
+  reviewedAt                     DateTime?
+  branchResponse                 String?
+  branchResponseNote             String?                     @db.Text
+  branchReplacementReceiptNumber String?
+  branchRespondedById            String?
+  branchRespondedAt              DateTime?
+  resolutionAction               AccountingResolutionAction?
+  resolutionNote                 String?                     @db.Text
+  resolvedById                   String?
+  resolvedAt                     DateTime?
+  voidReason                     String?                     @db.Text
+  voidedById                     String?
+  voidedAt                       DateTime?
+  location                       Location                    @relation(fields: [locationId], references: [id])
+  customer                       Customer?                   @relation(fields: [customerId], references: [id])
+  order                          CustomerOrder?              @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  sale                           Sale?                       @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  salesperson                    Personnel?                  @relation(fields: [salespersonId], references: [id], onDelete: Restrict)
+  collectedBy                    User                        @relation("PaymentCollectedBy", fields: [collectedById], references: [id], onDelete: Restrict)
+  reviewedBy                     User?                       @relation("PaymentReviewedBy", fields: [reviewedById], references: [id])
+  branchRespondedBy              User?                       @relation("PaymentBranchRespondedBy", fields: [branchRespondedById], references: [id])
+  resolvedBy                     User?                       @relation("PaymentResolvedBy", fields: [resolvedById], references: [id])
+  voidedBy                       User?                       @relation("PaymentVoidedBy", fields: [voidedById], references: [id])
+  createdAt                      DateTime                    @default(now())
+  updatedAt                      DateTime                    @updatedAt
+
+  @@index([locationId, collectedAt])
+  @@index([locationId, reviewStatus])
+  @@index([verifiedAt])
+  @@index([orderId])
+  @@index([customerId])
+  @@index([salespersonId, verifiedAt])
+  @@index([collectedById])
+  @@index([reviewedById])
+  @@index([branchRespondedById])
+  @@index([resolvedById])
+  @@index([voidedById])
 }
 
 model SaleAccountingReview {
@@ -1336,19 +1428,19 @@ model SaleCorrectionRequest {
 }
 
 model AuditLog {
-  id           String   @id @default(cuid())
-  occurredAt   DateTime @default(now())
-  category     String
-  action       String
-  actorId      String?
-  actorLabel   String
-  reference    String   @default("-")
-  locationLabel String  @default("-")
-  details      String   @db.Text
-  metadataJson String?  @db.Text
-  ipAddress    String?
-  userAgent    String?
-  actor        User?    @relation("AuditLogActor", fields: [actorId], references: [id], onDelete: SetNull)
+  id            String   @id @default(cuid())
+  occurredAt    DateTime @default(now())
+  category      String
+  action        String
+  actorId       String?
+  actorLabel    String
+  reference     String   @default("-")
+  locationLabel String   @default("-")
+  details       String   @db.Text
+  metadataJson  String?  @db.Text
+  ipAddress     String?
+  userAgent     String?
+  actor         User?    @relation("AuditLogActor", fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([occurredAt])
   @@index([category, occurredAt])

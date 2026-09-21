@@ -601,6 +601,9 @@ export async function getAuditTrail(
     ["Sales", () => saleEntries(range)],
     ["Sales", () => correctionEntries(range)],
     ["Receipt Verification", () => reviewEntries(range)],
+    // Receipt photo changes and every payment-receipt review are written to the
+    // audit log rather than derived, so that category has to read them too.
+    ["Receipt Verification", () => loggedEntries(range, "Receipt Verification")],
     ["Customer Orders", () => orderEntries(range)],
     ["Stock Transfers", () => transferEntries(range)],
     ["Stock Transfers", () => transferCaseEntries(range)],
