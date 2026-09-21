@@ -4,7 +4,10 @@ const reportPrisma = vi.hoisted(() => ({
   location: { findMany: vi.fn() },
   backjob: { findMany: vi.fn() },
   sale: { findMany: vi.fn() },
-  payment: { findMany: vi.fn() },
+  payment: { findMany: vi.fn(), aggregate: vi.fn() },
+  product: { findMany: vi.fn() },
+  inventoryBalance: { findMany: vi.fn() },
+  saleLine: { findMany: vi.fn() },
 }));
 
 vi.mock("server-only", () => ({}));
@@ -123,6 +126,8 @@ describe("sales and salesperson sales reports", () => {
   beforeEach(() => {
     reportPrisma.location.findMany.mockReset().mockResolvedValue([{ id: "branch", code: "B", name: "Branch" }]);
     reportPrisma.payment.findMany.mockReset();
+    // Nothing is waiting on Accounting unless a test says so.
+    reportPrisma.payment.aggregate.mockReset().mockResolvedValue({ _count: { _all: 0 }, _sum: { amount: null } });
   });
 
   // One verified receipt in the payment ledger: a direct sale carries the goods,
@@ -130,7 +135,7 @@ describe("sales and salesperson sales reports", () => {
   function sale(id: string, salespersonId: string | null, salespersonName: string | null, amount: number, units = 1) {
     return {
       id, salespersonId, salespersonName, kind: "DIRECT_SALE", receiptNumber: id, receiptBooklet: null, method: "CASH",
-      amount: { toNumber: () => amount }, verifiedAt: new Date("2026-09-10T00:00:00Z"),
+      amount: { toNumber: () => amount }, verifiedAt: new Date("2026-09-10T00:00:00Z"), collectedAt: new Date("2026-09-08T00:00:00Z"),
       customer: null, location: { code: "B", name: "Branch" }, collectedBy: { name: "Encoder" },
       sale: { discountAmount: { toNumber: () => amount / 10 }, lines: [{ quantity: units }] },
     };
@@ -165,10 +170,10 @@ describe("sales and salesperson sales reports", () => {
     expect(reportPrisma.payment.findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
       where: {
         locationId: { in: ["branch"] }, status: "ACTIVE", salespersonId: undefined, kind: undefined, method: undefined,
-        reviewStatus: "VERIFIED", verifiedAt: { gte: new Date("2026-08-31T16:00:00Z"), lt: new Date("2026-09-30T16:00:00Z") },
+        reviewStatus: "VERIFIED", collectedAt: { gte: new Date("2026-08-31T16:00:00Z"), lt: new Date("2026-09-30T16:00:00Z") },
       },
       select: expect.objectContaining({ salespersonId: true, salespersonName: true }),
-      orderBy: [{ verifiedAt: "desc" }, { id: "desc" }],
+      orderBy: [{ collectedAt: "desc" }, { id: "desc" }],
     }));
   });
 
@@ -207,7 +212,7 @@ describe("sales and salesperson sales reports", () => {
     function receipt(id: string, kind: string, amount: number, units = 0) {
       return {
         id, salespersonId: "person-1", salespersonName: "Same name", kind, receiptNumber: id, receiptBooklet: null, method: "CASH",
-        amount: { toNumber: () => amount }, verifiedAt: new Date("2026-09-10T00:00:00Z"),
+        amount: { toNumber: () => amount }, verifiedAt: new Date("2026-09-10T00:00:00Z"), collectedAt: new Date("2026-09-08T00:00:00Z"),
         customer: { name: "Buyer" }, location: { code: "B", name: "Branch" }, collectedBy: { name: "Cashier" },
         sale: units ? { discountAmount: { toNumber: () => 0 }, lines: [{ quantity: units }] } : null,
       };
@@ -232,11 +237,106 @@ describe("sales and salesperson sales reports", () => {
     expect(report.grandTotal.units).toBe(3);
   });
 
+  it("measures the period on the sale date by default and on verification when asked", async () => {
+    // The first query of each report builds the salesperson filter; the second
+    // fetches the receipts themselves, and this test only cares about the where.
+    reportPrisma.payment.findMany.mockImplementation((args) => Promise.resolve(args.distinct ? attribution : []));
+    reportPrisma.payment.aggregate.mockResolvedValue({ _count: { _all: 2 }, _sum: { amount: { toNumber: () => 45_000 } } });
+
+    const onSaleDate = await reports.getReport(actor, { type: "sales", ...query });
+    expect(reportPrisma.payment.findMany.mock.calls[1][0].where).toMatchObject({
+      collectedAt: { gte: new Date("2026-08-31T16:00:00Z"), lt: new Date("2026-09-30T16:00:00Z") },
+    });
+    expect(reportPrisma.payment.findMany.mock.calls[1][0].where.verifiedAt).toBeUndefined();
+    if (onSaleDate.type !== "sales") throw new Error("Expected sales report");
+    expect(onSaleDate.dateBasis).toBe("SALE_DATE");
+    // A printed report never hides what Accounting has not caught up on.
+    expect(onSaleDate.pending).toEqual({ count: 2, amount: 45_000 });
+    expect(onSaleDate.appliedFilters).toContainEqual({ label: "Dates counted on", value: "Sale date" });
+
+    const onVerifiedDate = await reports.getReport(actor, { type: "sales", ...query, dateBasis: "VERIFIED_DATE" });
+    expect(reportPrisma.payment.findMany.mock.calls[3][0].where).toMatchObject({
+      verifiedAt: { gte: new Date("2026-08-31T16:00:00Z"), lt: new Date("2026-09-30T16:00:00Z") },
+    });
+    expect(reportPrisma.payment.findMany.mock.calls[3][0].where.collectedAt).toBeUndefined();
+    if (onVerifiedDate.type !== "sales") throw new Error("Expected sales report");
+    expect(onVerifiedDate.appliedFilters).toContainEqual({ label: "Dates counted on", value: "Verification date" });
+    // Whichever basis is chosen, the pending figure is always about receipts
+    // issued in the period, which is the money the branch is still holding.
+    expect(onVerifiedDate.pending).toEqual({ count: 2, amount: 45_000 });
+  });
+
   it("keeps salesperson percentages finite when all sale amounts are zero", async () => {
     reportPrisma.payment.findMany.mockResolvedValueOnce(attribution).mockResolvedValueOnce([sale("zero", "person-1", "Same name", 0)]);
     const report = await reports.getReport(actor, { type: "salesperson-sales", ...query });
     if (report.type !== "salesperson-sales") throw new Error("Expected salesperson sales report");
     expect(report.salespersonTotals).toEqual([{ salespersonId: "person-1", salesperson: "Same name", transactionCount: 1, units: 1, totalDiscount: 0, averageSale: 0, totalAmount: 0, percentage: 0 }]);
+  });
+});
+
+describe("stock movement report", () => {
+  const actor = { userId: "actor", roleDefinitionId: "role", isOwner: false, capabilities: ["reports:view"], locationIds: ["branch"] };
+  const query = { type: "stock-movement" as const, dateFrom: "2026-09-01", dateTo: "2026-09-30", locationId: "branch" };
+
+  beforeEach(() => {
+    reportPrisma.location.findMany.mockReset().mockResolvedValue([{ id: "branch", code: "B", name: "Branch" }]);
+    reportPrisma.product.findMany.mockReset().mockResolvedValue([
+      { id: "fast", itemCode: "F-1", name: "Fast seller", category: "Bars", brand: "Acme" },
+      { id: "slow", itemCode: "S-1", name: "Slow seller", category: "Bars", brand: "Acme" },
+      { id: "dead", itemCode: "D-1", name: "Dead stock", category: "Racks", brand: null },
+      { id: "never", itemCode: "N-1", name: "Never stocked here", category: "Racks", brand: null },
+    ]);
+    reportPrisma.inventoryBalance.findMany.mockReset().mockResolvedValue([
+      { id: "b1", productId: "fast", locationId: "branch", onHand: 10, reserved: 2, quarantined: 0 },
+      { id: "b2", productId: "slow", locationId: "branch", onHand: 40, reserved: 0, quarantined: 0 },
+      { id: "b3", productId: "dead", locationId: "branch", onHand: 26, reserved: 0, quarantined: 0 },
+    ]);
+    reportPrisma.saleLine.findMany.mockReset().mockResolvedValue([
+      { productId: "fast", quantity: 6, unitPrice: { toNumber: () => 1_000 }, sale: { locationId: "branch", postedAt: new Date("2026-09-20T00:00:00Z") } },
+      { productId: "fast", quantity: 2, unitPrice: { toNumber: () => 1_000 }, sale: { locationId: "branch", postedAt: new Date("2026-09-27T00:00:00Z") } },
+      { productId: "slow", quantity: 1, unitPrice: { toNumber: () => 500 }, sale: { locationId: "branch", postedAt: new Date("2026-09-03T00:00:00Z") } },
+    ]);
+  });
+
+  it("grades each product by what it sold and puts the dead stock first", async () => {
+    const report = await reports.getReport(actor, query);
+    if (report.type !== "stock-movement") throw new Error("Expected stock movement report");
+
+    // Slowest first: the stock nobody bought is what a monthly review looks for.
+    expect(report.rows.map((row) => [row.itemCode, row.soldUnits, row.grade])).toEqual([
+      ["D-1", 0, "NO_MOVEMENT"],
+      ["S-1", 1, "SLOW"],
+      ["F-1", 8, "FAST"],
+    ]);
+    // A product this branch never stocked and never sold is not on the sheet.
+    expect(report.rows.some((row) => row.itemCode === "N-1")).toBe(false);
+    // 8 units across two sales, latest wins for "last sold".
+    expect(report.rows[2]).toMatchObject({ soldAmount: 8_000, available: 8, coverPeriods: 1, lastSoldAt: "2026-09-27T00:00:00.000Z" });
+    // 40 available against 1 sold is 40 periods of cover, far past slow.
+    expect(report.rows[1]).toMatchObject({ coverPeriods: 40, lastSoldAt: "2026-09-03T00:00:00.000Z" });
+    expect(report.rows[0]).toMatchObject({ coverPeriods: null, lastSoldAt: null });
+    expect(report.totals).toMatchObject({ noMovementCount: 1, slowCount: 1, fastCount: 1, soldUnits: 9, soldAmount: 8_500, onHand: 76 });
+    expect(report.appliedFilters).toContainEqual({ label: "Sold counted on", value: "Posted sales, voided excluded" });
+  });
+
+  it("counts only posted sales inside the period at authorized branches", async () => {
+    await reports.getReport(actor, query);
+    expect(reportPrisma.saleLine.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        sale: {
+          status: "POSTED",
+          locationId: { in: ["branch"] },
+          postedAt: { gte: new Date("2026-08-31T16:00:00Z"), lt: new Date("2026-09-30T16:00:00Z") },
+        },
+      }),
+    }));
+  });
+
+  it("narrows to a single movement grade when asked", async () => {
+    const report = await reports.getReport(actor, { ...query, movement: "NO_MOVEMENT" });
+    if (report.type !== "stock-movement") throw new Error("Expected stock movement report");
+    expect(report.rows.map((row) => row.itemCode)).toEqual(["D-1"]);
+    expect(report.totals).toMatchObject({ noMovementCount: 1, slowCount: 0, fastCount: 0, soldUnits: 0 });
   });
 });
 

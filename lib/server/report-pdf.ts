@@ -5,7 +5,14 @@ import { createPdfBuilder, dateTime, humanize, money, type PdfColumn } from "@/l
 import type { ReportResult, SalesReport } from "@/lib/contracts/reports";
 
 export async function createReportPdf(report: ReportResult, metadata: { generatedBy: string }): Promise<ArrayBuffer> {
-  const title = report.type === "sales" ? "Sales Report" : report.type === "salesperson-sales" ? "Sales by Salesperson" : report.type === "inventory-summary" ? "Inventory Summary" : "Returns & Warranty";
+  const TITLES: Record<ReportResult["type"], string> = {
+    sales: "Sales Report",
+    "salesperson-sales": "Sales by Salesperson",
+    "inventory-summary": "Inventory Summary",
+    "stock-movement": "Stock Movement",
+    "returns-warranty": "Returns & Warranty",
+  };
+  const title = TITLES[report.type];
   const { text, table, space, finish } = await createPdfBuilder({
     title,
     documentTitle: `Chezcar ${title}`,
@@ -20,12 +27,23 @@ export async function createReportPdf(report: ReportResult, metadata: { generate
   text(`Authorized scope: ${report.effectiveScope.map((row) => row.label).join(", ") || "No authorized locations"}`);
   text(report.type === "inventory-summary"
     ? "Current branch snapshot. Available = on hand - reserved - quarantined. Positive available stock only; Stock Room and in-transit stock excluded. Comparison cells with no positive stock show 0."
-    : `From ${report.dateFrom} to ${report.dateTo}, inclusive. Based on ${report.type === "sales" || report.type === "salesperson-sales" ? "verification" : "case creation"} date in Asia/Manila.`);
+    : `From ${report.dateFrom} to ${report.dateTo}, inclusive. Based on ${
+        report.type === "sales" || report.type === "salesperson-sales"
+          ? report.dateBasis === "VERIFIED_DATE" ? "verification" : "sale"
+          : report.type === "stock-movement" ? "sale" : "case creation"
+      } date in Asia/Manila.`);
   text(`Applied filters: ${report.appliedFilters.map((filter) => `${filter.label}: ${filter.value}`).join("; ") || "None"}`);
   space(16);
 
   if (report.type === "sales" || report.type === "salesperson-sales") {
     const total = report.grandTotal;
+    text(report.dateBasis === "VERIFIED_DATE"
+      ? "Period measured on the date Accounting verified each receipt."
+      : "Period measured on the date each receipt was issued, so this printout does not change as Accounting works through its queue.");
+    // The printed copy states its own gap rather than quietly understating.
+    if (report.pending.count > 0) {
+      text(`Still unverified: ${report.pending.count} receipt(s) issued in this period worth ${money(report.pending.amount)}. They are excluded from every total below.`);
+    }
     table("Sales overview", [{ header: "Measure", width: 3 }, { header: "Total", width: 2, numeric: true }], [
       ["Verified transactions", String(total.transactionCount)], ["Units sold", String(total.units)],
       ["Discounts", money(total.totalDiscount)], ["Average sale", money(total.averageSale)],
@@ -61,12 +79,12 @@ export async function createReportPdf(report: ReportResult, metadata: { generate
       ? report.salespersonTotals.map((group) => ({ heading: `Salesperson: ${group.salesperson} - ${group.transactionCount} receipt(s)`, rows: salesByPerson.get(group.salespersonId) ?? [], subtotal: group }))
       : [{ heading: "Verified sales detail", rows: report.rows, subtotal: null }];
     for (const group of detailGroups) table(group.heading, [
-      { header: "Receipt / verified", width: 1.6 }, { header: "Branch", width: 1.35 },
+      { header: "Receipt / sold / verified", width: 1.7 }, { header: "Branch", width: 1.25 },
       { header: "Customer / personnel", width: 2.3 }, { header: "Source / payment / status", width: 1.5 },
       { header: "Units", width: 0.6, numeric: true }, { header: "Discount", width: 1.25, numeric: true },
       { header: "Final amount", width: 1.4, numeric: true },
     ], [...group.rows.map((row) => [
-      `${row.manualReceiptNumber}\n${dateTime(row.verifiedAt)}`, row.branch,
+      `${row.manualReceiptNumber}\nSold ${dateTime(row.soldAt)}\nVerified ${dateTime(row.verifiedAt)}`, row.branch,
       `Customer: ${row.customer}\nSalesperson: ${row.salesperson}\nEncoder: ${row.encoder}`,
       `${row.source}\n${humanize(row.paymentMethod)}\n${humanize(row.verificationStatus)}`,
       String(row.units), money(row.discountAmount), money(row.totalAmount),
@@ -93,6 +111,33 @@ export async function createReportPdf(report: ReportResult, metadata: { generate
         ], true);
       }
     }
+  } else if (report.type === "stock-movement") {
+    const totals = report.totals;
+    text("Sold counts every posted sale in the period, voided sales excluded, so it matches what left the shelf whether or not Accounting has verified the receipt. Cover is how many more periods the available stock lasts at this period's rate.");
+    text("Write the shelf count in the Actual column and the difference in Variance. Rows are ordered slowest first.");
+    table("Movement overview", [{ header: "Measure", width: 3 }, { header: "Total", width: 2, numeric: true }], [
+      ["No movement", String(totals.noMovementCount)], ["Slow moving", String(totals.slowCount)],
+      ["Fast moving", String(totals.fastCount)], ["Units sold", String(totals.soldUnits)],
+      ["Sales value", money(totals.soldAmount)], ["On hand", String(totals.onHand)],
+      ["Available", String(totals.available)], ["Products", String(totals.productCount)],
+    ], true);
+    table("Stock movement detail", [
+      { header: "Item code", width: 1.2 }, { header: "Product", width: 2.6 }, { header: "Branch", width: 1.4 },
+      { header: "Movement", width: 1.1 }, { header: "On hand", width: 0.8, numeric: true },
+      { header: "Available", width: 0.9, numeric: true }, { header: "Sold", width: 0.7, numeric: true },
+      { header: "Cover", width: 0.8, numeric: true }, { header: "Last sold", width: 1.2 },
+      { header: "Actual", width: 0.9, numeric: true }, { header: "Variance", width: 0.9, numeric: true },
+    ], [
+      ...report.rows.map((row) => [
+        row.itemCode, row.product, row.branch,
+        row.grade === "NO_MOVEMENT" ? "NO MOVEMENT" : row.grade === "SLOW" ? "Slow" : "Fast",
+        String(row.onHand), String(row.available), String(row.soldUnits),
+        row.coverPeriods === null ? "-" : `${row.coverPeriods.toFixed(1)}x`,
+        row.lastSoldAt ? dateTime(row.lastSoldAt) : "Never",
+        "", "",
+      ]),
+      ["OVERALL TOTAL", "", "", "", String(totals.onHand), String(totals.available), String(totals.soldUnits), "", "", "", ""],
+    ], true);
   } else {
     const total = report.totals;
     text("Backjob charges are recorded case amounts, not collected payments or additional Sales revenue. Supplier refunds/credits are separate claim tracking, not ledger totals. Amounts follow applied case filters, including status.");

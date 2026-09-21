@@ -2,10 +2,19 @@ export const REPORT_TYPES = [
   "sales",
   "salesperson-sales",
   "inventory-summary",
+  "stock-movement",
   "returns-warranty",
 ] as const;
 
 export const SALE_SOURCES = ["DIRECT_SALE", "CUSTOMER_ORDER"] as const;
+/**
+ * Which date the sales period is measured on. SALE_DATE is the day the receipt
+ * was issued, so a printed month stops changing as Accounting catches up;
+ * VERIFIED_DATE is the day Accounting confirmed it, which is what Accounting
+ * itself reconciles against.
+ */
+export const SALE_DATE_BASES = ["SALE_DATE", "VERIFIED_DATE"] as const;
+export type SaleDateBasis = (typeof SALE_DATE_BASES)[number];
 export const PAYMENT_METHODS = ["CASH", "GCASH", "MAYA", "BANK_TRANSFER", "CREDIT_CARD", "SPLIT"] as const;
 export const PRODUCT_STATUSES = ["ACTIVE", "INACTIVE"] as const;
 export const RETURN_CASE_TYPES = ["BACKJOB", "CUSTOMER_WARRANTY", "SUPPLIER_CLAIM"] as const;
@@ -47,8 +56,12 @@ export type ReportMeta = {
 
 export type SalesReport = ReportMeta & {
   type: "sales";
+  dateBasis: SaleDateBasis;
+  /** Receipts issued inside the period that Accounting has not confirmed yet. */
+  pending: { count: number; amount: number };
   rows: Array<{
     id: string;
+    soldAt: string;
     verifiedAt: string;
     manualReceiptNumber: string;
     branch: string;
@@ -107,6 +120,57 @@ export type InventorySummaryReport = ReportMeta & {
   };
 };
 
+/**
+ * How a product behaved at one branch over the period. MOVEMENT_NONE is the one
+ * that matters most in a monthly review: stock sitting on the shelf that nobody
+ * bought. The rest is a plain cover calculation, not a hidden score.
+ */
+export const STOCK_MOVEMENT_GRADES = ["FAST", "SLOW", "NO_MOVEMENT"] as const;
+export type StockMovementGrade = (typeof STOCK_MOVEMENT_GRADES)[number];
+
+/** A product with stock left to cover more than this many periods is slow. */
+export const SLOW_MOVING_COVER_PERIODS = 3;
+
+export function stockMovementGrade(soldUnits: number, available: number): StockMovementGrade {
+  if (soldUnits <= 0) return "NO_MOVEMENT";
+  return available / soldUnits > SLOW_MOVING_COVER_PERIODS ? "SLOW" : "FAST";
+}
+
+export type StockMovementReport = ReportMeta & {
+  type: "stock-movement";
+  rows: Array<{
+    id: string;
+    productId: string;
+    locationId: string;
+    itemCode: string;
+    product: string;
+    category: string;
+    brand: string;
+    branch: string;
+    onHand: number;
+    reserved: number;
+    quarantined: number;
+    available: number;
+    soldUnits: number;
+    soldAmount: number;
+    lastSoldAt: string | null;
+    /** Periods of stock left at this period's rate; null when nothing sold. */
+    coverPeriods: number | null;
+    grade: StockMovementGrade;
+  }>;
+  totals: {
+    productCount: number;
+    locationCount: number;
+    onHand: number;
+    available: number;
+    soldUnits: number;
+    soldAmount: number;
+    noMovementCount: number;
+    slowCount: number;
+    fastCount: number;
+  };
+};
+
 export type ReturnsWarrantyReport = ReportMeta & {
   type: "returns-warranty";
   rows: Array<{
@@ -147,4 +211,4 @@ export type ReturnsWarrantyReport = ReportMeta & {
   };
 };
 
-export type ReportResult = SalesReport | SalespersonSalesReport | InventorySummaryReport | ReturnsWarrantyReport;
+export type ReportResult = SalesReport | SalespersonSalesReport | InventorySummaryReport | StockMovementReport | ReturnsWarrantyReport;

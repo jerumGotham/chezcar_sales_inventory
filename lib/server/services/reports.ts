@@ -7,6 +7,9 @@ import type { BackjobItemDto } from "@/lib/contracts/backjobs";
 import {
   PAYMENT_METHODS,
   PRODUCT_STATUSES,
+  SALE_DATE_BASES,
+  STOCK_MOVEMENT_GRADES,
+  stockMovementGrade,
   REPORT_TYPES,
   RETURN_CASE_TYPES,
   RETURN_RESOLUTIONS,
@@ -19,6 +22,7 @@ import {
   type ReportResult,
   type SalesReport,
   type SalespersonSalesReport,
+  type StockMovementReport,
 } from "@/lib/contracts/reports";
 import { availableStock } from "@/lib/inventory-quantity";
 import { assertCapability, AuthorizationError, type AuthContext } from "@/lib/server/authorization";
@@ -39,6 +43,7 @@ const reportQueryBaseSchema = z.object({
   salespersonId: optionalText,
   source: z.enum(SALE_SOURCES).optional(),
   paymentMethod: z.enum(PAYMENT_METHODS).optional(),
+  dateBasis: z.enum(SALE_DATE_BASES).optional(),
   search: optionalText,
   category: optionalText,
   brand: optionalText,
@@ -47,12 +52,14 @@ const reportQueryBaseSchema = z.object({
   status: z.enum(RETURN_STATUSES).optional(),
   resolution: z.enum(RETURN_RESOLUTIONS).optional(),
   entitySearch: optionalText,
+  movement: z.enum(STOCK_MOVEMENT_GRADES).optional(),
 }).strict().superRefine((value, context) => {
-  const salesFilters = new Set(["type", "dateFrom", "dateTo", "locationId", "salespersonId", "source", "paymentMethod"]);
+  const salesFilters = new Set(["type", "dateFrom", "dateTo", "locationId", "salespersonId", "source", "paymentMethod", "dateBasis"]);
   const allowed: Record<(typeof REPORT_TYPES)[number], ReadonlySet<string>> = {
     sales: salesFilters,
     "salesperson-sales": salesFilters,
     "inventory-summary": new Set(["type", "locationId", "search", "category", "brand", "productStatus"]),
+    "stock-movement": new Set(["type", "dateFrom", "dateTo", "locationId", "search", "category", "brand", "movement"]),
     "returns-warranty": new Set(["type", "dateFrom", "dateTo", "locationId", "caseType", "status", "resolution", "entitySearch"]),
   };
   for (const [key, selected] of Object.entries(value)) {
@@ -80,7 +87,7 @@ const CLOSED_WARRANTY = new Set(["COMPLETED", "CANCELLED", "REJECTED"]);
 const CLOSED_CLAIM = new Set(["COMPLETED", "CANCELLED", "REJECTED"]);
 
 function isDatedReport(type: (typeof REPORT_TYPES)[number]) {
-  return type === "sales" || type === "salesperson-sales" || type === "returns-warranty";
+  return type === "sales" || type === "salesperson-sales" || type === "returns-warranty" || type === "stock-movement";
 }
 
 export function manilaDateKey(value: Date) {
@@ -152,6 +159,9 @@ function optionLabel(rows: ReportOption[], id: string | undefined) {
 function selectedFilters(query: ReportQuery, filters: Awaited<ReturnType<typeof options>>, range: ReturnType<typeof dateRange>) {
   const result: Array<{ label: string; value: string }> = [];
   if (range.dateFrom || range.dateTo) result.push({ label: "Date range", value: `${range.dateFrom ?? "Start"} to ${range.dateTo ?? "Today"}` });
+  if (query.type === "sales" || query.type === "salesperson-sales") {
+    result.push({ label: "Dates counted on", value: (query.dateBasis ?? "SALE_DATE") === "SALE_DATE" ? "Sale date" : "Verification date" });
+  }
   if (query.locationId) result.push({ label: "Location", value: query.type === "inventory-summary" && query.locationId === "all" ? "All authorized branches" : optionLabel(filters.locations, query.locationId) });
   if (query.salespersonId) result.push({ label: "Salesperson", value: optionLabel(filters.salespersons, query.salespersonId) });
   if (query.source) result.push({ label: "Source", value: humanize(query.source) });
@@ -166,6 +176,10 @@ function selectedFilters(query: ReportQuery, filters: Awaited<ReturnType<typeof 
   if (query.status) result.push({ label: "Status", value: humanize(query.status) });
   if (query.resolution) result.push({ label: "Resolution", value: humanize(query.resolution) });
   if (query.entitySearch) result.push({ label: "Entity search", value: query.entitySearch });
+  if (query.type === "stock-movement") {
+    result.push({ label: "Sold counted on", value: "Posted sales, voided excluded" });
+    if (query.movement) result.push({ label: "Movement", value: humanize(query.movement) });
+  }
   return result;
 }
 
@@ -272,6 +286,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
 
   if (query.type === "sales" || query.type === "salesperson-sales") {
     const range = dateRange(query, true);
+    const dateBasis = query.dateBasis ?? "SALE_DATE";
     // The report reads the payment ledger, so every verified receipt is counted
     // once, on the day it was verified: a downpayment on its own date, the
     // balance settled at release on its own, and a forfeited downpayment on a
@@ -285,17 +300,36 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
         kind: query.source === "DIRECT_SALE" ? "DIRECT_SALE" : query.source === "CUSTOMER_ORDER" ? { in: [...orderKinds] } : undefined,
         method: query.paymentMethod,
         reviewStatus: "VERIFIED",
-        verifiedAt: range.where,
+        // The period is measured on the day the receipt was issued by default,
+        // so a printed month stops moving while Accounting works through its
+        // queue. Accounting can switch it to its own verification dates.
+        ...(dateBasis === "SALE_DATE" ? { collectedAt: range.where } : { verifiedAt: range.where }),
       },
       select: {
         id: true, kind: true, receiptNumber: true, receiptBooklet: true, amount: true, method: true,
-        salespersonId: true, salespersonName: true, verifiedAt: true,
+        salespersonId: true, salespersonName: true, verifiedAt: true, collectedAt: true,
         customer: { select: { name: true } }, location: { select: { code: true, name: true } },
         collectedBy: { select: { name: true } },
         sale: { select: { discountAmount: true, lines: { select: { quantity: true } } } },
       },
-      orderBy: [{ verifiedAt: "desc" }, { id: "desc" }],
+      orderBy: dateBasis === "SALE_DATE" ? [{ collectedAt: "desc" }, { id: "desc" }] : [{ verifiedAt: "desc" }, { id: "desc" }],
     });
+    // What the branch collected inside the period but Accounting has not
+    // confirmed yet, so a printed report never hides its own gap.
+    const pendingTotals = await prisma.payment.aggregate({
+      where: {
+        locationId: scopedLocation,
+        status: "ACTIVE",
+        salespersonId: query.salespersonId,
+        kind: query.source === "DIRECT_SALE" ? "DIRECT_SALE" : query.source === "CUSTOMER_ORDER" ? { in: [...orderKinds] } : undefined,
+        method: query.paymentMethod,
+        reviewStatus: { not: "VERIFIED" },
+        collectedAt: range.where,
+      },
+      _count: { _all: true },
+      _sum: { amount: true },
+    });
+    const pending = { count: pendingTotals._count._all, amount: pendingTotals._sum.amount?.toNumber() ?? 0 };
     const sourceLabels = {
       DIRECT_SALE: "Direct Sale",
       ORDER_DOWNPAYMENT: "Order Downpayment",
@@ -304,6 +338,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
     } as const;
     const rows = records.map((row) => ({
       id: row.id,
+      soldAt: row.collectedAt.toISOString(),
       verifiedAt: row.verifiedAt!.toISOString(),
       manualReceiptNumber: row.receiptBooklet ? `${row.receiptBooklet}-${row.receiptNumber}` : row.receiptNumber,
       branch: `${row.location.code} - ${row.location.name}`,
@@ -331,7 +366,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
     }
     for (const total of totals.values()) total.percentage = grandAmount ? (total.totalAmount / grandAmount) * 100 : 0;
     const salesReport: SalesReport = {
-      ...base, type: "sales", dateFrom: range.dateFrom, dateTo: range.dateTo,
+      ...base, type: "sales", dateFrom: range.dateFrom, dateTo: range.dateTo, dateBasis, pending,
       appliedFilters: selectedFilters(query, filters, range), rows,
       branchTotals: [...totals.values()].sort((a, b) => a.branch.localeCompare(b.branch)),
       grandTotal: {
@@ -392,6 +427,104 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
         productCount: rows.length,
         locationCount: effectiveLocations.length,
         available: rows.reduce((sum, row) => sum + row.available, 0),
+      },
+    };
+  }
+
+  if (query.type === "stock-movement") {
+    const movementRange = dateRange(query, true);
+    const productWhere: Prisma.ProductWhereInput = {
+      ...(query.search ? { OR: [{ itemCode: { contains: query.search, mode: "insensitive" } }, { name: { contains: query.search, mode: "insensitive" } }] } : {}),
+      category: query.category,
+      brand: query.brand,
+    };
+    const products = effectiveLocations.length ? await prisma.product.findMany({
+      where: productWhere,
+      select: { id: true, itemCode: true, name: true, category: true, brand: true },
+      orderBy: { itemCode: "asc" },
+    }) : [];
+    const productIds = products.map((product) => product.id);
+    const [balances, soldLines] = await Promise.all([
+      productIds.length ? prisma.inventoryBalance.findMany({
+        where: { locationId: scopedLocation, productId: { in: productIds } },
+        select: { id: true, productId: true, locationId: true, onHand: true, reserved: true, quarantined: true },
+      }) : Promise.resolve([]),
+      // Stock that physically left the shelf, verified or not. A voided sale put
+      // its units back, so it is excluded: this has to match a physical count.
+      productIds.length ? prisma.saleLine.findMany({
+        where: {
+          productId: { in: productIds },
+          sale: { status: "POSTED", locationId: scopedLocation, postedAt: movementRange.where },
+        },
+        select: { productId: true, quantity: true, unitPrice: true, sale: { select: { locationId: true, postedAt: true } } },
+      }) : Promise.resolve([]),
+    ]);
+
+    const soldByKey = new Map<string, { units: number; amount: number; lastSoldAt: Date }>();
+    for (const line of soldLines) {
+      const key = `${line.sale.locationId}|${line.productId}`;
+      const current = soldByKey.get(key);
+      const amount = line.quantity * line.unitPrice.toNumber();
+      if (!current) soldByKey.set(key, { units: line.quantity, amount, lastSoldAt: line.sale.postedAt });
+      else {
+        current.units += line.quantity;
+        current.amount += amount;
+        if (line.sale.postedAt > current.lastSoldAt) current.lastSoldAt = line.sale.postedAt;
+      }
+    }
+
+    const balanceByKey = new Map(balances.map((balance) => [`${balance.locationId}|${balance.productId}`, balance]));
+    const rows: StockMovementReport["rows"] = [];
+    for (const location of effectiveLocations) {
+      for (const product of products) {
+        const key = `${location.id}|${product.id}`;
+        const balance = balanceByKey.get(key);
+        const sold = soldByKey.get(key);
+        // A product this branch has never stocked and never sold is not a
+        // finding, it is noise on a count sheet.
+        if (!balance && !sold) continue;
+        const onHand = balance?.onHand ?? 0;
+        const reserved = balance?.reserved ?? 0;
+        const quarantined = balance?.quarantined ?? 0;
+        const available = availableStock({ onHand, reserved, quarantined });
+        const soldUnits = sold?.units ?? 0;
+        rows.push({
+          id: key,
+          productId: product.id,
+          locationId: location.id,
+          itemCode: product.itemCode,
+          product: product.name,
+          category: product.category ?? "Uncategorized",
+          brand: product.brand ?? "No brand",
+          branch: `${location.code} - ${location.name}`,
+          onHand,
+          reserved,
+          quarantined,
+          available,
+          soldUnits,
+          soldAmount: sold?.amount ?? 0,
+          lastSoldAt: sold?.lastSoldAt.toISOString() ?? null,
+          coverPeriods: soldUnits > 0 ? available / soldUnits : null,
+          grade: stockMovementGrade(soldUnits, available),
+        });
+      }
+    }
+    const filtered = query.movement ? rows.filter((row) => row.grade === query.movement) : rows;
+    // Slowest first: the dead stock a monthly review is looking for is on top.
+    filtered.sort((left, right) => left.soldUnits - right.soldUnits || right.available - left.available || left.itemCode.localeCompare(right.itemCode) || left.branch.localeCompare(right.branch));
+    return {
+      ...base, type: "stock-movement", dateFrom: movementRange.dateFrom, dateTo: movementRange.dateTo,
+      appliedFilters: selectedFilters(query, filters, movementRange), rows: filtered,
+      totals: {
+        productCount: new Set(filtered.map((row) => row.productId)).size,
+        locationCount: new Set(filtered.map((row) => row.locationId)).size,
+        onHand: filtered.reduce((sum, row) => sum + row.onHand, 0),
+        available: filtered.reduce((sum, row) => sum + row.available, 0),
+        soldUnits: filtered.reduce((sum, row) => sum + row.soldUnits, 0),
+        soldAmount: filtered.reduce((sum, row) => sum + row.soldAmount, 0),
+        noMovementCount: filtered.filter((row) => row.grade === "NO_MOVEMENT").length,
+        slowCount: filtered.filter((row) => row.grade === "SLOW").length,
+        fastCount: filtered.filter((row) => row.grade === "FAST").length,
       },
     };
   }
