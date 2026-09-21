@@ -195,38 +195,65 @@ export function AuditClient() {
   );
 }
 
+function FactList({ facts }: { facts: ReadonlyArray<{ label: string; value: string }> }) {
+  return (
+    <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+      {facts.map((fact, index) => (
+        <div key={`${fact.label}-${index}`}>
+          <dt className="text-muted-foreground text-xs uppercase tracking-wide">{fact.label}</dt>
+          {/* A blank value used to render an empty line that read as a bug. */}
+          <dd className="text-sm break-words">{fact.value?.trim() ? fact.value : <span className="text-muted-foreground">Not recorded</span>}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/**
+ * The entry-specific facts used to sit in one flat grid with When, Module and
+ * User, so the thing that actually happened was mixed in with the row's own
+ * column values. Context, the sentence, what changed, and the items are now
+ * four separate blocks.
+ */
 function AuditEntryDialog({ entry, onClose }: { entry: AuditEntryDto | null; onClose: () => void }) {
-  const facts = entry
+  const context = entry
     ? [
-        { label: "When", value: formatMoment(entry.occurredAt) },
-        { label: "Module", value: entry.category },
         { label: "User", value: entry.actor },
         { label: "Reference", value: entry.reference },
         { label: "Branch", value: entry.location },
-        ...(entry.facts ?? []),
       ]
     : [];
+  const changes = entry?.facts ?? [];
 
   return (
     <Dialog open={Boolean(entry)} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{entry?.action ?? "Entry"}</DialogTitle>
-          <DialogDescription>{entry?.details}</DialogDescription>
+          <DialogDescription>
+            {entry ? `${entry.category} · ${formatMoment(entry.occurredAt)}` : null}
+          </DialogDescription>
         </DialogHeader>
         {entry ? (
           <div className="space-y-5">
-            <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
-              {facts.map((fact) => (
-                <div key={`${fact.label}-${fact.value}`}>
-                  <dt className="text-muted-foreground text-xs uppercase tracking-wide">{fact.label}</dt>
-                  <dd className="text-sm break-words">{fact.value}</dd>
-                </div>
-              ))}
-            </dl>
+            {entry.details?.trim() ? (
+              <p className="bg-muted rounded-md p-3 text-sm">{entry.details}</p>
+            ) : null}
+
+            <FactList facts={context} />
+
+            {changes.length ? (
+              <section>
+                <h3 className="mb-2 text-sm font-medium">What changed</h3>
+                <FactList facts={changes} />
+              </section>
+            ) : null}
+
             {entry.items?.length ? (
-              <div>
-                <p className="mb-2 text-sm font-medium">Items</p>
+              <section>
+                <h3 className="mb-2 text-sm font-medium">
+                  Items <span className="text-muted-foreground font-normal">({entry.items.length})</span>
+                </h3>
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
@@ -237,8 +264,8 @@ function AuditEntryDialog({ entry, onClose }: { entry: AuditEntryDto | null; onC
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {entry.items.map((item) => (
-                        <TableRow key={`${item.name}-${item.quantity ?? ""}`}>
+                      {entry.items.map((item, index) => (
+                        <TableRow key={`${item.name}-${index}`}>
                           <TableCell>{item.name}</TableCell>
                           <TableCell className="text-right">{item.quantity ?? "-"}</TableCell>
                           <TableCell className="text-right">{item.amount ?? "-"}</TableCell>
@@ -247,7 +274,7 @@ function AuditEntryDialog({ entry, onClose }: { entry: AuditEntryDto | null; onC
                     </TableBody>
                   </Table>
                 </div>
-              </div>
+              </section>
             ) : null}
           </div>
         ) : null}
