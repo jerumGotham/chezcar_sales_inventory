@@ -315,23 +315,18 @@ export function AppHeader({
           </div>
         ) : null}
 
-        {canManagePushNotifications ? (
+        {/* Only while pressing it would do something. Without VAPID keys the
+            state settles on "unavailable" and this was a button that could
+            never be pressed, sitting next to the bell that works. */}
+        {canManagePushNotifications && (pushState === "default" || pushState === "pending") ? (
           <Button
             type="button"
             variant="outline"
             size="icon"
             className="rounded-2xl border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100 hover:text-brand-800 disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
             onClick={enablePushNotifications}
-            disabled={pushState === "unsupported" || pushState === "unavailable" || pushState === "denied" || pushState === "subscribed" || pushState === "pending"}
-            title={
-              pushState === "subscribed"
-                ? "Browser notifications enabled"
-                : pushState === "unavailable"
-                  ? "Browser notifications need VAPID keys"
-                  : pushState === "denied"
-                    ? "Browser notifications are blocked"
-                    : "Enable browser notifications"
-            }
+            disabled={pushState === "pending"}
+            title={pushState === "pending" ? "Turning on browser notifications..." : "Enable browser notifications"}
             aria-label="Enable browser notifications"
           >
             <BellRing className="h-5 w-5" />
