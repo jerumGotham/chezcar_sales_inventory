@@ -209,168 +209,179 @@ export function AppHeader({
     }
   };
 
+  /*
+   * Sticky from lg up only. The card is tall once the scope chip and the icons
+   * wrap, and pinning that to a phone viewport costs more room than it saves.
+   * The negative margins bleed the page background to the edges so rows scroll
+   * behind it rather than showing above its rounded corners, and the matching
+   * negative top leaves the resting position unchanged.
+   */
   return (
-    <div className="mb-6 flex flex-col gap-4 rounded-[1.75rem] border border-brand-100 bg-white px-5 py-4 shadow-sm dark:border-slate-800 dark:bg-slate-950 lg:flex-row lg:items-center lg:justify-between">
-      <div>
-        <h2 className="text-2xl font-bold text-foreground">{title}</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>
-      </div>
-
-      <div className="flex flex-wrap items-center justify-end gap-3">
-        {access.authenticated ? (
-          <div
-            className="flex min-h-11 max-w-full items-center gap-2 rounded-2xl border border-brand-100 bg-brand-50/70 px-3 py-2 text-sm text-foreground dark:border-slate-800 dark:bg-slate-900"
-            aria-label={`Current scope: ${access.scope.label}`}
-          >
-            <MapPin
-              className="h-4 w-4 shrink-0 text-brand-700 dark:text-brand-300"
-              aria-hidden="true"
-            />
-            <span className="min-w-0">
-              <span className="block text-xs font-semibold text-slate-500 dark:text-slate-400">
-                Current scope
-              </span>
-              <span className="block break-words font-semibold">
-                {access.scope.label}
-              </span>
-            </span>
+    <>
+      <div className="mb-6 lg:sticky lg:top-0 lg:z-30 lg:-mx-8 lg:-mt-8 lg:bg-white lg:px-8 lg:pt-8 lg:dark:bg-background">
+        <div className="flex flex-col gap-4 rounded-[1.75rem] border border-brand-100 bg-white px-5 py-4 shadow-sm dark:border-slate-800 dark:bg-slate-950 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-foreground">{title}</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>
           </div>
-        ) : null}
 
-        {/* Beside the scope rather than in the sidebar: only the owner holds
-            audit:view, so a menu entry nobody else sees costs every other role
-            a row of nothing. Access is unchanged — the capability still gates
-            both this link and the route. */}
-        {canViewAudit ? (
-          <Link
-            href="/audit"
-            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
-            aria-label="Audit trail"
-            title="Audit trail"
-          >
-            <ScrollText className="h-5 w-5" />
-          </Link>
-        ) : null}
-
-        {canViewNotifications ? (
-          <Link
-            href="/notifications"
-            className="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
-            aria-label={unreadCount > 0 ? `${unreadCount} unread notifications` : "Notifications"}
-          >
-            <Bell className="h-5 w-5" />
-            {unreadCount > 0 ? (
-              <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-red-600 px-1 text-center text-[11px] font-bold leading-5 text-white">
-                {unreadCount > 99 ? "99+" : unreadCount}
-              </span>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            {access.authenticated ? (
+              <div
+                className="flex min-h-11 max-w-full items-center gap-2 rounded-2xl border border-brand-100 bg-brand-50/70 px-3 py-2 text-sm text-foreground dark:border-slate-800 dark:bg-slate-900"
+                aria-label={`Current scope: ${access.scope.label}`}
+              >
+                <MapPin
+                  className="h-4 w-4 shrink-0 text-brand-700 dark:text-brand-300"
+                  aria-hidden="true"
+                />
+                <span className="min-w-0">
+                  <span className="block text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    Current scope
+                  </span>
+                  <span className="block break-words font-semibold">
+                    {access.scope.label}
+                  </span>
+                </span>
+              </div>
             ) : null}
-          </Link>
-        ) : null}
 
-        {!FORCE_LIGHT_THEME && (
-          <Button
-            variant="outline"
-            size="icon"
-            className="rounded-2xl border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100 hover:text-brand-800 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
-            onClick={() =>
-              setTheme((current) => (current === "light" ? "dark" : "light"))
-            }
-            aria-label={
-              theme === "light" ? "Switch to dark mode" : "Switch to light mode"
-            }
-          >
-            {theme === "light" ? (
-              <Moon className="h-5 w-5" />
-            ) : (
-              <Sun className="h-5 w-5" />
-            )}
-          </Button>
-        )}
+            {/* Beside the scope rather than in the sidebar: only the owner holds
+                audit:view, so a menu entry nobody else sees costs every other role
+                a row of nothing. Access is unchanged — the capability still gates
+                both this link and the route. */}
+            {canViewAudit ? (
+              <Link
+                href="/audit"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+                aria-label="Audit trail"
+                title="Audit trail"
+              >
+                <ScrollText className="h-5 w-5" />
+              </Link>
+            ) : null}
 
-        {access.authenticated ? (
-          <div className="relative" ref={menuRef}>
-            <button
-              type="button"
-              className="flex items-center gap-3 rounded-2xl border border-brand-100 bg-brand-50/70 px-3 py-2 text-left transition hover:bg-brand-100 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800"
-              onClick={() => setIsMenuOpen((current) => !current)}
-              aria-expanded={isMenuOpen}
-              aria-haspopup="menu"
-            >
-              <Image
-                src="/user-avatar.svg"
-                alt="Current user avatar"
-                width={40}
-                height={40}
-                className="rounded-full border border-brand-100 bg-white dark:border-slate-700 dark:bg-slate-950"
-              />
-              <div className="hidden min-w-0 sm:block">
-                <p className="truncate text-sm font-semibold text-foreground">
-                  {access.identity.name}
-                </p>
-                <p
-                  className="truncate text-xs text-slate-500 dark:text-slate-400"
-                  title={access.identity.roleName}
-                >
-                  {access.identity.roleName}
-                </p>
-              </div>
-              <ChevronDown
-                className={cn(
-                  "h-4 w-4 text-slate-500 transition-transform dark:text-slate-400",
-                  isMenuOpen && "rotate-180",
+            {canViewNotifications ? (
+              <Link
+                href="/notifications"
+                className="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+                aria-label={unreadCount > 0 ? `${unreadCount} unread notifications` : "Notifications"}
+              >
+                <Bell className="h-5 w-5" />
+                {unreadCount > 0 ? (
+                  <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-red-600 px-1 text-center text-[11px] font-bold leading-5 text-white">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                ) : null}
+              </Link>
+            ) : null}
+
+            {!FORCE_LIGHT_THEME && (
+              <Button
+                variant="outline"
+                size="icon"
+                className="rounded-2xl border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100 hover:text-brand-800 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+                onClick={() =>
+                  setTheme((current) => (current === "light" ? "dark" : "light"))
+                }
+                aria-label={
+                  theme === "light" ? "Switch to dark mode" : "Switch to light mode"
+                }
+              >
+                {theme === "light" ? (
+                  <Moon className="h-5 w-5" />
+                ) : (
+                  <Sun className="h-5 w-5" />
                 )}
-              />
-            </button>
+              </Button>
+            )}
 
-            <div
-              className={cn(
-                "absolute right-0 top-[calc(100%+0.75rem)] z-30 w-56 rounded-2xl border border-brand-100 bg-white p-2 shadow-soft transition dark:border-slate-800 dark:bg-slate-950",
-                isMenuOpen
-                  ? "pointer-events-auto translate-y-0 opacity-100"
-                  : "pointer-events-none -translate-y-2 opacity-0",
-              )}
-              role="menu"
-            >
-              <div className="rounded-xl bg-brand-50/80 px-3 py-2 dark:bg-slate-900">
-                <p className="text-sm font-semibold text-foreground">
-                  {access.identity.name}
-                </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {access.identity.email}
-                </p>
-                <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  {access.identity.roleName}
-                </p>
+            {access.authenticated ? (
+              <div className="relative" ref={menuRef}>
+                <button
+                  type="button"
+                  className="flex items-center gap-3 rounded-2xl border border-brand-100 bg-brand-50/70 px-3 py-2 text-left transition hover:bg-brand-100 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800"
+                  onClick={() => setIsMenuOpen((current) => !current)}
+                  aria-expanded={isMenuOpen}
+                  aria-haspopup="menu"
+                >
+                  <Image
+                    src="/user-avatar.svg"
+                    alt="Current user avatar"
+                    width={40}
+                    height={40}
+                    className="rounded-full border border-brand-100 bg-white dark:border-slate-700 dark:bg-slate-950"
+                  />
+                  <div className="hidden min-w-0 sm:block">
+                    <p className="truncate text-sm font-semibold text-foreground">
+                      {access.identity.name}
+                    </p>
+                    <p
+                      className="truncate text-xs text-slate-500 dark:text-slate-400"
+                      title={access.identity.roleName}
+                    >
+                      {access.identity.roleName}
+                    </p>
+                  </div>
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 text-slate-500 transition-transform dark:text-slate-400",
+                      isMenuOpen && "rotate-180",
+                    )}
+                  />
+                </button>
+
+                <div
+                  className={cn(
+                    "absolute right-0 top-[calc(100%+0.75rem)] z-30 w-56 rounded-2xl border border-brand-100 bg-white p-2 shadow-soft transition dark:border-slate-800 dark:bg-slate-950",
+                    isMenuOpen
+                      ? "pointer-events-auto translate-y-0 opacity-100"
+                      : "pointer-events-none -translate-y-2 opacity-0",
+                  )}
+                  role="menu"
+                >
+                  <div className="rounded-xl bg-brand-50/80 px-3 py-2 dark:bg-slate-900">
+                    <p className="text-sm font-semibold text-foreground">
+                      {access.identity.name}
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {access.identity.email}
+                    </p>
+                    <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                      {access.identity.roleName}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="mt-2 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-foreground transition hover:bg-brand-50 dark:hover:bg-slate-900"
+                    role="menuitem"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      setIsPasswordOpen(true);
+                    }}
+                  >
+                    <KeyRound className="h-4 w-4" />
+                    Change password
+                  </button>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10"
+                    role="menuitem"
+                    onClick={async () => {
+                      setIsMenuOpen(false);
+                      await authClient.signOut();
+                      router.replace("/sign-in" as Route);
+                      router.refresh();
+                    }}
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Logout
+                  </button>
+                </div>
               </div>
-              <button
-                type="button"
-                className="mt-2 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-foreground transition hover:bg-brand-50 dark:hover:bg-slate-900"
-                role="menuitem"
-                onClick={() => {
-                  setIsMenuOpen(false);
-                  setIsPasswordOpen(true);
-                }}
-              >
-                <KeyRound className="h-4 w-4" />
-                Change password
-              </button>
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10"
-                role="menuitem"
-                onClick={async () => {
-                  setIsMenuOpen(false);
-                  await authClient.signOut();
-                  router.replace("/sign-in" as Route);
-                  router.refresh();
-                }}
-              >
-                <LogOut className="h-4 w-4" />
-                Logout
-              </button>
-            </div>
+            ) : null}
           </div>
-        ) : null}
+        </div>
       </div>
       {canViewNotifications && toast ? (
         <div className="fixed right-4 top-4 z-50 w-[min(24rem,calc(100vw-2rem))] rounded-2xl border border-brand-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900" role="status" aria-live="polite">
@@ -391,6 +402,6 @@ export function AppHeader({
         </div>
       ) : null}
       <ChangePasswordDialog open={isPasswordOpen} onOpenChange={setIsPasswordOpen} />
-    </div>
+    </>
   );
 }
