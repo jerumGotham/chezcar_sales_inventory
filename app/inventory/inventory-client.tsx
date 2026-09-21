@@ -180,6 +180,9 @@ export function InventoryClient({
   const [costReason, setCostReason] = useState("");
   const [costRemarks, setCostRemarks] = useState("");
   const [mutationError, setMutationError] = useState("");
+  // Both mutations just closed their modal, so an adjustment that applied
+  // looked the same as one that silently did nothing.
+  const [mutationNotice, setMutationNotice] = useState("");
 
   const [stockCardProductFilter, setStockCardProductFilter] =
     useState<SelectOption>({
@@ -295,13 +298,14 @@ export function InventoryClient({
       if (!canAdjustStock) throw new Error("You do not have permission to adjust stock.");
       return correctInventory(payload.balanceId, payload);
     },
-    onSuccess: () => {
+    onSuccess: (_, payload) => {
       refreshInventory();
       setIsAdjustOpen(false);
       setIsQuickAdjustOpen(false);
       resetAdjustmentFields();
+      setMutationNotice(`Stock ${payload.type === "increase" ? "increased" : "decreased"} by ${payload.quantity}.`);
     },
-    onError: (saveError) => setMutationError(saveError.message),
+    onError: (saveError) => { setMutationNotice(""); setMutationError(saveError.message); },
   });
 
   const flatRows = useMemo(() => data?.data ?? [], [data?.data]);
@@ -470,6 +474,7 @@ export function InventoryClient({
     setQuickAdjustReason("");
     setQuickAdjustRemarks("");
     setMutationError("");
+    setMutationNotice("");
   }
 
   const submitQuickAdjustment = () => {
@@ -503,6 +508,7 @@ export function InventoryClient({
     setCostReason("");
     setCostRemarks("");
     setMutationError("");
+    setMutationNotice("");
     setIsCostOpen(true);
   };
 
@@ -521,8 +527,9 @@ export function InventoryClient({
       refreshInventory();
       setIsCostOpen(false);
       setCostBalance(null);
+      setMutationNotice("Unit cost updated.");
     },
-    onError: (saveError) => setMutationError(saveError.message),
+    onError: (saveError) => { setMutationNotice(""); setMutationError(saveError.message); },
   });
 
   return (
@@ -531,6 +538,11 @@ export function InventoryClient({
         title="Inventory"
         subtitle={`Live stock levels for ${summaryScopeLabel}. Data comes from the database and survives reload.`}
       >
+        {mutationNotice ? (
+          <p role="status" className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
+            {mutationNotice}
+          </p>
+        ) : null}
         <p className="mb-4 text-sm text-slate-500">
           Showing totals for <span className="font-semibold text-slate-700">{summaryScopeLabel}</span> only.
         </p>
@@ -1234,6 +1246,7 @@ export function InventoryClient({
           if (!open) {
             setCostBalance(null);
             setMutationError("");
+    setMutationNotice("");
           }
         }}
       >

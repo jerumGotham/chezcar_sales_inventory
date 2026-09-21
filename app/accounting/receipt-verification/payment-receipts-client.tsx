@@ -195,6 +195,9 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
   const [replacementReceipt, setReplacementReceipt] = useState("");
   const [resolutionNote, setResolutionNote] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  // Every action refreshed the list and said nothing, so a verify that worked
+  // looked the same as one that never fired.
+  const [formNotice, setFormNotice] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   const { data, isLoading, isFetching, error } = useQuery({
@@ -239,9 +242,10 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
     },
     onSuccess: async () => {
       if (photoInputRef.current) photoInputRef.current.value = "";
+      setFormNotice("Receipt photo uploaded.");
       await refresh();
     },
-    onError: (mutationError: Error) => setFormError(mutationError.message),
+    onError: (mutationError: Error) => { setFormNotice(null); setFormError(mutationError.message); },
   });
 
   const deletePhotoMutation = useMutation({
@@ -257,8 +261,8 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
       if (!response.ok) throw new Error(json.error?.message ?? "Unable to delete the receipt photo");
       return json.data;
     },
-    onSuccess: refresh,
-    onError: (mutationError: Error) => setFormError(mutationError.message),
+    onSuccess: async () => { setFormNotice("Receipt photo deleted."); await refresh(); },
+    onError: (mutationError: Error) => { setFormNotice(null); setFormError(mutationError.message); },
   });
 
   const reviewMutation = useMutation({
@@ -269,8 +273,8 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
         receiptAmount: Number(receiptAmount),
         receiptNumber,
       }),
-    onSuccess: refresh,
-    onError: (mutationError: Error) => setFormError(mutationError.message),
+    onSuccess: async (_, status) => { setFormNotice(status === "VERIFIED" ? "Payment receipt verified." : "Mismatch reported. The branch has been asked to respond."); await refresh(); },
+    onError: (mutationError: Error) => { setFormNotice(null); setFormError(mutationError.message); },
   });
 
   const branchResponseMutation = useMutation({
@@ -280,15 +284,15 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
         note: branchNote,
         ...(replacementReceipt.trim() ? { replacementReceiptNumber: replacementReceipt.trim() } : {}),
       }),
-    onSuccess: refresh,
-    onError: (mutationError: Error) => setFormError(mutationError.message),
+    onSuccess: async () => { setFormNotice("Response sent to Accounting."); await refresh(); },
+    onError: (mutationError: Error) => { setFormNotice(null); setFormError(mutationError.message); },
   });
 
   const resolveMutation = useMutation({
     mutationFn: (action: "CONFIRMED_CORRECT" | "VOIDED") =>
       post(`/api/accounting/payments/${selected!.id}/resolve`, { action, note: resolutionNote }),
-    onSuccess: refresh,
-    onError: (mutationError: Error) => setFormError(mutationError.message),
+    onSuccess: async (_, action) => { setFormNotice(action === "CONFIRMED_CORRECT" ? "Original encoding confirmed. The payment is now verified." : "Payment voided."); await refresh(); },
+    onError: (mutationError: Error) => { setFormNotice(null); setFormError(mutationError.message); },
   });
 
   const branchOptions = useMemo<Option[]>(
@@ -613,7 +617,8 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
                   </p>
                 ) : null}
 
-                {formError ? <p className="text-sm text-rose-600">{formError}</p> : null}
+                {formNotice ? <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">{formNotice}</p> : null}
+                {formError ? <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{formError}</p> : null}
               </>
             )}
           </CardContent>

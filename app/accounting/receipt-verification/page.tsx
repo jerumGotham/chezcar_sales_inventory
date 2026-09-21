@@ -431,6 +431,9 @@ function ReceiptVerificationContent() {
   const [category, setCategory] = useState("PRICE_MISMATCH");
   const [notes, setNotes] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  // Every action cleared the error and said nothing else, so a review that
+  // worked looked the same as one that never fired.
+  const [formNotice, setFormNotice] = useState<string | null>(null);
   const [comparison, setComparison] = useState<ComparisonDraft>({
     receiptBooklet: "",
     receiptNumber: "",
@@ -541,15 +544,16 @@ function ReceiptVerificationContent() {
         );
       return json?.data;
     },
-    onSuccess: () => {
+    onSuccess: (_, status) => {
       setSelectedId(null);
       setNotes("");
       setPhotoFile(null);
       setPhotoPreview(null);
       setFormError(null);
+      setFormNotice(status === "VERIFIED" ? "Receipt verified." : "Mismatch reported. The branch has been asked to respond.");
       queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] });
     },
-    onError: (mutationError) => setFormError((mutationError as Error).message),
+    onError: (mutationError) => { setFormNotice(null); setFormError((mutationError as Error).message); },
   });
 
   const resolveMutation = useMutation({
@@ -628,6 +632,7 @@ function ReceiptVerificationContent() {
       setSelectedId(null);
       setResolutionNote("");
       setFormError(null);
+      setFormNotice(action === "CONFIRMED_CORRECT" ? "Original encoding confirmed. The receipt is now verified." : action === "VOIDED_REPLACED" ? "Sale voided and replaced. Stock has been restored." : "Sale voided. Stock has been restored.");
       queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["accounting-receipt-linked"] });
       if (action !== "CONFIRMED_CORRECT") {
@@ -643,7 +648,7 @@ function ReceiptVerificationContent() {
         queryClient.invalidateQueries({ queryKey: ["reports"] });
       }
     },
-    onError: (mutationError) => setFormError((mutationError as Error).message),
+    onError: (mutationError) => { setFormNotice(null); setFormError((mutationError as Error).message); },
   });
 
   const branchResponseMutation = useMutation({
@@ -697,10 +702,11 @@ function ReceiptVerificationContent() {
     onSuccess: () => {
       clearBranchReplacementPhoto();
       setFormError(null);
+      setFormNotice("Response sent to Accounting.");
       queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["accounting-receipt-linked"] });
     },
-    onError: (mutationError) => setFormError((mutationError as Error).message),
+    onError: (mutationError) => { setFormNotice(null); setFormError((mutationError as Error).message); },
   });
 
   const correctionResolutionMutation = useMutation({
@@ -729,10 +735,11 @@ function ReceiptVerificationContent() {
         throw new Error(json?.error?.message ?? "Unable to resolve the correction request");
       }
     },
-    onSuccess: async () => {
+    onSuccess: async (_, action) => {
       setSelectedId(null);
       setCorrectionResolutionNote("");
       setFormError(null);
+      setFormNotice(action === "KEEP_SALE" ? "Correction request declined. The sale stands as encoded." : "Correction request granted. The sale is voided and stock restored.");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] }),
         queryClient.invalidateQueries({ queryKey: ["accounting-receipt-linked"] }),
@@ -745,7 +752,7 @@ function ReceiptVerificationContent() {
         queryClient.invalidateQueries({ queryKey: ["reports"] }),
       ]);
     },
-    onError: (mutationError) => setFormError((mutationError as Error).message),
+    onError: (mutationError) => { setFormNotice(null); setFormError((mutationError as Error).message); },
   });
 
   const selectedSale =
@@ -759,10 +766,11 @@ function ReceiptVerificationContent() {
     onSuccess: () => {
       clearSelectedPhoto();
       setFormError(null);
+      setFormNotice("Receipt photo uploaded.");
       queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["accounting-receipt-linked"] });
     },
-    onError: (mutationError) => setFormError((mutationError as Error).message),
+    onError: (mutationError) => { setFormNotice(null); setFormError((mutationError as Error).message); },
   });
   const deleteEvidenceMutation = useMutation({
     mutationFn: async (target: { saleId: string; version: string }) => {
@@ -780,6 +788,7 @@ function ReceiptVerificationContent() {
     },
     onSuccess: (_, target) => {
       setFormError(null);
+      setFormNotice("Receipt photo deleted.");
       for (const queryKey of ["accounting-receipts", "accounting-receipt-linked"]) {
         queryClient.setQueriesData<ReceiptListResponse>(
           { queryKey: [queryKey] },
@@ -799,6 +808,7 @@ function ReceiptVerificationContent() {
       queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
     },
     onError: (mutationError) => {
+      setFormNotice(null);
       setFormError((mutationError as Error).message);
       queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["accounting-receipt-linked"] });
@@ -867,6 +877,7 @@ function ReceiptVerificationContent() {
     const reported = sale.reportedComparison;
     setSelectedId(sale.id);
     setFormError(null);
+    setFormNotice(null);
     setComparison({
       receiptBooklet: reported?.receiptBooklet ?? sale.receiptBooklet,
       receiptNumber:
@@ -1080,6 +1091,18 @@ function ReceiptVerificationContent() {
           </p>
         </CardContent>
       </Card>
+      {/* Above the panels, because reviewing and resolving clear the selection
+          and close the detail pane the old error sat at the bottom of. */}
+      {formNotice ? (
+        <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
+          {formNotice}
+        </p>
+      ) : null}
+      {formError ? (
+        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+          {formError}
+        </p>
+      ) : null}
       <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]">
         <Card className="min-w-0">
           <CardContent className="min-w-0 p-5">
@@ -2053,9 +2076,6 @@ function ReceiptVerificationContent() {
                     This finding requires Admin permission to void the sale and restore its original inventory quantities.
                   </p>
                 ) : null}
-                {formError && (
-                  <p className="text-sm text-red-600">{formError}</p>
-                )}
               </div>
             )}
           </CardContent>
