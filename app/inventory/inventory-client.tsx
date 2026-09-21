@@ -602,9 +602,11 @@ export function InventoryClient({
             <div className="flex flex-wrap gap-2">
               {canReceiveSupplierStock && <Link href="/inventory/receive" className={buttonVariants()}>Receive from Supplier</Link>}
               {canAdjustStock && <Button variant="warning" onClick={openAdjustModal}>Adjust Stock</Button>}
-              {canViewMovements && <Button variant="view" onClick={() => setIsStockCardOpen(true)}>Stock Movement</Button>}
+              {/* Three reads sat side by side in one blue; the shade now tells
+                  history from current stock from the module this leaves for. */}
+              {canViewMovements && <Button variant="workflow" onClick={() => setIsStockCardOpen(true)}>Stock Movement</Button>}
               {canViewAvailability && <Button variant="view" onClick={() => setIsAvailabilityOpen(true)}>Inventory Availability</Button>}
-              {canViewStockTransfers && <Link href="/stock-transfers" className={buttonVariants({ variant: "view" })}>Open Stock Transfers</Link>}
+              {canViewStockTransfers && <Link href="/stock-transfers" className={buttonVariants({ variant: "teal" })}>Open Stock Transfers</Link>}
             </div>
           </CardContent>
         </Card>
