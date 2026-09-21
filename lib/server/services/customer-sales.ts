@@ -747,7 +747,10 @@ export async function releaseCustomerOrder(actor: AuthContext, id: string, input
     await registerReceipt(tx, input.finalReceiptNumber, "CUSTOMER_ORDER_FINAL", { orderId: order.id, saleId: sale.id, locationId: order.locationId, receiptBooklet: "" });
     // Only the balance settled at release goes on this row. The downpayment and
     // any later payment already have their own rows, so the order's ledger adds
-    // up to its total exactly once.
+    // up to its total exactly once. The row is written even when the customer
+    // already paid in full and the balance is zero, because the release receipt
+    // is the document that hands the goods over: it is what carries the units
+    // sold into the report, and it still has to be verified as a sale receipt.
     await recordPayment(tx, {
       kind: "ORDER_FINAL",
       locationId: order.locationId,

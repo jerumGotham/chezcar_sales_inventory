@@ -69,6 +69,9 @@ export async function resetOperationalData(prisma, environment) {
       deleted.backjobParts = (await tx.backjobPart.deleteMany()).count;
       deleted.backjobItems = (await tx.backjobItem.deleteMany()).count;
       deleted.backjobs = (await tx.backjob.deleteMany()).count;
+      // The payment ledger points at Sale, CustomerOrder, and Customer with
+      // restricted deletes, so it has to go before any of the three.
+      deleted.payments = (await tx.payment.deleteMany()).count;
       deleted.saleAccountingReviews = (await tx.saleAccountingReview.deleteMany()).count;
       deleted.saleLines = (await tx.saleLine.deleteMany()).count;
       deleted.manualReceipts = (await tx.manualReceipt.deleteMany()).count;

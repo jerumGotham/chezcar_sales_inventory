@@ -178,7 +178,9 @@ The order then reads Partial, with total paid and remaining balance. Every payme
 ![Release filled](images/70-order-release-filled.png)
 ![Released](images/71-order-released.png)
 
-On release the system deducts stock, clears the reservation, records the final receipt, and completes the order. The release receipt covers only the balance paid that day; the downpayment and any payments before it were already counted on their own receipts, so the order's total is never counted twice.
+On release the system deducts stock, clears the reservation, records the final receipt, and completes the order. The release receipt covers only the balance paid that day; the downpayment and any payments before it were already counted on their own receipts, so the order's total is never counted twice. If the customer had already paid in full, the release receipt collects nothing and shows ₱0.00 in the report — it still appears, because it is the receipt that carries the units handed over.
+
+The release receipt is checked on the **Sale Receipts** tab, like a POS sale, not on the Payment Receipts tab. It is the one with the item lines to compare.
 
 **Cancel** is available until release. An order with a downpayment requires a cancellation note.
 
