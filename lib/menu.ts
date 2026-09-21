@@ -12,7 +12,6 @@ import {
   Package,
   FileText,
   UserCog,
-  ScrollText,
   Building2,
   Users,
   ShoppingCart,
@@ -102,13 +101,6 @@ export const menus = [
     icon: FileText,
     iconId: "reports",
     capability: REPORT_CAPABILITIES,
-  },
-  {
-    label: "Audit Trail",
-    href: "/audit",
-    icon: ScrollText,
-    iconId: "audit",
-    capability: "audit:view",
   },
   {
     label: "Branch Maintenance",

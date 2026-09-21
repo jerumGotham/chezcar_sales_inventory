@@ -6,14 +6,13 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, BellRing, ChevronDown, KeyRound, LogOut, MapPin, Moon, Sun, X } from "lucide-react";
+import { Bell, ChevronDown, KeyRound, LogOut, MapPin, Moon, ScrollText, Sun, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChangePasswordDialog } from "@/components/change-password-dialog";
 import { useCan, useShellAccess } from "@/components/shell-access-context";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth-client";
 import { markHeaderNotificationRead } from "@/lib/header-notifications";
-import { SERVICE_WORKER_URL } from "@/lib/service-worker";
 
 const THEME_KEY = "chezcar-theme";
 // Temporary light-only release; retain dark-mode code and saved preferences for later.
@@ -35,20 +34,6 @@ async function fetchHeaderNotifications() {
   if (!response.ok) return [] as HeaderNotification[];
   const json = (await response.json()) as { data: HeaderNotification[] };
   return json.data;
-}
-
-async function fetchPushPublicKey() {
-  const response = await fetch("/api/notifications/push-public-key", { credentials: "same-origin" });
-  if (!response.ok) return null;
-  const json = (await response.json()) as { data: { enabled: boolean; publicKey: string | null } };
-  return json.data.enabled ? json.data.publicKey : null;
-}
-
-function urlBase64ToUint8Array(base64String: string) {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const rawData = window.atob(base64);
-  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
 }
 
 function applyTheme(theme: "light" | "dark") {
@@ -74,8 +59,8 @@ export function AppHeader({
   const router = useRouter();
   const access = useShellAccess();
   const canViewNotifications = useCan("notifications:view");
+  const canViewAudit = useCan("audit:view");
   const canMarkNotificationsRead = useCan("notifications:mark-read");
-  const canManagePushNotifications = useCan("notifications:push");
   const queryClient = useQueryClient();
   const identityEmail = access.authenticated ? access.identity.email : null;
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -83,7 +68,6 @@ export function AppHeader({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isPasswordOpen, setIsPasswordOpen] = useState(false);
   const [toast, setToast] = useState<HeaderNotification | null>(null);
-  const [pushState, setPushState] = useState<"unsupported" | "unavailable" | "default" | "denied" | "subscribed" | "pending">("unavailable");
   const menuRef = useRef<HTMLDivElement>(null);
   const notificationsQuery = useQuery({
     queryKey: ["notifications", identityEmail],
@@ -93,68 +77,6 @@ export function AppHeader({
     refetchOnWindowFocus: true,
   });
   const unreadCount = notificationsQuery.data?.filter((notification) => !notification.read).length ?? 0;
-
-  const enablePushNotifications = async () => {
-    if (!canManagePushNotifications) return;
-    if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
-      setPushState("unsupported");
-      return;
-    }
-    if (Notification.permission === "denied") {
-      setPushState("denied");
-      return;
-    }
-
-    setPushState("pending");
-    const publicKey = await fetchPushPublicKey();
-    if (!publicKey) {
-      setPushState("unavailable");
-      return;
-    }
-
-    const permission = await Notification.requestPermission();
-    if (permission !== "granted") {
-      setPushState(permission === "denied" ? "denied" : "default");
-      return;
-    }
-
-    const registration = await navigator.serviceWorker.register(SERVICE_WORKER_URL);
-    const subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey),
-    });
-    await fetch("/api/notifications/push-subscription", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(subscription.toJSON()),
-    });
-    setPushState("subscribed");
-  };
-
-  useEffect(() => {
-    if (!canManagePushNotifications || !("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return;
-
-    let cancelled = false;
-    void fetchPushPublicKey().then(async (publicKey) => {
-      if (cancelled) return;
-      if (!publicKey) {
-        setPushState("unavailable");
-        return;
-      }
-      if (Notification.permission === "denied") {
-        setPushState("denied");
-        return;
-      }
-      const registration = await navigator.serviceWorker.getRegistration(SERVICE_WORKER_URL);
-      const subscription = await registration?.pushManager.getSubscription();
-      if (!cancelled) setPushState(subscription ? "subscribed" : "default");
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [canManagePushNotifications]);
 
   useEffect(() => {
     if (!canViewNotifications || !identityEmail || typeof EventSource === "undefined") return;
@@ -315,22 +237,19 @@ export function AppHeader({
           </div>
         ) : null}
 
-        {/* Only while pressing it would do something. Without VAPID keys the
-            state settles on "unavailable" and this was a button that could
-            never be pressed, sitting next to the bell that works. */}
-        {canManagePushNotifications && (pushState === "default" || pushState === "pending") ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className="rounded-2xl border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100 hover:text-brand-800 disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
-            onClick={enablePushNotifications}
-            disabled={pushState === "pending"}
-            title={pushState === "pending" ? "Turning on browser notifications..." : "Enable browser notifications"}
-            aria-label="Enable browser notifications"
+        {/* Beside the scope rather than in the sidebar: only the owner holds
+            audit:view, so a menu entry nobody else sees costs every other role
+            a row of nothing. Access is unchanged — the capability still gates
+            both this link and the route. */}
+        {canViewAudit ? (
+          <Link
+            href="/audit"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+            aria-label="Audit trail"
+            title="Audit trail"
           >
-            <BellRing className="h-5 w-5" />
-          </Button>
+            <ScrollText className="h-5 w-5" />
+          </Link>
         ) : null}
 
         {canViewNotifications ? (
