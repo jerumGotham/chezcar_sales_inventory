@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 
@@ -33,14 +33,21 @@ type Filters = { category: string; search: string; dateFrom: string; dateTo: str
 
 const EMPTY_FILTERS: Filters = { category: "all", search: "", dateFrom: "", dateTo: "" };
 
+/**
+ * Built once. toLocaleString with options constructs a formatter on every call,
+ * which ran twenty-five times per render — including the render that opens the
+ * details dialog, where it showed up as a hitch before the dialog appeared.
+ */
+const dateTime = new Intl.DateTimeFormat("en-PH", {
+  year: "numeric",
+  month: "short",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 function formatMoment(value: string) {
-  return new Date(value).toLocaleString("en-PH", {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return dateTime.format(new Date(value));
 }
 
 export function AuditClient() {
@@ -70,6 +77,8 @@ export function AuditClient() {
   });
 
   const rows = query.data?.data ?? [];
+  // Stable, so the memoised rows survive opening and closing the dialog.
+  const openDetails = useCallback((row: AuditEntryDto) => setOpenEntry(row), []);
   const meta = query.data?.meta ?? { page: 1, pageSize: PAGE_SIZE, total: 0, totalPages: 1, truncated: false };
 
   const apply = (next: Filters) => {
@@ -162,20 +171,7 @@ export function AuditClient() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  rows.map((row) => (
-                    <TableRow key={row.id}>
-                      <TableCell className="whitespace-nowrap">{formatMoment(row.occurredAt)}</TableCell>
-                      <TableCell><Badge variant="outline">{row.category}</Badge></TableCell>
-                      <TableCell className="font-medium">{row.action}</TableCell>
-                      <TableCell>{row.actor}</TableCell>
-                      <TableCell className="font-mono text-xs">{row.reference}</TableCell>
-                      <TableCell>{row.location}</TableCell>
-                      <TableCell className="max-w-md">{row.details}</TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="view" size="sm" onClick={() => setOpenEntry(row)}>View</Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  rows.map((row) => <AuditRow key={row.id} row={row} onView={openDetails} />)
                 )}
               </TableBody>
             </Table>
@@ -194,6 +190,27 @@ export function AuditClient() {
     </PageShell>
   );
 }
+
+/**
+ * Memoised because opening the dialog re-renders this component, and without it
+ * every row in the page rebuilt just to show one entry's details.
+ */
+const AuditRow = memo(function AuditRow({ row, onView }: { row: AuditEntryDto; onView: (row: AuditEntryDto) => void }) {
+  return (
+    <TableRow>
+      <TableCell className="whitespace-nowrap">{formatMoment(row.occurredAt)}</TableCell>
+      <TableCell><Badge variant="outline">{row.category}</Badge></TableCell>
+      <TableCell className="font-medium">{row.action}</TableCell>
+      <TableCell>{row.actor}</TableCell>
+      <TableCell className="font-mono text-xs">{row.reference}</TableCell>
+      <TableCell>{row.location}</TableCell>
+      <TableCell className="max-w-md">{row.details}</TableCell>
+      <TableCell className="text-right">
+        <Button variant="view" size="sm" onClick={() => onView(row)}>View</Button>
+      </TableCell>
+    </TableRow>
+  );
+});
 
 function FactList({ facts }: { facts: ReadonlyArray<{ label: string; value: string }> }) {
   return (
