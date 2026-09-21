@@ -126,7 +126,6 @@ const paymentOptions: SelectOption[] = [
   { value: "maya", label: "Maya" },
   { value: "bank_transfer", label: "Bank Transfer" },
   { value: "credit_card", label: "Credit Card" },
-  { value: "split", label: "Split Payment" },
 ];
 
 // Offline POS is intentionally paused until its operating workflow is finalized.
@@ -729,7 +728,6 @@ function PosTab() {
       maya: "MAYA",
       bank_transfer: "BANK_TRANSFER",
       credit_card: "CREDIT_CARD",
-      split: "SPLIT",
     };
     const salePayload: OfflineSalePayload = {
       customerId:
