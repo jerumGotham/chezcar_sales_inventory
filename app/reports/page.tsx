@@ -1,10 +1,11 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Boxes, ChevronLeft, ChevronRight, FileText, Filter, Loader2, Receipt, RefreshCw, RotateCcw, ShieldCheck, TrendingDown, Users, type LucideIcon } from "lucide-react";
+import { Boxes, FileText, Filter, Loader2, Receipt, RefreshCw, RotateCcw, ShieldCheck, TrendingDown, Users, type LucideIcon } from "lucide-react";
 import { useState, useSyncExternalStore } from "react";
 
 import { PageShell } from "@/components/page-shell";
+import { TablePagination } from "@/components/table-pagination";
 import { useShellAccess } from "@/components/shell-access-context";
 import { hasCapability } from "@/lib/permissions";
 import type { CapabilityId } from "@/lib/contracts/roles";
@@ -391,11 +392,11 @@ function InventoryView({ report }: { report: InventorySummaryReport }) {
   return <>
     <p className="text-sm text-muted-foreground">Available = on hand minus reserved and quarantined. Only products with positive available stock in the selected branches are included, once per product. Comparison cells show 0 where no positive stock is available. Stock Room and in-transit stock are excluded.</p>
     <div className="grid gap-3 sm:grid-cols-3"><Metric label="Products (full filtered set)" value={String(report.totals.productCount)} /><Metric label="Branches in scope" value={String(report.totals.locationCount)} /><Metric label="Available units (full filtered set)" value={String(report.totals.available)} /></div>
-    <Table headers={headers} numericFrom={4} footerRow={totals} rows={report.rows.slice(start, start + pageSize).map((row) => [row.itemCode, row.product, row.category, row.brand, ...(comparison ? report.effectiveScope.map((location) => String(row.availableByLocation[location.id])) : []), String(row.available)])} />
     <nav aria-label="Inventory products pagination" className="flex flex-wrap items-center justify-between gap-3">
       <p className="text-xs text-muted-foreground">{report.rows.length ? `${start + 1}-${Math.min(start + pageSize, report.rows.length)}` : "0"} of {report.rows.length} products | 25 per page. Totals and PDF include all filtered products.</p>
-      <div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}><ChevronLeft aria-hidden="true" />Previous</Button><span className="text-xs">Page {currentPage} of {pageCount}</span><Button variant="outline" size="sm" disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>Next<ChevronRight aria-hidden="true" /></Button></div>
+      <TablePagination page={currentPage} totalPages={pageCount} onPageChange={setPage} />
     </nav>
+    <Table headers={headers} numericFrom={4} footerRow={totals} rows={report.rows.slice(start, start + pageSize).map((row) => [row.itemCode, row.product, row.category, row.brand, ...(comparison ? report.effectiveScope.map((location) => String(row.availableByLocation[location.id])) : []), String(row.available)])} />
   </>;
 }
 

@@ -25,6 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { TablePagination } from "@/components/table-pagination";
 import { AUDIT_CATEGORIES, type AuditEntryDto, type AuditTrailDto } from "@/lib/contracts/audit";
 
 const PAGE_SIZE = 25;
@@ -143,11 +144,14 @@ export function AuditClient() {
 
       <Card>
         <CardContent className="pt-6">
-          <div className="mb-4 flex items-center justify-between">
-            <p className="text-muted-foreground text-sm">
-              {meta.total === 0 ? "No entries" : `Showing page ${meta.page} of ${meta.totalPages}, ${meta.total} entries`}
-            </p>
-            {query.isFetching ? <Loader2 className="text-muted-foreground size-4 animate-spin" /> : null}
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <p className="text-muted-foreground text-sm">
+                {meta.total === 0 ? "No entries" : `${meta.total} entries`}
+              </p>
+              {query.isFetching ? <Loader2 className="text-muted-foreground size-4 animate-spin" /> : null}
+            </div>
+            <TablePagination page={meta.page} totalPages={meta.totalPages} onPageChange={setPage} busy={query.isFetching} />
           </div>
           <div className="overflow-x-auto">
             <Table>
@@ -176,14 +180,7 @@ export function AuditClient() {
               </TableBody>
             </Table>
           </div>
-          <div className="mt-4 flex items-center justify-end gap-2">
-            <Button variant="outline" size="sm" disabled={meta.page <= 1 || query.isFetching} onClick={() => setPage((current) => Math.max(current - 1, 1))}>
-              Previous
-            </Button>
-            <Button variant="outline" size="sm" disabled={meta.page >= meta.totalPages || query.isFetching} onClick={() => setPage((current) => current + 1)}>
-              Next
-            </Button>
-          </div>
+
         </CardContent>
       </Card>
       <AuditEntryDialog entry={openEntry} onClose={() => setOpenEntry(null)} />

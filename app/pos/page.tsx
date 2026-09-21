@@ -20,8 +20,6 @@ import {
   Car,
   FileText,
   Upload,
-  ChevronLeft,
-  ChevronRight,
   AlertTriangle,
 } from "lucide-react";
 
@@ -38,6 +36,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { PageShell } from "@/components/page-shell";
+import { TablePagination } from "@/components/table-pagination";
 import { useShellAccess } from "@/components/shell-access-context";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -958,6 +957,13 @@ function PosTab() {
                 />
               </div>
 
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-slate-500">
+                  Showing {filteredProducts.length === 0 ? 0 : (safeProductPage - 1) * productPageSize + 1}-{Math.min(safeProductPage * productPageSize, filteredProducts.length)} of {filteredProducts.length} product{filteredProducts.length !== 1 ? "s" : ""}.
+                </p>
+                <TablePagination page={safeProductPage} totalPages={productTotalPages} onPageChange={setProductPage} />
+              </div>
+
               <div className="overflow-x-auto rounded-2xl border bg-white">
                 <div className="grid grid-cols-[1.8fr_1fr_110px_130px_120px] gap-3 border-b bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
                   <div>Product</div>
@@ -1017,20 +1023,6 @@ function PosTab() {
                 </div>
               </div>
 
-               <div className="flex flex-col gap-3 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-                 <p>
-                   Showing {filteredProducts.length === 0 ? 0 : (safeProductPage - 1) * productPageSize + 1}-{Math.min(safeProductPage * productPageSize, filteredProducts.length)} of {filteredProducts.length} product{filteredProducts.length !== 1 ? "s" : ""}.
-                 </p>
-                 <div className="flex items-center gap-2">
-                   <Button variant="outline" size="sm" onClick={() => setProductPage((page) => Math.max(1, page - 1))} disabled={safeProductPage <= 1}>
-                     <ChevronLeft className="mr-1 h-4 w-4" /> Previous
-                   </Button>
-                   <span>Page {safeProductPage} of {productTotalPages}</span>
-                   <Button variant="outline" size="sm" onClick={() => setProductPage((page) => Math.min(productTotalPages, page + 1))} disabled={safeProductPage >= productTotalPages}>
-                     Next <ChevronRight className="ml-1 h-4 w-4" />
-                   </Button>
-                 </div>
-               </div>
             </CardContent>
           </Card>
         </div>

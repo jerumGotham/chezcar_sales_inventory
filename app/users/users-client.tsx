@@ -9,9 +9,10 @@ import {
   type Ref,
 } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Eye, EyeOff, Loader2, TriangleAlert, X } from "lucide-react";
+import { Eye, EyeOff, Loader2, TriangleAlert, X } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
+import { TablePagination } from "@/components/table-pagination";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -1367,13 +1368,16 @@ export function UsersClient({
         {/* Table card */}
         <Card className="mt-6">
           <CardContent className="p-0">
-            <div className="border-b px-5 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
               <p className="text-muted-foreground text-sm" aria-live="polite">
                 {meta.totalItems > 0 &&
                   `Showing ${showingFrom}–${showingTo} of ${resultCountLabel}`}
                 {meta.totalItems > 0 && isRefreshing ? " · " : ""}
                 {isRefreshing ? "Updating…" : ""}
               </p>
+              {meta.totalItems > 0 ? (
+                <TablePagination page={meta.page} totalPages={meta.totalPages} onPageChange={setPage} busy={isRefreshing} />
+              ) : null}
             </div>
 
             <Table className="min-w-[960px]">
@@ -1545,39 +1549,6 @@ export function UsersClient({
               </TableBody>
             </Table>
 
-            {meta.totalItems > 0 && (
-              <div className="border-t flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-muted-foreground text-sm">
-                  Page {meta.page} of {Math.max(meta.totalPages, 1)}
-                </p>
-
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((previous) => Math.max(previous - 1, 1))}
-                    disabled={meta.page <= 1 || isRefreshing}
-                  >
-                    <ChevronLeft className="mr-1 h-4 w-4" aria-hidden />
-                    Previous
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      setPage((previous) =>
-                        Math.min(previous + 1, Math.max(meta.totalPages, 1)),
-                      )
-                    }
-                    disabled={meta.page >= meta.totalPages || isRefreshing}
-                  >
-                    Next
-                    <ChevronRight className="ml-1 h-4 w-4" aria-hidden />
-                  </Button>
-                </div>
-              </div>
-            )}
           </CardContent>
         </Card>
       </PageShell>

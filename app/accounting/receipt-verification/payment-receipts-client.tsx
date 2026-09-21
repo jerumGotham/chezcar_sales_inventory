@@ -7,6 +7,7 @@ import type { StylesConfig } from "react-select";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { TablePagination } from "@/components/table-pagination";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -394,6 +395,19 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
         <Card>
           <CardContent className="p-0">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+              <span className="text-muted-foreground text-sm">
+                {meta ? `${meta.totalItems} receipt(s)` : ""}
+              </span>
+              {meta ? (
+                <TablePagination
+                  page={meta.page}
+                  totalPages={meta.totalPages}
+                  busy={isFetching}
+                  onPageChange={(next) => setFilters((current) => ({ ...current, page: next }))}
+                />
+              ) : null}
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] text-sm">
                 <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -436,15 +450,6 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
                 </tbody>
               </table>
             </div>
-            {meta && meta.totalPages > 1 ? (
-              <div className="flex items-center justify-between border-t px-4 py-3 text-sm">
-                <span className="text-muted-foreground">Page {meta.page} of {meta.totalPages} · {meta.totalItems} receipt(s)</span>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" disabled={meta.page <= 1} onClick={() => setFilters((current) => ({ ...current, page: current.page - 1 }))}>Previous</Button>
-                  <Button variant="outline" size="sm" disabled={meta.page >= meta.totalPages} onClick={() => setFilters((current) => ({ ...current, page: current.page + 1 }))}>Next</Button>
-                </div>
-              </div>
-            ) : null}
           </CardContent>
         </Card>
 

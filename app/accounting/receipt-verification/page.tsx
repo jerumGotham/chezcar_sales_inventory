@@ -9,8 +9,6 @@ import { useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
   Loader2,
   Plus,
   Search,
@@ -20,6 +18,7 @@ import {
 
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { PageShell } from "@/components/page-shell";
+import { TablePagination } from "@/components/table-pagination";
 import { PaymentReceiptsClient } from "./payment-receipts-client";
 import { useCan } from "@/components/shell-access-context";
 import { Badge } from "@/components/ui/badge";
@@ -1116,6 +1115,14 @@ function ReceiptVerificationContent() {
                   {isFetching && !isLoading ? " · Updating..." : ""}
                 </p>
               </div>
+              {meta.totalItems > 0 ? (
+                <TablePagination
+                  page={meta.page}
+                  totalPages={meta.totalPages}
+                  busy={isFetching}
+                  onPageChange={(next) => setFilters((current) => ({ ...current, page: next }))}
+                />
+              ) : null}
             </div>
             <div className="mt-4 overflow-x-auto">
               {isLoading ? (
@@ -1239,43 +1246,6 @@ function ReceiptVerificationContent() {
                 </table>
               )}
             </div>
-            {meta.totalItems > 0 ? (
-              <div className="mt-4 flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm text-slate-500">
-                  Page {meta.page} of {meta.totalPages}
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      setFilters((current) => ({
-                        ...current,
-                        page: Math.max(1, current.page - 1),
-                      }))
-                    }
-                    disabled={meta.page <= 1 || isFetching}
-                  >
-                    <ChevronLeft className="mr-1 size-4" />
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      setFilters((current) => ({
-                        ...current,
-                        page: Math.min(meta.totalPages, current.page + 1),
-                      }))
-                    }
-                    disabled={meta.page >= meta.totalPages || isFetching}
-                  >
-                    Next
-                    <ChevronRight className="ml-1 size-4" />
-                  </Button>
-                </div>
-              </div>
-            ) : null}
           </CardContent>
         </Card>
 

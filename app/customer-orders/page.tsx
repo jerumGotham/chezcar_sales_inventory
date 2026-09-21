@@ -8,8 +8,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Select from "react-select";
 import type { StylesConfig } from "react-select";
 import {
-  ChevronLeft,
-  ChevronRight,
   FileText,
   Loader2,
   ShoppingBag,
@@ -29,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 
 import { PageShell } from "@/components/page-shell";
+import { TablePagination } from "@/components/table-pagination";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -803,7 +802,7 @@ export default function CustomerOrdersPage() {
 
       <Card className="mt-6">
         <CardContent className="p-0">
-          <div className="flex items-center justify-between border-b px-5 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
             <div>
               <h3 className="text-base font-semibold text-foreground">
                 Customer Order List
@@ -813,6 +812,7 @@ export default function CustomerOrdersPage() {
                 {isFetching && !isLoading ? " • Updating..." : ""}
               </p>
             </div>
+            <TablePagination page={meta.page} totalPages={meta.totalPages} onPageChange={setPage} busy={isFetching} />
           </div>
 
           <div className="overflow-x-auto">
@@ -990,35 +990,6 @@ export default function CustomerOrdersPage() {
             </table>
           </div>
 
-          <div className="flex flex-col gap-3 border-t px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-slate-500">
-              Page {meta.page} of {Math.max(meta.totalPages, 1)}
-            </p>
-
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
-                disabled={meta.page <= 1 || isFetching}
-              >
-                <ChevronLeft className="mr-1 h-4 w-4" />
-                Previous
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  setPage((prev) => Math.min(prev + 1, meta.totalPages || 1))
-                }
-                disabled={meta.page >= meta.totalPages || isFetching}
-              >
-                Next
-                <ChevronRight className="ml-1 h-4 w-4" />
-              </Button>
-            </div>
-          </div>
         </CardContent>
       </Card>
 
@@ -1260,6 +1231,11 @@ export default function CustomerOrdersPage() {
               />
             </div>
 
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-3">
+              <p className="text-sm text-slate-500">Showing {filteredSales.length === 0 ? 0 : (safeSalePage - 1) * pageSize + 1} to {Math.min(safeSalePage * pageSize, filteredSales.length)} of {filteredSales.length} sales</p>
+              <TablePagination page={safeSalePage} totalPages={saleTotalPages} onPageChange={setSalePage} busy={directSalesQuery.isFetching} />
+            </div>
+
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1050px]">
                 <thead className="bg-slate-50">
@@ -1319,18 +1295,6 @@ export default function CustomerOrdersPage() {
               </table>
             </div>
 
-            <div className="flex flex-col gap-3 border-t px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-slate-500">Showing {filteredSales.length === 0 ? 0 : (safeSalePage - 1) * pageSize + 1} to {Math.min(safeSalePage * pageSize, filteredSales.length)} of {filteredSales.length} sales</p>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => setSalePage((prev) => Math.max(prev - 1, 1))} disabled={safeSalePage <= 1 || directSalesQuery.isFetching}>
-                  <ChevronLeft className="mr-1 h-4 w-4" /> Previous
-                </Button>
-                <span className="text-sm text-slate-500">Page {safeSalePage} of {saleTotalPages}</span>
-                <Button variant="outline" size="sm" onClick={() => setSalePage((prev) => Math.min(prev + 1, saleTotalPages))} disabled={safeSalePage >= saleTotalPages || directSalesQuery.isFetching}>
-                  Next <ChevronRight className="ml-1 h-4 w-4" />
-                </Button>
-              </div>
-            </div>
           </CardContent>
         </Card>
         <Dialog open={Boolean(selectedSale)} onOpenChange={(open) => !open && setSelectedSale(null)}>

@@ -10,8 +10,6 @@ import type { StylesConfig } from "react-select";
 import {
   AlertTriangle,
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
   Printer,
   Trash2,
   X,
@@ -19,6 +17,7 @@ import {
 
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { PageShell } from "@/components/page-shell";
+import { TablePagination } from "@/components/table-pagination";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -1771,6 +1770,21 @@ export function StockTransfersClient({
           </div>
         </CardContent>
         <CardContent className="p-0">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+            <p className="text-sm text-slate-500">
+              {transfers.isFetching && !transfers.isLoading ? "Updating..." : ""}
+            </p>
+            <TablePagination
+              page={transfers.data?.meta.page ?? page}
+              totalPages={transfers.data?.meta.totalPages ?? 1}
+              busy={transfers.isFetching}
+              onPageChange={(next) => {
+                // Paging away from the selected row used to clear it here too.
+                setSelectedTransferId("");
+                setPage(next);
+              }}
+            />
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[700px]">
               <thead className="bg-slate-50">
@@ -1851,41 +1865,6 @@ export function StockTransfersClient({
                 )}
               </tbody>
             </table>
-          </div>
-          <div className="flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-slate-500">
-              Page {transfers.data?.meta.page ?? page} of {transfers.data?.meta.totalPages ?? 1}
-              {transfers.isFetching && !transfers.isLoading ? " · Updating..." : ""}
-            </p>
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={page <= 1 || transfers.isFetching}
-                onClick={() => {
-                  setSelectedTransferId("");
-                  setPage((current) => Math.max(1, current - 1));
-                }}
-              >
-                <ChevronLeft className="mr-1 h-4 w-4" />
-                Previous
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={
-                  page >= (transfers.data?.meta.totalPages ?? 1) ||
-                  transfers.isFetching
-                }
-                onClick={() => {
-                  setSelectedTransferId("");
-                  setPage((current) => current + 1);
-                }}
-              >
-                Next
-                <ChevronRight className="ml-1 h-4 w-4" />
-              </Button>
-            </div>
           </div>
         </CardContent>
       </Card>

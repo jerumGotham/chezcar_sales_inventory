@@ -12,7 +12,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TablePagination } from "@/components/table-pagination";
 import { notificationDestination } from "@/lib/notification-links";
+
+const PAGE_SIZE = 15;
 
 type Notification = {
   id: string;
@@ -77,6 +80,7 @@ export default function NotificationsPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("all");
+  const [page, setPage] = useState(1);
   const notificationsQuery = useQuery({
     queryKey: ["notifications", identityEmail],
     queryFn: fetchNotifications,
@@ -132,6 +136,16 @@ export default function NotificationsPage() {
     [activeTab, notifications],
   );
 
+  // The endpoint returns at most 100 rows in one array, and the header bell and
+  // the live stream read the same call, so the page is sliced here rather than
+  // changing what that call returns.
+  const totalPages = Math.max(Math.ceil(filteredNotifications.length / PAGE_SIZE), 1);
+  const currentPage = Math.min(page, totalPages);
+  const pageNotifications = useMemo(
+    () => filteredNotifications.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [currentPage, filteredNotifications],
+  );
+
   return (
     <PageShell
       title="Notifications"
@@ -149,7 +163,7 @@ export default function NotificationsPage() {
         </Button> : null
       }
     >
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={(value) => { setActiveTab(value); setPage(1); }}>
         <TabsList className="mb-5 bg-green-50 dark:bg-slate-900">
           <TabsTrigger value="all">All</TabsTrigger>
           <TabsTrigger value="unread">Unread</TabsTrigger>
@@ -158,6 +172,9 @@ export default function NotificationsPage() {
 
       <Card>
         <CardContent className="p-0">
+          <div className="flex justify-end border-b px-4 py-3">
+            <TablePagination page={currentPage} totalPages={totalPages} onPageChange={setPage} busy={notificationsQuery.isFetching} />
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[820px] text-left text-sm">
               <thead className="border-b bg-slate-50 text-xs uppercase tracking-wide text-slate-500 dark:bg-slate-900 dark:text-slate-400">
@@ -190,7 +207,7 @@ export default function NotificationsPage() {
                     </td>
                   </tr>
                 ) : (
-                  filteredNotifications.map((notification) => {
+                  pageNotifications.map((notification) => {
                     const destination = notificationDestination(notification);
                     return (
                       <tr
