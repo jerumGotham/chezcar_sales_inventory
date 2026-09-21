@@ -12,10 +12,12 @@ export function AppLayoutShellClient({ children }: { children: ReactNode }) {
   const access = useShellAccess();
   const isTransferPrintView =
     /^\/stock-transfers\/[^/]+\/print$/.test(pathname);
-  const isBackjobPrintView =
-    /^\/inventory\/returns-warranty\/[^/]+\/print$/.test(pathname);
+  // Warranty and supplier-claim print views sit one folder deeper, and without
+  // them here the sidebar and header end up on the sheet handed to a customer.
+  const isReturnsPrintView =
+    /^\/inventory\/returns-warranty\/(?:warranties\/|supplier-claims\/)?[^/]+\/print$/.test(pathname);
 
-  if (pathname.startsWith("/sign-in") || isTransferPrintView || isBackjobPrintView) {
+  if (pathname.startsWith("/sign-in") || isTransferPrintView || isReturnsPrintView) {
     return children;
   }
 
