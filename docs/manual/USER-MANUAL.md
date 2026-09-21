@@ -387,7 +387,9 @@ Creating a claim changes no stock yet.
 
 ![Supplier claims](images/41-returns-supplier-claims.png)
 
-A claim opens automatically whenever a supplier receipt records quarantined or missing units. From the claim you can send stock back to the supplier, receive a replacement, or record a repair, and each step keeps its own record.
+A claim opens automatically whenever a supplier receipt records quarantined or missing units.
+
+Its actions are in two boxes, and the difference matters. **Where the claim stands** moves the paperwork only — submit it, park it waiting for a replacement, record the supplier's rejection, complete it, or cancel the draft. **Where the items go** moves real stock: return items to the supplier, send them out for repair, receive a replacement or a repaired item, make repaired items sellable again, or write off what is lost. The number in brackets is how many pieces that action will cover. Press one only after the goods have actually moved. Red means something is destroyed or ended.
 
 ---
 
