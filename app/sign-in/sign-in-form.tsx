@@ -102,7 +102,7 @@ export function SignInForm({ callbackUrl }: { callbackUrl: string }) {
           <LockKeyhole className="h-6 w-6" />
         </div>
         <div className="space-y-1">
-          <CardTitle className="text-2xl">Sign in to Chezcar</CardTitle>
+          <CardTitle className="text-2xl">Sign in to Predator</CardTitle>
           <p className="text-sm text-slate-500">
             Use your assigned internal account to continue.
           </p>

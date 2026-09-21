@@ -57,7 +57,7 @@ export default async function StockTransferPrintPage({
         >
           <header className="border-b-2 border-slate-900 pb-5 dark:border-slate-100">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-              Chezcar Auto Care
+              Predator Auto Care
             </p>
             <h1 className="mt-1 text-2xl font-bold sm:text-3xl">
               Stock Transfer Checklist

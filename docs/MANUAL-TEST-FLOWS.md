@@ -621,7 +621,7 @@ These revised Reports checks, including Sales by Salesperson, are source-based a
 ### PDF Export
 
 1. For each of the four retained reports, apply a distinctive set of filters, then make an unsaved draft edit and export. Confirm the PDF uses the applied filters, not the pending edit.
-2. Confirm the header contains `CHEZCAR AUTO CARE` and the correct report title, with no literal logo placeholder or embedded logo.
+2. Confirm the header contains `PREDATOR AUTO CARE` and the correct report title, with no literal logo placeholder or embedded logo.
 3. Confirm generated-by display identity, generated-at Manila time, effective location scope, all applied filters, and inclusive date range/date basis are present. Inventory instead describes the current branch-only available-stock snapshot.
 4. With no intervening data changes, confirm summaries and all authorized detail rows match the UI's complete filtered dataset. Export reruns a live query; PDFs are not saved/frozen report snapshots, so intervening changes may legitimately alter results.
 5. For both sales PDFs, confirm a separate Branch subtotals table includes branch transactions, units, sales amount, and share, ending in an emphasized `OVERALL TOTAL` row that reconciles to the overview/JSON. Empty results still show a zero overall total; existing Sales percentages remain unchanged.

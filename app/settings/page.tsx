@@ -12,7 +12,7 @@ export default function SettingsPage() {
   const [isEditingCompany, setIsEditingCompany] = useState(false);
 
   const [company, setCompany] = useState({
-    name: "Chezcar Accessories",
+    name: "Predator Accessories",
     address: "Quezon City",
     contact: "0917-000-0000",
     description: "",

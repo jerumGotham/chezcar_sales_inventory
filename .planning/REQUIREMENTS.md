@@ -1,4 +1,4 @@
-# Requirements: Chezcar Sales and Inventory
+# Requirements: Predator Sales and Inventory
 
 **Defined:** 2026-08-25
 **Updated:** 2026-08-25 after owner process confirmation

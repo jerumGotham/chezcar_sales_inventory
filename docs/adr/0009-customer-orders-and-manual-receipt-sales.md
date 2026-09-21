@@ -5,7 +5,7 @@
 
 ## Context
 
-Chezcar branches still issue handwritten/manual receipts. The internal system must reflect real sales activity after branch staff writes the receipt, not replace the receipt process yet. Some customers buy immediately in-store, while others order through Messenger, Facebook, or messages and may reserve stock with or without downpayment.
+Predator branches still issue handwritten/manual receipts. The internal system must reflect real sales activity after branch staff writes the receipt, not replace the receipt process yet. Some customers buy immediately in-store, while others order through Messenger, Facebook, or messages and may reserve stock with or without downpayment.
 
 The next production backend phase starts with customer records and customer orders because reservations, downpayments, release, cancellation, inventory reservation, and later Accounting verification depend on this workflow.
 

@@ -86,7 +86,7 @@ Generated/dependency directories `.next/` and `node_modules/` are present locall
 
 **`public/`:**
 - Purpose: Serve static assets from root-relative URLs.
-- Contains: Chezcar PNG/SVG logos and a user avatar SVG.
+- Contains: Predator PNG/SVG logos and a user avatar SVG.
 - Key files: `public/chezcar-logo.png`, `public/chezcar-logo.svg`, `public/chezcar_logo_recreated.svg`, `public/user-avatar.svg`.
 
 **`docs/`:**

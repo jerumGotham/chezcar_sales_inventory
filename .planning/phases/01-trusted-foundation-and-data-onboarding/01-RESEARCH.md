@@ -31,7 +31,7 @@
 - **D-17:** Changing an active user's role or assigned branch immediately revokes active sessions. The user must sign in again to receive the new access and branch context.
 
 ### Visual Direction
-- **D-18:** Improve the current Chezcar prototype style rather than redesigning it. Preserve the sidebar, semantic colors, shared components, responsive behavior, and familiar tables/forms while simplifying hierarchy, workflow feedback, notifications, and offline states.
+- **D-18:** Improve the current Predator prototype style rather than redesigning it. Preserve the sidebar, semantic colors, shared components, responsive behavior, and familiar tables/forms while simplifying hierarchy, workflow feedback, notifications, and offline states.
 
 ### the agent's Discretion
 - Temporary item-code format and collision handling.
@@ -83,7 +83,7 @@ The project already has the right server boundary shape: route handlers validate
 
 1. Plan developer-operated workbook profiling, review, generation, and development/test reload; do not plan a browser file picker, upload endpoint, recurring import history, or production reset operation. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:7-11,115-121]
 2. Plan Admin-only list/create/update/deactivate/reactivate/reset operations for non-Admin staff; never expose Admin creation or custom permission editing. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-CONTEXT.md:37-41]
-3. Preserve the approved `base-nova` Chezcar UI contract; no new UI package or registry block is required. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-UI-SPEC.md:20-35,242-249]
+3. Preserve the approved `base-nova` Predator UI contract; no new UI package or registry block is required. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-UI-SPEC.md:20-35,242-249]
 4. Do not treat prototype Users/Roles controls as policy. The current screen defines `"Super Admin"`, `"Admin"`, `"Branch Manager"`, `"Cashier"`, and `"Inventory Staff"`; the implemented canonical roles are quoted below. [VERIFIED: app/users/page.tsx:192-199] [VERIFIED: prisma/schema.prisma:15-20]
 
 ## Workbook Evidence and Review Gates
@@ -246,7 +246,7 @@ tests/integration/             # Prisma seed/auth/scope tests
 
 ### Pattern 3: Narrow application-owned account lifecycle over Better Auth
 
-**What:** Keep the existing public `auth` instance as the sole catch-all handler with `disableSignUp` and no Admin plugin. Create a separate server-only Better Auth 1.6.23 instance with `admin()` solely for supported `createUser`/`setUserPassword` service calls, and never mount that instance through `toNextJsHandler`. Expose only narrow Chezcar route handlers that enforce owner-Admin access, the three creatable roles, application `status`, role-valid location, and session revocation; direct tests must prove public sign-up and generic Admin routes are unavailable. [CITED: https://raw.githubusercontent.com/better-auth/better-auth/v1.6.23/docs/content/docs/plugins/admin.mdx] [ASSUMED]
+**What:** Keep the existing public `auth` instance as the sole catch-all handler with `disableSignUp` and no Admin plugin. Create a separate server-only Better Auth 1.6.23 instance with `admin()` solely for supported `createUser`/`setUserPassword` service calls, and never mount that instance through `toNextJsHandler`. Expose only narrow Predator route handlers that enforce owner-Admin access, the three creatable roles, application `status`, role-valid location, and session revocation; direct tests must prove public sign-up and generic Admin routes are unavailable. [CITED: https://raw.githubusercontent.com/better-auth/better-auth/v1.6.23/docs/content/docs/plugins/admin.mdx] [ASSUMED]
 
 **Important:** the v1.6.23 Admin plugin adds optional `role`, `banned`, `banReason`, `banExpires`, and `impersonatedBy` fields and defaults to lowercase `admin`/`user` role conventions. The application defines `"ADMIN"`, `"STOCK_STAFF"`, `"BRANCH_STAFF"`, and `"ACCOUNTING_STAFF"` plus `"ACTIVE"`/`"INACTIVE"`; configure custom access control and hand-review additive schema changes rather than applying generated plugin schema blindly. [CITED: https://raw.githubusercontent.com/better-auth/better-auth/v1.6.23/docs/content/docs/plugins/admin.mdx] [VERIFIED: prisma/schema.prisma:15-25,81-110]
 
@@ -534,7 +534,7 @@ Security enforcement is enabled because no config explicitly disables it. [VERIF
 | Session retained after deactivation/scope change | Elevation | Atomic user/session update or verified Better Auth revocation; cookie cache disabled; old-cookie integration test. |
 | Spreadsheet formula/reference poisoning or stale cache | Tampering | Offline-only selected-sheet parse; capture formula and cached value; no formula execution; reviewed canonical artifact. |
 | Production reset invocation | Tampering / Denial of Service | No HTTP endpoint; positive environment/database allowlist; hard refusal; separate credentials. |
-| Raw Better Auth Admin endpoint permits unsupported role mutation | Elevation | Expose narrow Chezcar handlers only; server allowlist the three creatable roles and reject owner-Admin mutation. [ASSUMED] |
+| Raw Better Auth Admin endpoint permits unsupported role mutation | Elevation | Expose narrow Predator handlers only; server allowlist the three creatable roles and reject owner-Admin mutation. [ASSUMED] |
 | Temporary password exposure | Spoofing | Mask inputs, offline handoff, no logs, Better Auth hashing, reset + session revocation, one-time prompt state. [VERIFIED: .planning/phases/01-trusted-foundation-and-data-onboarding/01-UI-SPEC.md:179-207] |
 
 ## Sources

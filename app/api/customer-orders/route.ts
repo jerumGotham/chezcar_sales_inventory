@@ -58,7 +58,7 @@ export async function GET(request: Request) {
           ],
         },
       );
-      return pdfResponse(body, "chezcar-customer-orders.pdf");
+      return pdfResponse(body, "predator-customer-orders.pdf");
     }
 
     return Response.json({ data: await listCustomerOrders(actor) });

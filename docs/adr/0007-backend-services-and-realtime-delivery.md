@@ -25,7 +25,7 @@ The implementation still needs a concrete backend library set and a wake-up mech
 Use Better Auth with its Next.js integration, Prisma adapter, database-backed sessions, and email/password support unless a short implementation spike reveals a blocker.
 
 - Better Auth owns credential and session lifecycle.
-- Application authorization policies own the Chezcar roles and branch/location scope.
+- Application authorization policies own the Predator roles and branch/location scope.
 - A valid session does not by itself authorize a sale, transfer, adjustment, or report.
 - Do not trust client-supplied role, user, branch, or location IDs.
 - Admin account creation and password recovery require controlled internal workflows.

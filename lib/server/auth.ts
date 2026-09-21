@@ -86,7 +86,7 @@ const authAuditBefore = createAuthMiddleware(async (ctx) => {
 });
 
 export const auth = betterAuth({
-  appName: "Chezcar Sales & Inventory",
+  appName: "Predator Sales & Inventory",
   trustedOrigins: resolveAuthTrustedOrigins({
     BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
     BETTER_AUTH_TRUSTED_ORIGINS: process.env.BETTER_AUTH_TRUSTED_ORIGINS,

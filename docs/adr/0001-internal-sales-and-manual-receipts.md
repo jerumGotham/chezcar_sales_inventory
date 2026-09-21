@@ -6,7 +6,7 @@
 
 ## Context
 
-Chezcar will continue issuing handwritten receipts to customers. The new system is intended for internal sales and inventory monitoring rather than customer-facing invoicing. The owner needs daily branch sales visibility, and every encoded sale must reduce the corresponding branch stock.
+Predator will continue issuing handwritten receipts to customers. The new system is intended for internal sales and inventory monitoring rather than customer-facing invoicing. The owner needs daily branch sales visibility, and every encoded sale must reduce the corresponding branch stock.
 
 Allowing sales to remain only on paper would preserve the current visibility problem. Allowing posted sales to be freely edited or deleted would weaken the connection between receipts, sales totals, and stock movements.
 

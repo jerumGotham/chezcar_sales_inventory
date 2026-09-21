@@ -26,7 +26,7 @@
                                           └───────────────────┘
 ```
 
-Chezcar is a Next.js App Router modular monolith with a shared browser UI, same-process route handlers, server-only authentication/authorization/catalog modules, and one PostgreSQL database (`app/`, `app/api/`, `lib/server/`, `prisma/schema.prisma`). It is architecturally hybrid: Products and the primary Inventory list use authenticated HTTP-to-Prisma reads, while most screens and all business mutations use page-local state or fixtures (`app/products/page.tsx`, `app/inventory/page.tsx`, `app/customers/page.tsx`, `lib/mock-data.ts`).
+Predator is a Next.js App Router modular monolith with a shared browser UI, same-process route handlers, server-only authentication/authorization/catalog modules, and one PostgreSQL database (`app/`, `app/api/`, `lib/server/`, `prisma/schema.prisma`). It is architecturally hybrid: Products and the primary Inventory list use authenticated HTTP-to-Prisma reads, while most screens and all business mutations use page-local state or fixtures (`app/products/page.tsx`, `app/inventory/page.tsx`, `app/customers/page.tsx`, `lib/mock-data.ts`).
 
 ## Component Responsibilities
 

@@ -102,6 +102,8 @@ Every receipt the business issues waits here until someone checks it against the
 
 ### Sale Receipts
 
+![Sale Receipts tab](images/30-receipt-verification-sales-tab.png)
+
 Every posted sale waits here until someone checks it against the paper receipt.
 
 ![Verification queue](images/72-verification-queue.png)
@@ -125,6 +127,8 @@ Then decide:
 Posted sales are never deleted. A correction is an auditable void-and-replace.
 
 ### Payment Receipts
+
+![Payment Receipts tab](images/31-receipt-verification-payments-tab.png)
 
 Downpayments and later order payments come here instead. They are money received before any sale exists, so they have their own receipt and their own check. The cycle is the same but shorter: there are no item lines to compare, only the amount and the receipt number.
 
@@ -391,6 +395,8 @@ A claim opens automatically whenever a supplier receipt records quarantined or m
 
 Five read-only reports, each limited to the locations you may see, each exportable to PDF.
 
+![Role Maintenance, reports granted one at a time](images/95-role-maintenance.png)
+
 **You only see the reports your role was given.** In Role Maintenance the Reports group lists the five by name, and ticking one shows that tab and lets the holder print it. A role with only Stock Movement opens Reports on Stock Movement and never sees the others, on screen or through a direct link.
 
 ![Sales report](images/35-reports-sales.png)
@@ -401,6 +407,13 @@ Five read-only reports, each limited to the locations you may see, each exportab
 - **Sales** counts every verified receipt, filtered by date, branch, salesperson, source, and payment method. **Dates counted on** decides what the period means: *Sale date* (the default) counts a receipt on the day it was issued, so a printed month never changes afterwards; *Verification date* counts it on the day Accounting confirmed it, which is what Accounting reconciles against. Each row shows both dates. If any receipt issued inside the period is still unverified, the report says so at the top and on the printout, with the count and the amount, so a printed total never comes up short without explaining why. The Source column says which kind of receipt each row is: Direct Sale, Order Downpayment, Order Payment, or Order Release. A ₱50,000 order paid ₱10,000 down, ₱5,000 later, and ₱35,000 at release appears as three rows adding to exactly ₱50,000 — nothing is counted twice. An order cancelled after a verified downpayment still shows that forfeited amount, because the money was never returned. Units and discounts sit on the receipt that completed the sale, so a downpayment row shows zero units. Voided receipts count nowhere.
 - **Sales by Salesperson** groups the same receipts by the personnel recorded at the time.
 - **Inventory Summary** shows current available stock per branch.
+![Sales report](images/80-report-sales.png)
+![Sales report, verified receipts only](images/81-report-sales-verified-view.png)
+![Sales report, not yet verified](images/82-report-sales-unverified-view.png)
+![Stock Movement report](images/83-report-stock-movement.png)
+![Stock Movement filtered to dead stock](images/84-report-stock-movement-dead-stock.png)
+![Inventory Summary report](images/85-report-inventory-summary.png)
+
 - **Stock Movement** is the one for a monthly review. For each product at each branch it shows stock on hand, how many units sold in the period, when it last sold, how often one unit moves, and a plain grade: **Fast**, **Slow**, or **NO MOVEMENT**. *Sells every* is the pace: a product that sells at least once a week is Fast, anything slower is Slow, and nothing sold at all is NO MOVEMENT. The slowest rows come first, so dead stock is at the top of the page. Units sold counts every posted sale, whether or not the receipt has been verified, because that is what actually left the shelf. The **Movement** filter narrows it to just the dead stock. Printing it gives blank **Actual** and **Variance** columns to write the shelf count in and compare.
 - **Returns & Warranty** covers cases by date.
 

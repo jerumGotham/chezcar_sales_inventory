@@ -12,7 +12,7 @@ RESEARCH | — | Additive migration and disposable PostgreSQL verification | 01-
 RESEARCH | — | Central persisted policy and hostile request matrix | 01-07–01-08, 01-14–01-16 | COVERED | Shell, page, API, and persisted data scope remain independent
 RESEARCH | — | Narrow Better Auth-backed lifecycle and atomic revocation | 01-06, 01-09–01-10, 01-17 | COVERED | Pinned 1.6.23 internal unmounted instance; public generic Admin endpoints/sign-up are tested unavailable
 RESEARCH | — | External API coverage decision | COVERAGE.md | COVERED | No external network API integration; Better Auth is pinned in-process code behind first-party routes
-RESEARCH | — | Approved Chezcar UI contract and all eight UI states | 01-08, 01-10–01-12, 01-15–01-16 | COVERED | Empty/loading/error/populated/partial/overflow/zero-one-many/long-text plus committed UAT status
+RESEARCH | — | Approved Predator UI contract and all eight UI states | 01-08, 01-10–01-12, 01-15–01-16 | COVERED | Empty/loading/error/populated/partial/overflow/zero-one-many/long-text plus committed UAT status
 CONTEXT | D-01 | Owner workbook is developer input and seed basis | 01-02–01-06 | COVERED | No application upload surface
 CONTEXT | D-02 | Normalize rather than copy spreadsheet shape; preserve traceability | 01-02–01-05 | COVERED | Source coordinates/hashes retained
 CONTEXT | D-03 | SR Stock Room; QC/BL/LU/VC/SP branches | 01-03–01-08 | COVERED | Owner resolves workbook source mapping
@@ -30,7 +30,7 @@ CONTEXT | D-14 | Admin-only lifecycle for three non-Admin roles; no custom permi
 CONTEXT | D-15 | Offline temporary password; change prompt may be skipped | 01-09–01-11 | COVERED | Prompt consumed after change/skip
 CONTEXT | D-16 | Deactivation revokes sessions immediately | 01-09 | COVERED | Atomic transaction
 CONTEXT | D-17 | Role/location change revokes sessions immediately | 01-09 | COVERED | Concurrency/rollback test
-CONTEXT | D-18 | Improve current Chezcar style without redesign | 01-08, 01-10–01-11, 01-15–01-16 | COVERED | Approved primitives/tokens preserved
+CONTEXT | D-18 | Improve current Predator style without redesign | 01-08, 01-10–01-11, 01-15–01-16 | COVERED | Approved primitives/tokens preserved
 
 ## Spec-less prohibition recall
 

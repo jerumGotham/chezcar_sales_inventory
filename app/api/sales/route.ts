@@ -46,7 +46,7 @@ export async function GET(request: Request) {
           appliedFilters: search ? [{ label: "Search", value: search }] : [],
         },
       );
-      return pdfResponse(body, "chezcar-direct-sales.pdf");
+      return pdfResponse(body, "predator-direct-sales.pdf");
     }
 
     if (url.searchParams.get("source") === "direct") {

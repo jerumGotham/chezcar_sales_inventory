@@ -36,7 +36,7 @@ export async function GET(request: Request) {
       return new Response(body, {
         headers: {
           "Content-Type": "application/pdf",
-          "Content-Disposition": `attachment; filename=chezcar-${report.type}-report.pdf`,
+          "Content-Disposition": `attachment; filename=predator-${report.type}-report.pdf`,
           "Content-Length": String(body.byteLength),
           "Cache-Control": "private, no-store",
         },

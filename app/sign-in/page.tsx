@@ -18,7 +18,7 @@ export default async function SignInPage({
       <div className="relative z-10 grid w-full max-w-5xl items-center justify-items-center gap-12 lg:grid-cols-[1.15fr_0.85fr]">
         <section className="hidden text-white lg:block">
           <p className="mb-4 text-sm font-semibold uppercase tracking-[0.3em] text-emerald-300">
-            Chezcar Operations
+            Predator Operations
           </p>
 
           <h1 className="max-w-xl text-5xl font-bold leading-tight">

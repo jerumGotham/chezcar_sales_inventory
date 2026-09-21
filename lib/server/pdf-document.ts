@@ -101,7 +101,7 @@ export async function createPdfBuilder(options: {
 
   const addPage = () => {
     page = document.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-    page.drawText("CHEZCAR AUTO CARE", { x: MARGIN, y: PAGE_HEIGHT - MARGIN, size: 10, font: bold, color: INK });
+    page.drawText("PREDATOR AUTO CARE", { x: MARGIN, y: PAGE_HEIGHT - MARGIN, size: 10, font: bold, color: INK });
     page.drawText(options.title, { x: PAGE_WIDTH - MARGIN - bold.widthOfTextAtSize(options.title, 10), y: PAGE_HEIGHT - MARGIN, size: 10, font: bold, color: MUTED });
     page.drawLine({ start: { x: MARGIN, y: PAGE_HEIGHT - MARGIN - 10 }, end: { x: PAGE_WIDTH - MARGIN, y: PAGE_HEIGHT - MARGIN - 10 }, color: RULE, thickness: 0.7 });
     y = PAGE_HEIGHT - MARGIN - 32;

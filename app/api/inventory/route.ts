@@ -44,7 +44,7 @@ export async function GET(request: Request) {
           ...(query.status === "all" ? [] : [{ label: "Status", value: query.status }]),
         ],
       });
-      return pdfResponse(body, "chezcar-inventory-list.pdf");
+      return pdfResponse(body, "predator-inventory-list.pdf");
     }
 
     return Response.json(await listInventory(query, user));

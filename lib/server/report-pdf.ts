@@ -15,7 +15,7 @@ export async function createReportPdf(report: ReportResult, metadata: { generate
   const title = TITLES[report.type];
   const { text, table, space, finish } = await createPdfBuilder({
     title,
-    documentTitle: `Chezcar ${title}`,
+    documentTitle: `Predator ${title}`,
     generatedBy: metadata.generatedBy,
     footer: "Private | Authorized report scope | Times: Asia/Manila",
   });

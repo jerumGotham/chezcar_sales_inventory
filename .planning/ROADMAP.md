@@ -1,4 +1,4 @@
-# Roadmap: Chezcar Sales and Inventory
+# Roadmap: Predator Sales and Inventory
 
 ## Overview
 
@@ -83,7 +83,7 @@ Plans:
 
 - [x] 01-12-PLAN.md — Synchronize docs and run the phase evidence gate
 
-**UI hint**: yes - improve the current Chezcar style
+**UI hint**: yes - improve the current Predator style
 
 ### Phase 2: Receipt Sales and Accounting Verification
 
@@ -106,7 +106,7 @@ Plans:
 - [ ] 02-03-PLAN.md — Void-and-replace correction + confirm-correct (one-way)
 - [ ] 02-04-PLAN.md — Operational UI, dashboard/reports hardening, docs/tests
 
-**UI hint**: yes - improve the current Chezcar style
+**UI hint**: yes - improve the current Predator style
 
 ### Phase 3: Durable Realtime Notifications
 
@@ -121,7 +121,7 @@ Plans:
   4. Notification history and linked records independently enforce user role/location authorization.
 
 **Plans**: TBD
-**UI hint**: yes - improve the current Chezcar style
+**UI hint**: yes - improve the current Predator style
 
 ### Phase 4: Stock Room Receiving and Transfer Dispatch
 
@@ -136,7 +136,7 @@ Plans:
   4. Unauthorized roles cannot receive or dispatch stock through UI or direct requests.
 
 **Plans**: TBD
-**UI hint**: yes - improve the current Chezcar style
+**UI hint**: yes - improve the current Predator style
 
 ### Phase 5: Branch Receipt, Discrepancy Resolution, and Monitoring
 
@@ -152,7 +152,7 @@ Plans:
   5. Admin dashboard shows current sales, stock by location, low-stock items, transfers, discrepancies, and reconciliation status; Branch Staff and Accounting see only their authorized operational views.
 
 **Plans**: TBD
-**UI hint**: yes - improve the current Chezcar style
+**UI hint**: yes - improve the current Predator style
 
 ### Phase 6: Offline Branch Continuity
 
@@ -167,7 +167,7 @@ Plans:
   4. Aged, stale, conflicting, or insufficient-stock operations remain visible as `Needs Review`; none are discarded, forced through, or allowed to create negative stock.
 
 **Plans**: TBD
-**UI hint**: yes - improve the current Chezcar style
+**UI hint**: yes - improve the current Predator style
 
 ### Phase 7: Production Deployment and Recovery
 

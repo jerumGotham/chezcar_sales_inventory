@@ -1,8 +1,8 @@
-# Chezcar Sales & Inventory
+# Predator Sales & Inventory
 
 ## What This Is
 
-Chezcar Sales & Inventory is an internal, cloud-based sales and inventory system for the owner, branch staff, stock staff, and accounting staff. The existing Next.js application is a brownfield UI prototype with production-oriented authentication, fixed role/location authorization, and PostgreSQL-backed Product and primary Inventory reads; most screens and every business mutation are still mock-backed or page-local and are roadmap work rather than completed behavior.
+Predator Sales & Inventory is an internal, cloud-based sales and inventory system for the owner, branch staff, stock staff, and accounting staff. The existing Next.js application is a brownfield UI prototype with production-oriented authentication, fixed role/location authorization, and PostgreSQL-backed Product and primary Inventory reads; most screens and every business mutation are still mock-backed or page-local and are roadmap work rather than completed behavior.
 
 ## Core Value
 

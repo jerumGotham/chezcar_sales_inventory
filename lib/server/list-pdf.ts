@@ -36,7 +36,7 @@ export async function createInventoryListPdf(
 ): Promise<ArrayBuffer> {
   const builder = await createPdfBuilder({
     title: "Inventory List",
-    documentTitle: "Chezcar Inventory List",
+    documentTitle: "Predator Inventory List",
     generatedBy: metadata.generatedBy,
     footer: "Private | Authorized inventory scope | Times: Asia/Manila",
   });
@@ -100,7 +100,7 @@ export async function createDirectSalesPdf(
 ): Promise<ArrayBuffer> {
   const builder = await createPdfBuilder({
     title: "Direct Sales List",
-    documentTitle: "Chezcar Direct Sales List",
+    documentTitle: "Predator Direct Sales List",
     generatedBy: metadata.generatedBy,
     footer: "Private | Authorized sales scope | Times: Asia/Manila",
   });
@@ -164,7 +164,7 @@ export async function createCustomerOrdersPdf(
 ): Promise<ArrayBuffer> {
   const builder = await createPdfBuilder({
     title: "Customer Orders List",
-    documentTitle: "Chezcar Customer Orders List",
+    documentTitle: "Predator Customer Orders List",
     generatedBy: metadata.generatedBy,
     footer: "Private | Authorized customer order scope | Times: Asia/Manila",
   });

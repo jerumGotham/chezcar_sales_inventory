@@ -500,7 +500,7 @@ That excerpt is a boundary warning, not the analog to copy for user operations.
 
 ```typescript
 export const auth = betterAuth({
-  appName: "Chezcar Sales & Monitoring",
+  appName: "Predator Sales & Monitoring",
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   disableSignUp: true,
   emailAndPassword: { enabled: true },

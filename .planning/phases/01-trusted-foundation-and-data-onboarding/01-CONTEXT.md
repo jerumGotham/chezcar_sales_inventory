@@ -41,7 +41,7 @@ The reconciled project requirements define the workbook as one-time developer in
 - **D-17:** Changing an active user's role or assigned branch immediately revokes active sessions. The user must sign in again to receive the new access and branch context.
 
 ### Visual Direction
-- **D-18:** Improve the current Chezcar prototype style rather than redesigning it. Preserve the sidebar, semantic colors, shared components, responsive behavior, and familiar tables/forms while simplifying hierarchy, workflow feedback, notifications, and offline states.
+- **D-18:** Improve the current Predator prototype style rather than redesigning it. Preserve the sidebar, semantic colors, shared components, responsive behavior, and familiar tables/forms while simplifying hierarchy, workflow feedback, notifications, and offline states.
 
 ### Agent Discretion
 - Temporary item-code format and collision handling.

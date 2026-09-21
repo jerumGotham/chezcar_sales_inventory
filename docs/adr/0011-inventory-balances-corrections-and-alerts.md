@@ -5,7 +5,7 @@
 
 ## Context
 
-Chezcar inventory should normally change through real business workflows: supplier receiving into Stock Room, SR-to-branch transfers, branch receipt/discrepancy resolution, customer order release, and direct sales. Branch Staff must not directly adjust stock because stock-changing actions need auditability and central control.
+Predator inventory should normally change through real business workflows: supplier receiving into Stock Room, SR-to-branch transfers, branch receipt/discrepancy resolution, customer order release, and direct sales. Branch Staff must not directly adjust stock because stock-changing actions need auditability and central control.
 
 Production inventory also needs a controlled exception path for wrong opening balances, physical-count mismatches not tied to a transfer, damaged/lost/found stock, and other corrections.
 

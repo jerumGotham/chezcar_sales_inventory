@@ -187,7 +187,7 @@ None.
 
 ## Threat Flags
 
-None beyond the planned trust boundaries. Mitigations land as follows: T-01-01 by fixed options, incompatible-location clearing, and canonical-server-derived location options (server validation remains decisive); T-01-02/T-01-06 by the `users:manage` server gate, no Admin role option, and the action-free Owner Admin row; T-01-03 by the edit revocation warning and immediate sign-out copy mirroring the proven transactional revocation; T-01-07 by calling only the Chezcar typed routes through `lib/contracts/users.ts`; T-01-08 by masked inputs, local-only password state cleared on completion, and no password value in banners, keys, URLs, or logs.
+None beyond the planned trust boundaries. Mitigations land as follows: T-01-01 by fixed options, incompatible-location clearing, and canonical-server-derived location options (server validation remains decisive); T-01-02/T-01-06 by the `users:manage` server gate, no Admin role option, and the action-free Owner Admin row; T-01-03 by the edit revocation warning and immediate sign-out copy mirroring the proven transactional revocation; T-01-07 by calling only the Predator typed routes through `lib/contracts/users.ts`; T-01-08 by masked inputs, local-only password state cleared on completion, and no password value in banners, keys, URLs, or logs.
 
 ## User Setup Required
 

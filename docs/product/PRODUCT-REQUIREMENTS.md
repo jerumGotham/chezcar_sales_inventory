@@ -8,7 +8,7 @@
 
 ## Product Summary
 
-Chezcar needs a simple cloud-based internal system for monitoring sales and inventory across one central Stock Room and its branches. Locations are dynamic: authorized users add, update, or deactivate branches in Branch Maintenance. Customers continue receiving handwritten receipts. After goods are released, Branch Staff encodes the receipt in the system; successful posting deducts branch stock immediately and updates Admin monitoring.
+Predator needs a simple cloud-based internal system for monitoring sales and inventory across one central Stock Room and its branches. Locations are dynamic: authorized users add, update, or deactivate branches in Branch Maintenance. Customers continue receiving handwritten receipts. After goods are released, Branch Staff encodes the receipt in the system; successful posting deducts branch stock immediately and updates Admin monitoring.
 
 Stock Staff records stock received into `SR`, dispatches stock from `SR` to a branch, and records the dispatch in the system. The destination branch is notified in real time. Branch Staff compares the physical delivery with the transfer and either confirms an exact match or submits a discrepancy form. Stock Staff investigates discrepancies; Admin makes the final stock correction.
 

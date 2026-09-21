@@ -63,7 +63,7 @@ function assertCreatableStaffRole(role: string): asserts role is StaffRole {
 }
 
 const internalCredentialEngine = betterAuth({
-  appName: "Chezcar Sales & Monitoring (internal credentials)",
+  appName: "Predator Sales & Monitoring (internal credentials)",
   database: prismaAdapter(prisma, {
     provider: "postgresql",
   }),
@@ -173,7 +173,7 @@ async function setStaffCredential(input: SetStaffCredentialInput) {
 }
 
 /**
- * Server-only credential primitives for Chezcar user-lifecycle services.
+ * Server-only credential primitives for Predator user-lifecycle services.
  *
  * Narrowed on purpose: unlike a raw Better Auth instance, only the two
  * supported staff-credential operations are reachable, both guarded against

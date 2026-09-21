@@ -2,7 +2,7 @@
 
 # Sales, Inventory & Monitoring System
 
-A Next.js 16 and React 19 prototype for demonstrating Chezcar's car-accessories sales, inventory, order, and branch-management workflows.
+A Next.js 16 and React 19 prototype for demonstrating Predator's car-accessories sales, inventory, order, and branch-management workflows.
 
 ## Current implementation status
 

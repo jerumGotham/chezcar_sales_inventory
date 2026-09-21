@@ -1,7 +1,7 @@
 <!-- generated-by: gsd-doc-writer -->
 # Getting Started
 
-This guide runs the Chezcar sales and inventory prototype locally. PostgreSQL is required for sign-in, Products, Inventory, Customers, Customer Orders, and POS sales.
+This guide runs the Predator sales and inventory prototype locally. PostgreSQL is required for sign-in, Products, Inventory, Customers, Customer Orders, and POS sales.
 
 ## Prerequisites
 

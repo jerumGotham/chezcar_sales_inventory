@@ -219,6 +219,10 @@ function ProductSelect({
   return (
     <Select<Product, false>
       aria-label="Product"
+      // Without a fixed instance id react-select numbers its own elements from
+      // a counter, which server and client disagree about, so React reports a
+      // hydration mismatch on every load of this page.
+      instanceId={inputId}
       inputId={inputId}
       getOptionLabel={productLabel}
       getOptionValue={(product) => product.id}

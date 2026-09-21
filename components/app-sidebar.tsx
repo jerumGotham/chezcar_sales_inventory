@@ -200,7 +200,7 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
                   <div className="relative overflow-hidden rounded-2xl border border-[#65f144]/25 bg-white/95 p-1 shadow-[0_0_0_1px_rgba(255,255,255,0.05)]">
                     <Image
                       src="/chezcar-logo.png"
-                      alt="Chezcar Auto Care logo"
+                      alt="Predator Auto Care logo"
                       width={isDesktopExpanded ? 60 : 44}
                       height={isDesktopExpanded ? 60 : 44}
                       className="h-auto w-auto rounded-xl"
@@ -211,14 +211,14 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
                   {isDesktopExpanded ? (
                     <div className="min-w-0">
                       <p className="text-xs font-semibold uppercase tracking-[0.3em] text-brand-600 dark:text-brand-300">
-                        Chezcar
+                        Predator
                       </p>
                       <CardTitle className="mt-1 text-xl text-slate-900 dark:text-white">
                         Sales &amp; Inventory
                       </CardTitle>
                     </div>
                   ) : (
-                    <span className="sr-only">Chezcar Sales and Inventory</span>
+                    <span className="sr-only">Predator Sales and Inventory</span>
                   )}
                 </div>
 
@@ -299,7 +299,7 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
                 <div className="relative overflow-hidden rounded-2xl border border-brand-100 bg-white p-1">
                   <Image
                     src="/chezcar-logo.png"
-                    alt="Chezcar Auto Care logo"
+                    alt="Predator Auto Care logo"
                     width={60}
                     height={60}
                     className="h-auto w-auto rounded-xl"
@@ -308,7 +308,7 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.3em] text-brand-600 dark:text-brand-300">
-                    Chezcar
+                    Predator
                   </p>
                   <CardTitle className="mt-1 text-xl text-slate-900 dark:text-white">
                     Sales &amp; Inventory
