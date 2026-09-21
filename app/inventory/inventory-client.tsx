@@ -828,8 +828,16 @@ export function InventoryClient({
                               {formatPeso(group.unitCost)}
                             </td>
 
+                            {/* A bare count told nobody where the stock was, and
+                                the answer was one expand away. */}
                             <td className="px-5 py-4 text-sm text-slate-600">
-                              {group.locations.length}
+                              {stockedLocations.length ? (
+                                <span className="block max-w-56 text-xs leading-relaxed">
+                                  {stockedLocations.map((item) => item.location).join(", ")}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-slate-400">No stock</span>
+                              )}
                             </td>
 
                             <td className="px-5 py-4 text-sm">
