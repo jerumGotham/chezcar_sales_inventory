@@ -304,7 +304,10 @@ function AdminSalesFilters({
 
   return (
     <Card className="overflow-hidden border-emerald-200 dark:border-emerald-900">
-      <CardContent className="grid p-0 lg:grid-cols-[minmax(0,1fr)_auto]">
+      {/* The filters need roughly 500px, so pairing them with the heading at lg
+          crushed the text column to one word per line. They sit side by side
+          only once there is room for both, and the heading keeps a floor. */}
+      <CardContent className="grid p-0 xl:grid-cols-[minmax(20rem,1fr)_auto]">
         <div className="flex items-start gap-3 p-5">
           <div className="rounded-xl bg-emerald-100 p-2.5 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
             <TrendingUp className="size-5" aria-hidden="true" />
@@ -327,7 +330,7 @@ function AdminSalesFilters({
           </div>
         </div>
 
-        <div className="grid gap-4 border-t bg-slate-50/70 p-4 sm:grid-cols-[auto_minmax(12rem,1fr)] lg:border-t-0 lg:border-l dark:bg-slate-950/30">
+        <div className="grid gap-4 border-t bg-slate-50/70 p-4 sm:grid-cols-[auto_minmax(12rem,1fr)] xl:border-t-0 xl:border-l dark:bg-slate-950/30">
           <div className="space-y-2">
             <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
               <CalendarDays className="size-3.5" aria-hidden="true" />
