@@ -35,6 +35,16 @@ Every person signs in with their own account. Shared logins are not allowed, bec
 
 After signing in, the name and role appear at the top right of every screen. The role shown there explains what the account can and cannot do.
 
+### Changing your own password
+
+Anyone can change their own password without asking an admin. Open the account menu at the top right, the one showing your name and role, and press **Change password**, which sits just above Logout.
+
+The dialog asks for the current password, then the new one twice. The new password must be **at least 8 characters, with a letter and a number**, and it has to be different from the current one. A wrong current password, a mistyped repeat, or a password that breaks a rule stops the change and says which rule it broke. On success the dialog says so, and the new password works from the next sign-in.
+
+Changing your own password here does **not** sign you out anywhere else. Sessions already open on your other devices keep working.
+
+This is not the same as an admin reset. An admin holding the reset permission can set someone else's password from User Management without knowing the old one; changing your own always requires the current one. See [Roles and users](#15-roles-and-users).
+
 ---
 
 ## 2. Dashboard
@@ -43,10 +53,23 @@ The dashboard summarises the locations assigned to the signed-in account.
 
 ![Dashboard](images/02-dashboard.png)
 
-- **Available Stock** counts available units across your locations.
-- **Supplier Receipts Today** counts deliveries posted today in your locations.
-- **Low / Out Stock** lists products at or below their reorder level.
-- **Notifications** shows unread alerts for your account.
+**The four tiles across the top change with the role**, because a cashier, a stock keeper and an admin each start the day on a different number. There are four sets:
+
+| Who sees it | The four tiles |
+| --- | --- |
+| A role that may filter sales, such as Admin | Sales, Transactions, Average per Transaction, Low-Stock Branches |
+| Receives stock but does not sell | Available Stock, Supplier Receipts Today, Transfer Drafts, Low / Out Stock |
+| Posts sales | Today Sales, Low / Out Stock, Available Stock, Incoming Transfers |
+| Everyone else, such as Accounting | Unverified Transactions, Verified Today, Flagged Mismatches, Month-to-Date Sales |
+
+The screenshot above is the first set, as an Admin sees it.
+
+A role that may filter sales also gets a **filter row above the tiles**: **Today**, **Last 7 Days** or **Month to Date**, and one branch or all of them. It applies to the sales tiles and to the two charts underneath, **Sales Trend** and **Branch Performance**, which appear only for a role granted the Sales report. Stock figures stay live across all your locations whatever the filter is set to.
+
+Lower down, two panels:
+
+- **Low Stock by Branch** lists products at or below their reorder level, for anyone who may view inventory.
+- **Notifications** shows unread alerts for your account. **Open** goes to the full list.
 
 ---
 
@@ -389,7 +412,9 @@ Creating a claim changes no stock yet.
 
 A claim opens automatically whenever a supplier receipt records quarantined or missing units.
 
-Its actions are in two boxes, and the difference matters. **Where the claim stands** moves the paperwork only — submit it, park it waiting for a replacement, record the supplier's rejection, complete it, or cancel the draft. **Where the items go** moves real stock: return items to the supplier, send them out for repair, receive a replacement or a repaired item, make repaired items sellable again, or write off what is lost. The number in brackets is how many pieces that action will cover. Press one only after the goods have actually moved. Red means something is destroyed or ended.
+Its actions are in two boxes, and the difference matters. **Where the claim stands** moves the paperwork only — **Submit claim**, **Supplier refused the claim**, **Complete claim**, or **Cancel draft**. **Where the items go** moves real stock: return items to the supplier, send them out for repair, receive a replacement or a repaired item, make repaired items sellable again, or write off what is lost. The number in brackets is how many pieces that action will cover. Press one only after the goods have actually moved. Red means something is destroyed or ended.
+
+An action the claim's current status does not allow is **greyed out rather than hidden**, and resting the pointer on it says why, for example "Not available while the claim is draft". The server enforces the same rule, so no step can be skipped by reaching the button another way.
 
 ---
 
@@ -478,6 +503,8 @@ Changing a role's permissions signs out everyone assigned to it.
 
 ![Users](images/18-user-management.png)
 ![User form](images/46-user-form.png)
+
+An admin holding the reset permission can set a new password for someone who has forgotten theirs, without knowing the old one. Users change their own password from the account menu instead, which does require the current one — see [Signing in](#1-signing-in).
 
 A user is deactivated, never deleted, and deactivation ends their sessions immediately.
 

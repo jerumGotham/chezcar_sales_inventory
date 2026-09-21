@@ -34,7 +34,7 @@ const userEmailSchema = z
 const temporaryPasswordSchema = z
   .string()
   .min(8, "Password must be at least 8 characters")
-  .max(128)
+  .max(128, "Password must be 128 characters or fewer")
   .regex(/[A-Za-z]/, "Password must contain a letter")
   .regex(/\d/, "Password must contain a number");
 
