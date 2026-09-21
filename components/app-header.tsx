@@ -6,8 +6,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, BellRing, ChevronDown, LogOut, MapPin, Moon, Sun, X } from "lucide-react";
+import { Bell, BellRing, ChevronDown, KeyRound, LogOut, MapPin, Moon, Sun, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ChangePasswordDialog } from "@/components/change-password-dialog";
 import { useCan, useShellAccess } from "@/components/shell-access-context";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth-client";
@@ -80,6 +81,7 @@ export function AppHeader({
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [isReady, setIsReady] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isPasswordOpen, setIsPasswordOpen] = useState(false);
   const [toast, setToast] = useState<HeaderNotification | null>(null);
   const [pushState, setPushState] = useState<"unsupported" | "unavailable" | "default" | "denied" | "subscribed" | "pending">("unavailable");
   const menuRef = useRef<HTMLDivElement>(null);
@@ -428,7 +430,19 @@ export function AppHeader({
               </div>
               <button
                 type="button"
-                className="mt-2 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10"
+                className="mt-2 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-foreground transition hover:bg-brand-50 dark:hover:bg-slate-900"
+                role="menuitem"
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  setIsPasswordOpen(true);
+                }}
+              >
+                <KeyRound className="h-4 w-4" />
+                Change password
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10"
                 role="menuitem"
                 onClick={async () => {
                   setIsMenuOpen(false);
@@ -462,6 +476,7 @@ export function AppHeader({
           </div>
         </div>
       ) : null}
+      <ChangePasswordDialog open={isPasswordOpen} onOpenChange={setIsPasswordOpen} />
     </div>
   );
 }

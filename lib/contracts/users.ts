@@ -33,10 +33,19 @@ const userEmailSchema = z
   .pipe(z.email());
 const temporaryPasswordSchema = z
   .string()
-  .min(8)
+  .min(8, "Password must be at least 8 characters")
   .max(128)
   .regex(/[A-Za-z]/, "Password must contain a letter")
   .regex(/\d/, "Password must contain a number");
+
+/** Shared so the self-service change-password dialog states the same rule. */
+export const PASSWORD_RULE_TEXT = "At least 8 characters, with a letter and a number.";
+
+/** Returns the first rule the password breaks, or an empty string when it passes. */
+export function describePasswordProblem(password: string) {
+  const result = temporaryPasswordSchema.safeParse(password);
+  return result.success ? "" : result.error.issues[0]?.message ?? "Enter a valid password.";
+}
 
 /**
  * Create accepts a persisted assignable role ID and explicit location grants.
