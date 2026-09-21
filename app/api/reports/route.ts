@@ -2,6 +2,7 @@ import { ZodError } from "zod";
 
 import { authorizationErrorResponse, requireCapability } from "@/lib/server/authorization";
 import { createReportPdf } from "@/lib/server/report-pdf";
+import { reportCapability } from "@/lib/contracts/roles";
 import { getReport, queryFromSearchParams } from "@/lib/server/services/reports";
 import { prisma } from "@/lib/server/prisma";
 
@@ -18,10 +19,15 @@ export async function GET(request: Request) {
         { status: 400, headers: NO_STORE },
       );
     }
-    const actor = await requireCapability(request.headers, format === "pdf" ? "reports:export" : "reports:view");
     const queryParams = new URLSearchParams(url.searchParams);
     queryParams.delete("format");
-    const report = await getReport(actor, queryFromSearchParams(queryParams));
+    const query = queryFromSearchParams(queryParams);
+    const capability = reportCapability(query.type);
+    if (!capability) {
+      return Response.json({ error: { code: "UNKNOWN_REPORT", message: "Unknown report type" } }, { status: 400, headers: NO_STORE });
+    }
+    const actor = await requireCapability(request.headers, capability);
+    const report = await getReport(actor, query);
 
     if (format === "pdf") {
       const generatedBy = await prisma.user.findUnique({ where: { id: actor.userId }, select: { name: true, email: true } });

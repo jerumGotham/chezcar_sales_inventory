@@ -181,8 +181,11 @@ const expectedCapabilities = {
     "sales:evidence:view",
     "sales:evidence:upload",
     "sales:evidence:delete",
-    "reports:view",
-    "reports:export",
+    "reports:sales",
+    "reports:salesperson-sales",
+    "reports:inventory-summary",
+    "reports:stock-movement",
+    "reports:returns-warranty",
     "supplier-claims:view",
     "supplier-claims:record-monetary-resolution",
     "supplier-claims:print",
@@ -315,7 +318,7 @@ describe("loadShellAccess", () => {
       accessRole: {
         name: "Branch Auditor",
         isOwner: false,
-        permissions: ["dashboard:view", "reports:view"],
+        permissions: ["dashboard:view", "reports:sales"],
       },
     });
 
@@ -323,7 +326,7 @@ describe("loadShellAccess", () => {
     expect(result.authenticated).toBe(true);
     if (!result.authenticated) throw new Error("Expected authenticated shell access");
     expect(result.identity.roleName).toBe("Branch Auditor");
-    expect(result.capabilities).toEqual(["dashboard:view", "reports:view"]);
+    expect(result.capabilities).toEqual(["dashboard:view", "reports:sales"]);
     expect(result.menu.map((item) => item.href)).toEqual(["/dashboard", "/reports"]);
   });
 

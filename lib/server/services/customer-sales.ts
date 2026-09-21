@@ -1815,7 +1815,7 @@ export async function getDashboardSummary(
 }
 
 export async function getReportsSummary(actor: AuthContext) {
-  assertCapability(actor, "reports:view");
+  assertCapability(actor, "reports:sales");
   assertAccounting(actor);
   const permittedLocationIds = locationIdFilter(actor);
   const [saleRecords, orderRecords, inventory] = await Promise.all([

@@ -42,7 +42,6 @@ const IMPLIED_CAPABILITIES: Partial<Record<CapabilityId, readonly CapabilityId[]
   "stock-transfers:investigate": ["stock-transfers:view"],
   "stock-transfers:resolve": ["stock-transfers:view"],
   "stock-transfers:audit:view": ["stock-transfers:view"],
-  "reports:export": ["reports:view"],
   "offline-sales:sync": ["offline-sales:snapshot", "sales:view"],
   "users:create": ["users:view"],
   "users:update": ["users:view"],

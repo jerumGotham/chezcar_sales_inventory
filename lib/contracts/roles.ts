@@ -52,8 +52,11 @@ export const CAPABILITY_CATALOG = [
   { id: "stock-transfers:investigate", module: "Stock Transfers", label: "Investigate transfer discrepancies" },
   { id: "stock-transfers:resolve", module: "Stock Transfers", label: "Resolve transfer discrepancies" },
   { id: "stock-transfers:audit:view", module: "Stock Transfers", label: "View transfer audit history" },
-  { id: "reports:view", module: "Reports", label: "View reports" },
-  { id: "reports:export", module: "Reports", label: "Export reports" },
+  { id: "reports:sales", module: "Reports", label: "Sales" },
+  { id: "reports:salesperson-sales", module: "Reports", label: "Sales by Salesperson" },
+  { id: "reports:inventory-summary", module: "Reports", label: "Inventory Summary" },
+  { id: "reports:stock-movement", module: "Reports", label: "Stock Movement" },
+  { id: "reports:returns-warranty", module: "Reports", label: "Returns & Warranty" },
   { id: "offline-sales:snapshot", module: "Offline Sales", label: "View offline sales snapshot" },
   { id: "offline-sales:sync", module: "Offline Sales", label: "Sync offline sales" },
   { id: "offline-sales:activate-device", module: "Offline Sales", label: "Activate offline devices" },
@@ -109,6 +112,24 @@ export const CAPABILITY_CATALOG = [
 ] as const;
 
 export type CapabilityId = (typeof CAPABILITY_CATALOG)[number]["id"];
+
+/**
+ * Reports are granted one tab at a time. A role sees only the reports it holds,
+ * and holding one covers both reading it on screen and exporting its PDF,
+ * because a report nobody may print is not a report anyone can use.
+ */
+export const REPORT_CAPABILITIES = [
+  "reports:sales",
+  "reports:salesperson-sales",
+  "reports:inventory-summary",
+  "reports:stock-movement",
+  "reports:returns-warranty",
+] as const satisfies readonly CapabilityId[];
+
+export function reportCapability(type: string) {
+  const id = `reports:${type}`;
+  return REPORT_CAPABILITIES.find((capability) => capability === id);
+}
 export const CAPABILITY_IDS = CAPABILITY_CATALOG.map((item) => item.id) as readonly CapabilityId[];
 export const ASSIGNABLE_CAPABILITY_CATALOG = CAPABILITY_CATALOG.filter(
   ({ id }) =>

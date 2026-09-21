@@ -26,6 +26,7 @@ import {
   type StockMovementReport,
 } from "@/lib/contracts/reports";
 import { availableStock } from "@/lib/inventory-quantity";
+import { reportCapability } from "@/lib/contracts/roles";
 import { assertCapability, AuthorizationError, type AuthContext } from "@/lib/server/authorization";
 import { hasAllLocationAccess } from "@/lib/server/policy/access";
 import { prisma } from "@/lib/server/prisma";
@@ -257,8 +258,11 @@ function references(...values: Array<string | null>) {
 }
 
 async function reportContext(actor: AuthContext, rawQuery: unknown) {
-  assertCapability(actor, "reports:view");
   let query = reportQuerySchema.parse(rawQuery);
+  // Each report is its own grant, so the role sees only what it was given.
+  const capability = reportCapability(query.type);
+  if (!capability) throw new AuthorizationError("Unknown report type");
+  assertCapability(actor, capability);
   const locations = await prisma.location.findMany({ where: { id: locationFilter(actor), isActive: true, ...(query.type === "inventory-summary" ? { type: "BRANCH" as const } : {}) }, select: { id: true, code: true, name: true }, orderBy: [{ name: "asc" }, { id: "asc" }] });
   const allBranches = query.type === "inventory-summary" && query.locationId === "all";
   if (query.locationId && !allBranches && !locations.some((location) => location.id === query.locationId)) {

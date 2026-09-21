@@ -59,7 +59,7 @@ const ROLE_DEFINITION_BY_ROLE = {
     id: "role-accounting-staff",
     isOwner: false,
     hasAllLocations: true,
-    permissions: ["dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push", "customers:view", "customer-orders:view", "sales:view", "sales:verify", "sales:verify:view", "sales:resolve", "sales:evidence:view", "sales:evidence:upload", "sales:evidence:delete", "reports:view", "reports:export"],
+    permissions: ["dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push", "customers:view", "customer-orders:view", "sales:view", "sales:verify", "sales:verify:view", "sales:resolve", "sales:evidence:view", "sales:evidence:upload", "sales:evidence:delete", "reports:sales", "reports:salesperson-sales", "reports:inventory-summary", "reports:stock-movement", "reports:returns-warranty"],
   },
 } as const;
 

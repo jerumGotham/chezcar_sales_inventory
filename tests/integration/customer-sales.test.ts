@@ -531,7 +531,7 @@ describe("customer orders, direct sales, accounting", () => {
       const scopedReporter: AuthContext = {
         userId: fixture.users.accountingStaff.id,
         roleDefinitionId: fixture.users.accountingStaff.roleDefinitionId,
-        capabilities: ["reports:view"],
+        capabilities: ["reports:sales"],
         isOwner: false,
         locationIds: [fixture.locations.branches.QC.id],
       };
@@ -542,7 +542,7 @@ describe("customer orders, direct sales, accounting", () => {
 
       const allLocations = await getReportsSummary({
         ...scopedReporter,
-        capabilities: ["reports:view", "locations:all"],
+        capabilities: ["reports:sales", "locations:all"],
         locationIds: [],
       });
       expect(new Set(allLocations.sales.rows.map((sale) => sale.branch))).toEqual(

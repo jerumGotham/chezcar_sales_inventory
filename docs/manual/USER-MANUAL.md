@@ -389,7 +389,9 @@ A claim opens automatically whenever a supplier receipt records quarantined or m
 
 ## 12. Reports
 
-Four read-only reports, each limited to the locations you may see, each exportable to PDF.
+Five read-only reports, each limited to the locations you may see, each exportable to PDF.
+
+**You only see the reports your role was given.** In Role Maintenance the Reports group lists the five by name, and ticking one shows that tab and lets the holder print it. A role with only Stock Movement opens Reports on Stock Movement and never sees the others, on screen or through a direct link.
 
 ![Sales report](images/35-reports-sales.png)
 ![Sales by salesperson](images/36-reports-salesperson.png)
@@ -453,7 +455,7 @@ Suppliers and personnel are deactivated, never deleted, so past records keep the
 ![Roles](images/17-role-maintenance.png)
 ![Role permissions](images/47-role-permissions.png)
 
-Two permissions worth knowing: the Stock Transfers group separates sending actions (create, finalize, dispatch, cancel) from receiving actions (receive, report discrepancy). A branch that both sends and receives needs both.
+Two permissions worth knowing. The Stock Transfers group separates sending actions (create, finalize, dispatch, cancel) from receiving actions (receive, report discrepancy); a branch that both sends and receives needs both. The Reports group lists each report by name — Sales, Sales by Salesperson, Inventory Summary, Stock Movement, Returns & Warranty — and ticking one grants both reading that report and printing it, so a role can be given the stock report without being given the sales figures.
 
 Changing a role's permissions signs out everyone assigned to it.
 

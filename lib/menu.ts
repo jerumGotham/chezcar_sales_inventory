@@ -1,3 +1,4 @@
+import { REPORT_CAPABILITIES } from "./contracts/roles";
 import type {
   ShellCapabilityId,
   ShellMenuHref,
@@ -100,7 +101,7 @@ export const menus = [
     href: "/reports",
     icon: FileText,
     iconId: "reports",
-    capability: "reports:view",
+    capability: REPORT_CAPABILITIES,
   },
   {
     label: "Audit Trail",

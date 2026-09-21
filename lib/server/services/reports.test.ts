@@ -116,7 +116,7 @@ describe("report quantity projections", () => {
 });
 
 describe("sales and salesperson sales reports", () => {
-  const actor = { userId: "actor", roleDefinitionId: "role", isOwner: false, capabilities: ["reports:view"], locationIds: ["branch"] };
+  const actor = { userId: "actor", roleDefinitionId: "role", isOwner: false, capabilities: ["reports:sales", "reports:salesperson-sales", "reports:inventory-summary", "reports:stock-movement", "reports:returns-warranty"], locationIds: ["branch"] };
   const query = { dateFrom: "2026-09-01", dateTo: "2026-09-30", locationId: "branch" };
   const attribution = [
     { salespersonId: "person-1", salespersonName: "Later historical name" },
@@ -316,7 +316,7 @@ describe("sales and salesperson sales reports", () => {
 });
 
 describe("stock movement report", () => {
-  const actor = { userId: "actor", roleDefinitionId: "role", isOwner: false, capabilities: ["reports:view"], locationIds: ["branch"] };
+  const actor = { userId: "actor", roleDefinitionId: "role", isOwner: false, capabilities: ["reports:sales", "reports:salesperson-sales", "reports:inventory-summary", "reports:stock-movement", "reports:returns-warranty"], locationIds: ["branch"] };
   const query = { type: "stock-movement" as const, dateFrom: "2026-09-01", dateTo: "2026-09-30", locationId: "branch" };
 
   beforeEach(() => {
@@ -393,7 +393,7 @@ describe("multi-item Backjob report", () => {
       installerName: null, scheduledFor: null, chargeableAmount: { toNumber: () => 1250 }, originalSale: null,
     }]);
     for (const entitySearch of ["p-2", "second product"]) {
-      const report = await reports.getReport({ userId: "actor", roleDefinitionId: "role", isOwner: false, capabilities: ["reports:view"], locationIds: ["branch"] }, {
+      const report = await reports.getReport({ userId: "actor", roleDefinitionId: "role", isOwner: false, capabilities: ["reports:sales", "reports:salesperson-sales", "reports:inventory-summary", "reports:stock-movement", "reports:returns-warranty"], locationIds: ["branch"] }, {
         type: "returns-warranty", caseType: "BACKJOB", dateFrom: "2026-09-01", dateTo: "2026-09-30", entitySearch,
       });
       expect(report.type).toBe("returns-warranty");

@@ -5,7 +5,9 @@ import { Boxes, ChevronLeft, ChevronRight, FileText, Filter, Loader2, Receipt, R
 import { useState, useSyncExternalStore } from "react";
 
 import { PageShell } from "@/components/page-shell";
-import { useCan } from "@/components/shell-access-context";
+import { useShellAccess } from "@/components/shell-access-context";
+import { hasCapability } from "@/lib/permissions";
+import type { CapabilityId } from "@/lib/contracts/roles";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -139,8 +141,16 @@ export default function ReportsPage() {
 }
 
 function ReportsContent() {
-  const canExport = useCan("reports:export");
-  const [draft, setDraft] = useState<Filters>(() => filtersFromSearchParams(new URLSearchParams(window.location.search)));
+  const access = useShellAccess();
+  // A role holds reports one at a time, so the strip only offers what it has
+  // and a grant carries its own export with it.
+  const permitted = REPORT_TYPES.filter((type) => access.authenticated && hasCapability(access.capabilities, `reports:${type}` as CapabilityId));
+  const [draft, setDraft] = useState<Filters>(() => {
+    const requested = filtersFromSearchParams(new URLSearchParams(window.location.search));
+    return permitted.includes(requested.type) || !permitted.length
+      ? requested
+      : filtersFromSearchParams(new URLSearchParams({ type: permitted[0] }));
+  });
   const [applied, setApplied] = useState<Filters>(draft);
   const [customDateTo, setCustomDateTo] = useState(() => new URLSearchParams(window.location.search).has("dateTo"));
   const { data, isLoading, error } = useQuery({ queryKey: ["report", applied], queryFn: () => fetchReport(applied) });
@@ -192,7 +202,7 @@ function ReportsContent() {
   return (
       <div className="space-y-4">
         <nav aria-label="Report selection" className="flex flex-wrap gap-2">
-          {REPORT_TYPES.map((type) => {
+          {permitted.map((type) => {
             const Icon = REPORT_ICONS[type];
             return <Button key={type} aria-pressed={applied.type === type} className={applied.type === type ? "font-semibold underline underline-offset-4" : undefined} variant={applied.type === type ? "default" : "outline"} onClick={() => selectType(type)}><Icon aria-hidden="true" />{LABELS[type]}</Button>;
           })}
@@ -232,7 +242,7 @@ function ReportsContent() {
             <p className="mr-auto self-center text-xs text-muted-foreground">{pending ? "Unapplied changes. Results and PDF still use the applied filters." : `Editing filters for ${LABELS[draft.type]}`}</p>
             <Button variant="outline" onClick={() => { setDraft(filtersFromSearchParams(new URLSearchParams({ type: draft.type }))); setCustomDateTo(false); }}><RotateCcw aria-hidden="true" />Reset filters</Button>
             <Button onClick={applyFilters}><Filter aria-hidden="true" />Apply Filters</Button>
-            {canExport && appliedData && <a href={`/api/reports?${exportParams}`} className={buttonVariants({ variant: "outline" })}><FileText aria-hidden="true" /> Export {LABELS[applied.type]} PDF</a>}
+            {appliedData && <a href={`/api/reports?${exportParams}`} className={buttonVariants({ variant: "outline" })}><FileText aria-hidden="true" /> Export {LABELS[applied.type]} PDF</a>}
           </div>
         </CardContent></Card>
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { REPORT_CAPABILITIES } from "@/lib/contracts/roles";
 import { auth } from "@/lib/server/auth";
 import {
   CAPABILITIES,
@@ -17,7 +18,7 @@ const PAGE_CAPABILITIES = {
   "customer-orders": [CAPABILITIES.customerOrdersView, CAPABILITIES.salesView],
   products: CAPABILITIES.productsView,
   inventory: CAPABILITIES.inventoryView,
-  reports: CAPABILITIES.reportsView,
+  reports: REPORT_CAPABILITIES,
   users: CAPABILITIES.usersView,
   audit: CAPABILITIES.auditView,
   branches: CAPABILITIES.branchesView,

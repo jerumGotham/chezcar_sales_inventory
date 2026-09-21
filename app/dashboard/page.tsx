@@ -172,7 +172,7 @@ export default function DashboardPage() {
              )}
            </div>
 
-           {summary.capabilities.includes("reports:view") ? (
+           {summary.capabilities.includes("reports:sales") ? (
              <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
                <Card>
                  <CardContent className="p-5">

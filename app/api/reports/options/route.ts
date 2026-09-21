@@ -1,14 +1,19 @@
 import { ZodError } from "zod";
 
 import { authorizationErrorResponse, requireCapability } from "@/lib/server/authorization";
+import { reportCapability } from "@/lib/contracts/roles";
 import { getReportOptions, queryFromSearchParams } from "@/lib/server/services/reports";
 
 const NO_STORE = { "Cache-Control": "private, no-store" };
 
 export async function GET(request: Request) {
   try {
-    const actor = await requireCapability(request.headers, "reports:view");
     const query = queryFromSearchParams(new URL(request.url).searchParams);
+    const capability = reportCapability(query.type);
+    if (!capability) {
+      return Response.json({ error: { code: "UNKNOWN_REPORT", message: "Unknown report type" } }, { status: 400, headers: NO_STORE });
+    }
+    const actor = await requireCapability(request.headers, capability);
     return Response.json({ data: await getReportOptions(actor, query) }, { headers: NO_STORE });
   } catch (error) {
     if (error instanceof ZodError) {
