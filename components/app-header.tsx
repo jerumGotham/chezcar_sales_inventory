@@ -12,6 +12,7 @@ import { useCan, useShellAccess } from "@/components/shell-access-context";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth-client";
 import { markHeaderNotificationRead } from "@/lib/header-notifications";
+import { SERVICE_WORKER_URL } from "@/lib/service-worker";
 
 const THEME_KEY = "chezcar-theme";
 // Temporary light-only release; retain dark-mode code and saved preferences for later.
@@ -115,7 +116,7 @@ export function AppHeader({
       return;
     }
 
-    const registration = await navigator.serviceWorker.register("/sw.js");
+    const registration = await navigator.serviceWorker.register(SERVICE_WORKER_URL);
     const subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(publicKey),
@@ -143,7 +144,7 @@ export function AppHeader({
         setPushState("denied");
         return;
       }
-      const registration = await navigator.serviceWorker.getRegistration("/sw.js");
+      const registration = await navigator.serviceWorker.getRegistration(SERVICE_WORKER_URL);
       const subscription = await registration?.pushManager.getSubscription();
       if (!cancelled) setPushState(subscription ? "subscribed" : "default");
     });

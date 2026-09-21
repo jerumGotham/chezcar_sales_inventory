@@ -43,6 +43,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { products } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
+import { SERVICE_WORKER_URL } from "@/lib/service-worker";
 import {
   listQueuedOfflineSales,
   offlineSupported,
@@ -624,7 +625,7 @@ function PosTab() {
   useEffect(() => {
     if (!OFFLINE_POS_ENABLED || !offlineSupported() || !canUseOfflineSales) return;
     if ("serviceWorker" in navigator) {
-      void navigator.serviceWorker.register("/sw.js").then(() =>
+      void navigator.serviceWorker.register(SERVICE_WORKER_URL).then(() =>
         navigator.serviceWorker.ready.then((registration) => {
           registration.active?.postMessage({ type: "WARM_OFFLINE_SHELL" });
         }),

@@ -474,10 +474,9 @@ Open `/inventory/returns-warranty/supplier-claims`.
 
 ### Supplier Replacement
 
-1. Move the claim to waiting for replacement when applicable.
-2. Select `Receive replacement` for outstanding external quantity.
-3. Confirm replacement quantity enters `onHand` only when physically received.
-4. Confirm outstanding external quantity decreases.
+1. Select `Receive replacement` for outstanding external quantity.
+2. Confirm replacement quantity enters `onHand` only when physically received.
+3. Confirm outstanding external quantity decreases.
 
 ### Release Repaired Stock
 

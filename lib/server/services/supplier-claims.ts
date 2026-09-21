@@ -3,7 +3,7 @@ import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import { Prisma, type InventoryMovementType, type SupplierClaimStatus } from "@prisma/client";
 
-import { supplierClaimActionCapabilities, type CreateSupplierClaimInput, type SupplierClaimAction, type SupplierClaimActionInput, type SupplierClaimSettlementInput } from "@/lib/contracts/supplier-claims";
+import { canRunSupplierClaimAction, supplierClaimActionCapabilities, type CreateSupplierClaimInput, type SupplierClaimAction, type SupplierClaimActionInput, type SupplierClaimSettlementInput } from "@/lib/contracts/supplier-claims";
 import { assertCapability, type AuthContext } from "@/lib/server/authorization";
 import { prisma } from "@/lib/server/prisma";
 import { createNotifications, findWorkflowNotificationRecipients } from "@/lib/server/services/notifications";
@@ -217,28 +217,27 @@ export async function actOnSupplierClaim(actor: AuthContext, claimId: string, ac
     if (input.targetDate && new Date(input.targetDate) <= new Date()) throw new SupplierClaimError("INVALID_TARGET", "Follow-up target date must be in the future", 400);
     let status: SupplierClaimStatus = claim.status;
     const lineActions = new Map(input.lines.map((line) => [line.productId, line.quantity]));
-    if (action === "submit" && claim.status === "DRAFT") {
+    if (action === "submit" && canRunSupplierClaimAction(action, claim.status)) {
       const targetDate = input.targetDate ? new Date(input.targetDate) : claim.targetDate;
       if (!targetDate || targetDate <= new Date()) throw new SupplierClaimError("TARGET_REQUIRED", "Enter a future follow-up target date before submission", 400);
       const requiresPhoto = claim.lines.some((line) => line.reason === "DAMAGE" || line.reason === "DEFECT");
       if (requiresPhoto && !claim.evidence.some((item) => item.contentType.startsWith("image/"))) throw new SupplierClaimError("EVIDENCE_REQUIRED", "Damage and defect claims require photo evidence before submission", 400);
       status = "PENDING";
     }
-    else if (action === "wait-replacement" && ["PENDING", "PARTIAL"].includes(claim.status)) status = "WAITING_REPLACEMENT";
-    else if (action === "reject" && ["DRAFT", "PENDING", "WAITING_REPLACEMENT", "PARTIAL"].includes(claim.status)) {
+    else if (action === "reject" && canRunSupplierClaimAction(action, claim.status)) {
       if (claim.lines.some((line) => line.openQuarantinedQuantity > 0)) throw new SupplierClaimError("QUARANTINE_DISPOSITION_REQUIRED", "Return, release, or write off quarantined stock before rejecting the claim", 409);
       await tx.supplierClaimLine.updateMany({ where: { claimId, openMissingQuantity: { gt: 0 } }, data: { openMissingQuantity: 0 } });
       status = "REJECTED";
     }
-    else if (action === "cancel" && claim.status === "DRAFT") {
+    else if (action === "cancel" && canRunSupplierClaimAction(action, claim.status)) {
       if (claim.lines.some((line) => line.openQuarantinedQuantity > 0)) throw new SupplierClaimError("QUARANTINE_DISPOSITION_REQUIRED", "Return, release, or write off quarantined stock before cancelling the claim", 409);
       await tx.supplierClaimLine.updateMany({ where: { claimId, openMissingQuantity: { gt: 0 } }, data: { openMissingQuantity: 0 } });
       status = "CANCELLED";
     }
-    else if (action === "complete" && ["PENDING", "PARTIAL", "REPLACEMENT_RECEIVED"].includes(claim.status)) {
+    else if (action === "complete" && canRunSupplierClaimAction(action, claim.status)) {
       if (claim.lines.some((line) => line.openQuarantinedQuantity + line.openMissingQuantity > 0)) throw new SupplierClaimError("UNRESOLVED_LINES", "Resolve every claimed quantity before completion", 409);
       status = "COMPLETED";
-    } else if (inventoryAction && ["PENDING", "WAITING_REPLACEMENT", "PARTIAL"].includes(claim.status)) {
+    } else if (inventoryAction && canRunSupplierClaimAction(action, claim.status)) {
       for (const line of claim.lines) {
         const quantity = lineActions.get(line.productId);
         if (!quantity) continue;

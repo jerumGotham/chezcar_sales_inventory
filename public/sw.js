@@ -1,4 +1,12 @@
 const SHELL_CACHE = "chezcar-shell-v2";
+/**
+ * Registered as "/sw.js?dev=1" by the development server. Production build
+ * chunks carry a content hash, so serving them cache-first is safe; development
+ * chunks reuse the same URL with new contents, and a cached copy then pins a
+ * removed import until the worker is unregistered by hand. A hard reload does
+ * not help, because it does not bypass this fetch handler for subresources.
+ */
+const DEV = new URL(self.location.href).searchParams.get("dev") === "1";
 const SHELL_ASSETS = [
   "/offline.html",
   "/manifest.webmanifest",
@@ -141,6 +149,8 @@ self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin || request.method !== "GET") return;
+
+  if (DEV && url.pathname.startsWith("/_next/static/")) return;
 
   if (url.pathname.startsWith("/_next/static/") || SHELL_ASSETS.includes(url.pathname)) {
     event.respondWith(

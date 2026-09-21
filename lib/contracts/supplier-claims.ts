@@ -4,8 +4,9 @@ import type { CapabilityId } from "@/lib/contracts/roles";
 
 export const supplierClaimStatuses = ["DRAFT", "PENDING", "WAITING_REPLACEMENT", "PARTIAL", "REPLACEMENT_RECEIVED", "REJECTED", "COMPLETED", "CANCELLED"] as const;
 export const supplierClaimLineReasons = ["DAMAGE", "DEFECT", "INCOMPLETE", "WRONG_ITEM", "WARRANTY"] as const;
-export const supplierClaimActions = ["submit", "wait-replacement", "return-to-supplier", "send-repair", "receive-replacement", "release-repaired", "receive-repaired", "writeoff", "reject", "complete", "cancel"] as const;
+export const supplierClaimActions = ["submit", "return-to-supplier", "send-repair", "receive-replacement", "release-repaired", "receive-repaired", "writeoff", "reject", "complete", "cancel"] as const;
 export type SupplierClaimAction = typeof supplierClaimActions[number];
+export type SupplierClaimStatus = typeof supplierClaimStatuses[number];
 
 export const supplierClaimStatusLabels: Record<string, string> = {
   DRAFT: "Draft", PENDING: "Pending resolution", WAITING_REPLACEMENT: "Waiting for replacement",
@@ -17,7 +18,7 @@ export const supplierClaimReasonLabels: Record<string, string> = {
   WRONG_ITEM: "Wrong item delivered", WARRANTY: "Customer warranty",
 };
 export const supplierClaimActionLabels: Record<SupplierClaimAction, string> = {
-  submit: "Submit claim", "wait-replacement": "Mark waiting for replacement", reject: "Record claim rejection",
+  submit: "Submit claim", reject: "Supplier refused the claim",
   complete: "Complete claim", cancel: "Cancel draft", "return-to-supplier": "Return items to supplier",
   "send-repair": "Send items out for repair", "receive-replacement": "Receive replacement items",
   "release-repaired": "Make repaired items sellable", "receive-repaired": "Receive repaired items",
@@ -26,7 +27,6 @@ export const supplierClaimActionLabels: Record<SupplierClaimAction, string> = {
 
 export const supplierClaimActionCapabilities = {
   submit: "supplier-claims:manage",
-  "wait-replacement": "supplier-claims:manage",
   "return-to-supplier": "supplier-claims:return-stock",
   "send-repair": "supplier-claims:repair-stock",
   "receive-replacement": "supplier-claims:receive-replacement",
@@ -37,6 +37,32 @@ export const supplierClaimActionCapabilities = {
   complete: "supplier-claims:close",
   cancel: "supplier-claims:close",
 } as const satisfies Record<SupplierClaimAction, CapabilityId>;
+
+/**
+ * Which statuses each action is valid from. The server enforces this and stays
+ * authoritative; the detail page reads the same map so a button is disabled
+ * instead of failing with INVALID_STATE after the press.
+ *
+ * WAITING_REPLACEMENT is no longer reachable — the action that set it was
+ * removed — but claims saved before that still carry it, so stock actions keep
+ * accepting it.
+ */
+export const supplierClaimActionStatuses = {
+  submit: ["DRAFT"],
+  "return-to-supplier": ["PENDING", "WAITING_REPLACEMENT", "PARTIAL"],
+  "send-repair": ["PENDING", "WAITING_REPLACEMENT", "PARTIAL"],
+  "receive-replacement": ["PENDING", "WAITING_REPLACEMENT", "PARTIAL"],
+  "release-repaired": ["PENDING", "WAITING_REPLACEMENT", "PARTIAL"],
+  "receive-repaired": ["PENDING", "WAITING_REPLACEMENT", "PARTIAL"],
+  writeoff: ["PENDING", "WAITING_REPLACEMENT", "PARTIAL"],
+  reject: ["DRAFT", "PENDING", "WAITING_REPLACEMENT", "PARTIAL"],
+  complete: ["PENDING", "PARTIAL", "REPLACEMENT_RECEIVED"],
+  cancel: ["DRAFT"],
+} as const satisfies Record<SupplierClaimAction, readonly SupplierClaimStatus[]>;
+
+export function canRunSupplierClaimAction(action: SupplierClaimAction, status: string) {
+  return (supplierClaimActionStatuses[action] as readonly string[]).includes(status);
+}
 
 export const supplierClaimListQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
