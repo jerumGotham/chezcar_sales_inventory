@@ -73,6 +73,10 @@ export async function resetOperationalData(prisma, environment) {
       // restricted deletes, so it has to go before any of the three.
       deleted.payments = (await tx.payment.deleteMany()).count;
       deleted.saleAccountingReviews = (await tx.saleAccountingReview.deleteMany()).count;
+      // A branch correction request also holds a restricted reference to its
+      // sale, so a reset run after one was filed fails without this.
+      deleted.saleCorrectionRequests = (await tx.saleCorrectionRequest.deleteMany()).count;
+      deleted.saleSalespersonEvents = (await tx.saleSalespersonEvent.deleteMany()).count;
       deleted.saleLines = (await tx.saleLine.deleteMany()).count;
       deleted.manualReceipts = (await tx.manualReceipt.deleteMany()).count;
       deleted.sales = (await tx.sale.deleteMany()).count;
