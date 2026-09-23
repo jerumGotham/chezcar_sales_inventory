@@ -1,5 +1,3 @@
-import Image from "next/image";
-
 import { SignInForm } from "./sign-in-form";
 
 export default async function SignInPage({
@@ -32,21 +30,7 @@ export default async function SignInPage({
             movements, and keep daily operations organized in one secure system.
           </p>
         </section>
-        {/* The wordmark is white with a black outline, so it belongs on the
-            dark page rather than inside the light card. Here it also survives
-            the breakpoint that hides the copy beside it, which leaves a phone
-            with the card alone. */}
-        <div className="flex w-full max-w-md flex-col items-center gap-7">
-          <Image
-            src="/predator-mark.png"
-            alt="Predator Offroad PH"
-            width={840}
-            height={280}
-            className="h-auto w-[230px] max-w-full"
-            priority
-          />
-          <SignInForm callbackUrl={callbackUrl} />
-        </div>
+        <SignInForm callbackUrl={callbackUrl} />
       </div>
     </main>
   );

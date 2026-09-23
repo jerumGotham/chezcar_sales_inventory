@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 
@@ -98,12 +99,21 @@ export function SignInForm({ callbackUrl }: { callbackUrl: string }) {
 
   return (
     <Card className="w-full max-w-md border-emerald-100 bg-white/95 shadow-2xl shadow-emerald-950/10">
-      <CardHeader className="space-y-4 pb-4">
-        {/* The wordmark sits above this card, on the dark background: its
-            letters are white with a black outline, so on the light card they
-            sank into it and left only the outline behind. */}
-        <div className="space-y-1">
-          <CardTitle className="text-2xl">Sign in</CardTitle>
+      <CardHeader className="items-center space-y-5 pb-5 pt-7 text-center">
+        {/* Every visible pixel of the wordmark is dark ink on transparency, so
+            it needs this light card and would vanish on the dark page behind
+            it. Centred, because a mark this heavy reads as a stray blob when
+            it is pushed into a corner. */}
+        <Image
+          src="/predator-mark.png"
+          alt="Predator Offroad PH"
+          width={840}
+          height={280}
+          className="h-auto w-[180px] max-w-full"
+          priority
+        />
+        <div className="space-y-1.5">
+          <CardTitle className="text-xl">Sign in</CardTitle>
           <p className="text-sm text-slate-500">
             Use your assigned internal account to continue.
           </p>
