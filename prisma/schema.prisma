@@ -408,6 +408,11 @@ model ProductVehicleCompatibility {
   productId String
   make      String?
   model     String
+  /// What the encoder typed, kept verbatim: "2016-2020", "2019 up", "universal".
+  /// startYear/endYear are derived from it so the fitment search still works; an
+  /// unparseable label leaves them null, which matches every year rather than
+  /// hiding a part that fits.
+  yearsLabel String?
   startYear Int?
   endYear   Int?
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)

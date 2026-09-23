@@ -74,8 +74,7 @@ type ProductForm = {
   vehicleCompatibilities: Array<{
     make: string;
     model: string;
-    startYear: string;
-    endYear: string;
+    yearsLabel: string;
   }>;
 };
 
@@ -330,8 +329,7 @@ export default function ProductsPage() {
         vehicleCompatibilities: form.vehicleCompatibilities.map((compatibility) => ({
           make: compatibility.make,
           model: compatibility.model,
-          startYear: compatibility.startYear ? Number(compatibility.startYear) : null,
-          endYear: compatibility.endYear ? Number(compatibility.endYear) : null,
+          yearsLabel: compatibility.yearsLabel,
         })),
       };
       const currentId = selectedProduct?.id ?? persistedProductId;
@@ -459,8 +457,7 @@ export default function ProductsPage() {
         vehicleCompatibilities: product.vehicleCompatibilities.map((compatibility) => ({
           make: compatibility.make,
           model: compatibility.model,
-          startYear: compatibility.startYear?.toString() ?? "",
-          endYear: compatibility.endYear?.toString() ?? "",
+          yearsLabel: compatibility.yearsLabel,
         })),
       }
       : EMPTY_PRODUCT_FORM);
@@ -787,11 +784,12 @@ export default function ProductsPage() {
                           {product.vehicleCompatibilities.length === 0
                             ? "Universal / not specified"
                             : product.vehicleCompatibilities.map((compatibility) => {
-                                const years = compatibility.startYear
-                                  ? compatibility.startYear === compatibility.endYear
-                                    ? String(compatibility.startYear)
-                                    : `${compatibility.startYear}-${compatibility.endYear ?? "present"}`
-                                  : "all years";
+                                const years = compatibility.yearsLabel
+                                  || (compatibility.startYear
+                                    ? compatibility.startYear === compatibility.endYear
+                                      ? String(compatibility.startYear)
+                                      : `${compatibility.startYear}-${compatibility.endYear ?? "present"}`
+                                    : "all years");
                                 return `${compatibility.make ? `${compatibility.make} ` : ""}${compatibility.model} (${years})`;
                               }).join(", ")}
                         </td>
@@ -1039,7 +1037,7 @@ export default function ProductsPage() {
                     disabled={Boolean(selectedProduct && !canUpdate)}
                     onClick={() => setForm((current) => ({
                       ...current,
-                      vehicleCompatibilities: [...current.vehicleCompatibilities, { make: "", model: "", startYear: "", endYear: "" }],
+                      vehicleCompatibilities: [...current.vehicleCompatibilities, { make: "", model: "", yearsLabel: "" }],
                     }))}
                   >
                     Add Vehicle
@@ -1050,11 +1048,10 @@ export default function ProductsPage() {
                   <Input id="warrantyDurationMonths" type="number" min="1" max="120" value={form.warrantyDurationMonths} disabled={Boolean(selectedProduct && !canUpdate)} onChange={(event) => setForm((current) => ({ ...current, warrantyDurationMonths: event.target.value }))} placeholder="Optional" />
                 </div>
                 {form.vehicleCompatibilities.map((compatibility, index) => (
-                  <div key={index} className="grid gap-2 rounded-xl border p-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_110px_110px_auto]">
+                  <div key={index} className="grid gap-2 rounded-xl border p-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_180px_auto]">
                     <Input aria-label={`Vehicle make ${index + 1}`} placeholder="Make" value={compatibility.make} disabled={Boolean(selectedProduct && !canUpdate)} onChange={(event) => setForm((current) => ({ ...current, vehicleCompatibilities: current.vehicleCompatibilities.map((item, itemIndex) => itemIndex === index ? { ...item, make: event.target.value } : item) }))} />
                     <Input aria-label={`Vehicle model ${index + 1}`} placeholder="Model" value={compatibility.model} disabled={Boolean(selectedProduct && !canUpdate)} onChange={(event) => setForm((current) => ({ ...current, vehicleCompatibilities: current.vehicleCompatibilities.map((item, itemIndex) => itemIndex === index ? { ...item, model: event.target.value } : item) }))} />
-                    <Input aria-label={`Start year ${index + 1}`} type="number" min="1886" max="2200" placeholder="From" value={compatibility.startYear} disabled={Boolean(selectedProduct && !canUpdate)} onChange={(event) => setForm((current) => ({ ...current, vehicleCompatibilities: current.vehicleCompatibilities.map((item, itemIndex) => itemIndex === index ? { ...item, startYear: event.target.value } : item) }))} />
-                    <Input aria-label={`End year ${index + 1}`} type="number" min="1886" max="2200" placeholder="To" value={compatibility.endYear} disabled={Boolean(selectedProduct && !canUpdate)} onChange={(event) => setForm((current) => ({ ...current, vehicleCompatibilities: current.vehicleCompatibilities.map((item, itemIndex) => itemIndex === index ? { ...item, endYear: event.target.value } : item) }))} />
+                    <Input aria-label={`Years ${index + 1}`} placeholder="2016-2020, 2019 up, universal" title="Type the years however they are written: 2018, 2016-2020, 2019 up, universal, or leave blank." value={compatibility.yearsLabel} disabled={Boolean(selectedProduct && !canUpdate)} onChange={(event) => setForm((current) => ({ ...current, vehicleCompatibilities: current.vehicleCompatibilities.map((item, itemIndex) => itemIndex === index ? { ...item, yearsLabel: event.target.value } : item) }))} />
                     <Button type="button" variant="ghost" size="sm" aria-label={`Remove vehicle compatibility ${index + 1}`} disabled={Boolean(selectedProduct && !canUpdate)} onClick={() => setForm((current) => ({ ...current, vehicleCompatibilities: current.vehicleCompatibilities.filter((_, itemIndex) => itemIndex !== index) }))}><Trash2 className="h-4 w-4" /></Button>
                   </div>
                 ))}

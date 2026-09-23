@@ -4,9 +4,48 @@ export type VehicleCompatibility = {
   id?: string;
   make: string;
   model: string;
+  /** What the encoder typed: "2016-2020", "2019 up", "universal", or blank. */
+  yearsLabel: string;
   startYear: number | null;
   endYear: number | null;
 };
+
+/**
+ * Turns a typed fitment label into the numeric range the product search
+ * compares against.
+ *
+ * Anything it cannot read becomes an open range. That is deliberate: at a parts
+ * counter, showing a part that turns out not to fit costs a glance at the
+ * label, while hiding one that does fit costs a sale. The label is always kept
+ * verbatim, so the person reading the row sees exactly what was written.
+ */
+export function parseVehicleYears(label: string): { startYear: number | null; endYear: number | null } {
+  const open = { startYear: null, endYear: null };
+  const text = label.trim().toLowerCase();
+  if (!text) return open;
+
+  // "universal", "all", "all years" and friends carry no range at all.
+  if (/^(universal|all|all years|any|n\/a|-)$/.test(text)) return open;
+
+  const years = text.match(/\b(1[89]\d{2}|2[01]\d{2})\b/g);
+  if (!years) return open;
+
+  // Two ranges in one label ("2010-2014, 2018-2022") cannot be said with two
+  // numbers without claiming the gap, so leave it open and let the label speak.
+  const separators = (text.match(/[,;]|\band\b/g) ?? []).length;
+  if (separators > 0) return open;
+
+  const first = Number(years[0]);
+  if (years.length === 1) {
+    // "2019 up", "2019+", "2019 onwards", "2019-present": start, no end.
+    return /(\bup\b|\+|onward|present|current|newer|later)/.test(text)
+      ? { startYear: first, endYear: null }
+      : { startYear: first, endYear: first };
+  }
+
+  const last = Number(years[years.length - 1]);
+  return first <= last ? { startYear: first, endYear: last } : { startYear: last, endYear: first };
+}
 
 export type ProductRow = {
   id: string;

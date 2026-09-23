@@ -3,6 +3,7 @@ import "server-only";
 import { Prisma, type InventoryMovementType } from "@prisma/client";
 import { z } from "zod";
 import { availableStock } from "@/lib/inventory-quantity";
+import { parseVehicleYears } from "@/lib/catalog";
 
 import type {
   InventoryApiResponse,
@@ -54,15 +55,21 @@ export const productListQuerySchema = z.object({
 
 const optionalText = z.string().trim().max(200).optional();
 const positivePrice = z.coerce.number().positive();
+/**
+ * Years arrive as whatever the encoder typed. The label is stored verbatim and
+ * the numeric range is derived from it, so the fitment search keeps working
+ * without asking the encoder to think in two separate fields.
+ */
 const vehicleCompatibilitySchema = z.object({
   make: z.string().trim().min(1).max(100),
   model: z.string().trim().min(1).max(200),
-  startYear: z.coerce.number().int().min(1886).max(2200).nullable(),
-  endYear: z.coerce.number().int().min(1886).max(2200).nullable(),
-}).refine(
-  (value) => value.startYear === null || value.endYear === null || value.startYear <= value.endYear,
-  { message: "Start year must not be later than end year", path: ["endYear"] },
-);
+  yearsLabel: z.string().trim().max(120).default(""),
+}).transform((value) => ({
+  make: value.make,
+  model: value.model,
+  yearsLabel: value.yearsLabel || null,
+  ...parseVehicleYears(value.yearsLabel),
+}));
 
 export const productMutationSchema = z.object({
   itemCode: z.string().trim().min(1).max(100),
@@ -321,6 +328,7 @@ export async function listProducts(
         id: compatibility.id,
         make: compatibility.make ?? "",
         model: compatibility.model,
+        yearsLabel: compatibility.yearsLabel ?? "",
         startYear: compatibility.startYear,
         endYear: compatibility.endYear,
       })),
