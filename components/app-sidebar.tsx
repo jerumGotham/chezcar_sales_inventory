@@ -197,13 +197,15 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
                     !isDesktopExpanded && "flex-col",
                   )}
                 >
-                  <div className="relative overflow-hidden rounded-2xl border border-[#65f144]/25 bg-white/95 p-1 shadow-[0_0_0_1px_rgba(255,255,255,0.05)]">
+                  {/* The wordmark is white on black, so the badge keeps a dark
+                      ground instead of the white one the old square mark used. */}
+                  <div className="relative overflow-hidden rounded-2xl border border-[#65f144]/25 bg-black p-1.5 shadow-[0_0_0_1px_rgba(255,255,255,0.05)]">
                     <Image
-                      src="/chezcar-logo.png"
-                      alt="Predator Auto Care logo"
-                      width={isDesktopExpanded ? 60 : 44}
-                      height={isDesktopExpanded ? 60 : 44}
-                      className="h-auto w-auto rounded-xl"
+                      src="/predator-logo.png"
+                      alt="Predator Offroad PH logo"
+                      width={isDesktopExpanded ? 168 : 44}
+                      height={isDesktopExpanded ? 56 : 15}
+                      className="h-auto w-auto rounded-lg"
                       priority
                     />
                   </div>
@@ -296,13 +298,13 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
           <CardHeader className="gap-4 border-b border-brand-100 bg-brand-50/90 p-5 dark:border-white/10 dark:bg-white/5">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="relative overflow-hidden rounded-2xl border border-brand-100 bg-white p-1">
+                <div className="relative overflow-hidden rounded-2xl border border-brand-100 bg-black p-1.5">
                   <Image
-                    src="/chezcar-logo.png"
-                    alt="Predator Auto Care logo"
-                    width={60}
-                    height={60}
-                    className="h-auto w-auto rounded-xl"
+                    src="/predator-logo.png"
+                    alt="Predator Offroad PH logo"
+                    width={168}
+                    height={56}
+                    className="h-auto w-auto rounded-lg"
                     priority
                   />
                 </div>

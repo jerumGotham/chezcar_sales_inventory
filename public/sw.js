@@ -10,8 +10,8 @@ const DEV = new URL(self.location.href).searchParams.get("dev") === "1";
 const SHELL_ASSETS = [
   "/offline.html",
   "/manifest.webmanifest",
-  "/chezcar-logo.png",
-  "/chezcar-logo.svg",
+  "/predator-logo.png",
+  "/predator-icon-192.png",
 ];
 const OFFLINE_ROUTES = new Set(["/pos"]);
 const OFFLINE_DB_NAME = "chezcar-offline";
@@ -176,11 +176,11 @@ self.addEventListener("fetch", (event) => {
 
 self.addEventListener("push", (event) => {
   const payload = event.data ? event.data.json() : {};
-  const title = payload.title || "Chezcar notification";
+  const title = payload.title || "Predator notification";
   const options = {
-    body: payload.description || "Open Chezcar to view details.",
-    icon: "/chezcar-logo.png",
-    badge: "/chezcar-logo.png",
+    body: payload.description || "Open Predator to view details.",
+    icon: "/predator-icon-192.png",
+    badge: "/predator-icon-192.png",
     data: { url: "/notifications", id: payload.id },
   };
 
