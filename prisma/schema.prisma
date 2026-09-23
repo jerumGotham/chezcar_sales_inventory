@@ -820,6 +820,9 @@ model StockTransfer {
   cancelledAt        DateTime?
   cancellationReason String?                     @db.Text
   receivedAt         DateTime?
+  /// When the in-transit reminder last went out, so the sweep can space
+  /// them evenly and stop once the transfer has been open long enough.
+  transitReminderAt  DateTime?
   source             Location                    @relation("TransferSource", fields: [sourceId], references: [id])
   destination        Location                    @relation("TransferDestination", fields: [destinationId], references: [id])
   createdBy          User                        @relation("TransferCreatedBy", fields: [createdById], references: [id])

@@ -387,6 +387,96 @@ async function notifyUsersForTransfer(
   );
 }
 
+/** How often a transfer still in transit nudges the two sides. */
+export const TRANSIT_REMINDER_INTERVAL_HOURS = 48;
+/** After this long the nudging stops; the transfer needs a person, not a bell. */
+export const TRANSIT_REMINDER_WINDOW_DAYS = 30;
+
+/**
+ * Nudges the receiving branch, and whoever can see every branch, about stock
+ * that left days ago and has not been confirmed received. It runs on the same
+ * lazy sweep as the receipt-evidence reminder rather than a scheduler, and
+ * each transfer carries the time of its own last nudge so the interval holds
+ * however often the sweep is called.
+ */
+export async function createDueTransferReminders(now = new Date()) {
+  const intervalMs = TRANSIT_REMINDER_INTERVAL_HOURS * 60 * 60 * 1000;
+  const dueBefore = new Date(now.getTime() - intervalMs);
+  const oldestDispatch = new Date(now.getTime() - TRANSIT_REMINDER_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+
+  const due = await prisma.stockTransfer.findMany({
+    where: {
+      status: "IN_TRANSIT",
+      // At least one interval since it left, and still inside the window.
+      dispatchedAt: { gte: oldestDispatch, lte: dueBefore },
+      OR: [{ transitReminderAt: null }, { transitReminderAt: { lte: dueBefore } }],
+    },
+    select: {
+      id: true,
+      reference: true,
+      destinationId: true,
+      dispatchedAt: true,
+      transitReminderAt: true,
+      destination: { select: { name: true } },
+      source: { select: { name: true } },
+    },
+    orderBy: { dispatchedAt: "asc" },
+    take: 200,
+  });
+
+  let sent = 0;
+  for (const transfer of due) {
+    const days = transfer.dispatchedAt
+      ? Math.max(1, Math.floor((now.getTime() - transfer.dispatchedAt.getTime()) / (24 * 60 * 60 * 1000)))
+      : 0;
+    await prisma.$transaction(async (tx) => {
+      // Claim the nudge first: a second sweep running at the same time finds
+      // the row already marked and sends nothing.
+      const claimed = await tx.stockTransfer.updateMany({
+        where: {
+          id: transfer.id,
+          status: "IN_TRANSIT",
+          transitReminderAt: transfer.transitReminderAt,
+        },
+        data: { transitReminderAt: now },
+      });
+      if (claimed.count !== 1) return;
+
+      // The branch that has to confirm receipt, plus whoever watches every
+      // branch. A capability lookup without a location would reach branch
+      // staff elsewhere, who can do nothing about this transfer.
+      const [receivers, overseers] = await Promise.all([
+        activeUsersForCapability(tx, "stock-transfers:receive", transfer.destinationId),
+        tx.user.findMany({
+          where: {
+            status: "ACTIVE",
+            accessRole: {
+              OR: [{ isOwner: true }, { permissions: { has: "locations:all" } }],
+            },
+          },
+          select: { id: true },
+        }),
+      ]);
+      const recipientIds = [...new Set([...receivers, ...overseers].map((user) => user.id))];
+
+      await createNotifications(
+        tx,
+        recipientIds.map((userId) => ({
+          userId,
+          title: `Transfer ${transfer.reference} still in transit`,
+          description: `${transfer.source.name} dispatched this to ${transfer.destination.name} ${days} day(s) ago and it has not been confirmed received. Confirm the items received, or report a discrepancy.`,
+          type: "WARNING" as const,
+          relatedType: "STOCK_TRANSFER" as const,
+          relatedId: transfer.id,
+          relatedReference: transfer.reference,
+        })),
+      );
+      sent += 1;
+    });
+  }
+  return { examined: due.length, reminded: sent };
+}
+
 export async function listTransfers(
   actor: AuthContext,
   query: {

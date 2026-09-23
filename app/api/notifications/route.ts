@@ -6,6 +6,7 @@ import {
 } from "@/lib/server/authorization";
 import { listNotifications, listNotificationsAfter, markAllNotificationsRead } from "../../../lib/server/services/notifications";
 import { createDueReceiptEvidenceReminders } from "@/lib/server/services/receipt-evidence-notifications";
+import { createDueTransferReminders } from "@/lib/server/services/stock-transfers";
 
 function parseAfterCursor(request: Request) {
   const after = new URL(request.url).searchParams.get("after");
@@ -17,7 +18,9 @@ function parseAfterCursor(request: Request) {
 export async function GET(request: Request) {
   try {
     const actor = await requireCapability(request.headers, "notifications:view");
-    await createDueReceiptEvidenceReminders();
+    // Both sweeps are idempotent and cheap when nothing is due; a failure in
+    // one must not cost the caller the notifications it came for.
+    await Promise.allSettled([createDueReceiptEvidenceReminders(), createDueTransferReminders()]);
     const after = parseAfterCursor(request);
     return NextResponse.json({
       data: after === null ? await listNotifications(actor) : await listNotificationsAfter(actor, after),
