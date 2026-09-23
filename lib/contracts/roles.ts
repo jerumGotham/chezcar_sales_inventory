@@ -20,6 +20,7 @@ export const CAPABILITY_CATALOG = [
   { id: "sales:view", module: "POS", label: "View direct sales" },
   { id: "sales:post", module: "POS", label: "Complete Sale" },
   { id: "sales:correction:request", module: "POS", label: "Report wrong submission" },
+  { id: "sales:salesperson:update", module: "POS", label: "Correct the salesperson on a posted sale" },
   { id: "sales:verify:view", module: "Receipt Verification", label: "View receipt verification" },
   { id: "sales:verify", module: "Receipt Verification", label: "Confirm correct or report mismatch" },
   { id: "sales:resolve", module: "Receipt Verification", label: "Confirm original encoding" },

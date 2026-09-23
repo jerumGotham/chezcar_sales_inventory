@@ -4,6 +4,7 @@ export type OfflineSalePayload = {
   salespersonId: string;
   receiptBooklet?: string;
   manualReceiptNumber: string;
+  soldAt?: string;
   paymentMethod: string;
   discountAmount: number;
   amountPaid: number;

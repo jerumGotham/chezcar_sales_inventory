@@ -97,6 +97,8 @@ type DirectSaleRow = {
   source: "Customer Order" | "Direct Sale";
   manualReceiptNumber: string;
   branch: string;
+  branchId: string;
+  soldAt: string;
   customer: string;
   totalAmount: number;
   discountAmount: number;
@@ -340,6 +342,7 @@ export default function CustomerOrdersPage() {
   const canViewOrders = hasCapability(capabilities, "customer-orders:view");
   const canViewSales = hasCapability(capabilities, "sales:view");
   const canRequestSaleCorrection = hasCapability(capabilities, "sales:correction:request");
+  const canCorrectSalesperson = hasCapability(capabilities, "sales:salesperson:update");
   const activeView = searchParams.get("view") === "orders" && canViewOrders
     ? "orders"
     : canViewSales ? "sales" : canViewOrders ? "orders" : null;
@@ -472,6 +475,54 @@ export default function CustomerOrdersPage() {
       setPaymentReference("");
       setPaymentMethod(PAYMENT_METHOD_OPTIONS[0]);
     },
+  });
+  // Keyed by sale, so opening another sale falls back to that sale's own
+  // salesperson instead of carrying the previous pending choice over.
+  const [salespersonEdit, setSalespersonEdit] = useState<{ saleId: string; salespersonId: string; reason: string; error: string } | null>(null);
+  const salespersonForm =
+    selectedSale && salespersonEdit?.saleId === selectedSale.id
+      ? salespersonEdit
+      : {
+          saleId: selectedSale?.id ?? "",
+          salespersonId: selectedSale?.salesperson?.personnelId ?? "",
+          reason: "",
+          error: "",
+        };
+  const patchSalespersonForm = (patch: Partial<typeof salespersonForm>) =>
+    setSalespersonEdit({ ...salespersonForm, ...patch });
+  // Only the branch that made the sale can supply its eligible salespersons.
+  const saleSalespersonOptionsQuery = useQuery({
+    queryKey: ["customer-order-options", selectedSale?.branchId ?? null, "salespersons"],
+    enabled: Boolean(canCorrectSalesperson && selectedSale?.branchId),
+    queryFn: async () => {
+      const response = await fetch(`/api/customer-orders/options?locationId=${encodeURIComponent(selectedSale!.branchId)}`, { credentials: "same-origin" });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error?.message ?? "Unable to load salespersons");
+      return (json.data?.salespersons ?? []) as Array<{ id: string; fullName: string }>;
+    },
+  });
+  const saleSalespersonMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedSale) throw new Error("Select a sale first.");
+      const response = await fetch(`/api/sales/${selectedSale.id}/salesperson`, {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ salespersonId: salespersonForm.salespersonId, reason: salespersonForm.reason.trim() || undefined }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error?.message ?? "Unable to change the salesperson");
+      return json.data as DirectSaleRow;
+    },
+    onSuccess: async (sale) => {
+      setSelectedSale(sale);
+      setSalespersonEdit(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["customer-direct-sales-list"] }),
+        queryClient.invalidateQueries({ queryKey: ["reports"] }),
+      ]);
+    },
+    onError: (error: Error) => patchSalespersonForm({ error: error.message }),
   });
   const reserveMutation = useMutation({
     mutationFn: async (order: CustomerOrderRow) => {
@@ -1314,8 +1365,63 @@ export default function CustomerOrdersPage() {
                   <div><p className="text-slate-500">Branch</p><p className="font-medium">{selectedSale.branch}</p></div>
                   <div><p className="text-slate-500">Salesperson</p><p className="font-medium">{selectedSale.salesperson?.name ?? "Not recorded (legacy)"}</p></div>
                   <div><p className="text-slate-500">Payment</p><p className="font-medium">{selectedSale.paymentMethod}</p></div>
+                  <div><p className="text-slate-500">Sold on</p><p className="font-medium">{formatDate(selectedSale.soldAt)}</p></div>
                   <div><p className="text-slate-500">Encoded by</p><p className="font-medium">{formatDate(selectedSale.postedAt)} by {selectedSale.postedBy}</p></div>
                 </div>
+
+                {canCorrectSalesperson && selectedSale.status === "POSTED" ? (
+                  <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/60 p-4">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">Correct the salesperson</p>
+                      <p className="text-xs text-slate-600">
+                        Only who gets credit changes. The amount, the receipt and the stock stay as posted, and the
+                        previous name is kept in the audit trail.
+                      </p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label htmlFor="sale-salesperson">Credit this sale to</Label>
+                        <select
+                          id="sale-salesperson"
+                          className="h-10 w-full rounded-md border border-input bg-background px-2 text-sm"
+                          value={salespersonForm.salespersonId}
+                          onChange={(event) => patchSalespersonForm({ salespersonId: event.target.value, error: "" })}
+                          disabled={saleSalespersonOptionsQuery.isLoading || saleSalespersonMutation.isPending}
+                        >
+                          <option value="">Select a salesperson</option>
+                          {(saleSalespersonOptionsQuery.data ?? []).map((person) => (
+                            <option key={person.id} value={person.id}>{person.fullName}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="sale-salesperson-reason">Reason (optional)</Label>
+                        <Input
+                          id="sale-salesperson-reason"
+                          value={salespersonForm.reason}
+                          onChange={(event) => patchSalespersonForm({ reason: event.target.value })}
+                          placeholder="Why the credit is moving"
+                          disabled={saleSalespersonMutation.isPending}
+                        />
+                      </div>
+                    </div>
+                    {saleSalespersonOptionsQuery.isError ? (
+                      <p className="text-xs font-medium text-red-600">Unable to load the salespersons for this branch.</p>
+                    ) : null}
+                    {salespersonForm.error ? <p className="text-xs font-medium text-red-600">{salespersonForm.error}</p> : null}
+                    <Button
+                      size="sm"
+                      onClick={() => { patchSalespersonForm({ error: "" }); saleSalespersonMutation.mutate(); }}
+                      disabled={
+                        !salespersonForm.salespersonId ||
+                        salespersonForm.salespersonId === selectedSale.salesperson?.personnelId ||
+                        saleSalespersonMutation.isPending
+                      }
+                    >
+                      {saleSalespersonMutation.isPending ? "Saving..." : "Save salesperson"}
+                    </Button>
+                  </div>
+                ) : null}
                 <div className="overflow-x-auto rounded-lg border">
                   <table className="w-full min-w-[620px]">
                     <thead className="bg-slate-50">

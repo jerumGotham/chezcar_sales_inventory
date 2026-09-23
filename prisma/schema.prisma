@@ -728,6 +728,7 @@ model User {
   cancelledCustomerOrders        CustomerOrder[]                 @relation("CustomerOrderCancelledBy")
   salespersonUpdatedOrders       CustomerOrder[]                 @relation("CustomerOrderSalespersonUpdatedBy")
   customerOrderSalespersonEvents CustomerOrderSalespersonEvent[] @relation("CustomerOrderSalespersonEventActor")
+  saleSalespersonEvents          SaleSalespersonEvent[]          @relation("SaleSalespersonEventActor")
   postedSales                    Sale[]                          @relation("SalePostedBy")
   collectedPayments              Payment[]                       @relation("PaymentCollectedBy")
   reviewedPayments               Payment[]                       @relation("PaymentReviewedBy")
@@ -1206,6 +1207,28 @@ model CustomerOrderSalespersonEvent {
   @@index([orderId, occurredAt])
 }
 
+model SaleSalespersonEvent {
+  id                              String   @id @default(cuid())
+  saleId                          String
+  previousSalespersonId           String?
+  previousSalespersonName         String?
+  previousSalespersonLocationId   String?
+  previousSalespersonLocationCode String?
+  previousSalespersonLocationName String?
+  newSalespersonId                String
+  newSalespersonName              String
+  newSalespersonLocationId        String
+  newSalespersonLocationCode      String
+  newSalespersonLocationName      String
+  reason                          String?  @db.Text
+  actorId                         String
+  occurredAt                      DateTime @default(now())
+  sale                            Sale     @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  actor                           User     @relation("SaleSalespersonEventActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([saleId, occurredAt])
+}
+
 model CustomerOrderLine {
   id              String        @id @default(cuid())
   orderId         String
@@ -1247,6 +1270,10 @@ model Sale {
   salespersonLocationCode String?
   salespersonLocationName String?
   postedAt                DateTime                @default(now())
+  /// When the goods actually changed hands. It equals postedAt for a sale
+  /// encoded on the spot, and stays behind it when a branch encodes late, so
+  /// the sales reports date a receipt by the day it was written.
+  soldAt                  DateTime                @default(now())
   location                Location                @relation(fields: [locationId], references: [id])
   customer                Customer?               @relation(fields: [customerId], references: [id])
   order                   CustomerOrder?          @relation(fields: [orderId], references: [id])
@@ -1262,11 +1289,13 @@ model Sale {
   accountingReview        SaleAccountingReview?
   correctionRequests      SaleCorrectionRequest[]
   payment                 Payment?
+  salespersonEvents       SaleSalespersonEvent[]
   createdAt               DateTime                @default(now())
   updatedAt               DateTime                @updatedAt
 
   @@unique([locationId, receiptBooklet, manualReceiptNumber])
   @@index([locationId, postedAt])
+  @@index([locationId, soldAt])
   @@index([postedById])
   @@index([salespersonId, postedAt])
   @@index([customerId])

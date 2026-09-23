@@ -93,9 +93,42 @@ export const directSaleLineSchema = z.object({
   unitPrice: z.number().min(0).optional(),
 });
 
+/** How far back a branch may date a receipt it is encoding late. */
+export const MAX_BACKDATED_SALE_DAYS = 365;
+
+/**
+ * The day the goods changed hands. A branch encoding a receipt days later
+ * dates it by hand; a sale encoded on the spot simply leaves it out. The sale
+ * cannot be dated into the future, because nothing has been sold yet.
+ */
+export const soldAtSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Use a calendar date.")
+  // Date.parse rolls an impossible day over — 2026-02-31 becomes 3 March — so
+  // the parsed date has to read back as the very day that was typed.
+  .refine((value) => {
+    const [year, month, day] = value.split("-").map(Number);
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    return (
+      parsed.getUTCFullYear() === year &&
+      parsed.getUTCMonth() === month - 1 &&
+      parsed.getUTCDate() === day
+    );
+  }, "That is not a real date.")
+  .optional();
+
+export function soldAtBounds(now: Date = new Date()) {
+  const latest = new Date(now);
+  const earliest = new Date(now);
+  earliest.setDate(earliest.getDate() - MAX_BACKDATED_SALE_DAYS);
+  return { earliest, latest };
+}
+
 export const directSaleRequestSchema = z.object({
   receiptBooklet: receiptBookletSchema,
   manualReceiptNumber: manualReceiptNumberSchema,
+  soldAt: soldAtSchema,
   salespersonId: z.string().trim().min(1, "Select a salesperson."),
   paymentMethod: paymentMethodSchema.default("CASH"),
   amountPaid: z.number().min(0),
@@ -179,6 +212,7 @@ export type SaleDto = {
   receiptBooklet: string;
   version: number;
   branch: string;
+  branchId: string;
   customer: string;
   totalAmount: number;
   discountAmount: number;
@@ -186,6 +220,7 @@ export type SaleDto = {
   paymentMethod: z.infer<typeof paymentMethodSchema>;
   status: "POSTED" | "VOIDED";
   postedAt: string;
+  soldAt: string;
   postedBy: string;
   salesperson: import("./personnel").SalespersonSnapshotDto | null;
   reviewStatus: ReviewStatusDto;

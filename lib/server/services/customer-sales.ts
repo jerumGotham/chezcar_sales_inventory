@@ -11,6 +11,8 @@ import {
   branchSaleCorrectionRequestSchema,
   receiptComparisonSchema,
   saleCorrectionResolutionSchema,
+  soldAtBounds,
+  soldAtSchema,
   type ReceiptComparison,
   type SaleCorrectionRequestDto,
 } from "../../contracts/sales";
@@ -107,12 +109,35 @@ export const directSaleSchema = z.object({
   salespersonId: z.string().trim().min(1, "Select a salesperson"),
   receiptBooklet: z.string().trim().max(50).default(""),
   manualReceiptNumber: z.string().trim().min(1).max(100),
+  soldAt: soldAtSchema,
   paymentMethod: z.enum(["CASH", "GCASH", "MAYA", "BANK_TRANSFER", "CREDIT_CARD", "SPLIT"]).default("CASH"),
   discountAmount: money.default(0),
   amountPaid: money,
   notes: z.string().trim().max(1_000).optional(),
   lines: z.array(z.object({ productId: z.string().min(1), quantity: positiveInt, unitPrice: money.optional() })).min(1),
 });
+
+/**
+ * Turns the calendar day a branch typed into an instant to store. A late entry
+ * lands at the end of that day so it sorts after anything encoded earlier, and
+ * a sale encoded on the spot simply keeps the current time.
+ */
+function resolveSoldAt(value: string | undefined, now: Date = new Date()): Date {
+  if (!value) return now;
+  const { earliest, latest } = soldAtBounds(now);
+  const [year, month, day] = value.split("-").map(Number);
+  const sold = new Date(year, month - 1, day, 23, 59, 59, 999);
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const soldDay = new Date(year, month - 1, day);
+  if (soldDay > startOfToday) {
+    throw new CustomerSalesError("INVALID_SOLD_DATE", "A sale cannot be dated in the future", 400);
+  }
+  if (soldDay < new Date(earliest.getFullYear(), earliest.getMonth(), earliest.getDate())) {
+    throw new CustomerSalesError("INVALID_SOLD_DATE", "That sale date is too far back to encode", 400);
+  }
+  // Today's own entries keep the real clock time, so same-day ordering holds.
+  return soldDay.getTime() === startOfToday.getTime() ? now : (sold > latest ? now : sold);
+}
 
 export const accountingReviewSchema = z.object({
   status: z.enum(["VERIFIED", "MISMATCH_REPORTED"]),
@@ -706,6 +731,84 @@ export async function updateCustomerOrderSalesperson(
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
+export const saleSalespersonSchema = z.object({
+  salespersonId: z.string().trim().min(1, "Select a salesperson"),
+  reason: z.string().trim().max(500).optional(),
+});
+
+/**
+ * Re-credits a posted sale to the right salesperson. The sale keeps its money
+ * and its stock movement untouched; only who gets credit changes. The payment
+ * ledger row carries its own salesperson snapshot and is what the salesperson
+ * report reads, so it has to move with the sale or the two disagree.
+ */
+export async function changeSaleSalesperson(
+  actor: AuthContext,
+  id: string,
+  input: z.infer<typeof saleSalespersonSchema>,
+) {
+  assertCapability(actor, "sales:salesperson:update");
+  assertOperationalActor(actor);
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Sale" WHERE id = ${id} FOR UPDATE`;
+    const sale = await tx.sale.findUnique({ where: { id }, include: SALE_INCLUDE });
+    if (!sale) throw new CustomerSalesError("NOT_FOUND", "Sale not found", 404);
+    assertOperationalResource(actor, sale.locationId);
+    if (sale.status !== "POSTED") {
+      throw new CustomerSalesError("INVALID_STATUS", "A voided sale cannot change salesperson", 409);
+    }
+    const salesperson = await resolveActiveSalespersonForTransaction(tx, actor, input.salespersonId, sale.locationId);
+    if (!salesperson) throw new CustomerSalesError("INVALID_SALESPERSON", "Select an active salesperson within your authorized locations", 409);
+    if (sale.salespersonId === salesperson.id) return serializeSaleWithCorrection(sale);
+
+    const changedAt = new Date();
+    await tx.saleSalespersonEvent.create({
+      data: {
+        saleId: sale.id,
+        previousSalespersonId: sale.salespersonId,
+        previousSalespersonName: sale.salespersonName,
+        previousSalespersonLocationId: sale.salespersonLocationId,
+        previousSalespersonLocationCode: sale.salespersonLocationCode,
+        previousSalespersonLocationName: sale.salespersonLocationName,
+        newSalespersonId: salesperson.id,
+        newSalespersonName: salesperson.fullName,
+        newSalespersonLocationId: salesperson.location.id,
+        newSalespersonLocationCode: salesperson.location.code,
+        newSalespersonLocationName: salesperson.location.name,
+        reason: input.reason ?? null,
+        actorId: actor.userId,
+        occurredAt: changedAt,
+      },
+    });
+
+    const snapshot = {
+      salespersonId: salesperson.id,
+      salespersonName: salesperson.fullName,
+      salespersonLocationId: salesperson.location.id,
+      salespersonLocationCode: salesperson.location.code,
+      salespersonLocationName: salesperson.location.name,
+    };
+    const updated = await tx.sale.update({ where: { id }, data: snapshot, include: SALE_INCLUDE });
+    await tx.payment.updateMany({ where: { saleId: sale.id }, data: snapshot });
+
+    await recordAuditLog({
+      category: "Sales",
+      action: "Sale Salesperson Corrected",
+      actorId: actor.userId,
+      reference: sale.manualReceiptNumber,
+      locationLabel: sale.location.name,
+      details: `${sale.salespersonName ?? "Unassigned"} to ${salesperson.fullName}`,
+      facts: [
+        { label: "Receipt", value: sale.manualReceiptNumber },
+        { label: "Previously credited", value: sale.salespersonName ?? "Unassigned" },
+        { label: "Now credited", value: salesperson.fullName },
+        ...(input.reason ? [{ label: "Reason", value: input.reason }] : []),
+      ],
+    });
+    return serializeSaleWithCorrection(updated);
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
 export async function reserveCustomerOrder(actor: AuthContext, id: string) {
   assertCapability(actor, "customer-orders:reserve");
   assertOperationalActor(actor);
@@ -928,6 +1031,7 @@ async function createDirectSaleForActor(actor: AuthContext, rawInput: z.input<ty
   if (!locationId) throw new CustomerSalesError("LOCATION_REQUIRED", "Select a branch before posting a sale", 400);
   const productIds = input.lines.map((line) => line.productId);
   if (new Set(productIds).size !== productIds.length) throw new CustomerSalesError("INVALID_LINES", "A product may appear only once", 400);
+  const soldAt = resolveSoldAt(input.soldAt);
   try {
     return await prisma.$transaction(async (tx) => {
     const location = await findActiveBranch(locationId, tx);
@@ -941,7 +1045,7 @@ async function createDirectSaleForActor(actor: AuthContext, rawInput: z.input<ty
     const total = subtotal - input.discountAmount;
     if (input.amountPaid !== total) throw new CustomerSalesError("INVALID_PAYMENT", "Direct sale payment must match total", 400);
     await deductSaleLines(tx, locationId, input.lines);
-    const sale = await tx.sale.create({ data: { reference: `SALE-${randomUUID()}`, manualReceiptNumber: input.manualReceiptNumber, receiptBooklet: input.receiptBooklet ?? "", locationId, customerId, salespersonId: salesperson.id, salespersonName: salesperson.fullName, salespersonLocationId: salesperson.location.id, salespersonLocationCode: salesperson.location.code, salespersonLocationName: salesperson.location.name, paymentMethod: input.paymentMethod as PaymentMethod, totalAmount: decimal(total), discountAmount: decimal(input.discountAmount), amountPaid: decimal(input.amountPaid), notes: input.notes || null, postedById: actor.userId, lines: { create: input.lines.map((line) => { const product = products.get(line.productId)!; return { productId: product.id, productItemCode: product.itemCode, productName: product.name, quantity: line.quantity, unitPrice: decimal(line.unitPrice ?? product.price?.toNumber() ?? 0) }; }) }, accountingReview: { create: {} } }, include: SALE_INCLUDE });
+    const sale = await tx.sale.create({ data: { reference: `SALE-${randomUUID()}`, manualReceiptNumber: input.manualReceiptNumber, receiptBooklet: input.receiptBooklet ?? "", locationId, customerId, salespersonId: salesperson.id, salespersonName: salesperson.fullName, salespersonLocationId: salesperson.location.id, salespersonLocationCode: salesperson.location.code, salespersonLocationName: salesperson.location.name, paymentMethod: input.paymentMethod as PaymentMethod, totalAmount: decimal(total), discountAmount: decimal(input.discountAmount), amountPaid: decimal(input.amountPaid), notes: input.notes || null, postedById: actor.userId, soldAt, lines: { create: input.lines.map((line) => { const product = products.get(line.productId)!; return { productId: product.id, productItemCode: product.itemCode, productName: product.name, quantity: line.quantity, unitPrice: decimal(line.unitPrice ?? product.price?.toNumber() ?? 0) }; }) }, accountingReview: { create: {} } }, include: SALE_INCLUDE });
     for (const product of products.values()) await tx.saleLine.updateMany({ where: { saleId: sale.id, productId: product.id }, data: { warrantyDurationMonths: product.warrantyDurationMonths } });
     await registerReceipt(tx, input.manualReceiptNumber, "DIRECT_SALE", { saleId: sale.id, locationId, receiptBooklet: input.receiptBooklet ?? "" });
     await recordPayment(tx, {
@@ -961,6 +1065,9 @@ async function createDirectSaleForActor(actor: AuthContext, rawInput: z.input<ty
         locationName: salesperson.location.name,
       },
       collectedById: actor.userId,
+      // The sales reports date a receipt by this row, so a late entry has to
+      // carry the day the goods were sold, not the day it was typed in.
+      collectedAt: soldAt,
       mirrorsSaleReview: true,
     });
     for (const line of input.lines) await tx.inventoryMovement.create({ data: { productId: line.productId, locationId, quantity: -line.quantity, type: "DIRECT_SALE", actorId: actor.userId, reference: input.receiptBooklet ? `${input.receiptBooklet}-${input.manualReceiptNumber}` : input.manualReceiptNumber, remarks: `Direct sale ${sale.reference}` } });
@@ -1884,7 +1991,7 @@ function parseReportedComparison(comparisonJson: string | null | undefined, name
 
 function serializeSale(sale: Prisma.SaleGetPayload<{ include: typeof SALE_INCLUDE }>) {
   const namesByItemCode = new Map(sale.lines.map((line) => [line.productItemCode, line.productName]));
-  return { id: sale.id, reference: sale.reference, source: sale.orderId ? "Customer Order" : "Direct Sale", manualReceiptNumber: sale.manualReceiptNumber, receiptBooklet: (sale as unknown as { receiptBooklet: string }).receiptBooklet ?? "", version: (sale as unknown as { version: number }).version ?? 1, branch: sale.location.name, customer: sale.customer?.name ?? "Guest", totalAmount: serializeMoney(sale.totalAmount), discountAmount: serializeMoney(sale.discountAmount), amountPaid: serializeMoney(sale.amountPaid), paymentMethod: sale.paymentMethod, status: sale.status, postedAt: sale.postedAt.toISOString(), postedBy: sale.postedBy.name, reviewStatus: sale.accountingReview?.status ?? "UNVERIFIED", mismatchCategory: sale.accountingReview?.mismatchCategory ?? null, reviewNotes: sale.accountingReview?.notes ?? null, reportedComparison: parseReportedComparison(sale.accountingReview?.comparisonJson, namesByItemCode), branchResponse: sale.accountingReview?.branchResponse ?? null, branchResponseNote: sale.accountingReview?.branchResponseNote ?? null, branchReplacementReceiptNumber: sale.accountingReview?.branchReplacementReceiptNumber ?? null, branchRespondedAt: sale.accountingReview?.branchRespondedAt?.toISOString() ?? null, receiptPhotoUrl: sale.accountingReview?.receiptPhotoKey ? `/api/accounting/receipts/${sale.id}/photo?v=${sale.accountingReview.evidenceUploadedAt?.getTime() ?? sale.accountingReview.receiptOcrAt?.getTime() ?? 0}` : null, receiptOcrStatus: sale.accountingReview?.receiptOcrStatus ?? null, receiptOcrDraft: parseReceiptOcrDraft(sale.accountingReview?.receiptOcrJson), receiptOcrError: sale.accountingReview?.receiptOcrError ?? null, receiptOcrAt: sale.accountingReview?.receiptOcrAt?.toISOString() ?? null, reviewedAt: sale.accountingReview?.reviewedAt?.toISOString() ?? null, resolutionAction: sale.accountingReview?.resolutionAction ?? null, resolutionNote: sale.accountingReview?.resolutionNote ?? null, resolvedAt: sale.accountingReview?.resolvedAt?.toISOString() ?? null, correctionOfId: sale.correctionOfId ?? null, lines: sale.lines.map((line) => ({ productId: line.productId, itemCode: line.productItemCode, name: line.productName, quantity: line.quantity, unitPrice: serializeMoney(line.unitPrice) })) };
+  return { id: sale.id, reference: sale.reference, source: sale.orderId ? "Customer Order" : "Direct Sale", manualReceiptNumber: sale.manualReceiptNumber, receiptBooklet: (sale as unknown as { receiptBooklet: string }).receiptBooklet ?? "", version: (sale as unknown as { version: number }).version ?? 1, branch: sale.location.name, branchId: sale.locationId, customer: sale.customer?.name ?? "Guest", totalAmount: serializeMoney(sale.totalAmount), discountAmount: serializeMoney(sale.discountAmount), amountPaid: serializeMoney(sale.amountPaid), paymentMethod: sale.paymentMethod, status: sale.status, postedAt: sale.postedAt.toISOString(), soldAt: (sale as unknown as { soldAt?: Date }).soldAt?.toISOString() ?? sale.postedAt.toISOString(), postedBy: sale.postedBy.name, reviewStatus: sale.accountingReview?.status ?? "UNVERIFIED", mismatchCategory: sale.accountingReview?.mismatchCategory ?? null, reviewNotes: sale.accountingReview?.notes ?? null, reportedComparison: parseReportedComparison(sale.accountingReview?.comparisonJson, namesByItemCode), branchResponse: sale.accountingReview?.branchResponse ?? null, branchResponseNote: sale.accountingReview?.branchResponseNote ?? null, branchReplacementReceiptNumber: sale.accountingReview?.branchReplacementReceiptNumber ?? null, branchRespondedAt: sale.accountingReview?.branchRespondedAt?.toISOString() ?? null, receiptPhotoUrl: sale.accountingReview?.receiptPhotoKey ? `/api/accounting/receipts/${sale.id}/photo?v=${sale.accountingReview.evidenceUploadedAt?.getTime() ?? sale.accountingReview.receiptOcrAt?.getTime() ?? 0}` : null, receiptOcrStatus: sale.accountingReview?.receiptOcrStatus ?? null, receiptOcrDraft: parseReceiptOcrDraft(sale.accountingReview?.receiptOcrJson), receiptOcrError: sale.accountingReview?.receiptOcrError ?? null, receiptOcrAt: sale.accountingReview?.receiptOcrAt?.toISOString() ?? null, reviewedAt: sale.accountingReview?.reviewedAt?.toISOString() ?? null, resolutionAction: sale.accountingReview?.resolutionAction ?? null, resolutionNote: sale.accountingReview?.resolutionNote ?? null, resolvedAt: sale.accountingReview?.resolvedAt?.toISOString() ?? null, correctionOfId: sale.correctionOfId ?? null, lines: sale.lines.map((line) => ({ productId: line.productId, itemCode: line.productItemCode, name: line.productName, quantity: line.quantity, unitPrice: serializeMoney(line.unitPrice) })) };
 }
 
 function serializeSaleCorrectionRequest(request: {

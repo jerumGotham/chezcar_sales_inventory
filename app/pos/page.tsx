@@ -156,6 +156,14 @@ const JOB_STATUS_OPTIONS: SelectOption[] = [
   { value: "cancelled", label: "Cancelled" },
 ];
 
+/** Today as the browser's own calendar day, which is what a date input wants. */
+function todayInputValue() {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
 function parsePrice(value: number | string) {
   if (typeof value === "number") return value;
   const numeric = Number(String(value).replace(/[^\d.-]/g, ""));
@@ -499,6 +507,8 @@ function PosTab() {
   const [selectedSalesperson, setSelectedSalesperson] = useState<SelectOption | null>(null);
   const [paymentType, setPaymentType] = useState<SelectOption | null>(null);
   const [manualReceiptNumber, setManualReceiptNumber] = useState("");
+  // A branch encoding yesterday's receipt dates it here; today is the default.
+  const [soldAt, setSoldAt] = useState(() => todayInputValue());
   const [receiptPhoto, setReceiptPhoto] = useState<File | null>(null);
   const receiptPhotoInputRef = useRef<HTMLInputElement>(null);
   const [checkoutError, setCheckoutError] = useState("");
@@ -736,6 +746,7 @@ function PosTab() {
       locationId: activeLocationId ?? undefined,
       salespersonId: selectedSalesperson?.value ?? "",
       manualReceiptNumber,
+      soldAt,
       paymentMethod: paymentMap[paymentType?.value ?? "cash"] ?? "CASH",
       amountPaid: total,
       discountAmount: discount,
@@ -1090,6 +1101,22 @@ function PosTab() {
                 onChange={(event) => setManualReceiptNumber(event.target.value)}
                 placeholder="Official handwritten receipt number"
               />
+            </div>
+
+            <div className="space-y-3">
+              <Label htmlFor="sale-sold-date">Sold Date</Label>
+              <Input
+                id="sale-sold-date"
+                type="date"
+                max={todayInputValue()}
+                value={soldAt}
+                onChange={(event) => setSoldAt(event.target.value)}
+              />
+              <p className="text-xs text-slate-500">
+                {soldAt === todayInputValue()
+                  ? "Today. Change this only when you are encoding an older receipt."
+                  : "This receipt will count on the date above, not today."}
+              </p>
             </div>
 
             {canUploadReceiptEvidence ? (
