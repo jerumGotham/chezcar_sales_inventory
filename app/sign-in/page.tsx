@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 import { SignInForm } from "./sign-in-form";
 
 export default async function SignInPage({
@@ -30,7 +32,22 @@ export default async function SignInPage({
             movements, and keep daily operations organized in one secure system.
           </p>
         </section>
-        <SignInForm callbackUrl={callbackUrl} />
+        {/* The repo's predator-mark.png is dark ink for light surfaces, which
+            is right for the sidebar and wrong here. This light variant, drawn
+            from the same original, is the one that reads on the dark page.
+            It also sits in the card's own column, so it survives the
+            breakpoint that hides the copy beside it. */}
+        <div className="flex w-full max-w-md flex-col items-center gap-8">
+          <Image
+            src="/predator-mark-light.png"
+            alt="Predator Offroad PH"
+            width={2029}
+            height={369}
+            className="h-auto w-[320px] max-w-full"
+            priority
+          />
+          <SignInForm callbackUrl={callbackUrl} />
+        </div>
       </div>
     </main>
   );
