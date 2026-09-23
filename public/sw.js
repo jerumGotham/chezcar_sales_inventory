@@ -10,7 +10,7 @@ const DEV = new URL(self.location.href).searchParams.get("dev") === "1";
 const SHELL_ASSETS = [
   "/offline.html",
   "/manifest.webmanifest",
-  "/predator-logo.png",
+  "/predator-mark.png",
   "/predator-icon-192.png",
 ];
 const OFFLINE_ROUTES = new Set(["/pos"]);

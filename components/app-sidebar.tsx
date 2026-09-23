@@ -181,7 +181,7 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
           <Card className="flex h-full flex-col overflow-hidden border-brand-100 bg-white/95 text-slate-900 shadow-soft dark:border-white/10 dark:bg-card dark:text-white">
             <CardHeader
               className={cn(
-                "gap-4 border-b border-brand-100 bg-brand-50/80 dark:border-white/10 dark:bg-white/5",
+                "gap-4 border-b border-brand-100 bg-brand-100 dark:border-white/10 dark:bg-white/5",
                 isDesktopExpanded ? "p-5" : "items-center p-4",
               )}
             >
@@ -197,30 +197,37 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
                     !isDesktopExpanded && "flex-col",
                   )}
                 >
-                  {/* The wordmark is white on black, so the badge keeps a dark
-                      ground instead of the white one the old square mark used. */}
-                  <div className="relative overflow-hidden rounded-2xl border border-[#65f144]/25 bg-black p-1.5 shadow-[0_0_0_1px_rgba(255,255,255,0.05)]">
-                    <Image
-                      src="/predator-logo.png"
-                      alt="Predator Offroad PH logo"
-                      width={isDesktopExpanded ? 168 : 44}
-                      height={isDesktopExpanded ? 56 : 15}
-                      className="h-auto w-auto rounded-lg"
-                      priority
-                    />
-                  </div>
-
+                  {/* The wordmark already carries the business name, so the
+                      expanded header gives it the width instead of repeating
+                      it in text beside a thumbnail too small to read. */}
                   {isDesktopExpanded ? (
                     <div className="min-w-0">
-                      <p className="text-xs font-semibold uppercase tracking-[0.3em] text-brand-600 dark:text-brand-300">
-                        Predator
-                      </p>
-                      <CardTitle className="mt-1 text-xl text-slate-900 dark:text-white">
+                      <Image
+                        src="/predator-mark.png"
+                        alt="Predator Offroad PH"
+                        width={840}
+                        height={280}
+                        className="h-auto w-[210px] max-w-full"
+                        priority
+                      />
+                      <CardTitle className="mt-2 text-sm font-medium tracking-wide text-slate-500 dark:text-slate-400">
                         Sales &amp; Inventory
                       </CardTitle>
                     </div>
                   ) : (
-                    <span className="sr-only">Predator Sales and Inventory</span>
+                    <>
+                      {/* Collapsed, a wide wordmark is unreadable, so the
+                          square badge stands in for it. */}
+                      <Image
+                        src="/predator-icon-192.png"
+                        alt="Predator Offroad PH"
+                        width={192}
+                        height={192}
+                        className="h-10 w-10 rounded-lg"
+                        priority
+                      />
+                      <span className="sr-only">Predator Sales and Inventory</span>
+                    </>
                   )}
                 </div>
 
@@ -295,30 +302,20 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
         aria-hidden={!isMobileOpen}
       >
         <Card className="flex h-full flex-col overflow-hidden border-brand-100 bg-white text-slate-900 shadow-soft dark:border-white/10 dark:bg-card dark:text-white">
-          <CardHeader className="gap-4 border-b border-brand-100 bg-brand-50/90 p-5 dark:border-white/10 dark:bg-white/5">
+          <CardHeader className="gap-4 border-b border-brand-100 bg-brand-100 p-5 dark:border-white/10 dark:bg-white/5">
             <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="relative overflow-hidden rounded-2xl border border-brand-100 bg-black p-1.5">
-                  <Image
-                    src="/predator-logo.png"
-                    alt="Predator Offroad PH logo"
-                    width={168}
-                    height={56}
-                    className="h-auto w-auto rounded-lg"
-                    priority
-                  />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-brand-600 dark:text-brand-300">
-                    Predator
-                  </p>
-                  <CardTitle className="mt-1 text-xl text-slate-900 dark:text-white">
-                    Sales &amp; Inventory
-                  </CardTitle>
-                  <p className="mt-1 text-sm text-slate-500 dark:text-white/60">
-                    Auto care operations hub
-                  </p>
-                </div>
+              <div className="min-w-0">
+                <Image
+                  src="/predator-mark.png"
+                  alt="Predator Offroad PH"
+                  width={840}
+                  height={280}
+                  className="h-auto w-[210px] max-w-full"
+                  priority
+                />
+                <CardTitle className="mt-2 text-sm font-medium tracking-wide text-slate-500 dark:text-slate-400">
+                  Sales &amp; Inventory
+                </CardTitle>
               </div>
 
               <Button
