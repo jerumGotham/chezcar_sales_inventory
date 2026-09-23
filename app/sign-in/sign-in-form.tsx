@@ -3,7 +3,8 @@
 import { useState } from "react";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, Loader2, LockKeyhole } from "lucide-react";
+import Image from "next/image";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 
 import { CredentialSetupDialog } from "@/components/credential-setup-dialog";
 import { Button } from "@/components/ui/button";
@@ -98,11 +99,19 @@ export function SignInForm({ callbackUrl }: { callbackUrl: string }) {
   return (
     <Card className="w-full max-w-md border-emerald-100 bg-white/95 shadow-2xl shadow-emerald-950/10">
       <CardHeader className="space-y-4 pb-4">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-lg shadow-emerald-600/20">
-          <LockKeyhole className="h-6 w-6" />
-        </div>
+        {/* The panel beside this card is hidden below lg, so on a phone the
+            card carries the branding alone. A padlock only restated that this
+            is a sign-in form; the wordmark says which system you reached. */}
+        <Image
+          src="/predator-mark.png"
+          alt="Predator Offroad PH"
+          width={840}
+          height={280}
+          className="h-auto w-[200px] max-w-full"
+          priority
+        />
         <div className="space-y-1">
-          <CardTitle className="text-2xl">Sign in to Predator</CardTitle>
+          <CardTitle className="text-2xl">Sign in</CardTitle>
           <p className="text-sm text-slate-500">
             Use your assigned internal account to continue.
           </p>
