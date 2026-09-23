@@ -22,7 +22,8 @@
     "db:catalog:reload": "node --env-file=.env prisma/seed.mjs --catalog-only",
     "db:data:reset": "node --env-file=.env prisma/reset-operational-data.mjs",
     "db:staging:reset": "node prisma/reset-staging-data.mjs",
-    "verify:phase-01": "node scripts/verify-phase-01.mjs"
+    "verify:phase-01": "node scripts/verify-phase-01.mjs",
+    "db:reset-owner-password": "node prisma/reset-owner-password.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",
