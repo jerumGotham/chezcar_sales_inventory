@@ -354,7 +354,10 @@ export default function CreateCustomerOrderPage() {
                   <>
                     <div className="space-y-2">
                       <Label>Downpayment Amount</Label>
-                      <Input type="number" min="0.01" value={downpayment} onChange={(e) => setDownpayment(e.target.value)} />
+                      {/* The browser anchors the step ladder at min, so a
+                          fractional min without a matching step puts every
+                          whole peso off it: 5000 snaps to 4999.01. */}
+                      <Input type="number" min="0.01" step="0.01" value={downpayment} onChange={(e) => setDownpayment(e.target.value)} />
                     </div>
                     <div className="space-y-2">
                       <Label>Downpayment Receipt No.</Label>
@@ -508,6 +511,7 @@ export default function CreateCustomerOrderPage() {
                    <Input
                      type="number"
                      min={0}
+                     step="0.01"
                      value={downpayment}
                      onChange={(e) => setDownpayment(e.target.value)}
                      disabled={status.value !== "RESERVED"}
