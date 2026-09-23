@@ -22,6 +22,10 @@ Copy the sanitized `.env.example` to an untracked `.env` and replace every place
 | `SEED_ADMIN_NAME` | Seed only | None | Display name for the seeded Admin. |
 | `ALLOW_OWNER_PROVISIONING` | One-time production bootstrap | None | Must equal `true` for `db:provision-owner`; remove immediately after success. |
 | `PROVISION_OWNER_DATABASE` | One-time production bootstrap | None | Exact database name expected from `DATABASE_URL` and `current_database()`. |
+| `ALLOW_OWNER_PASSWORD_RESET` | Owner password recovery | None | Must equal `true` for `db:reset-owner-password`; pass it for the single command, never store it. |
+| `RESET_OWNER_DATABASE` | Owner password recovery | None | Exact database name expected from `DATABASE_URL` and `current_database()`; a mismatch refuses before anything is written. |
+| `RESET_OWNER_EMAIL` | Owner password recovery | None | Email of the locked-out owner Admin. A non-owner account is refused; those passwords are reset by a signed-in Admin in User Management. |
+| `RESET_OWNER_PASSWORD` | Owner password recovery | None | New password, at least 12 characters. Every existing session for that account is signed out.
 | `PROVISION_OWNER_EMAIL` | One-time production bootstrap | None | Email for the first immutable owner Admin. |
 | `PROVISION_OWNER_PASSWORD` | One-time production bootstrap | None | Temporary owner password; hashed before storage and changed at first sign-in. |
 | `PROVISION_OWNER_NAME` | One-time production bootstrap | None | Display name for the first owner Admin. |
@@ -38,6 +42,8 @@ Copy the sanitized `.env.example` to an untracked `.env` and replace every place
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Browser push only | Empty | Public VAPID key exposed to authenticated browsers for PushManager subscription. |
 | `VAPID_PRIVATE_KEY` | Browser push only | Empty | Private VAPID key used server-side for best-effort browser push delivery attempts. |
 | `VAPID_SUBJECT` | Browser push only | `mailto:admin@example.invalid` | Contact subject passed to push providers. Use an owner/operator email or HTTPS URL. |
+
+In-transit stock-transfer reminders need no configuration. `GET /api/notifications` runs the sweep alongside the receipt-evidence one: a transfer still `IN_TRANSIT` is nudged at most once every 48 hours, starting 48 hours after dispatch, and stops 30 days after dispatch. Each transfer stores its own `transitReminderAt`, so the interval holds however often the sweep runs.
 
 Use the credentials configured for your environment and do not commit the populated file:
 

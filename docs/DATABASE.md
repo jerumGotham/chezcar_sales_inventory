@@ -27,6 +27,12 @@ The implemented database boundary consists of:
 - `prisma/migrations/20260905130000_branch_sale_correction_requests/migration.sql`: branch-originated direct-sale correction requests, one-pending-request enforcement, Admin resolution audit, and the Branch request capability backfill.
 - `prisma/migrations/20260906000000_receipt_branch_findings/migration.sql`: wrong-photo and incorrectly-encoded-sale Branch Finding values plus the Admin void-without-replacement resolution action.
 - `prisma/migrations/20260908120000_warranty_order_audit_indexes/migration.sql`: Customer Warranty request fingerprints, immutable Customer Order Salesperson reassignment events, report-oriented occurrence-date indexing, and an honest nullable Inventory Movement server-recorded timestamp.
+- `prisma/migrations/20260921090000_payment_ledger/migration.sql`: the `Payment` receipt ledger with its historical backfill.
+- `prisma/migrations/20260921091500_payment_notification_type/migration.sql`: the `PAYMENT` notification related-type value.
+- `prisma/migrations/20260921170000_per_report_permissions/migration.sql`: maps the former `reports:view`/`reports:export` grants onto the five per-report capabilities.
+- `prisma/migrations/20260923120000_sale_sold_at/migration.sql`: additive `Sale.soldAt` for receipts encoded late, backfilled from `postedAt` so existing report totals do not move, plus its `(locationId, soldAt)` index.
+- `prisma/migrations/20260923123000_sale_salesperson_event/migration.sql`: `SaleSalespersonEvent`, which keeps the salesperson a posted sale was credited to before a correction.
+- `prisma/migrations/20260923130000_transfer_transit_reminder/migration.sql`: additive `StockTransfer.transitReminderAt` and a `(status, dispatchedAt)` index for the in-transit reminder sweep.
 - `lib/server/prisma.ts`: server-only development-safe Prisma singleton.
 - `lib/server/auth.ts`: Better Auth Prisma adapter configuration (public instance, sign-up disabled).
 - `lib/server/internal-user-auth.ts`: server-only unmounted Better Auth Admin-plugin credential engine used only by staff-lifecycle services.
