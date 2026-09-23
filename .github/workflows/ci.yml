@@ -100,3 +100,95 @@ jobs:
           docker tag "chezcar:${GITHUB_SHA}" "${image_name}:production"
           docker push "${image_name}:${GITHUB_SHA}"
           docker push "${image_name}:production"
+
+  # Continuous deployment to Coolify. Skipped entirely until the repository
+  # variable COOLIFY_ENABLED is set to 'true', so an unconfigured repository
+  # never fails its own main build.
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.COOLIFY_ENABLED == 'true'
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Named so branch protection can require a reviewer before it runs.
+    environment: staging
+
+    steps:
+      - name: Point the application at this commit's image
+        env:
+          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          COOLIFY_APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
+          IMAGE_NAME: ghcr.io/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          image_name="$(printf '%s' "${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')"
+          # The immutable commit tag, never the mutable 'production' one: a
+          # rollback has to be able to name the exact release it wants.
+          curl --silent --show-error --fail-with-body \
+            --request PATCH "${COOLIFY_URL%/}/api/v1/applications/${COOLIFY_APP_UUID}" \
+            --header "Authorization: Bearer ${COOLIFY_TOKEN}" \
+            --header 'Content-Type: application/json' \
+            --data "$(jq --null-input \
+              --arg name "${image_name}" \
+              --arg tag "${GITHUB_SHA}" \
+              '{docker_registry_image_name: $name, docker_registry_image_tag: $tag}')" \
+            --output /dev/null
+          echo "Pinned ${image_name}:${GITHUB_SHA}"
+
+      - name: Trigger the deployment
+        id: trigger
+        env:
+          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          COOLIFY_APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
+        run: |
+          set -euo pipefail
+          response="$(curl --silent --show-error --fail-with-body \
+            --request POST "${COOLIFY_URL%/}/api/v1/deploy?uuid=${COOLIFY_APP_UUID}&force=false" \
+            --header "Authorization: Bearer ${COOLIFY_TOKEN}")"
+          deployment="$(printf '%s' "${response}" | jq --raw-output '.deployments[0].deployment_uuid // empty')"
+          if [ -z "${deployment}" ]; then
+            echo "Coolify accepted no deployment:"
+            printf '%s\n' "${response}"
+            exit 1
+          fi
+          echo "deployment=${deployment}" >> "${GITHUB_OUTPUT}"
+          echo "Deployment ${deployment} queued"
+
+      - name: Wait for the deployment to finish
+        env:
+          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          DEPLOYMENT: ${{ steps.trigger.outputs.deployment }}
+        run: |
+          set -euo pipefail
+          # Coolify runs the pre-deployment command, which is
+          # `npm run db:migrate:deploy`, so a migration failure surfaces here.
+          for _ in $(seq 1 120); do
+            status="$(curl --silent --show-error --fail-with-body \
+              "${COOLIFY_URL%/}/api/v1/deployments/${DEPLOYMENT}" \
+              --header "Authorization: Bearer ${COOLIFY_TOKEN}" \
+              | jq --raw-output '.status // "unknown"')"
+            case "${status}" in
+              finished) echo "Deployment finished"; exit 0 ;;
+              failed|cancelled-by-user) echo "Deployment ${status}"; exit 1 ;;
+              *) echo "status: ${status}"; sleep 10 ;;
+            esac
+          done
+          echo "Deployment did not settle within 20 minutes"
+          exit 1
+
+      - name: Check the application answers
+        if: vars.APP_HEALTH_URL != ''
+        env:
+          HEALTH_URL: ${{ vars.APP_HEALTH_URL }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 12); do
+            code="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 10 "${HEALTH_URL}" || true)"
+            if [ "${code}" = "200" ]; then echo "Health check passed"; exit 0; fi
+            echo "attempt ${attempt}: ${code}"
+            sleep 10
+          done
+          echo "Health check never returned 200"
+          exit 1

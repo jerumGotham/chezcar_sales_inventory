@@ -122,6 +122,28 @@ Never run `npm run db:migrate`, `prisma db push`, or `npm run db:seed` against p
 
 Coolify remains responsible for deployment logs, rollback, and deployment notifications. For rollback, select a previously published immutable commit-SHA image rather than assuming the mutable `production` tag still points to the earlier release. Review migration compatibility before rolling application code backward.
 
+## Continuous Deployment
+
+The CI workflow's `deploy` job deploys to Coolify after `publish` succeeds on `main`. It is **skipped entirely unless the repository variable `COOLIFY_ENABLED` is `true`**, so a repository without Coolify credentials never fails its own main build.
+
+Configure these in GitHub before enabling it:
+
+| Kind | Name | Value |
+| --- | --- | --- |
+| Variable | `COOLIFY_ENABLED` | `true` to turn deployment on; anything else skips the job |
+| Variable | `APP_HEALTH_URL` | Optional. Full URL of `/api/health`; when empty the health step is skipped |
+| Secret | `COOLIFY_URL` | Coolify instance base URL, no trailing path |
+| Secret | `COOLIFY_TOKEN` | Coolify API token with permission to update and deploy the application |
+| Secret | `COOLIFY_APP_UUID` | UUID of the `chezcar-sales-inventory` application |
+
+The job pins the application to `ghcr.io/<repo>:<commit-sha>` — the immutable tag, never the mutable `production` one, so a rollback can name the exact release it wants. It then requests a deployment, polls until Coolify reports `finished`, and fails on `failed`, `cancelled-by-user`, or twenty minutes without settling.
+
+The job runs in the `staging` GitHub environment. Adding required reviewers to that environment turns automatic deployment into one-click approval without changing the workflow.
+
+**Deployment runs migrations.** Coolify's pre-deployment command is `npm run db:migrate:deploy`, so every automatic deployment applies any pending migration to the target database before the new container serves traffic. A migration failure fails the deployment and therefore the job. Treat enabling CD as a decision to let `main` migrate that database unattended, and keep destructive schema changes out of ordinary releases.
+
+Confirm the Coolify API field names against your Coolify version before the first run: the job sends `docker_registry_image_name` and `docker_registry_image_tag` to `PATCH /api/v1/applications/{uuid}`, triggers `POST /api/v1/deploy`, and reads `.status` from `GET /api/v1/deployments/{uuid}`. This job has not yet been executed against a live Coolify instance.
+
 ## Manual Staging Reset
 
 `npm run db:staging:reset` is a dedicated destructive staging maintenance tool, **dry-run by default**. It is not a seed: it creates no fixture products, users, roles, locations, opening balances, or passwords. The existing `db:data:reset` local-only guard is unchanged and must never be bypassed to target Coolify. The new entry point is `prisma/reset-staging-data.mjs`, included by the Dockerfile's existing `/app/prisma` copy; it needs no `scripts/` directory or `.env` file in the image.
