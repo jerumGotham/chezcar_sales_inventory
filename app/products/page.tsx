@@ -36,6 +36,7 @@ import {
 import {
   fetchProducts,
   type ProductRow,
+  type VehicleCompatibility,
   type ProductStatus,
 } from "@/lib/catalog";
 import { cn } from "@/lib/utils";
@@ -194,12 +195,33 @@ const reactSelectStyles: StylesConfig<SelectOption, false> = {
   }),
 };
 
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-xs uppercase tracking-wide text-slate-500">{label}</dt>
+      <dd className="mt-1 text-sm break-words">{value || "-"}</dd>
+    </div>
+  );
+}
+
+/** Same reading the table cell uses, kept in one place for both. */
+function compatibilityYears(compatibility: VehicleCompatibility) {
+  if (compatibility.yearsLabel) return compatibility.yearsLabel;
+  if (!compatibility.startYear) return "all years";
+  return compatibility.startYear === compatibility.endYear
+    ? String(compatibility.startYear)
+    : `${compatibility.startYear}-${compatibility.endYear ?? "present"}`;
+}
+
 export default function ProductsPage() {
+  const canView = useCan("products:view");
   const canCreate = useCan("products:create");
   const canUpdate = useCan("products:update");
   const canDelete = useCan("products:delete");
   const canUpdateImage = useCan("products:image:update");
-  const hasProductActions = canUpdate || canDelete || canUpdateImage;
+  // View is the baseline: a role holding only products:view had no action at
+  // all, and the table clamps the description and hides the warranty period.
+  const hasProductActions = canView || canUpdate || canDelete || canUpdateImage;
   const queryClient = useQueryClient();
   const [itemCode, setItemCode] = useState("");
   const [name, setName] = useState("");
@@ -236,6 +258,7 @@ export default function ProductsPage() {
   const [removeImage, setRemoveImage] = useState(false);
   const [persistedProductId, setPersistedProductId] = useState<string | null>(null);
   const [productToDelete, setProductToDelete] = useState<ProductRow | null>(null);
+  const [productToView, setProductToView] = useState<ProductRow | null>(null);
   const imagePreviewUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -783,15 +806,9 @@ export default function ProductsPage() {
                         <td className="px-5 py-4 text-sm text-slate-600">
                           {product.vehicleCompatibilities.length === 0
                             ? "Universal / not specified"
-                            : product.vehicleCompatibilities.map((compatibility) => {
-                                const years = compatibility.yearsLabel
-                                  || (compatibility.startYear
-                                    ? compatibility.startYear === compatibility.endYear
-                                      ? String(compatibility.startYear)
-                                      : `${compatibility.startYear}-${compatibility.endYear ?? "present"}`
-                                    : "all years");
-                                return `${compatibility.make ? `${compatibility.make} ` : ""}${compatibility.model} (${years})`;
-                              }).join(", ")}
+                            : product.vehicleCompatibilities
+                                .map((compatibility) => `${compatibility.make ? `${compatibility.make} ` : ""}${compatibility.model} (${compatibilityYears(compatibility)})`)
+                                .join(", ")}
                         </td>
                         <td className="px-5 py-4 text-sm font-medium text-slate-700">
                           {formatPeso(product.price)}
@@ -813,6 +830,16 @@ export default function ProductsPage() {
                         </td>
                         {hasProductActions && <td className="px-5 py-4">
                           <div className="flex flex-row gap-2">
+                            {canView && <div className="flex flex-wrap gap-2">
+                              <Button
+                                size="sm"
+                                variant="view"
+                                onClick={() => setProductToView(product)}
+                              >
+                                View
+                              </Button>
+                            </div>}
+
                             {(canUpdate || canUpdateImage) && <div className="flex flex-wrap gap-2">
                               <Button
                                 size="sm"
@@ -1092,6 +1119,85 @@ export default function ProductsPage() {
             >
               {selectedProduct ? "Save Changes" : "Create Product"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={Boolean(productToView)} onOpenChange={(open) => { if (!open) setProductToView(null); }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{productToView?.name ?? "Product"}</DialogTitle>
+            <DialogDescription>{productToView?.itemCode}</DialogDescription>
+          </DialogHeader>
+          {productToView ? (
+            <div className="space-y-5">
+              {productToView.imageUrl ? (
+                <Image
+                  src={productToView.imageUrl}
+                  alt={productToView.name}
+                  width={640}
+                  height={640}
+                  className="max-h-64 w-full rounded-xl border bg-slate-50 object-contain"
+                />
+              ) : (
+                <p className="rounded-xl bg-slate-100 p-3 text-sm text-slate-600">No product image uploaded.</p>
+              )}
+
+              <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+                <Fact label="Category" value={productToView.category} />
+                <Fact label="Brand" value={productToView.brand} />
+                <Fact label="Price" value={formatPeso(productToView.price)} />
+                <Fact label="Reorder level" value={String(productToView.reorderLevel)} />
+                <Fact
+                  label="Warranty"
+                  value={productToView.warrantyDurationMonths ? `${productToView.warrantyDurationMonths} months` : "Not recorded"}
+                />
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-slate-500">Status</dt>
+                  <dd className="mt-1">
+                    <Badge className={getStatusBadgeClass(productToView.status)}>{productToView.status}</Badge>
+                  </dd>
+                </div>
+              </dl>
+
+              <section>
+                <h3 className="mb-2 text-sm font-medium">Vehicle compatibility</h3>
+                {productToView.vehicleCompatibilities.length === 0 ? (
+                  <p className="text-sm text-slate-500">None recorded.</p>
+                ) : (
+                  <ul className="space-y-1 text-sm">
+                    {productToView.vehicleCompatibilities.map((compatibility, index) => (
+                      <li key={compatibility.id ?? index}>
+                        {`${compatibility.make ? `${compatibility.make} ` : ""}${compatibility.model}`}
+                        <span className="text-slate-500">{` (${compatibilityYears(compatibility)})`}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <section>
+                <h3 className="mb-2 text-sm font-medium">Description</h3>
+                {/* The row clamps this to a single line; here it runs in full. */}
+                <p className="whitespace-pre-wrap text-sm text-slate-600">
+                  {productToView.description?.trim() || "No description recorded."}
+                </p>
+              </section>
+            </div>
+          ) : null}
+          <DialogFooter>
+            {canUpdate || canUpdateImage ? (
+              <Button
+                variant="edit"
+                onClick={() => {
+                  const product = productToView;
+                  setProductToView(null);
+                  if (product) openProductDialog(product);
+                }}
+              >
+                {canUpdate ? "Edit" : "Manage Image"}
+              </Button>
+            ) : null}
+            <Button variant="outline" onClick={() => setProductToView(null)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
