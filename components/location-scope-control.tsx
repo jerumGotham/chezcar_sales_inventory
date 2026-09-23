@@ -1,7 +1,7 @@
 "use client";
 
 import { Lock } from "lucide-react";
-import ReactSelect from "react-select";
+import ReactSelect, { type StylesConfig } from "react-select";
 
 import { reactSelectStyles } from "@/app/inventory/_data";
 import type { LocationScopeDto } from "@/lib/contracts/access";
@@ -16,20 +16,25 @@ export type ScopeLocationOption = {
 export type LocationScopeControlProps = {
   scope: LocationScopeDto;
   locations: readonly ScopeLocationOption[];
-  /** Current selected scope value: "all" or one active operational location code. */
+  /** "all", or one or more active operational location codes, comma separated. */
   value: string;
   onValueChange?: (value: string) => void;
   id?: string;
 };
 
-function scopeOptions(locations: readonly ScopeLocationOption[]) {
-  return [
-    { value: "all", label: "All locations" },
-    ...locations.map((location) => ({
-      value: location.code,
-      label: `${location.name} (${location.code})`,
-    })),
-  ];
+type ScopeSelectOption = { value: string; label: string };
+
+function scopeOptions(locations: readonly ScopeLocationOption[]): ScopeSelectOption[] {
+  return locations.map((location) => ({
+    value: location.code,
+    label: `${location.name} (${location.code})`,
+  }));
+}
+
+/** "all", or the comma-separated codes the caller keeps in one string. */
+export function parseScopeValue(value: string): string[] {
+  if (!value || value === "all") return [];
+  return [...new Set(value.split(",").map((code) => code.trim()).filter(Boolean))];
 }
 
 /**
@@ -50,16 +55,28 @@ export function LocationScopeControl({
 }: LocationScopeControlProps) {
   if (scope.kind !== "location") {
     const options = scopeOptions(locations);
+    const selectedCodes = parseScopeValue(value);
+    const selected = options.filter((option) => selectedCodes.includes(option.value));
     return (
-      <ReactSelect
+      <ReactSelect<ScopeSelectOption, true>
         instanceId={id}
         inputId={id}
         aria-label="Inventory location scope"
+        isMulti
         options={options}
-        value={options.find((option) => option.value === value) ?? options[0]}
-        onChange={(option) => onValueChange?.(option?.value ?? "all")}
+        value={selected}
+        // Picking nothing is the plain-language meaning of all locations, so
+        // the list needs no separate "All" entry that fights the other picks.
+        placeholder="All locations"
+        onChange={(picked) => {
+          const codes = (picked ?? []).map((option) => option.value);
+          onValueChange?.(codes.length ? codes.join(",") : "all");
+        }}
+        closeMenuOnSelect={false}
         isSearchable
-        styles={reactSelectStyles}
+        // The shared rules are declared for single selects; the option shape is
+        // identical here, and only the IsMulti flag in the type differs.
+        styles={reactSelectStyles as unknown as StylesConfig<ScopeSelectOption, true>}
         menuPortalTarget={typeof document === "undefined" ? undefined : document.body}
         menuPosition="fixed"
       />

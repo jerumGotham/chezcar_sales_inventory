@@ -119,7 +119,18 @@ type InventoryMovementsQuery = z.infer<typeof inventoryMovementsQuerySchema>;
 
 export type ResolvedLocationScope =
   | { kind: "all"; locationIds?: string[] }
+  /** Several named branches, each one checked against the caller's access. */
+  | { kind: "locations"; locationIds: string[] }
   | { kind: "location"; locationId: string };
+
+/** The Prisma locationId filter a resolved scope stands for. */
+export function scopeLocationFilter(
+  scope: ResolvedLocationScope,
+): string | { in: string[] } | undefined {
+  if (scope.kind === "location") return scope.locationId;
+  if (scope.kind === "locations") return { in: scope.locationIds };
+  return scope.locationIds ? { in: scope.locationIds } : undefined;
+}
 
 export class ProductMutationError extends Error {
   constructor(public readonly code: string, message: string, public readonly status = 400) { super(message); }
@@ -177,13 +188,26 @@ export async function resolveLocationScope(
       : { kind: "all", locationIds: [...context.locationIds] };
   }
 
-  const location = await findActiveOperationalLocation(requestedLocation);
-
-  if (!location || !canAccessLocation(context, location.id)) {
-    throw new AuthorizationError("Invalid inventory location scope");
+  // Several branches arrive comma separated. Every one of them is resolved and
+  // access-checked on its own, so naming an extra branch widens nothing.
+  const requested = [...new Set(requestedLocation.split(",").map((value) => value.trim()).filter(Boolean))];
+  if (requested.length === 0) {
+    return hasAllLocationAccess(context)
+      ? { kind: "all" }
+      : { kind: "all", locationIds: [...context.locationIds] };
   }
 
-  return { kind: "location", locationId: location.id };
+  const resolved: string[] = [];
+  for (const value of requested) {
+    const location = await findActiveOperationalLocation(value);
+    if (!location || !canAccessLocation(context, location.id)) {
+      throw new AuthorizationError("Invalid inventory location scope");
+    }
+    resolved.push(location.id);
+  }
+
+  if (resolved.length === 1) return { kind: "location", locationId: resolved[0] };
+  return { kind: "locations", locationIds: resolved };
 }
 
 function pagination(page: number, pageSize: number, total: number) {
@@ -481,12 +505,7 @@ export async function listInventory(
 ): Promise<InventoryApiResponse> {
   assertCapability(context, "inventory:view");
   const scope = await resolveLocationScope(context, query.location);
-  const scopeLocationId =
-    scope.kind === "location" ? scope.locationId : undefined;
-  const scopedLocation = scopeLocationId ??
-    (scope.kind === "all" && scope.locationIds
-      ? { in: scope.locationIds }
-      : undefined);
+  const scopedLocation = scopeLocationFilter(scope);
   const balanceWhere: Prisma.InventoryBalanceWhereInput = {
     id: query.balanceId,
     locationId: scopedLocation,
@@ -584,12 +603,7 @@ export async function listInventoryMovements(
   assertCapability(context, "inventory-movements:view");
   const scope = await resolveLocationScope(context, query.location);
   const where: Prisma.InventoryMovementWhereInput = {
-    locationId:
-      scope.kind === "location"
-        ? scope.locationId
-        : scope.locationIds
-          ? { in: scope.locationIds }
-          : undefined,
+    locationId: scopeLocationFilter(scope),
     product: query.product === "all" ? undefined : { itemCode: query.product },
     type: query.type === "all" ? undefined : movementTypeFromLabel(query.type),
     reference: query.reference ? { contains: query.reference, mode: "insensitive" } : undefined,

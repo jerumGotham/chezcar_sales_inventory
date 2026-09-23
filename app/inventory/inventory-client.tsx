@@ -16,7 +16,7 @@ import {
   Truck,
 } from "lucide-react";
 
-import { LocationScopeControl } from "@/components/location-scope-control";
+import { LocationScopeControl, parseScopeValue } from "@/components/location-scope-control";
 import { PageShell } from "@/components/page-shell";
 import { TablePagination } from "@/components/table-pagination";
 import { useCan } from "@/components/shell-access-context";
@@ -124,9 +124,9 @@ export function InventoryClient({
     locations.some((item) => item.code === initialLocationCode)
       ? initialLocationCode
       : scopedLocationValue;
-  const [location, setLocation] = useState<SelectOption>(() =>
-    optionForValue(initialLocationValue),
-  );
+  // Held as the raw scope value ("all", or comma-separated branch codes) so a
+  // pick of several branches survives; a single option could not carry it.
+  const [location, setLocation] = useState<string>(initialLocationValue);
   const [status, setStatus] = useState<SelectOption>(STATUS_OPTIONS[0]);
 
   const [appliedItemCode, setAppliedItemCode] = useState("");
@@ -139,7 +139,9 @@ export function InventoryClient({
   const summaryScopeLabel = canSelectLocations
     ? appliedLocation === ALL_LOCATIONS_VALUE
       ? "all locations"
-      : optionForValue(appliedLocation).label
+      : parseScopeValue(appliedLocation)
+          .map((code) => optionForValue(code).label)
+          .join(", ")
     : scope.label;
 
   const [page, setPage] = useState(1);
@@ -424,7 +426,7 @@ export function InventoryClient({
     setAppliedItemCode(itemCode);
     setAppliedName(name);
     setAppliedCategory(category.value);
-    setAppliedLocation(canSelectLocations ? location.value : scopedLocationValue);
+    setAppliedLocation(canSelectLocations ? location : scopedLocationValue);
     setAppliedStatus(status.value);
   };
 
@@ -432,7 +434,7 @@ export function InventoryClient({
     setItemCode("");
     setName("");
     setCategory(CATEGORY_OPTIONS[0]);
-    setLocation(optionForValue(scopedLocationValue));
+    setLocation(scopedLocationValue);
     setStatus(STATUS_OPTIONS[0]);
     setAppliedItemCode("");
     setAppliedName("");
@@ -654,8 +656,8 @@ export function InventoryClient({
                 id="inventory-location-filter"
                 scope={scope}
                 locations={locations}
-                value={location.value}
-                onValueChange={(value) => setLocation(optionForValue(value))}
+                value={location}
+                onValueChange={setLocation}
               />
             </div>
 
