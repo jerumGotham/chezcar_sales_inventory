@@ -12,6 +12,7 @@ const DELETE_ORDER = [
   "BackjobAttachment", "BackjobScheduleHistory", "BackjobEvent",
   "InventoryMovement", "SupplierClaimLine", "SupplierClaim", "CustomerWarranty",
   "BackjobPart", "BackjobItem", "Backjob", "SaleCorrectionRequest",
+  "SaleSalespersonEvent",
   "SaleAccountingReview", "SaleLine", "ManualReceipt", "Sale",
   "CustomerOrderLine", "CustomerOrderSalespersonEvent", "CustomerOrder", "Customer",
   "StockTransferResolutionLine", "StockTransferResolution", "StockTransferInvestigation",
@@ -28,6 +29,7 @@ const AUDIT_TRIGGERS = [
   "CustomerWarrantyAction.CustomerWarrantyAction_immutable",
   "CustomerWarrantyEvent.CustomerWarrantyEvent_immutable",
   "CustomerOrderSalespersonEvent.CustomerOrderSalespersonEvent_immutable",
+  "SaleSalespersonEvent.SaleSalespersonEvent_immutable",
 ].sort();
 const qualified = (table) => `"public"."${table}"`;
 
