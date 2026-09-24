@@ -63,6 +63,8 @@ export type ProductRow = {
   canEditItemCode: boolean;
   canDelete: boolean;
   hasStock: boolean;
+  /** On hand within the branch scope the list was read under. */
+  stockOnHand: number;
 };
 
 export type ProductsApiResponse = {
@@ -73,6 +75,7 @@ export type ProductsApiResponse = {
     brands: string[];
     vehicleMakes: string[];
     vehicleModels: string[];
+    locations: Array<{ id: string; code: string; name: string }>;
   };
   summary: {
     totalProducts: number;

@@ -46,7 +46,7 @@ type SelectOption = {
   label: string;
 };
 
-const ALL_CATEGORIES_OPTION: SelectOption = { value: "all", label: "All Categories" };
+const ALL_BRANCHES_OPTION: SelectOption = { value: "all", label: "All Branches" };
 const ALL_BRANDS_OPTION: SelectOption = { value: "all", label: "All Brands" };
 
 const STATUS_OPTIONS: SelectOption[] = [
@@ -57,9 +57,8 @@ const STATUS_OPTIONS: SelectOption[] = [
 
 const STOCK_STATUS_OPTIONS: SelectOption[] = [
   { value: "all", label: "All Stock" },
-  { value: "has-stock", label: "Has Stock" },
+  { value: "has-stock", label: "With Stock" },
   { value: "no-stock", label: "No Stock" },
-  { value: "inactive-with-stock", label: "Inactive With Stock" },
 ];
 
 type ProductForm = {
@@ -225,20 +224,20 @@ export default function ProductsPage() {
   const queryClient = useQueryClient();
   const [itemCode, setItemCode] = useState("");
   const [name, setName] = useState("");
-  const [category, setCategory] = useState<SelectOption>(ALL_CATEGORIES_OPTION);
   const [brand, setBrand] = useState<SelectOption>(ALL_BRANDS_OPTION);
   const [status, setStatus] = useState<SelectOption>(STATUS_OPTIONS[0]);
   const [stockStatus, setStockStatus] = useState<SelectOption>(STOCK_STATUS_OPTIONS[0]);
+  const [branch, setBranch] = useState<SelectOption>(ALL_BRANCHES_OPTION);
   const [vehicleMake, setVehicleMake] = useState("");
   const [vehicleModel, setVehicleModel] = useState("");
   const [vehicleYear, setVehicleYear] = useState("");
 
   const [appliedItemCode, setAppliedItemCode] = useState("");
   const [appliedName, setAppliedName] = useState("");
-  const [appliedCategory, setAppliedCategory] = useState("all");
   const [appliedBrand, setAppliedBrand] = useState("all");
   const [appliedStatus, setAppliedStatus] = useState("all");
   const [appliedStockStatus, setAppliedStockStatus] = useState("all");
+  const [appliedBranch, setAppliedBranch] = useState("all");
   const [appliedVehicleMake, setAppliedVehicleMake] = useState("all");
   const [appliedVehicleModel, setAppliedVehicleModel] = useState("all");
   const [appliedVehicleYear, setAppliedVehicleYear] = useState("all");
@@ -287,10 +286,10 @@ export default function ProductsPage() {
         pageSize,
         itemCode: appliedItemCode,
         name: appliedName,
-        category: appliedCategory,
         brand: appliedBrand,
         status: appliedStatus,
         stockStatus: appliedStockStatus,
+        locationId: appliedBranch,
         vehicleMake: appliedVehicleMake,
         vehicleModel: appliedVehicleModel,
         vehicleYear: appliedVehicleYear,
@@ -302,10 +301,10 @@ export default function ProductsPage() {
         pageSize,
         itemCode: appliedItemCode,
         name: appliedName,
-        category: appliedCategory,
         brand: appliedBrand,
         status: appliedStatus,
         stockStatus: appliedStockStatus,
+        locationId: appliedBranch,
         vehicleMake: appliedVehicleMake,
         vehicleModel: appliedVehicleModel,
         vehicleYear: appliedVehicleYear,
@@ -314,10 +313,13 @@ export default function ProductsPage() {
   });
 
   const rows = useMemo(() => data?.data ?? [], [data?.data]);
-  const categoryOptions = useMemo(() => [
-    ALL_CATEGORIES_OPTION,
-    ...(data?.filterOptions.categories ?? []).map((value) => ({ value, label: value })),
-  ], [data?.filterOptions.categories]);
+  const branchOptions = useMemo(() => [
+    ALL_BRANCHES_OPTION,
+    ...(data?.filterOptions.locations ?? []).map((location) => ({
+      value: location.id,
+      label: `${location.code} - ${location.name}`,
+    })),
+  ], [data?.filterOptions.locations]);
   const brandOptions = useMemo(() => {
     return [
       ALL_BRANDS_OPTION,
@@ -432,10 +434,10 @@ export default function ProductsPage() {
     setPage(1);
     setAppliedItemCode(itemCode);
     setAppliedName(name);
-    setAppliedCategory(category.value);
     setAppliedBrand(brand.value);
     setAppliedStatus(status.value);
     setAppliedStockStatus(stockStatus.value);
+    setAppliedBranch(branch.value);
     setAppliedVehicleMake(vehicleMake || "all");
     setAppliedVehicleModel(vehicleModel || "all");
     setAppliedVehicleYear(vehicleYear || "all");
@@ -444,20 +446,20 @@ export default function ProductsPage() {
   const handleResetFilters = () => {
     setItemCode("");
     setName("");
-    setCategory(ALL_CATEGORIES_OPTION);
     setBrand(ALL_BRANDS_OPTION);
     setStatus(STATUS_OPTIONS[0]);
     setStockStatus(STOCK_STATUS_OPTIONS[0]);
+    setBranch(ALL_BRANCHES_OPTION);
     setVehicleMake("");
     setVehicleModel("");
     setVehicleYear("");
 
     setAppliedItemCode("");
     setAppliedName("");
-    setAppliedCategory("all");
     setAppliedBrand("all");
     setAppliedStatus("all");
     setAppliedStockStatus("all");
+    setAppliedBranch("all");
     setAppliedVehicleMake("all");
     setAppliedVehicleModel("all");
     setAppliedVehicleYear("all");
@@ -619,21 +621,6 @@ export default function ProductsPage() {
               onChange={(e) => setName(e.target.value)}
             />
 
-            <div className="w-full">
-              <Select
-                instanceId="products-category-filter"
-                options={categoryOptions}
-                value={category}
-                onChange={(option) =>
-                  setCategory(option ?? ALL_CATEGORIES_OPTION)
-                }
-                isSearchable
-                placeholder="Select category"
-                styles={reactSelectStyles}
-              />
-            </div>
-
-            <Input placeholder="Car make" value={vehicleMake} onChange={(event) => setVehicleMake(event.target.value)} />
             <Input placeholder="Car model" value={vehicleModel} onChange={(event) => setVehicleModel(event.target.value)} />
             <Input type="number" min="1886" max="2200" placeholder="Vehicle year" value={vehicleYear} onChange={(event) => setVehicleYear(event.target.value)} />
 
@@ -657,6 +644,18 @@ export default function ProductsPage() {
                 onChange={(option) => setBrand(option ?? brandOptions[0])}
                 isSearchable
                 placeholder="Select brand"
+                styles={reactSelectStyles}
+              />
+            </div>
+
+            <div className="w-full">
+              <Select
+                instanceId="products-branch-filter"
+                options={branchOptions}
+                value={branch}
+                onChange={(option) => setBranch(option ?? ALL_BRANCHES_OPTION)}
+                isSearchable
+                placeholder="Select branch"
                 styles={reactSelectStyles}
               />
             </div>
@@ -701,6 +700,11 @@ export default function ProductsPage() {
                   Showing {showingFrom} to {showingTo} of {meta.total} products
                   {isFetching && !isLoading ? " • Updating..." : ""}
                 </p>
+                {/* The figure is a total, so on All Branches it does not say
+                    where the stock sits. Pick a branch to read it per branch. */}
+                <p className="text-xs text-slate-500">
+                  Stock counts {appliedBranch === "all" ? "every branch you can see, combined" : branchOptions.find((option) => option.value === appliedBranch)?.label ?? "the selected branch"}.
+                </p>
               </div>
               <TablePagination page={meta.page} totalPages={meta.totalPages} onPageChange={setPage} busy={isFetching} />
             </div>
@@ -719,9 +723,6 @@ export default function ProductsPage() {
                       Name
                     </th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Category
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Brand
                     </th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Vehicle Compatibility</th>
@@ -730,6 +731,9 @@ export default function ProductsPage() {
                     </th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Reorder Level
+                    </th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Stock
                     </th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Status
@@ -798,9 +802,6 @@ export default function ProductsPage() {
                           {product.name}
                         </td>
                         <td className="px-5 py-4 text-sm text-slate-600">
-                          {product.category}
-                        </td>
-                        <td className="px-5 py-4 text-sm text-slate-600">
                           {product.brand}
                         </td>
                         <td className="px-5 py-4 text-sm text-slate-600">
@@ -815,6 +816,9 @@ export default function ProductsPage() {
                         </td>
                         <td className="px-5 py-4 text-sm text-slate-600">
                           {product.reorderLevel}
+                        </td>
+                        <td className="px-5 py-4 text-sm font-medium text-slate-700">
+                          {product.stockOnHand}
                         </td>
                         <td className="px-5 py-4 text-sm">
                           <Badge
@@ -1144,6 +1148,7 @@ export default function ProductsPage() {
 
               <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
                 <Fact label="Category" value={productToView.category} />
+                <Fact label="Stock on hand" value={String(productToView.stockOnHand)} />
                 <Fact label="Brand" value={productToView.brand} />
                 <Fact label="Price" value={formatPeso(productToView.price)} />
                 <Fact label="Reorder level" value={String(productToView.reorderLevel)} />

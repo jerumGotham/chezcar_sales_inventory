@@ -2,6 +2,7 @@ import "server-only";
 
 import { Prisma, type InventoryMovementType } from "@prisma/client";
 import { z } from "zod";
+import { listAccessibleOperationalLocations } from "@/lib/server/locations";
 import { availableStock } from "@/lib/inventory-quantity";
 import { parseVehicleYears } from "@/lib/catalog";
 
@@ -50,7 +51,9 @@ export const productListQuerySchema = z.object({
   vehicleModel: z.string().trim().max(200).default("all"),
   vehicleYear: z.union([z.literal("all"), z.coerce.number().int().min(1886).max(2200)]).default("all"),
   status: z.enum(["all", "Active", "Inactive"]).default("all"),
-  stockStatus: z.enum(["all", "has-stock", "no-stock", "inactive-with-stock"]).default("all"),
+  stockStatus: z.enum(["all", "has-stock", "no-stock"]).default("all"),
+  /** A single branch to scope the stock figure and filter to, or "all". */
+  locationId: z.string().trim().max(100).default("all"),
 });
 
 const optionalText = z.string().trim().max(200).optional();
@@ -231,9 +234,13 @@ export async function listProducts(
   query: ProductListQuery,
   context: PersistedAccessContext,
 ): Promise<ProductsApiResponse> {
-  const locationId = hasAllLocationAccess(context)
-    ? undefined
-    : { in: [...context.locationIds] };
+  // The requested branch is intersected with what the caller may already see,
+  // so asking for another branch narrows the scope and never widens it.
+  const allowed = hasAllLocationAccess(context) ? null : [...context.locationIds];
+  const requested = query.locationId === "all" ? null : query.locationId;
+  const effective =
+    requested && (!allowed || allowed.includes(requested)) ? [requested] : allowed;
+  const locationId = effective ? { in: effective } : undefined;
   const where: Prisma.ProductWhereInput = {
     itemCode: query.itemCode
       ? { contains: query.itemCode, mode: "insensitive" }
@@ -267,13 +274,11 @@ export async function listProducts(
     where.inventoryBalances = { some: { locationId, onHand: { gt: 0 } } };
   } else if (query.stockStatus === "no-stock") {
     where.inventoryBalances = { none: { locationId, onHand: { gt: 0 } } };
-  } else if (query.stockStatus === "inactive-with-stock") {
-    where.status = "INACTIVE";
-    where.inventoryBalances = { some: { locationId, OR: [{ onHand: { gt: 0 } }, { reserved: { gt: 0 } }] } };
   }
 
-  const [total, totalProducts, activeProducts, inactiveProducts, withReorderLevel, categoryRows, compatibilityRows, brandRows] =
+  const [accessibleLocations, total, totalProducts, activeProducts, inactiveProducts, withReorderLevel, categoryRows, compatibilityRows, brandRows] =
     await Promise.all([
+      listAccessibleOperationalLocations(context),
       prisma.product.count({ where }),
       prisma.product.count(),
       prisma.product.count({ where: { status: "ACTIVE" } }),
@@ -335,6 +340,8 @@ export async function listProducts(
       canEditItemCode: product.inventoryBalances.length === 0 && product.transferLines.length === 0 && product.receiptLines.length === 0 && product.inventoryMovements.length === 0,
       canDelete: product.inventoryBalances.length === 0 && product.transferLines.length === 0 && product.receiptLines.length === 0 && product.inventoryMovements.length === 0,
       hasStock: product.inventoryBalances.some((balance) => balance.onHand > 0 || balance.reserved > 0),
+      // Already fetched for hasStock; summed here so the list can show it.
+      stockOnHand: product.inventoryBalances.reduce((total, balance) => total + balance.onHand, 0),
     })),
     meta,
     filterOptions: {
@@ -342,6 +349,8 @@ export async function listProducts(
       brands: brandRows.map((product) => product.brand).filter((value): value is string => Boolean(value)).sort(),
       vehicleMakes: [...new Set(compatibilityRows.map((row) => row.make).filter((value): value is string => Boolean(value)))].sort(),
       vehicleModels: [...new Set(compatibilityRows.map((row) => row.model))].sort(),
+      // The branches this caller may scope the stock figure to.
+      locations: accessibleLocations.map((location) => ({ id: location.id, code: location.code, name: location.name })),
     },
     summary: {
       totalProducts,
