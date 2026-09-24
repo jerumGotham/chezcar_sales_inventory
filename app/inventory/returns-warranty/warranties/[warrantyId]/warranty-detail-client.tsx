@@ -41,11 +41,11 @@ const ACTION_RESULTS: Record<string, string> = {
 };
 
 const actionColors: Record<string, string> = {
-  "receive-quarantine": "border-blue-200 bg-blue-600 text-white hover:bg-blue-700",
-  "approve-repair": "border-amber-200 bg-amber-500 text-white hover:bg-amber-600",
-  "approve-replacement": "border-emerald-200 bg-emerald-600 text-white hover:bg-emerald-700",
+  "receive-quarantine": "border-blue-200 dark:border-blue-900 bg-blue-600 text-white hover:bg-blue-700",
+  "approve-repair": "border-amber-200 dark:border-amber-900 bg-amber-500 text-white hover:bg-amber-600",
+  "approve-replacement": "border-emerald-200 dark:border-emerald-900 bg-emerald-600 text-white hover:bg-emerald-700",
   reject: "border-orange-200 bg-orange-500 text-white hover:bg-orange-600",
-  cancel: "border-red-200 bg-red-600 text-white hover:bg-red-700",
+  cancel: "border-red-200 dark:border-red-900 bg-red-600 text-white hover:bg-red-700",
 };
 
 export function WarrantyDetailClient({ capabilities, isOwner }: { capabilities: readonly string[]; isOwner: boolean }) {

@@ -124,7 +124,7 @@ export default function DashboardPage() {
   return (
     <PageShell title="Dashboard" subtitle="Live operational summary from persisted sales, orders, inventory, accounting, and notifications.">
       {isLoading ? (
-        <Card><CardContent className="flex items-center gap-2 p-6 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading dashboard...</CardContent></Card>
+        <Card><CardContent className="flex items-center gap-2 p-6 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading dashboard...</CardContent></Card>
       ) : error || !summary ? (
         <Card><CardContent className="p-6 text-sm text-red-600">{error?.message ?? "Dashboard unavailable"}</CardContent></Card>
       ) : (
@@ -179,7 +179,7 @@ export default function DashboardPage() {
                    <div className="flex items-center justify-between gap-3">
                       <div>
                         <h2 className="text-base font-semibold">Sales Trend</h2>
-                        <p className="text-sm text-slate-500">
+                        <p className="text-sm text-muted-foreground">
                           Posted sales for {summary.salesFilter.periodLabel.toLowerCase()} in {summary.salesFilter.branchLabel}.
                         </p>
                       </div>
@@ -203,14 +203,14 @@ export default function DashboardPage() {
                    <div className="flex items-center justify-between gap-3">
                       <div>
                         <h2 className="text-base font-semibold">Branch Performance</h2>
-                        <p className="text-sm text-slate-500">
+                        <p className="text-sm text-muted-foreground">
                           Branch sales ranking for {summary.salesFilter.periodLabel.toLowerCase()}.
                         </p>
                       </div>
                       <Badge variant="outline">{summary.salesFilter.branchLabel}</Badge>
                    </div>
                    <ChartFrame className="mt-5 h-[280px] min-w-0">
-                     {(chartWidth) => summary.branchPerformance.length === 0 ? <p className="flex h-full items-center justify-center text-sm text-slate-500">No sales data yet.</p> : (
+                     {(chartWidth) => summary.branchPerformance.length === 0 ? <p className="flex h-full items-center justify-center text-sm text-muted-foreground">No sales data yet.</p> : (
                          <BarChart width={chartWidth} height={CHART_HEIGHT} data={summary.branchPerformance} layout="vertical" margin={{ top: 8, right: 12, left: 8, bottom: 8 }}>
                            <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                            <XAxis type="number" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} tickFormatter={(value) => `₱${Math.round(Number(value) / 1000)}k`} />
@@ -232,15 +232,15 @@ export default function DashboardPage() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                      <h2 className="text-base font-semibold">Low Stock by Branch</h2>
-                   <p className="text-sm text-slate-500">{summary.outOfStockCount} out of stock, {summary.lowStockCount} at or below reorder level.</p>
+                   <p className="text-sm text-muted-foreground">{summary.outOfStockCount} out of stock, {summary.lowStockCount} at or below reorder level.</p>
                   </div>
                   <Link href="/inventory" className={buttonVariants({ variant: "view", size: "sm" })}>Inventory</Link>
                 </div>
                 <div className="mt-4 space-y-3">
-                  {summary.lowStock.length === 0 ? <p className="text-sm text-slate-500">No low-stock rows in scope.</p> : summary.lowStock.map((item) => (
+                  {summary.lowStock.length === 0 ? <p className="text-sm text-muted-foreground">No low-stock rows in scope.</p> : summary.lowStock.map((item) => (
                     <div key={`${item.itemCode}-${item.location}`} className="rounded-xl border p-3">
                       <div className="flex items-center justify-between gap-3">
-                         <div><p className="font-medium">{item.location}</p><p className="text-sm text-slate-700">{item.itemCode} - {item.name}</p></div>
+                         <div><p className="font-medium">{item.location}</p><p className="text-sm text-foreground">{item.itemCode} - {item.name}</p></div>
                         <Badge variant="outline">{item.available} / {item.reorderLevel}</Badge>
                       </div>
                     </div>
@@ -255,18 +255,18 @@ export default function DashboardPage() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h2 className="text-base font-semibold">Notifications</h2>
-                    <p className="text-sm text-slate-500">Unread operational alerts for your user.</p>
+                    <p className="text-sm text-muted-foreground">Unread operational alerts for your user.</p>
                   </div>
                   <Link href="/notifications" className={buttonVariants({ variant: "view", size: "sm" })}><Bell className="mr-2 h-4 w-4" />Open</Link>
                 </div>
                 <div className="mt-4 space-y-3">
-                  {data.notifications.length === 0 ? <p className="text-sm text-slate-500">No notifications.</p> : data.notifications.map((notice) => (
+                  {data.notifications.length === 0 ? <p className="text-sm text-muted-foreground">No notifications.</p> : data.notifications.map((notice) => (
                     <div key={notice.id} className="rounded-xl border p-3">
                       <div className="flex items-center justify-between gap-3">
                         <p className="font-medium">{notice.title}</p>
                         {!notice.read && <Badge>Unread</Badge>}
                       </div>
-                      <p className="mt-1 text-sm text-slate-500">{notice.description}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">{notice.description}</p>
                     </div>
                   ))}
                 </div>
@@ -309,7 +309,7 @@ function AdminSalesFilters({
           only once there is room for both, and the heading keeps a floor. */}
       <CardContent className="grid p-0 xl:grid-cols-[minmax(20rem,1fr)_auto]">
         <div className="flex items-start gap-3 p-5">
-          <div className="rounded-xl bg-emerald-100 p-2.5 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+          <div className="rounded-xl bg-emerald-100 dark:bg-emerald-950/40 p-2.5 text-emerald-700 dark:text-emerald-300 dark:bg-emerald-950 dark:text-emerald-300">
             <TrendingUp className="size-5" aria-hidden="true" />
           </div>
           <div>
@@ -317,22 +317,22 @@ function AdminSalesFilters({
               <h2 className="font-semibold">Admin Sales View</h2>
               <Badge variant="outline">Sales only</Badge>
               {isFetching ? (
-                <span className="flex items-center gap-1 text-xs text-slate-500">
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
                   <Loader2 className="size-3 animate-spin" aria-hidden="true" />
                   Updating
                 </span>
               ) : null}
             </div>
-            <p className="mt-1 max-w-2xl text-sm text-slate-500">
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
               Period and branch apply to sales, transactions, trend, and branch
               performance. Inventory and alerts stay live across all branches.
             </p>
           </div>
         </div>
 
-        <div className="grid gap-4 border-t bg-slate-50/70 p-4 sm:grid-cols-[auto_minmax(12rem,1fr)] xl:border-t-0 xl:border-l dark:bg-slate-950/30">
+        <div className="grid gap-4 border-t bg-muted/70 p-4 sm:grid-cols-[auto_minmax(12rem,1fr)] xl:border-t-0 xl:border-l">
           <div className="space-y-2">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <CalendarDays className="size-3.5" aria-hidden="true" />
               Period
             </div>
@@ -353,7 +353,7 @@ function AdminSalesFilters({
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <MapPin className="size-3.5" aria-hidden="true" />
               Branch
             </div>
@@ -383,6 +383,6 @@ function AdminSalesFilters({
 }
 
 function MetricCard({ icon, label, value, hint, href }: { icon: React.ReactNode; label: string; value: string; hint: string; href?: Route }) {
-  const card = <Card className={href ? "h-full transition-colors hover:border-emerald-300 hover:bg-emerald-50/30" : undefined}><CardContent className="flex items-start justify-between gap-4 p-5"><div><p className="text-sm text-slate-500">{label}</p><p className="mt-3 text-2xl font-bold">{value}</p><p className="mt-2 text-sm text-slate-500">{hint}</p></div><div className="rounded-full bg-slate-50 p-2">{icon}</div></CardContent></Card>;
+  const card = <Card className={href ? "h-full transition-colors hover:border-emerald-300 hover:bg-emerald-50 dark:bg-emerald-950/30" : undefined}><CardContent className="flex items-start justify-between gap-4 p-5"><div><p className="text-sm text-muted-foreground">{label}</p><p className="mt-3 text-2xl font-bold">{value}</p><p className="mt-2 text-sm text-muted-foreground">{hint}</p></div><div className="rounded-full bg-muted p-2">{icon}</div></CardContent></Card>;
   return href ? <Link href={href} className="block h-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">{card}</Link> : card;
 }

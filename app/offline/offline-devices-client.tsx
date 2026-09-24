@@ -119,8 +119,8 @@ export function OfflineDevicesClient({
               <Input id="offline-device-label" value={label} onChange={(event) => setLabel(event.target.value)} placeholder="QC front counter" maxLength={100} />
             </div>
 
-            {error ? <p role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"><TriangleAlert className="mt-0.5 size-4 shrink-0" />{error}</p> : null}
-            {message ? <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</p> : null}
+            {error ? <p role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-3 text-sm text-red-700 dark:text-red-300"><TriangleAlert className="mt-0.5 size-4 shrink-0" />{error}</p> : null}
+            {message ? <p role="status" className="rounded-lg border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 p-3 text-sm text-emerald-800 dark:text-emerald-300">{message}</p> : null}
 
             {canActivate ? (
               <Button type="button" variant="workflow" onClick={() => void activate()} disabled={isSubmitting || !deviceId || !locationId} className="w-full">
@@ -130,16 +130,16 @@ export function OfflineDevicesClient({
           </CardContent>
         </Card>
 
-        <Card className="h-fit border-amber-200 bg-amber-50/60">
+        <Card className="h-fit border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/60">
           <CardHeader>
             <CardTitle>What happens next?</CardTitle>
             <CardDescription>Activation does not replace normal account access.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4 text-sm text-slate-700">
+          <CardContent className="space-y-4 text-sm text-foreground">
             <p>1. Sign in as the Branch Staff account assigned to the selected branch.</p>
             <p>2. Open POS while online so the product and stock snapshot is cached.</p>
             <p>3. If internet fails, direct sales are stored locally and uploaded automatically when the server is reachable again.</p>
-            {activation ? <div className="rounded-lg border border-emerald-200 bg-white p-4"><div className="flex items-center justify-between gap-3"><span className="font-semibold">Active authorization</span><Badge className="bg-emerald-100 text-emerald-700">Active</Badge></div><p className="mt-2 text-xs text-slate-500">{activation.location.name} ({activation.location.code})</p><p className="mt-1 text-xs text-slate-500">Expires {formatExpiry(activation.expiresAt)}</p></div> : null}
+            {activation ? <div className="rounded-lg border border-emerald-200 dark:border-emerald-900 bg-card p-4"><div className="flex items-center justify-between gap-3"><span className="font-semibold">Active authorization</span><Badge className="bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300">Active</Badge></div><p className="mt-2 text-xs text-muted-foreground">{activation.location.name} ({activation.location.code})</p><p className="mt-1 text-xs text-muted-foreground">Expires {formatExpiry(activation.expiresAt)}</p></div> : null}
           </CardContent>
         </Card>
       </div>

@@ -174,30 +174,30 @@ function formatDate(value: string) {
 function getOrderStatusBadgeClass(status: OrderStatus) {
   switch (status) {
     case "Reserved":
-      return "border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-50";
+      return "border border-violet-200 dark:border-violet-900 bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:bg-violet-950/40";
     case "Pending":
-      return "border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50";
+      return "border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:bg-amber-950/40";
     case "For Release":
-      return "border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-50";
+      return "border border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 hover:bg-sky-50 dark:bg-sky-950/40";
     case "Released":
-      return "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50";
+      return "border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:bg-emerald-950/40";
     case "Cancelled":
-      return "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-50";
+      return "border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:bg-rose-950/40";
     default:
-      return "border border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-100";
+      return "border border-border bg-muted text-foreground hover:bg-muted";
   }
 }
 
 function getPaymentStatusBadgeClass(status: PaymentStatus) {
   switch (status) {
     case "Unpaid":
-      return "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-50";
+      return "border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:bg-rose-950/40";
     case "Partial":
-      return "border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50";
+      return "border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:bg-amber-950/40";
     case "Paid":
-      return "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50";
+      return "border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:bg-emerald-950/40";
     default:
-      return "border border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-100";
+      return "border border-border bg-muted text-foreground hover:bg-muted";
   }
 }
 
@@ -705,7 +705,7 @@ export default function CustomerOrdersPage() {
         <Card>
           <CardContent className="flex items-start justify-between p-5">
             <div>
-              <p className="text-sm text-slate-500">Total Orders</p>
+              <p className="text-sm text-muted-foreground">Total Orders</p>
               <h3 className="mt-3 text-3xl font-bold text-foreground">
                 {summary.totalOrders}
               </h3>
@@ -713,7 +713,7 @@ export default function CustomerOrdersPage() {
                 Customer reservation records
               </p>
             </div>
-            <div className="rounded-full bg-sky-50 p-2">
+            <div className="rounded-full bg-sky-50 dark:bg-sky-950/40 p-2">
               <ShoppingBag className="h-5 w-5 text-sky-600" />
             </div>
           </CardContent>
@@ -722,7 +722,7 @@ export default function CustomerOrdersPage() {
         <Card>
           <CardContent className="flex items-start justify-between p-5">
             <div>
-              <p className="text-sm text-slate-500">Pending / Reserved</p>
+              <p className="text-sm text-muted-foreground">Pending / Reserved</p>
               <h3 className="mt-3 text-3xl font-bold text-foreground">
                 {summary.pendingOrders}
               </h3>
@@ -730,7 +730,7 @@ export default function CustomerOrdersPage() {
                 Waiting for stock or fulfillment
               </p>
             </div>
-            <div className="rounded-full bg-amber-50 p-2">
+            <div className="rounded-full bg-amber-50 dark:bg-amber-950/40 p-2">
               <Clock3 className="h-5 w-5 text-amber-600" />
             </div>
           </CardContent>
@@ -739,7 +739,7 @@ export default function CustomerOrdersPage() {
         <Card>
           <CardContent className="flex items-start justify-between p-5">
             <div>
-              <p className="text-sm text-slate-500">For Release</p>
+              <p className="text-sm text-muted-foreground">For Release</p>
               <h3 className="mt-3 text-3xl font-bold text-foreground">
                 {summary.forReleaseOrders}
               </h3>
@@ -747,7 +747,7 @@ export default function CustomerOrdersPage() {
                 Ready for pickup or installation
               </p>
             </div>
-            <div className="rounded-full bg-sky-50 p-2">
+            <div className="rounded-full bg-sky-50 dark:bg-sky-950/40 p-2">
               <Clock3 className="h-5 w-5 text-sky-600" />
             </div>
           </CardContent>
@@ -756,7 +756,7 @@ export default function CustomerOrdersPage() {
         <Card>
           <CardContent className="flex items-start justify-between p-5">
             <div>
-              <p className="text-sm text-slate-500">Released</p>
+              <p className="text-sm text-muted-foreground">Released</p>
               <h3 className="mt-3 text-3xl font-bold text-foreground">
                 {summary.releasedOrders}
               </h3>
@@ -764,7 +764,7 @@ export default function CustomerOrdersPage() {
                 Completed and released orders
               </p>
             </div>
-            <div className="rounded-full bg-emerald-50 p-2">
+            <div className="rounded-full bg-emerald-50 dark:bg-emerald-950/40 p-2">
               <CheckCircle2 className="h-5 w-5 text-emerald-600" />
             </div>
           </CardContent>
@@ -773,7 +773,7 @@ export default function CustomerOrdersPage() {
         <Card>
           <CardContent className="flex items-start justify-between p-5">
             <div>
-              <p className="text-sm text-slate-500">Total Downpayments</p>
+              <p className="text-sm text-muted-foreground">Total Downpayments</p>
               <h3 className="mt-3 text-3xl font-bold text-foreground">
                 {formatPeso(summary.totalDownpayments)}
               </h3>
@@ -781,7 +781,7 @@ export default function CustomerOrdersPage() {
                 Collected partial payments
               </p>
             </div>
-            <div className="rounded-full bg-emerald-50 p-2">
+            <div className="rounded-full bg-emerald-50 dark:bg-emerald-950/40 p-2">
               <Wallet className="h-5 w-5 text-emerald-600" />
             </div>
           </CardContent>
@@ -849,7 +849,7 @@ export default function CustomerOrdersPage() {
         </CardContent>
       </Card>
 
-      {reserveMutation.error ? <p className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{(reserveMutation.error as Error).message}</p> : null}
+      {reserveMutation.error ? <p className="mt-4 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-4 text-sm text-red-700 dark:text-red-300">{(reserveMutation.error as Error).message}</p> : null}
 
       <Card className="mt-6">
         <CardContent className="p-0">
@@ -858,7 +858,7 @@ export default function CustomerOrdersPage() {
               <h3 className="text-base font-semibold text-foreground">
                 Customer Order List
               </h3>
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-muted-foreground">
                 Showing {showingFrom} to {showingTo} of {meta.total} orders
                 {isFetching && !isLoading ? " • Updating..." : ""}
               </p>
@@ -868,37 +868,37 @@ export default function CustomerOrdersPage() {
 
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1550px]">
-              <thead className="bg-slate-50">
+              <thead className="bg-muted">
                 <tr className="border-b">
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Order No.
                   </th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Customer
                   </th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Salesperson</th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Salesperson</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Items
                   </th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Total Items
                   </th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Order Status
                   </th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Payment
                   </th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Downpayment
                   </th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Balance
                   </th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Release Date
                   </th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Action
                   </th>
                 </tr>
@@ -908,7 +908,7 @@ export default function CustomerOrdersPage() {
                 {isLoading ? (
                   <tr>
                     <td colSpan={11} className="px-5 py-16 text-center">
-                      <div className="flex items-center justify-center gap-2 text-slate-500">
+                      <div className="flex items-center justify-center gap-2 text-muted-foreground">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Loading customer orders...
                       </div>
@@ -924,7 +924,7 @@ export default function CustomerOrdersPage() {
                   <tr>
                     <td
                       colSpan={11}
-                      className="px-5 py-16 text-center text-slate-500"
+                      className="px-5 py-16 text-center text-muted-foreground"
                     >
                       No customer orders found.
                     </td>
@@ -935,21 +935,21 @@ export default function CustomerOrdersPage() {
                     return (
                     <tr
                       key={order.id}
-                      className="border-b transition-colors hover:bg-slate-50"
+                      className="border-b transition-colors hover:bg-muted"
                     >
                       <td className="px-5 py-4 text-sm font-medium text-foreground">
                         {order.orderNo}
                       </td>
-                      <td className="px-5 py-4 text-sm text-slate-600">
+                      <td className="px-5 py-4 text-sm text-muted-foreground">
                         {order.customer}
                       </td>
-                      <td className="px-5 py-4 text-sm text-slate-600">{order.salesperson?.name ?? "Not recorded (legacy)"}</td>
-                      <td className="px-5 py-4 text-sm text-slate-600">
+                      <td className="px-5 py-4 text-sm text-muted-foreground">{order.salesperson?.name ?? "Not recorded (legacy)"}</td>
+                      <td className="px-5 py-4 text-sm text-muted-foreground">
                         <span className="line-clamp-1">
                           {order.itemSummary}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-sm text-slate-600">
+                      <td className="px-5 py-4 text-sm text-muted-foreground">
                         {order.totalItems}
                       </td>
                       <td className="px-5 py-4 text-sm">
@@ -968,13 +968,13 @@ export default function CustomerOrdersPage() {
                           {order.paymentStatus}
                         </Badge>
                       </td>
-                      <td className="px-5 py-4 text-sm font-medium text-slate-700">
+                      <td className="px-5 py-4 text-sm font-medium text-foreground">
                         {formatPeso(order.downpayment)}
                       </td>
-                      <td className="px-5 py-4 text-sm font-medium text-slate-700">
+                      <td className="px-5 py-4 text-sm font-medium text-foreground">
                         {formatPeso(order.balance)}
                       </td>
-                      <td className="px-5 py-4 text-sm text-slate-600">
+                      <td className="px-5 py-4 text-sm text-muted-foreground">
                         {formatDate(order.releaseDate)}
                       </td>
                       <td className="px-5 py-4">
@@ -1084,7 +1084,7 @@ export default function CustomerOrdersPage() {
             {/* ✅ ITEMS SUMMARY */}
             <div className="space-y-2">
               <Label>Items</Label>
-              <div className="rounded-lg border bg-slate-50 p-3 text-sm text-slate-700">
+              <div className="rounded-lg border bg-muted p-3 text-sm text-foreground">
                 <ul className="list-disc space-y-1 pl-5">
                   {selectedOrder?.itemSummary?.split(",").map((item, index) => {
                     const parts = item.split("×").map((str) => str.trim());
@@ -1105,21 +1105,21 @@ export default function CustomerOrdersPage() {
             {/* ✅ OPTIONAL (HIGHLY RECOMMENDED) */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <p className="text-xs text-slate-500">Total Amount</p>
+                <p className="text-xs text-muted-foreground">Total Amount</p>
                 <p className="text-sm font-semibold">
                   ₱{selectedOrder?.totalAmount?.toLocaleString("en-PH")}
                 </p>
               </div>
 
               <div className="space-y-1">
-                <p className="text-xs text-slate-500">Current Downpayment</p>
-                <p className="text-sm font-semibold text-emerald-700">
+                <p className="text-xs text-muted-foreground">Current Downpayment</p>
+                <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
                   ₱{selectedOrder?.downpayment?.toLocaleString("en-PH")}
                 </p>
               </div>
 
               <div className="space-y-1">
-                <p className="text-xs text-slate-500">Remaining Balance</p>
+                <p className="text-xs text-muted-foreground">Remaining Balance</p>
                 <p className="text-sm font-semibold text-amber-600">
                   ₱{selectedOrder?.balance?.toLocaleString("en-PH")}
                 </p>
@@ -1269,7 +1269,7 @@ export default function CustomerOrdersPage() {
             <div className="flex flex-col gap-4 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 className="text-base font-semibold text-foreground">Direct Sales List</h3>
-                <p className="text-sm text-slate-500">Latest 200 posted direct sales. Search and pagination apply to this recent list only; Export PDF covers every sale matching the search.</p>
+                <p className="text-sm text-muted-foreground">Latest 200 posted direct sales. Search and pagination apply to this recent list only; Export PDF covers every sale matching the search.</p>
               </div>
               <Input
                 className="sm:max-w-xs"
@@ -1283,57 +1283,57 @@ export default function CustomerOrdersPage() {
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-3">
-              <p className="text-sm text-slate-500">Showing {filteredSales.length === 0 ? 0 : (safeSalePage - 1) * pageSize + 1} to {Math.min(safeSalePage * pageSize, filteredSales.length)} of {filteredSales.length} sales</p>
+              <p className="text-sm text-muted-foreground">Showing {filteredSales.length === 0 ? 0 : (safeSalePage - 1) * pageSize + 1} to {Math.min(safeSalePage * pageSize, filteredSales.length)} of {filteredSales.length} sales</p>
               <TablePagination page={safeSalePage} totalPages={saleTotalPages} onPageChange={setSalePage} busy={directSalesQuery.isFetching} />
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1050px]">
-                <thead className="bg-slate-50">
+                <thead className="bg-muted">
                   <tr className="border-b">
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Receipt</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Customer</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Branch</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Salesperson</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Total</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Discount</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Payment</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Review</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Posted</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Action</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Receipt</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Customer</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Branch</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Salesperson</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Discount</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Payment</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Review</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Posted</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {directSalesQuery.isLoading ? (
-                    <tr><td colSpan={10} className="px-5 py-16 text-center text-slate-500">Loading direct sales...</td></tr>
+                    <tr><td colSpan={10} className="px-5 py-16 text-center text-muted-foreground">Loading direct sales...</td></tr>
                   ) : directSalesQuery.isError ? (
                     <tr><td colSpan={10} className="px-5 py-16 text-center text-rose-600">Unable to load direct sales.</td></tr>
                   ) : paginatedSales.length === 0 ? (
-                    <tr><td colSpan={10} className="px-5 py-16 text-center text-slate-500">No direct sales found.</td></tr>
+                    <tr><td colSpan={10} className="px-5 py-16 text-center text-muted-foreground">No direct sales found.</td></tr>
                   ) : (
                     paginatedSales.map((sale) => (
-                      <tr key={sale.id} className="border-b transition-colors hover:bg-slate-50">
+                      <tr key={sale.id} className="border-b transition-colors hover:bg-muted">
                         <td className="px-5 py-4 text-sm font-medium text-foreground">
                           <p>{sale.manualReceiptNumber}</p>
-                          <p className="text-xs text-slate-500">{sale.reference}</p>
+                          <p className="text-xs text-muted-foreground">{sale.reference}</p>
                         </td>
-                        <td className="px-5 py-4 text-sm text-slate-600">{sale.customer}</td>
-                        <td className="px-5 py-4 text-sm text-slate-600">{sale.branch}</td>
-                        <td className="px-5 py-4 text-sm text-slate-600">{sale.salesperson?.name ?? "Not recorded (legacy)"}</td>
-                        <td className="px-5 py-4 text-sm font-semibold text-emerald-700">{formatPeso(sale.totalAmount)}</td>
-                        <td className="px-5 py-4 text-sm text-slate-600">{formatPeso(sale.discountAmount)}</td>
-                        <td className="px-5 py-4 text-sm text-slate-600">{sale.paymentMethod}</td>
+                        <td className="px-5 py-4 text-sm text-muted-foreground">{sale.customer}</td>
+                        <td className="px-5 py-4 text-sm text-muted-foreground">{sale.branch}</td>
+                        <td className="px-5 py-4 text-sm text-muted-foreground">{sale.salesperson?.name ?? "Not recorded (legacy)"}</td>
+                        <td className="px-5 py-4 text-sm font-semibold text-emerald-700 dark:text-emerald-300">{formatPeso(sale.totalAmount)}</td>
+                        <td className="px-5 py-4 text-sm text-muted-foreground">{formatPeso(sale.discountAmount)}</td>
+                        <td className="px-5 py-4 text-sm text-muted-foreground">{sale.paymentMethod}</td>
                         <td className="px-5 py-4 text-sm">
                           <div className="flex flex-col items-start gap-1">
                             <Badge className={sale.reviewStatus === "VERIFIED" ? getPaymentStatusBadgeClass("Paid") : getPaymentStatusBadgeClass("Partial")}>{sale.reviewStatus}</Badge>
                             {sale.correctionRequest?.status === "PENDING" ? (
-                              <Badge className="border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-50">
+                              <Badge className="border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:bg-rose-950/40">
                                 Correction requested
                               </Badge>
                             ) : null}
                           </div>
                         </td>
-                        <td className="px-5 py-4 text-sm text-slate-600">{formatDate(sale.postedAt)}</td>
+                        <td className="px-5 py-4 text-sm text-muted-foreground">{formatDate(sale.postedAt)}</td>
                         <td className="px-5 py-4">
                           <Button size="sm" variant="view" onClick={() => setSelectedSale(sale)}>
                             <Eye className="mr-2 h-4 w-4" /> View
@@ -1359,21 +1359,21 @@ export default function CustomerOrdersPage() {
             {selectedSale ? (
               <div className="space-y-5">
                 <div className="grid gap-3 rounded-lg border p-4 text-sm sm:grid-cols-2">
-                  <div><p className="text-slate-500">Receipt</p><p className="font-medium">{selectedSale.manualReceiptNumber}</p></div>
-                  <div><p className="text-slate-500">Reference</p><p className="font-medium">{selectedSale.reference}</p></div>
-                  <div><p className="text-slate-500">Customer</p><p className="font-medium">{selectedSale.customer}</p></div>
-                  <div><p className="text-slate-500">Branch</p><p className="font-medium">{selectedSale.branch}</p></div>
-                  <div><p className="text-slate-500">Salesperson</p><p className="font-medium">{selectedSale.salesperson?.name ?? "Not recorded (legacy)"}</p></div>
-                  <div><p className="text-slate-500">Payment</p><p className="font-medium">{selectedSale.paymentMethod}</p></div>
-                  <div><p className="text-slate-500">Sold on</p><p className="font-medium">{formatDate(selectedSale.soldAt)}</p></div>
-                  <div><p className="text-slate-500">Encoded by</p><p className="font-medium">{formatDate(selectedSale.postedAt)} by {selectedSale.postedBy}</p></div>
+                  <div><p className="text-muted-foreground">Receipt</p><p className="font-medium">{selectedSale.manualReceiptNumber}</p></div>
+                  <div><p className="text-muted-foreground">Reference</p><p className="font-medium">{selectedSale.reference}</p></div>
+                  <div><p className="text-muted-foreground">Customer</p><p className="font-medium">{selectedSale.customer}</p></div>
+                  <div><p className="text-muted-foreground">Branch</p><p className="font-medium">{selectedSale.branch}</p></div>
+                  <div><p className="text-muted-foreground">Salesperson</p><p className="font-medium">{selectedSale.salesperson?.name ?? "Not recorded (legacy)"}</p></div>
+                  <div><p className="text-muted-foreground">Payment</p><p className="font-medium">{selectedSale.paymentMethod}</p></div>
+                  <div><p className="text-muted-foreground">Sold on</p><p className="font-medium">{formatDate(selectedSale.soldAt)}</p></div>
+                  <div><p className="text-muted-foreground">Encoded by</p><p className="font-medium">{formatDate(selectedSale.postedAt)} by {selectedSale.postedBy}</p></div>
                 </div>
 
                 {canCorrectSalesperson && selectedSale.status === "POSTED" ? (
-                  <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/60 p-4">
+                  <div className="space-y-3 rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/60 p-4">
                     <div>
                       <p className="text-sm font-semibold text-foreground">Correct the salesperson</p>
-                      <p className="text-xs text-slate-600">
+                      <p className="text-xs text-muted-foreground">
                         Only who gets credit changes. The amount, the receipt and the stock stay as posted, and the
                         previous name is kept in the audit trail.
                       </p>
@@ -1424,18 +1424,18 @@ export default function CustomerOrdersPage() {
                 ) : null}
                 <div className="overflow-x-auto rounded-lg border">
                   <table className="w-full min-w-[620px]">
-                    <thead className="bg-slate-50">
+                    <thead className="bg-muted">
                       <tr className="border-b">
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Item</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-slate-500">Quantity</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-slate-500">Unit Price</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-slate-500">Amount</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Item</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-muted-foreground">Quantity</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-muted-foreground">Unit Price</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-muted-foreground">Amount</th>
                       </tr>
                     </thead>
                     <tbody>
                       {selectedSale.lines.map((line) => (
                         <tr key={`${line.productId}-${line.itemCode}`} className="border-b last:border-b-0">
-                          <td className="px-4 py-3 text-sm"><p className="font-medium">{line.name}</p><p className="text-xs text-slate-500">{line.itemCode}</p></td>
+                          <td className="px-4 py-3 text-sm"><p className="font-medium">{line.name}</p><p className="text-xs text-muted-foreground">{line.itemCode}</p></td>
                           <td className="px-4 py-3 text-right text-sm">{line.quantity}</td>
                           <td className="px-4 py-3 text-right text-sm">{formatPeso(line.unitPrice)}</td>
                           <td className="px-4 py-3 text-right text-sm font-medium">{formatPeso(line.quantity * line.unitPrice)}</td>
@@ -1444,14 +1444,14 @@ export default function CustomerOrdersPage() {
                     </tbody>
                   </table>
                 </div>
-                <div className="ml-auto max-w-sm space-y-2 rounded-lg bg-slate-50 p-4 text-sm">
-                  <div className="flex justify-between gap-4"><span className="text-slate-500">Discount</span><span>{formatPeso(selectedSale.discountAmount)}</span></div>
-                  <div className="flex justify-between gap-4"><span className="text-slate-500">Amount paid</span><span>{formatPeso(selectedSale.amountPaid)}</span></div>
+                <div className="ml-auto max-w-sm space-y-2 rounded-lg bg-muted p-4 text-sm">
+                  <div className="flex justify-between gap-4"><span className="text-muted-foreground">Discount</span><span>{formatPeso(selectedSale.discountAmount)}</span></div>
+                  <div className="flex justify-between gap-4"><span className="text-muted-foreground">Amount paid</span><span>{formatPeso(selectedSale.amountPaid)}</span></div>
                   <div className="flex justify-between gap-4 border-t pt-2 font-semibold"><span>Total</span><span>{formatPeso(selectedSale.totalAmount)}</span></div>
                 </div>
                 {selectedSale.correctionRequest ? (
                   <div className={selectedSale.correctionRequest.status === "PENDING"
-                    ? "rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+                    ? "rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-4 text-sm text-amber-900 dark:text-amber-300 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
                     : "rounded-lg border bg-muted/40 p-4 text-sm text-foreground"}
                   >
                     <p className="font-semibold">
@@ -1518,7 +1518,7 @@ export default function CustomerOrdersPage() {
             <div className="space-y-4">
               <div className="rounded-lg border bg-muted/40 p-3 text-sm">
                 <p className="font-medium">Receipt {correctionSale?.manualReceiptNumber}</p>
-                <p className="mt-1 text-slate-500">{correctionSale?.reference} · {correctionSale?.branch}</p>
+                <p className="mt-1 text-muted-foreground">{correctionSale?.reference} · {correctionSale?.branch}</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="sale-correction-reason">What went wrong?</Label>
@@ -1546,7 +1546,7 @@ export default function CustomerOrdersPage() {
                   disabled={saleCorrectionMutation.isPending}
                 />
               </div>
-              <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+              <p className="rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-3 text-sm text-amber-800 dark:text-amber-300 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
                 Stock remains deducted while this request is pending. Only Admin approval can reverse it.
               </p>
               {saleCorrectionMutation.error ? (

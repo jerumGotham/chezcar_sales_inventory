@@ -540,18 +540,18 @@ export function InventoryClient({
         subtitle={`Live stock levels for ${summaryScopeLabel}. Data comes from the database and survives reload.`}
       >
         {mutationNotice ? (
-          <p role="status" className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
+          <p role="status" className="mb-4 rounded-lg border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 p-3 text-sm text-emerald-800 dark:text-emerald-300 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
             {mutationNotice}
           </p>
         ) : null}
-        <p className="mb-4 text-sm text-slate-500">
-          Showing totals for <span className="font-semibold text-slate-700">{summaryScopeLabel}</span> only.
+        <p className="mb-4 text-sm text-muted-foreground">
+          Showing totals for <span className="font-semibold text-foreground">{summaryScopeLabel}</span> only.
         </p>
         <div className="grid gap-4 md:grid-cols-3">
           <Card>
             <CardContent className="flex items-start justify-between p-5">
               <div>
-                <p className="text-sm text-slate-500">Total Stocks</p>
+                <p className="text-sm text-muted-foreground">Total Stocks</p>
                 <h3 className="mt-3 text-3xl font-bold text-foreground">
                   {numberFormatter.format(summary.totalUnits)}
                 </h3>
@@ -559,7 +559,7 @@ export function InventoryClient({
                   Actual pieces currently in stock
                 </p>
               </div>
-              <div className="rounded-full bg-sky-50 p-2">
+              <div className="rounded-full bg-sky-50 dark:bg-sky-950/40 p-2">
                 <PackageCheck className="h-5 w-5 text-sky-600" />
               </div>
             </CardContent>
@@ -568,7 +568,7 @@ export function InventoryClient({
           <Card>
             <CardContent className="flex items-start justify-between p-5">
               <div>
-                <p className="text-sm text-slate-500">Need Restock</p>
+                <p className="text-sm text-muted-foreground">Need Restock</p>
                 <h3 className="mt-3 text-3xl font-bold text-foreground">
                   {numberFormatter.format(summary.needsRestock)}
                 </h3>
@@ -576,7 +576,7 @@ export function InventoryClient({
                   Product locations that are low or out of stock
                 </p>
               </div>
-              <div className="rounded-full bg-red-50 p-2">
+              <div className="rounded-full bg-red-50 dark:bg-red-950/40 p-2">
                 <Warehouse className="h-5 w-5 text-red-600" />
               </div>
             </CardContent>
@@ -585,7 +585,7 @@ export function InventoryClient({
           <Card>
             <CardContent className="flex items-start justify-between p-5">
               <div>
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted-foreground">
                   {summary.incomingItemsLabel}
                 </p>
                 <h3 className="mt-3 text-3xl font-bold text-foreground">
@@ -595,18 +595,18 @@ export function InventoryClient({
                   Awaiting branch receipt or resolution
                 </p>
               </div>
-              <div className="rounded-full bg-violet-50 p-2">
+              <div className="rounded-full bg-violet-50 dark:bg-violet-950/40 p-2">
                 <Truck className="h-5 w-5 text-violet-600" />
               </div>
             </CardContent>
           </Card>
         </div>
 
-        <Card className="mt-6 border-violet-200 bg-violet-50/50">
+        <Card className="mt-6 border-violet-200 dark:border-violet-900 bg-violet-50 dark:bg-violet-950/50">
           <CardContent className="flex flex-col gap-4 p-5">
             <div>
               <p className="font-semibold text-violet-950">Stock Transfers</p>
-              <p className="mt-1 text-sm text-violet-800">
+              <p className="mt-1 text-sm text-violet-800 dark:text-violet-300">
                 {canReceiveSupplierStock
                   ? "Create and dispatch Stock Room transfers separately from receiving."
                   : "Review transfer work separately from inventory counts."}
@@ -698,7 +698,7 @@ export function InventoryClient({
                 <h3 className="text-base font-semibold text-foreground">
                   Inventory by Product
                 </h3>
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted-foreground">
                   Showing {showingFrom} to {showingTo} of {meta.total} products
                   {isFetching && !isLoading ? " • Updating..." : ""}
                 </p>
@@ -724,37 +724,37 @@ export function InventoryClient({
 
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1500px]">
-                <thead className="bg-slate-50">
+                <thead className="bg-muted">
                   <tr className="border-b">
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Product
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Category
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Total On Hand
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Total Reserved
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Total Quarantined</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total Quarantined</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Total Available
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Reorder Level
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Unit Cost
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Branches
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Status
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Expand
                     </th>
                   </tr>
@@ -764,7 +764,7 @@ export function InventoryClient({
                   {isLoading ? (
                     <tr>
                       <td colSpan={11} className="px-5 py-16 text-center">
-                        <div className="flex items-center justify-center gap-2 text-slate-500">
+                        <div className="flex items-center justify-center gap-2 text-muted-foreground">
                           <Loader2 className="h-4 w-4 animate-spin" />
                           Loading inventory...
                         </div>
@@ -783,7 +783,7 @@ export function InventoryClient({
                     <tr>
                       <td
                         colSpan={11}
-                        className="px-5 py-16 text-center text-slate-500"
+                        className="px-5 py-16 text-center text-muted-foreground"
                       >
                         No inventory records found.
                       </td>
@@ -806,54 +806,54 @@ export function InventoryClient({
                       return (
                         <React.Fragment key={group.itemCode}>
                           <tr
-                            className={`border-b bg-white transition-colors hover:bg-slate-50 dark:bg-slate-950 dark:hover:bg-slate-900 ${containsLinkedBalance ? "ring-2 ring-inset ring-amber-400" : ""}`}
+                            className={`border-b bg-card transition-colors hover:bg-muted ${containsLinkedBalance ? "ring-2 ring-inset ring-amber-400" : ""}`}
                           >
                             <td className="px-5 py-4">
                               <div>
                                 <p className="text-sm font-semibold text-foreground">
                                   {group.name}
                                 </p>
-                                <p className="text-xs text-slate-500">
+                                <p className="text-xs text-muted-foreground">
                                   {group.itemCode} • Last updated:{" "}
                                   {group.lastUpdated}
                                 </p>
                               </div>
                             </td>
 
-                            <td className="px-5 py-4 text-sm text-slate-600">
+                            <td className="px-5 py-4 text-sm text-muted-foreground">
                               {group.category}
                             </td>
 
-                            <td className="px-5 py-4 text-sm text-slate-600">
+                            <td className="px-5 py-4 text-sm text-muted-foreground">
                               {group.totalOnHand}
                             </td>
 
-                            <td className="px-5 py-4 text-sm text-slate-600">
+                            <td className="px-5 py-4 text-sm text-muted-foreground">
                               {group.totalReserved}
                             </td>
-                            <td className="px-5 py-4 text-sm text-amber-700">{group.totalQuarantined}</td>
+                            <td className="px-5 py-4 text-sm text-amber-700 dark:text-amber-300">{group.totalQuarantined}</td>
 
-                            <td className="px-5 py-4 text-sm font-semibold text-slate-700">
+                            <td className="px-5 py-4 text-sm font-semibold text-foreground">
                               {group.totalAvailable}
                             </td>
 
-                            <td className="px-5 py-4 text-sm text-slate-600">
+                            <td className="px-5 py-4 text-sm text-muted-foreground">
                               {group.reorderLevel}
                             </td>
 
-                            <td className="px-5 py-4 text-sm text-slate-600">
+                            <td className="px-5 py-4 text-sm text-muted-foreground">
                               {formatPeso(group.unitCost)}
                             </td>
 
                             {/* A bare count told nobody where the stock was, and
                                 the answer was one expand away. */}
-                            <td className="px-5 py-4 text-sm text-slate-600">
+                            <td className="px-5 py-4 text-sm text-muted-foreground">
                               {stockedLocations.length ? (
                                 <span className="block max-w-56 text-xs leading-relaxed">
                                   {stockedLocations.map((item) => item.location).join(", ")}
                                 </span>
                               ) : (
-                                <span className="text-xs text-slate-400">No stock</span>
+                                <span className="text-xs text-muted-foreground">No stock</span>
                               )}
                             </td>
 
@@ -895,21 +895,21 @@ export function InventoryClient({
 
                           {isExpanded && (
                             <tr>
-                              <td colSpan={11} className="bg-slate-50 p-0">
+                              <td colSpan={11} className="bg-muted p-0">
                                 <div className="p-5">
                                   <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                                     <div>
-                                      <p className="font-semibold text-slate-900">
+                                      <p className="font-semibold text-foreground">
                                         Where this product is available
                                       </p>
-                                      <p className="text-sm text-slate-500">
+                                      <p className="text-sm text-muted-foreground">
                                         {canSelectLocations
                                           ? "Admin can review and edit each location's reorder level."
                                           : "Only locations with stock are shown."}
                                       </p>
                                     </div>
                                     {emptyLocationCount > 0 && (
-                                      <p className="text-sm text-slate-500">
+                                      <p className="text-sm text-muted-foreground">
                                         {emptyLocationCount} location
                                         {emptyLocationCount === 1 ? " has" : "s have"} no stock.
                                       </p>
@@ -917,7 +917,7 @@ export function InventoryClient({
                                   </div>
 
                                    {visibleLocations.length === 0 ? (
-                                     <div className="mt-4 rounded-xl border border-dashed bg-white px-5 py-6 text-sm text-slate-500">
+                                     <div className="mt-4 rounded-xl border border-dashed bg-card px-5 py-6 text-sm text-muted-foreground">
                                        This product has no stock in any location yet.
                                      </div>
                                    ) : (
@@ -933,10 +933,10 @@ export function InventoryClient({
                                           return (
                                            <div
                                              key={item.id}
-                                             className={`rounded-xl border bg-white p-4 dark:bg-slate-950 ${isLinkedBalance ? "border-amber-400 ring-2 ring-amber-200 dark:ring-amber-900" : ""}`}
+                                             className={`rounded-xl border bg-card p-4 ${isLinkedBalance ? "border-amber-400 ring-2 ring-amber-200 dark:ring-amber-900" : ""}`}
                                            >
                                             <div className="flex items-start justify-between gap-3">
-                                              <div className="flex items-center gap-2 font-semibold text-slate-900">
+                                              <div className="flex items-center gap-2 font-semibold text-foreground">
                                                 {isStockRoom ? (
                                                   <Warehouse className="h-4 w-4 text-sky-600" />
                                                 ) : (
@@ -955,18 +955,18 @@ export function InventoryClient({
                                              )}
                                             <div className="mt-4 grid grid-cols-3 gap-3 border-t pt-3">
                                               <div>
-                                                <p className="text-xs text-slate-500">On hand</p>
-                                                <p className="text-lg font-semibold text-slate-900">
+                                                <p className="text-xs text-muted-foreground">On hand</p>
+                                                <p className="text-lg font-semibold text-foreground">
                                                   {item.onHand} pieces
                                                 </p>
                                               </div>
                                               <div>
-                                                <p className="text-xs text-slate-500">Quarantined</p>
-                                                <p className="text-lg font-semibold text-amber-700">{item.quarantined} pieces</p>
+                                                <p className="text-xs text-muted-foreground">Quarantined</p>
+                                                <p className="text-lg font-semibold text-amber-700 dark:text-amber-300">{item.quarantined} pieces</p>
                                               </div>
                                               <div>
-                                                <p className="text-xs text-slate-500">Ready to sell</p>
-                                                <p className="text-lg font-semibold text-emerald-700">
+                                                <p className="text-xs text-muted-foreground">Ready to sell</p>
+                                                <p className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">
                                                   {available} pieces
                                                 </p>
                                               </div>
@@ -1088,7 +1088,7 @@ export function InventoryClient({
 
             {mutationError && <p className="text-sm font-medium text-red-600">{mutationError}</p>}
 
-            <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            <div className="rounded-xl border border-amber-100 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
               Use stock adjustment only when the actual physical count does not
               match the system.
             </div>
@@ -1191,7 +1191,7 @@ export function InventoryClient({
 
             {mutationError && <p className="text-sm font-medium text-red-600">{mutationError}</p>}
 
-            <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            <div className="rounded-xl border border-amber-100 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
               Product and location are locked because this quick adjust only
               applies to the selected row.
             </div>
@@ -1368,27 +1368,27 @@ export function InventoryClient({
 
           <div className="mt-6 overflow-x-auto rounded-2xl border">
             <table className="w-full min-w-[1100px]">
-              <thead className="bg-slate-50">
+              <thead className="bg-muted">
                 <tr className="border-b">
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Date
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Product
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Movement Type
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Qty
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Reference
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Location
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Remarks
                   </th>
                 </tr>
@@ -1397,7 +1397,7 @@ export function InventoryClient({
               <tbody>
                 {isMovementsLoading ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center text-sm text-slate-500">
+                    <td colSpan={7} className="px-4 py-12 text-center text-sm text-muted-foreground">
                       Loading stock movement records...
                     </td>
                   </tr>
@@ -1405,7 +1405,7 @@ export function InventoryClient({
                   <tr>
                     <td
                       colSpan={7}
-                      className="px-4 py-12 text-center text-sm text-slate-500"
+                      className="px-4 py-12 text-center text-sm text-muted-foreground"
                     >
                       No stock card records found.
                     </td>
@@ -1414,38 +1414,38 @@ export function InventoryClient({
                   stockCardRows.map((movement) => (
                     <tr
                       key={movement.id}
-                      className="border-b hover:bg-slate-50"
+                      className="border-b hover:bg-muted"
                     >
-                      <td className="px-4 py-3 text-sm text-slate-600">
+                      <td className="px-4 py-3 text-sm text-muted-foreground">
                         {movement.date}
                       </td>
-                      <td className="px-4 py-3 text-sm text-slate-700">
+                      <td className="px-4 py-3 text-sm text-foreground">
                         <div>
                           <p className="font-medium">{movement.itemName}</p>
-                          <p className="text-xs text-slate-500">
+                          <p className="text-xs text-muted-foreground">
                             {movement.itemCode}
                           </p>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-sm text-slate-700">
+                      <td className="px-4 py-3 text-sm text-foreground">
                         {movement.type}
                       </td>
                       <td
                         className={`px-4 py-3 text-sm font-medium ${
                           movement.qty >= 0
-                            ? "text-emerald-700"
-                            : "text-red-700"
+                            ? "text-emerald-700 dark:text-emerald-300"
+                            : "text-red-700 dark:text-red-300"
                         }`}
                       >
                         {movement.qty > 0 ? `+${movement.qty}` : movement.qty}
                       </td>
-                      <td className="px-4 py-3 text-sm text-slate-600">
+                      <td className="px-4 py-3 text-sm text-muted-foreground">
                         {movement.reference}
                       </td>
-                      <td className="px-4 py-3 text-sm text-slate-600">
+                      <td className="px-4 py-3 text-sm text-muted-foreground">
                         {movement.location}
                       </td>
-                      <td className="px-4 py-3 text-sm text-slate-600">
+                      <td className="px-4 py-3 text-sm text-muted-foreground">
                         {movement.remarks}
                       </td>
                     </tr>
@@ -1545,28 +1545,28 @@ export function InventoryClient({
 
           <div className="mt-6 overflow-x-auto rounded-2xl border">
             <table className="w-full min-w-[1100px]">
-              <thead className="bg-slate-50">
+              <thead className="bg-muted">
                 <tr className="border-b">
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Product
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Category
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Location
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     On Hand
                   </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Reserved
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Quarantined</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Quarantined</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Available
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Status
                   </th>
                 </tr>
@@ -1575,7 +1575,7 @@ export function InventoryClient({
               <tbody>
                 {isAvailabilityLoading ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-12 text-center text-sm text-slate-500">
+                    <td colSpan={8} className="px-4 py-12 text-center text-sm text-muted-foreground">
                       <span className="inline-flex items-center gap-2">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Loading inventory availability...
@@ -1592,7 +1592,7 @@ export function InventoryClient({
                   <tr>
                     <td
                       colSpan={8}
-                      className="px-4 py-12 text-center text-sm text-slate-500"
+                      className="px-4 py-12 text-center text-sm text-muted-foreground"
                     >
                       No availability records found.
                     </td>
@@ -1601,20 +1601,20 @@ export function InventoryClient({
                   availabilityRows.map((row) => (
                     <tr
                       key={`${row.product.id}-${row.location.id}`}
-                      className="border-b hover:bg-slate-50"
+                      className="border-b hover:bg-muted"
                     >
-                      <td className="px-4 py-3 text-sm text-slate-700">
+                      <td className="px-4 py-3 text-sm text-foreground">
                         <div>
                           <p className="font-medium">{row.product.name}</p>
-                          <p className="text-xs text-slate-500">
+                          <p className="text-xs text-muted-foreground">
                             {row.product.itemCode}
                           </p>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-sm text-slate-600">
+                      <td className="px-4 py-3 text-sm text-muted-foreground">
                         {row.product.category}
                       </td>
-                      <td className="px-4 py-3 text-sm text-slate-700">
+                      <td className="px-4 py-3 text-sm text-foreground">
                         <div className="flex items-center gap-2">
                           {row.location.type === "WAREHOUSE" ? (
                             <Warehouse className="h-4 w-4 text-sky-600" />
@@ -1624,14 +1624,14 @@ export function InventoryClient({
                           {row.location.name}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-sm text-slate-600">
+                      <td className="px-4 py-3 text-sm text-muted-foreground">
                         {row.onHand}
                       </td>
-                      <td className="px-4 py-3 text-sm text-slate-600">
+                      <td className="px-4 py-3 text-sm text-muted-foreground">
                         {row.reserved}
                       </td>
-                      <td className="px-4 py-3 text-sm text-amber-700">{row.quarantined}</td>
-                      <td className="px-4 py-3 text-sm font-semibold text-slate-700">
+                      <td className="px-4 py-3 text-sm text-amber-700 dark:text-amber-300">{row.quarantined}</td>
+                      <td className="px-4 py-3 text-sm font-semibold text-foreground">
                         {row.available}
                       </td>
                       <td className="px-4 py-3 text-sm">

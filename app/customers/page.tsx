@@ -109,7 +109,7 @@ function getStatusBadgeClass(status: string) {
 
   // "Inactive" contains "active", so it has to be classified first.
   if (normalized.includes("inactive") || normalized.includes("overdue")) {
-    return "border border-red-200 bg-red-50 text-red-700 hover:bg-red-50";
+    return "border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 hover:bg-red-50 dark:bg-red-950/40";
   }
 
   if (
@@ -117,7 +117,7 @@ function getStatusBadgeClass(status: string) {
     normalized.includes("vip") ||
     normalized.includes("ready")
   ) {
-    return "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50";
+    return "border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:bg-emerald-950/40";
   }
 
   if (
@@ -125,10 +125,10 @@ function getStatusBadgeClass(status: string) {
     normalized.includes("order") ||
     normalized.includes("job")
   ) {
-    return "border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50";
+    return "border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:bg-amber-950/40";
   }
 
-  return "border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-50";
+  return "border border-border bg-muted text-foreground hover:bg-muted";
 }
 
 async function fetchCustomers(params: { page: number; pageSize: number; name: string; status: string }) {
@@ -370,7 +370,7 @@ export default function CustomersPage() {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Card>
             <CardContent className="p-5">
-              <p className="text-sm text-slate-500">Total Customers</p>
+              <p className="text-sm text-muted-foreground">Total Customers</p>
               <h3 className="mt-3 text-3xl font-bold text-foreground">
                 {summary.totalCustomers}
               </h3>
@@ -382,7 +382,7 @@ export default function CustomersPage() {
 
           <Card>
             <CardContent className="p-5">
-              <p className="text-sm text-slate-500">Active Customers</p>
+              <p className="text-sm text-muted-foreground">Active Customers</p>
               <h3 className="mt-3 text-3xl font-bold text-foreground">
                 {summary.activeCustomers}
               </h3>
@@ -394,7 +394,7 @@ export default function CustomersPage() {
 
           <Card>
             <CardContent className="p-5">
-              <p className="text-sm text-slate-500">With Pending Orders</p>
+              <p className="text-sm text-muted-foreground">With Pending Orders</p>
               <h3 className="mt-3 text-3xl font-bold text-foreground">
                 {summary.customersWithPendingOrders}
               </h3>
@@ -450,7 +450,7 @@ export default function CustomersPage() {
                 <h3 className="text-base font-semibold text-foreground">
                   Customer List
                 </h3>
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted-foreground">
                   Showing {showingFrom} to {showingTo} of {meta.total} customers
                   {isFetching && !isLoading ? " • Updating..." : ""}
                 </p>
@@ -460,33 +460,33 @@ export default function CustomersPage() {
 
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1100px]">
-                <thead className="bg-slate-50">
+                <thead className="bg-muted">
                   <tr className="border-b">
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Customer ID
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Name
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Mobile
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Branch
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       City
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Status
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Last Transaction
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Total Spend
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Action
                     </th>
                   </tr>
@@ -496,7 +496,7 @@ export default function CustomersPage() {
                   {isLoading ? (
                     <tr>
                       <td colSpan={9} className="px-5 py-16 text-center">
-                        <div className="flex items-center justify-center gap-2 text-slate-500">
+                        <div className="flex items-center justify-center gap-2 text-muted-foreground">
                           <Loader2 className="h-4 w-4 animate-spin" />
                           Loading customers...
                         </div>
@@ -510,7 +510,7 @@ export default function CustomersPage() {
                     <tr>
                       <td
                         colSpan={9}
-                        className="px-5 py-16 text-center text-slate-500"
+                        className="px-5 py-16 text-center text-muted-foreground"
                       >
                         No customers found.
                       </td>
@@ -519,21 +519,21 @@ export default function CustomersPage() {
                     rows.map((customer) => (
                       <tr
                         key={customer.id}
-                        className="border-b transition-colors hover:bg-slate-50"
+                        className="border-b transition-colors hover:bg-muted"
                       >
-                        <td className="px-5 py-4 text-sm font-medium text-slate-700">
+                        <td className="px-5 py-4 text-sm font-medium text-foreground">
                           {customer.id}
                         </td>
                         <td className="px-5 py-4 text-sm text-foreground">
                           {customer.name}
                         </td>
-                        <td className="px-5 py-4 text-sm text-slate-600">
+                        <td className="px-5 py-4 text-sm text-muted-foreground">
                           {customer.mobile}
                         </td>
-                        <td className="px-5 py-4 text-sm text-slate-600">
+                        <td className="px-5 py-4 text-sm text-muted-foreground">
                           {customer.branch ?? "-"}
                         </td>
-                        <td className="px-5 py-4 text-sm text-slate-600">
+                        <td className="px-5 py-4 text-sm text-muted-foreground">
                           {customer.city}
                         </td>
                         <td className="px-5 py-4 text-sm">
@@ -545,10 +545,10 @@ export default function CustomersPage() {
                             {getCustomerSummaryStatus(customer)}
                           </Badge>
                         </td>
-                        <td className="px-5 py-4 text-sm text-slate-600">
+                        <td className="px-5 py-4 text-sm text-muted-foreground">
                           {customer.lastTransaction}
                         </td>
-                        <td className="px-5 py-4 text-sm font-medium text-slate-700">
+                        <td className="px-5 py-4 text-sm font-medium text-foreground">
                           {formatCustomerSpend(customer.totalSpend)}
                         </td>
                         <td className="px-5 py-4">
@@ -657,7 +657,7 @@ export default function CustomersPage() {
             </div>
 
             <div>
-              <h3 className="mb-3 text-sm font-semibold text-slate-700">
+              <h3 className="mb-3 text-sm font-semibold text-foreground">
                 Business Notes
               </h3>
               <div className="grid gap-4 md:grid-cols-2">
@@ -726,12 +726,12 @@ export default function CustomersPage() {
       p-0
     "
         >
-          <div className="flex h-full flex-col bg-slate-50">
-            <SheetHeader className="shrink-0 border-b bg-white px-6 py-5 text-left">
-              <SheetTitle className="text-xl font-bold text-slate-900">
+          <div className="flex h-full flex-col bg-muted">
+            <SheetHeader className="shrink-0 border-b bg-card px-6 py-5 text-left">
+              <SheetTitle className="text-xl font-bold text-foreground">
                 {selectedCustomer?.name ?? "Customer Details"}
               </SheetTitle>
-              <SheetDescription className="text-sm text-slate-500">
+              <SheetDescription className="text-sm text-muted-foreground">
                  View customer profile and transaction history.
               </SheetDescription>
             </SheetHeader>
@@ -741,30 +741,30 @@ export default function CustomersPage() {
                 <div className="space-y-6">
                   {/* top summary */}
                   <div className="grid gap-4 md:grid-cols-3">
-                    <Card className="rounded-2xl border-slate-200 shadow-sm">
+                    <Card className="rounded-2xl border-border shadow-sm">
                       <CardContent className="p-5">
-                        <p className="text-sm text-slate-500">Total Spend</p>
-                        <p className="mt-2 text-3xl font-bold text-slate-900">
+                        <p className="text-sm text-muted-foreground">Total Spend</p>
+                        <p className="mt-2 text-3xl font-bold text-foreground">
                           {selectedCustomer.totalSpend ?? "₱0"}
                         </p>
                       </CardContent>
                     </Card>
 
-                    <Card className="rounded-2xl border-slate-200 shadow-sm">
+                    <Card className="rounded-2xl border-border shadow-sm">
                       <CardContent className="p-5">
-                        <p className="text-sm text-slate-500">Pending Orders</p>
-                        <p className="mt-2 text-3xl font-bold text-slate-900">
+                        <p className="text-sm text-muted-foreground">Pending Orders</p>
+                        <p className="mt-2 text-3xl font-bold text-foreground">
                           {selectedCustomer.pendingOrders ?? 0}
                         </p>
                       </CardContent>
                     </Card>
 
-                    <Card className="rounded-2xl border-slate-200 shadow-sm">
+                    <Card className="rounded-2xl border-border shadow-sm">
                       <CardContent className="p-5">
-                        <p className="text-sm text-slate-500">
+                        <p className="text-sm text-muted-foreground">
                           Active Job Orders
                         </p>
-                        <p className="mt-2 text-3xl font-bold text-slate-900">
+                        <p className="mt-2 text-3xl font-bold text-foreground">
                           {selectedCustomer.activeJobOrders ?? 0}
                         </p>
                       </CardContent>
@@ -775,43 +775,43 @@ export default function CustomersPage() {
                   <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
                     {/* left */}
                     <div className="space-y-6">
-                      <Card className="rounded-2xl border-slate-200 shadow-sm">
+                      <Card className="rounded-2xl border-border shadow-sm">
                         <CardContent className="grid gap-4 p-5">
                           <div>
-                            <p className="text-sm text-slate-500">
+                            <p className="text-sm text-muted-foreground">
                               Customer ID
                             </p>
-                            <p className="font-medium text-slate-900">
+                            <p className="font-medium text-foreground">
                               {selectedCustomer.id}
                             </p>
                           </div>
 
                           <div>
-                            <p className="text-sm text-slate-500">Mobile</p>
-                            <p className="font-medium text-slate-900">
+                            <p className="text-sm text-muted-foreground">Mobile</p>
+                            <p className="font-medium text-foreground">
                               {selectedCustomer.mobile || "—"}
                             </p>
                           </div>
 
                           <div>
-                            <p className="text-sm text-slate-500">Email</p>
-                            <p className="font-medium text-slate-900">
+                            <p className="text-sm text-muted-foreground">Email</p>
+                            <p className="font-medium text-foreground">
                               {selectedCustomer.email || "—"}
                             </p>
                           </div>
 
                           <div>
-                            <p className="text-sm text-slate-500">
+                            <p className="text-sm text-muted-foreground">
                               Preferred Branch
                             </p>
-                            <p className="font-medium text-slate-900">
+                            <p className="font-medium text-foreground">
                               {selectedCustomer.branch || "—"}
                             </p>
                           </div>
 
                           <div>
-                            <p className="text-sm text-slate-500">City</p>
-                            <p className="font-medium text-slate-900">
+                            <p className="text-sm text-muted-foreground">City</p>
+                            <p className="font-medium text-foreground">
                               {selectedCustomer.city || "—"}
                             </p>
                           </div>

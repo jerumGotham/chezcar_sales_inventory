@@ -120,10 +120,10 @@ export default function CustomerOrderDetailsPage() {
         </div>
       }
     >
-      {isLoading ? <div className="flex items-center gap-2 rounded-xl border p-6 text-slate-500"><Loader2 className="h-4 w-4 animate-spin" />Loading order...</div> : null}
-      {error ? <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{(error as Error).message}</div> : null}
-      {cancelMutation.error ? <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{(cancelMutation.error as Error).message}</div> : null}
-      {reserveMutation.error ? <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{(reserveMutation.error as Error).message}</div> : null}
+      {isLoading ? <div className="flex items-center gap-2 rounded-xl border p-6 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading order...</div> : null}
+      {error ? <div className="rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-4 text-sm text-red-700 dark:text-red-300">{(error as Error).message}</div> : null}
+      {cancelMutation.error ? <div className="mb-4 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-4 text-sm text-red-700 dark:text-red-300">{(cancelMutation.error as Error).message}</div> : null}
+      {reserveMutation.error ? <div className="mb-4 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-4 text-sm text-red-700 dark:text-red-300">{(reserveMutation.error as Error).message}</div> : null}
       {order ? (
         <div className="grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
           <Card>
@@ -136,14 +136,14 @@ export default function CustomerOrderDetailsPage() {
                 <Info label="Salesperson" value={order.salesperson?.name ?? "Not recorded (legacy)"} />
                 <Info label="Created" value={new Date(order.orderDate).toLocaleDateString("en-PH")} />
                 <Info label="Planned Release" value={order.releaseDate ? new Date(order.releaseDate).toLocaleDateString("en-PH") : "Not set"} />
-                <div><p className="text-sm text-slate-500">Status</p><Badge className="mt-1">{order.status}</Badge></div>
+                <div><p className="text-sm text-muted-foreground">Status</p><Badge className="mt-1">{order.status}</Badge></div>
                 <Info label="Downpayment Receipt" value={order.downpaymentReceiptNumber ?? "-"} />
                 <Info label="Final Receipt" value={order.finalReceiptNumber ?? "-"} />
               </div>
-              {order.notes ? <p className="mt-5 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">{order.notes}</p> : null}
+              {order.notes ? <p className="mt-5 rounded-xl bg-muted p-4 text-sm text-foreground">{order.notes}</p> : null}
               <div className="mt-6 overflow-x-auto">
                 <table className="w-full min-w-[640px]">
-                  <thead className="bg-slate-50"><tr><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Item</th><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Qty</th><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Unit</th><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Amount</th></tr></thead>
+                  <thead className="bg-muted"><tr><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Item</th><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Qty</th><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Unit</th><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Amount</th></tr></thead>
                   <tbody>{order.lines.map((line) => <tr key={line.itemCode} className="border-b"><td className="px-4 py-3 text-sm">{line.itemCode} - {line.name}</td><td className="px-4 py-3 text-sm">{line.quantity}</td><td className="px-4 py-3 text-sm">{formatPeso(line.unitPrice)}</td><td className="px-4 py-3 text-sm font-medium">{formatPeso(line.amount)}</td></tr>)}</tbody>
                 </table>
               </div>
@@ -194,9 +194,9 @@ export default function CustomerOrderDetailsPage() {
 }
 
 function Info({ label, value }: { label: string; value: string }) {
-  return <div><p className="text-sm text-slate-500">{label}</p><p className="mt-1 font-medium text-foreground">{value}</p></div>;
+  return <div><p className="text-sm text-muted-foreground">{label}</p><p className="mt-1 font-medium text-foreground">{value}</p></div>;
 }
 
 function Summary({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
-  return <div className={`flex items-center justify-between ${strong ? "text-base font-semibold" : "text-sm"}`}><span className="text-slate-500">{label}</span><span>{value}</span></div>;
+  return <div className={`flex items-center justify-between ${strong ? "text-base font-semibold" : "text-sm"}`}><span className="text-muted-foreground">{label}</span><span>{value}</span></div>;
 }

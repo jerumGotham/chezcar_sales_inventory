@@ -27,27 +27,27 @@ export default function CustomerHistoryTabs({ customer }: { customer: Customer }
   const historyQuery = useQuery({ queryKey: ["customer-history", customer.id], queryFn: () => fetchHistory(customer.id) });
   const history = historyQuery.data;
 
-  if (historyQuery.isLoading) return <Card><CardContent className="p-5 text-sm text-slate-500">Loading transaction history...</CardContent></Card>;
+  if (historyQuery.isLoading) return <Card><CardContent className="p-5 text-sm text-muted-foreground">Loading transaction history...</CardContent></Card>;
   if (historyQuery.isError) return <Card><CardContent className="p-5 text-sm text-red-600">{(historyQuery.error as Error).message}</CardContent></Card>;
 
   return (
     <Tabs defaultValue="sales" className="flex h-full min-h-0 flex-col">
-      <TabsList className="grid h-auto w-full grid-cols-3 gap-2 rounded-xl bg-slate-100 p-1">
+      <TabsList className="grid h-auto w-full grid-cols-3 gap-2 rounded-xl bg-muted p-1">
         <TabsTrigger value="sales">Sales ({history?.sales.length ?? 0})</TabsTrigger>
         <TabsTrigger value="orders">Orders ({history?.orders.length ?? 0})</TabsTrigger>
         <TabsTrigger value="notes">Notes</TabsTrigger>
       </TabsList>
       <TabsContent value="sales" className="mt-4 space-y-3">
-        {history?.sales.length ? history.sales.map((sale) => <Card key={sale.reference}><CardContent className="space-y-2 p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold">{sale.reference}</p><p className="font-semibold text-emerald-700">{peso(sale.total)}</p></div><p className="text-sm text-slate-500">{sale.date.slice(0, 10)} • {sale.branch} • {sale.paymentMethod}</p><p className="text-sm">{sale.lines.map((line) => `${line.name} x${line.quantity}`).join(", ")}</p></CardContent></Card>) : <Empty text="No completed sales yet." />}
+        {history?.sales.length ? history.sales.map((sale) => <Card key={sale.reference}><CardContent className="space-y-2 p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold">{sale.reference}</p><p className="font-semibold text-emerald-700 dark:text-emerald-300">{peso(sale.total)}</p></div><p className="text-sm text-muted-foreground">{sale.date.slice(0, 10)} • {sale.branch} • {sale.paymentMethod}</p><p className="text-sm">{sale.lines.map((line) => `${line.name} x${line.quantity}`).join(", ")}</p></CardContent></Card>) : <Empty text="No completed sales yet." />}
       </TabsContent>
       <TabsContent value="orders" className="mt-4 space-y-3">
-        {history?.orders.length ? history.orders.map((order) => <Card key={order.reference}><CardContent className="space-y-2 p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold">{order.reference}</p><Badge>{order.status.replaceAll("_", " ")}</Badge></div><p className="text-sm text-slate-500">{order.date.slice(0, 10)} • {order.branch}</p><p className="text-sm">{order.lines.map((line) => `${line.name} x${line.quantity}`).join(", ")}</p><p className="text-sm text-slate-600">Total {peso(order.total)} • Downpayment {peso(order.downpayment)} • Balance {peso(order.remaining)}</p></CardContent></Card>) : <Empty text="No customer orders yet." />}
+        {history?.orders.length ? history.orders.map((order) => <Card key={order.reference}><CardContent className="space-y-2 p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold">{order.reference}</p><Badge>{order.status.replaceAll("_", " ")}</Badge></div><p className="text-sm text-muted-foreground">{order.date.slice(0, 10)} • {order.branch}</p><p className="text-sm">{order.lines.map((line) => `${line.name} x${line.quantity}`).join(", ")}</p><p className="text-sm text-muted-foreground">Total {peso(order.total)} • Downpayment {peso(order.downpayment)} • Balance {peso(order.remaining)}</p></CardContent></Card>) : <Empty text="No customer orders yet." />}
       </TabsContent>
-      <TabsContent value="notes" className="mt-4"><Card><CardContent className="p-5"><p className="whitespace-pre-wrap text-sm text-slate-600">{history?.customer.notes || "No notes recorded."}</p></CardContent></Card></TabsContent>
+      <TabsContent value="notes" className="mt-4"><Card><CardContent className="p-5"><p className="whitespace-pre-wrap text-sm text-muted-foreground">{history?.customer.notes || "No notes recorded."}</p></CardContent></Card></TabsContent>
     </Tabs>
   );
 }
 
 function Empty({ text }: { text: string }) {
-  return <Card className="border-dashed"><CardContent className="p-5 text-sm text-slate-500">{text}</CardContent></Card>;
+  return <Card className="border-dashed"><CardContent className="p-5 text-sm text-muted-foreground">{text}</CardContent></Card>;
 }

@@ -310,7 +310,7 @@ function AddCustomerDialog({
           </div>
 
           <div>
-            <h3 className="mb-3 text-sm font-semibold text-slate-700">
+            <h3 className="mb-3 text-sm font-semibold text-foreground">
               Vehicle Information
             </h3>
 
@@ -366,7 +366,7 @@ function AddCustomerDialog({
           </div>
 
           <div>
-            <h3 className="mb-3 text-sm font-semibold text-slate-700">
+            <h3 className="mb-3 text-sm font-semibold text-foreground">
               Business Notes
             </h3>
 
@@ -828,7 +828,7 @@ function PosTab() {
       {OFFLINE_POS_ENABLED && canUseOfflineSales ? (
         <div className={cn(
           "mb-6 flex flex-col gap-3 rounded-xl border px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between",
-          isOnline ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800",
+          isOnline ? "border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300" : "border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300",
         )}>
           <div>
             <p className="font-semibold">{isOnline ? "Online branch mode" : "Offline branch mode"}</p>
@@ -841,14 +841,14 @@ function PosTab() {
             size="sm"
             onClick={() => void syncOfflineQueue()}
             disabled={!isOnline || isOfflineSyncing || offlineSaleCount === 0}
-            className="w-fit bg-white"
+            className="w-fit bg-card"
           >
             {isOfflineSyncing ? "Syncing..." : "Sync pending sales"}
           </Button>
         </div>
       ) : null}
       {successMessage ? (
-        <div className="mb-6 flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-6 flex flex-col gap-3 rounded-xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 px-4 py-3 text-emerald-800 dark:text-emerald-300 sm:flex-row sm:items-center sm:justify-between">
           <p role="status" className="text-sm font-medium">{successMessage}</p>
           <div className="flex items-center gap-2">
             <Link href="/customer-orders?view=sales" className={buttonVariants({ variant: "view", size: "sm" })}>
@@ -858,11 +858,11 @@ function PosTab() {
           </div>
         </div>
       ) : null}
-      <Card className="mb-6 border-emerald-100 shadow-sm">
+      <Card className="mb-6 border-emerald-100 dark:border-emerald-900 shadow-sm">
         <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="font-semibold text-slate-900">Selling branch</p>
-            <p className="text-sm text-slate-500">Products and stock are limited to this branch.</p>
+            <p className="font-semibold text-foreground">Selling branch</p>
+            <p className="text-sm text-muted-foreground">Products and stock are limited to this branch.</p>
           </div>
           {requiresLocationSelection ? (
             <Select
@@ -880,12 +880,12 @@ function PosTab() {
               styles={selectStyles}
             />
           ) : (
-            <Badge className="w-fit bg-emerald-100 text-emerald-700">{access.authenticated ? access.scope.label : "No branch"}</Badge>
+            <Badge className="w-fit bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300">{access.authenticated ? access.scope.label : "No branch"}</Badge>
           )}
         </CardContent>
       </Card>
-      {requiresLocationSelection && !activeLocationId ? <p className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">Select a branch to load available products.</p> : null}
-      {posOptionsQuery.isError ? <p className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{(posOptionsQuery.error as Error).message}</p> : null}
+      {requiresLocationSelection && !activeLocationId ? <p className="mb-6 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-4 text-sm text-amber-800 dark:text-amber-300">Select a branch to load available products.</p> : null}
+      {posOptionsQuery.isError ? <p className="mb-6 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-4 text-sm text-red-700 dark:text-red-300">{(posOptionsQuery.error as Error).message}</p> : null}
       <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,0.9fr)]">
         <div className="min-w-0 space-y-6">
           <Card className="border-0 shadow-sm">
@@ -903,14 +903,14 @@ function PosTab() {
                     key={`quick-${product.sku}`}
                     type="button"
                     onClick={() => addToCart(product)}
-                    className="rounded-2xl border bg-white p-4 text-left transition hover:border-emerald-300 hover:bg-emerald-50"
+                    className="rounded-2xl border bg-card p-4 text-left transition hover:border-emerald-300 hover:bg-emerald-50 dark:bg-emerald-950/40"
                   >
                     <div className="mb-2 flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-slate-900">
+                        <p className="truncate text-sm font-semibold text-foreground">
                           {product.name}
                         </p>
-                        <p className="mt-1 text-xs text-slate-500">
+                        <p className="mt-1 text-xs text-muted-foreground">
                           {product.sku}
                         </p>
                       </div>
@@ -923,7 +923,7 @@ function PosTab() {
                       <span className="text-sm font-semibold text-emerald-600">
                         {formatPeso(Number(product.price))}
                       </span>
-                      <span className="text-xs text-slate-500">Tap to add</span>
+                      <span className="text-xs text-muted-foreground">Tap to add</span>
                     </div>
                   </button>
                 ))}
@@ -942,7 +942,7 @@ function PosTab() {
             <CardContent className="space-y-5">
               <div className="grid gap-3 xl:grid-cols-[1.3fr_0.7fr_auto]">
                 <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     value={search}
                     onChange={(e) => {
@@ -969,14 +969,14 @@ function PosTab() {
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-muted-foreground">
                   Showing {filteredProducts.length === 0 ? 0 : (safeProductPage - 1) * productPageSize + 1}-{Math.min(safeProductPage * productPageSize, filteredProducts.length)} of {filteredProducts.length} product{filteredProducts.length !== 1 ? "s" : ""}.
                 </p>
                 <TablePagination page={safeProductPage} totalPages={productTotalPages} onPageChange={setProductPage} />
               </div>
 
-              <div className="overflow-x-auto rounded-2xl border bg-white">
-                <div className="grid grid-cols-[1.8fr_1fr_110px_130px_120px] gap-3 border-b bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <div className="overflow-x-auto rounded-2xl border bg-card">
+                <div className="grid grid-cols-[1.8fr_1fr_110px_130px_120px] gap-3 border-b bg-muted px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   <div>Product</div>
                   <div>Category</div>
                   <div>Stock</div>
@@ -986,25 +986,25 @@ function PosTab() {
 
                 <div className="max-h-[560px] overflow-y-auto">
                   {filteredProducts.length === 0 ? (
-                    <div className="px-4 py-10 text-center text-sm text-slate-500">
+                    <div className="px-4 py-10 text-center text-sm text-muted-foreground">
                       No products found.
                     </div>
                   ) : (
                     paginatedProducts.map((product) => (
                       <div
                         key={product.sku}
-                        className="grid grid-cols-[1.8fr_1fr_110px_130px_120px] items-center gap-3 border-b px-4 py-3 last:border-b-0 hover:bg-slate-50"
+                        className="grid grid-cols-[1.8fr_1fr_110px_130px_120px] items-center gap-3 border-b px-4 py-3 last:border-b-0 hover:bg-muted"
                       >
                         <div className="min-w-0">
-                          <p className="truncate font-medium text-slate-900">
+                          <p className="truncate font-medium text-foreground">
                             {product.name}
                           </p>
-                          <p className="mt-1 text-xs text-slate-500">
+                          <p className="mt-1 text-xs text-muted-foreground">
                             Item Code: {product.sku}
                           </p>
                         </div>
 
-                        <div className="truncate text-sm text-slate-600">
+                        <div className="truncate text-sm text-muted-foreground">
                           {product.category}
                         </div>
 
@@ -1090,7 +1090,7 @@ function PosTab() {
                 noOptionsMessage={() => "No eligible salespersons in your authorized locations"}
                 styles={selectStyles}
               />
-              {activeLocationId && !posOptionsQuery.isLoading && salespersonOptions.length === 0 ? <p className="text-xs text-amber-700">No eligible Salesperson is available in your authorized locations. Update Personnel Maintenance first.</p> : null}
+              {activeLocationId && !posOptionsQuery.isLoading && salespersonOptions.length === 0 ? <p className="text-xs text-amber-700 dark:text-amber-300">No eligible Salesperson is available in your authorized locations. Update Personnel Maintenance first.</p> : null}
             </div>
 
             <div className="space-y-3">
@@ -1112,7 +1112,7 @@ function PosTab() {
                 value={soldAt}
                 onChange={(event) => setSoldAt(event.target.value)}
               />
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-muted-foreground">
                 {soldAt === todayInputValue()
                   ? "Today. Change this only when you are encoding an older receipt."
                   : "This receipt will count on the date above, not today."}
@@ -1131,7 +1131,7 @@ function PosTab() {
                   disabled={isCheckoutPending}
                   onChange={(event) => setReceiptPhoto(event.target.files?.[0] ?? null)}
                 />
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-muted-foreground">
                   Take a clear photo of the complete receipt. The sale can still post if the upload fails, but Accounting cannot verify it until evidence is attached.
                 </p>
                 {receiptPhoto ? (
@@ -1160,11 +1160,11 @@ function PosTab() {
 
             <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
               {posOptionsQuery.isLoading && !offlineSnapshot ? (
-                <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-slate-500">
+                <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
                   Loading products...
                 </div>
               ) : cart.length === 0 ? (
-                <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-slate-500">
+                <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
                   No items yet. Add products from the left panel.
                 </div>
               ) : (
@@ -1172,11 +1172,11 @@ function PosTab() {
                   <div key={item.sku} className="rounded-2xl border p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
-                        <p className="font-medium text-slate-900">
+                        <p className="font-medium text-foreground">
                           {item.name}
                         </p>
-                        <p className="text-sm text-slate-500">{item.sku}</p>
-                        <p className="mt-1 text-sm text-slate-500">
+                        <p className="text-sm text-muted-foreground">{item.sku}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
                           {formatPeso(item.price)} each
                         </p>
                       </div>
@@ -1216,7 +1216,7 @@ function PosTab() {
                         </Button>
                       </div>
 
-                      <p className="font-semibold text-slate-900">
+                      <p className="font-semibold text-foreground">
                         {formatPeso(item.qty * item.price)}
                       </p>
                     </div>
@@ -1239,17 +1239,17 @@ function PosTab() {
                 onChange={(event) => setDiscountAmount(event.target.value)}
                 placeholder="0.00"
               />
-              <p className="text-xs text-slate-500">Discount cannot exceed the sale subtotal of {formatPeso(subtotal)}.</p>
+              <p className="text-xs text-muted-foreground">Discount cannot exceed the sale subtotal of {formatPeso(subtotal)}.</p>
             </div>
 
             <div className="rounded-2xl border p-4">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-500">Subtotal</span>
+                <span className="text-muted-foreground">Subtotal</span>
                 <span className="font-medium">{formatPeso(subtotal)}</span>
               </div>
 
               <div className="mt-2 flex items-center justify-between text-sm">
-                <span className="text-slate-500">Discount</span>
+                <span className="text-muted-foreground">Discount</span>
                 <span className="font-medium">{formatPeso(discount)}</span>
               </div>
 
@@ -1302,27 +1302,27 @@ function PosTab() {
           <div className="flex min-h-0 flex-1 flex-col gap-4">
             <div className="grid shrink-0 gap-3 rounded-xl border bg-muted/40 p-4 text-sm sm:grid-cols-2">
               <div>
-                <p className="text-slate-500">Selling branch</p>
+                <p className="text-muted-foreground">Selling branch</p>
                 <p className="font-medium">{selectedLocation?.label ?? (access.authenticated ? access.scope.label : "Not selected")}</p>
               </div>
               <div>
-                <p className="text-slate-500">Customer</p>
+                <p className="text-muted-foreground">Customer</p>
                 <p className="font-medium">{selectedCustomer?.label ?? "Guest"}</p>
               </div>
               <div>
-                <p className="text-slate-500">Salesperson</p>
+                <p className="text-muted-foreground">Salesperson</p>
                 <p className="font-medium">{selectedSalesperson?.label ?? "Not selected"}</p>
               </div>
               <div>
-                <p className="text-slate-500">Receipt number</p>
+                <p className="text-muted-foreground">Receipt number</p>
                 <p className="font-medium">{manualReceiptNumber}</p>
               </div>
               <div>
-                <p className="text-slate-500">Payment</p>
+                <p className="text-muted-foreground">Payment</p>
                 <p className="font-medium">{paymentType?.label ?? "Not selected"}</p>
               </div>
               <div className="sm:col-span-2">
-                <p className="text-slate-500">Receipt photo</p>
+                <p className="text-muted-foreground">Receipt photo</p>
                 <p className="font-medium">{receiptPhoto?.name ?? "Not attached"}</p>
               </div>
             </div>
@@ -1330,16 +1330,16 @@ function PosTab() {
               <table className="w-full min-w-[620px]">
                 <thead className="bg-muted/40">
                   <tr className="border-b">
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Item</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-slate-500">Quantity</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-slate-500">Unit price</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-slate-500">Amount</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Item</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-muted-foreground">Quantity</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-muted-foreground">Unit price</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-muted-foreground">Amount</th>
                   </tr>
                 </thead>
                 <tbody>
                   {cart.map((item) => (
                     <tr key={item.sku} className="border-b last:border-b-0">
-                      <td className="px-4 py-3 text-sm"><p className="font-medium">{item.name}</p><p className="text-xs text-slate-500">{item.sku}</p></td>
+                      <td className="px-4 py-3 text-sm"><p className="font-medium">{item.name}</p><p className="text-xs text-muted-foreground">{item.sku}</p></td>
                       <td className="px-4 py-3 text-right text-sm">{item.qty}</td>
                       <td className="px-4 py-3 text-right text-sm">{formatPeso(item.price)}</td>
                       <td className="px-4 py-3 text-right text-sm font-medium">{formatPeso(item.qty * item.price)}</td>
@@ -1349,11 +1349,11 @@ function PosTab() {
               </table>
             </div>
             <div className="ml-auto w-full max-w-sm shrink-0 space-y-2 rounded-xl bg-muted/40 p-4 text-sm">
-              <div className="flex justify-between gap-4"><span className="text-slate-500">Subtotal</span><span>{formatPeso(subtotal)}</span></div>
-              <div className="flex justify-between gap-4"><span className="text-slate-500">Discount</span><span>{formatPeso(discount)}</span></div>
+              <div className="flex justify-between gap-4"><span className="text-muted-foreground">Subtotal</span><span>{formatPeso(subtotal)}</span></div>
+              <div className="flex justify-between gap-4"><span className="text-muted-foreground">Discount</span><span>{formatPeso(discount)}</span></div>
               <div className="flex justify-between gap-4 border-t pt-2 font-semibold"><span>Total paid</span><span>{formatPeso(total)}</span></div>
             </div>
-            <div className="flex shrink-0 gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+            <div className="flex shrink-0 gap-3 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-4 text-sm text-amber-900 dark:text-amber-300 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
               <AlertTriangle className="mt-0.5 size-5 shrink-0" />
               <p>Posting immediately deducts these quantities from branch inventory. If this is submitted by mistake, Branch can only report it for Admin review.</p>
             </div>
@@ -1653,7 +1653,7 @@ function CustomerOrderTab() {
                   return (
                     <div
                       key={index}
-                      className="rounded-2xl border border-slate-200 p-4"
+                      className="rounded-2xl border border-border p-4"
                     >
                       <div className="mb-3 flex items-center justify-between">
                         <Badge variant="outline">Item #{index + 1}</Badge>
@@ -1708,7 +1708,7 @@ function CustomerOrderTab() {
                         </div>
                       </div>
 
-                      <div className="mt-3 text-right text-sm text-slate-600">
+                      <div className="mt-3 text-right text-sm text-muted-foreground">
                         Amount:{" "}
                         <span className="font-semibold text-foreground">
                           {formatPeso(amount)}
@@ -1731,14 +1731,14 @@ function CustomerOrderTab() {
 
               <div className="mt-4 space-y-4">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500">Total Items</span>
+                  <span className="text-muted-foreground">Total Items</span>
                   <span className="font-medium text-foreground">
                     {items.reduce((sum, row) => sum + row.quantity, 0)}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500">Subtotal</span>
+                  <span className="text-muted-foreground">Subtotal</span>
                   <span className="font-medium text-foreground">
                     {formatPeso(subtotal)}
                   </span>
@@ -2095,7 +2095,7 @@ function JobOrderTab() {
                     <h3 className="text-base font-semibold text-foreground">
                       Items / Parts
                     </h3>
-                    <p className="text-sm text-slate-500">
+                    <p className="text-sm text-muted-foreground">
                       Optional. Leave empty for service-only transactions.
                     </p>
                   </div>
@@ -2109,7 +2109,7 @@ function JobOrderTab() {
 
               <div className="space-y-4">
                 {items.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+                  <div className="rounded-xl border border-dashed border-border bg-muted px-4 py-10 text-center text-sm text-muted-foreground">
                     No items added yet.
                   </div>
                 ) : (
@@ -2119,7 +2119,7 @@ function JobOrderTab() {
                     return (
                       <div
                         key={index}
-                        className="rounded-2xl border border-slate-200 p-4"
+                        className="rounded-2xl border border-border p-4"
                       >
                         <div className="mb-3 flex items-center justify-between">
                           <Badge variant="outline">Item #{index + 1}</Badge>
@@ -2172,7 +2172,7 @@ function JobOrderTab() {
                           </div>
                         </div>
 
-                        <div className="mt-3 text-right text-sm text-slate-600">
+                        <div className="mt-3 text-right text-sm text-muted-foreground">
                           Amount:{" "}
                           <span className="font-semibold text-foreground">
                             {formatPeso(amount)}
@@ -2194,11 +2194,11 @@ function JobOrderTab() {
                 Job Order Summary
               </h3>
 
-              <div className="rounded-2xl border bg-slate-50 p-4">
+              <div className="rounded-2xl border bg-muted p-4">
                 <div className="flex items-start gap-3">
                   <Car className="mt-0.5 h-5 w-5 text-emerald-600" />
                   <div className="min-w-0">
-                    <p className="text-sm text-slate-500">Vehicle / Unit</p>
+                    <p className="text-sm text-muted-foreground">Vehicle / Unit</p>
                     <p className="truncate font-medium text-foreground">
                       {vehicle || "Not yet specified"}
                     </p>
@@ -2208,7 +2208,7 @@ function JobOrderTab() {
                 <div className="mt-4 flex items-start gap-3">
                   <FileText className="mt-0.5 h-5 w-5 text-emerald-600" />
                   <div className="min-w-0">
-                    <p className="text-sm text-slate-500">Service</p>
+                    <p className="text-sm text-muted-foreground">Service</p>
                     <p className="line-clamp-3 text-sm font-medium text-foreground">
                       {service || "No service details yet"}
                     </p>
@@ -2217,21 +2217,21 @@ function JobOrderTab() {
               </div>
 
               <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-500">Items Count</span>
+                <span className="text-muted-foreground">Items Count</span>
                 <span className="font-medium text-foreground">
                   {items.reduce((sum, row) => sum + row.quantity, 0)}
                 </span>
               </div>
 
               <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-500">Service Fee</span>
+                <span className="text-muted-foreground">Service Fee</span>
                 <span className="font-medium text-foreground">
                   {formatPeso(parsedServiceFee)}
                 </span>
               </div>
 
               <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-500">Parts Total</span>
+                <span className="text-muted-foreground">Parts Total</span>
                 <span className="font-medium text-foreground">
                   {formatPeso(partsTotal)}
                 </span>

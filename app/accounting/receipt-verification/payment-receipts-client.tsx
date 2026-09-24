@@ -142,17 +142,17 @@ async function post(url: string, body: unknown) {
 function StatusBadge({ row }: { row: Pick<PaymentRow, "reviewStatus" | "status"> }) {
   // A voided receipt is neither verified nor waiting, so it says so plainly
   // rather than sitting in the queue looking like work still to do.
-  if (row.status === "VOIDED") return <Badge className="bg-slate-200 text-slate-700 hover:bg-slate-200">Voided</Badge>;
-  if (row.reviewStatus === "VERIFIED") return <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">Verified</Badge>;
-  if (row.reviewStatus === "MISMATCH_REPORTED") return <Badge className="bg-rose-100 text-rose-800 hover:bg-rose-100">Mismatch</Badge>;
-  return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">Unverified</Badge>;
+  if (row.status === "VOIDED") return <Badge className="bg-slate-200 text-foreground hover:bg-slate-200">Voided</Badge>;
+  if (row.reviewStatus === "VERIFIED") return <Badge className="bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:bg-emerald-950/40">Verified</Badge>;
+  if (row.reviewStatus === "MISMATCH_REPORTED") return <Badge className="bg-rose-100 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 hover:bg-rose-100 dark:bg-rose-950/40">Mismatch</Badge>;
+  return <Badge className="bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:bg-amber-950/40">Unverified</Badge>;
 }
 
 function SummaryCard({ label, value, tone }: { label: string; value: number; tone: "amber" | "rose" | "emerald" }) {
   const tones = {
-    amber: "border-amber-200 bg-amber-50 text-amber-900",
-    rose: "border-rose-200 bg-rose-50 text-rose-900",
-    emerald: "border-emerald-200 bg-emerald-50 text-emerald-900",
+    amber: "border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300",
+    rose: "border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 text-rose-900 dark:text-rose-300",
+    emerald: "border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300",
   } as const;
   return (
     <div className={cn("rounded-xl border p-4", tones[tone])}>
@@ -550,12 +550,12 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
                 ) : null}
 
                 {selected.reviewStatus === "MISMATCH_REPORTED" && selected.status === "ACTIVE" ? (
-                  <div className="space-y-3 rounded-xl border border-rose-200 bg-rose-50/50 p-3">
-                    <p className="text-sm font-medium text-rose-900">
+                  <div className="space-y-3 rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/50 p-3">
+                    <p className="text-sm font-medium text-rose-900 dark:text-rose-300">
                       Mismatch: {humanize(selected.mismatchCategory)}
                     </p>
-                    <p className="text-sm text-rose-900">{selected.reviewNotes}</p>
-                    <p className="text-xs text-rose-800">
+                    <p className="text-sm text-rose-900 dark:text-rose-300">{selected.reviewNotes}</p>
+                    <p className="text-xs text-rose-800 dark:text-rose-300">
                       Reported by {selected.reviewedBy ?? "-"}{selected.reviewedAt ? ` on ${dateTime.format(new Date(selected.reviewedAt))}` : ""}
                     </p>
 
@@ -585,7 +585,7 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
                         <Button disabled={busy || !branchNote.trim()} onClick={() => branchResponseMutation.mutate()}>Submit Branch Response</Button>
                       </div>
                     ) : (
-                      <p className="text-sm text-rose-900">Waiting for the branch to respond.</p>
+                      <p className="text-sm text-rose-900 dark:text-rose-300">Waiting for the branch to respond.</p>
                     )}
 
                     {selected.branchRespondedAt && !selected.resolvedAt && (canResolve || canVoid) ? (
@@ -617,13 +617,13 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
                 ) : null}
 
                 {selected.reviewStatus === "VERIFIED" && selected.verifiedAt ? (
-                  <p className="text-sm text-emerald-700">
+                  <p className="text-sm text-emerald-700 dark:text-emerald-300">
                     Verified on {dateTime.format(new Date(selected.verifiedAt))}. This receipt now counts in the Sales report for that date.
                   </p>
                 ) : null}
 
-                {formNotice ? <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">{formNotice}</p> : null}
-                {formError ? <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{formError}</p> : null}
+                {formNotice ? <p role="status" className="rounded-lg border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 p-3 text-sm text-emerald-800 dark:text-emerald-300 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">{formNotice}</p> : null}
+                {formError ? <p role="alert" className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-3 text-sm text-red-700 dark:text-red-300 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{formError}</p> : null}
               </>
             )}
           </CardContent>

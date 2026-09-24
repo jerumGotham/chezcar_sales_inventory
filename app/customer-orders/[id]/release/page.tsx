@@ -116,9 +116,9 @@ export default function ReleaseCustomerOrderPage() {
       subtitle="Post final receipt, deduct reserved stock, and complete the customer order."
       actions={<Link href={`/customer-orders/${orderId}`} className={buttonVariants({ variant: "outline" })}><ArrowLeft className="mr-2 h-4 w-4" />Back to Order</Link>}
     >
-      {isLoading ? <div className="flex items-center gap-2 rounded-xl border p-6 text-slate-500"><Loader2 className="h-4 w-4 animate-spin" />Loading order...</div> : null}
-      {error ? <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{(error as Error).message}</div> : null}
-      {releaseMutation.error ? <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{(releaseMutation.error as Error).message}</div> : null}
+      {isLoading ? <div className="flex items-center gap-2 rounded-xl border p-6 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading order...</div> : null}
+      {error ? <div className="rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-4 text-sm text-red-700 dark:text-red-300">{(error as Error).message}</div> : null}
+      {releaseMutation.error ? <div className="mb-4 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-4 text-sm text-red-700 dark:text-red-300">{(releaseMutation.error as Error).message}</div> : null}
       {order ? (
         <div className="grid gap-6 xl:grid-cols-[1.3fr_0.9fr]">
           <div className="space-y-6">
@@ -131,8 +131,8 @@ export default function ReleaseCustomerOrderPage() {
                   <Info label="Branch" value={order.branch} />
                   <Info label="Salesperson" value={order.salesperson?.name ?? "Not recorded (legacy)"} />
                   <Info label="Planned Release" value={order.releaseDate ? new Date(order.releaseDate).toLocaleDateString("en-PH") : "Not set"} />
-                  <div><p className="text-sm text-slate-500">Status</p><Badge className="mt-1">{order.status}</Badge></div>
-                  <div><p className="text-sm text-slate-500">Payment</p><Badge className="mt-1">{order.paymentStatus}</Badge></div>
+                  <div><p className="text-sm text-muted-foreground">Status</p><Badge className="mt-1">{order.status}</Badge></div>
+                  <div><p className="text-sm text-muted-foreground">Payment</p><Badge className="mt-1">{order.paymentStatus}</Badge></div>
                 </div>
               </CardContent>
             </Card>
@@ -141,8 +141,8 @@ export default function ReleaseCustomerOrderPage() {
                 <h3 className="font-semibold">Items for Release</h3>
                 <div className="mt-4 overflow-x-auto">
                   <table className="w-full min-w-[650px]">
-                    <thead className="bg-slate-50"><tr><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Item</th><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Quantity</th><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Amount</th></tr></thead>
-                    <tbody>{order.lines.map((item) => <tr key={item.itemCode} className="border-b"><td className="px-4 py-3 text-sm text-slate-700">{item.itemCode} - {item.name}</td><td className="px-4 py-3 text-sm text-slate-700">{item.quantity}</td><td className="px-4 py-3 text-sm font-medium text-slate-800">{formatPeso(item.amount)}</td></tr>)}</tbody>
+                    <thead className="bg-muted"><tr><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Item</th><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Quantity</th><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Amount</th></tr></thead>
+                    <tbody>{order.lines.map((item) => <tr key={item.itemCode} className="border-b"><td className="px-4 py-3 text-sm text-foreground">{item.itemCode} - {item.name}</td><td className="px-4 py-3 text-sm text-foreground">{item.quantity}</td><td className="px-4 py-3 text-sm font-medium text-foreground">{formatPeso(item.amount)}</td></tr>)}</tbody>
                   </table>
                 </div>
               </CardContent>
@@ -157,12 +157,12 @@ export default function ReleaseCustomerOrderPage() {
                 <Summary label="Remaining Balance" value={formatPeso(order.balance)} strong />
               </div>
               {actions?.canRelease ? <form className="mt-6 space-y-4" action={(formData) => releaseMutation.mutate(formData)}>
-                <div className="space-y-2"><Label htmlFor="salespersonId">Salesperson</Label><select id="salespersonId" value={salespersonId} onChange={(event) => setSalespersonId(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" required><option value="">Select salesperson</option>{salespersonQuery.data?.map((personnel) => <option key={personnel.id} value={personnel.id}>{personnel.fullName}</option>)}</select>{salespersonQuery.data?.length === 0 ? <p className="text-xs text-amber-700">No eligible Salesperson is available in your authorized locations.</p> : null}</div>
+                <div className="space-y-2"><Label htmlFor="salespersonId">Salesperson</Label><select id="salespersonId" value={salespersonId} onChange={(event) => setSalespersonId(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" required><option value="">Select salesperson</option>{salespersonQuery.data?.map((personnel) => <option key={personnel.id} value={personnel.id}>{personnel.fullName}</option>)}</select>{salespersonQuery.data?.length === 0 ? <p className="text-xs text-amber-700 dark:text-amber-300">No eligible Salesperson is available in your authorized locations.</p> : null}</div>
                 <div className="space-y-2"><Label htmlFor="finalReceiptNumber">Final Receipt Number</Label><Input id="finalReceiptNumber" name="finalReceiptNumber" placeholder="Handwritten receipt number" /></div>
                 <div className="space-y-2"><Label htmlFor="paymentMethod">Payment Method</Label><select id="paymentMethod" name="paymentMethod" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="CASH">Cash</option><option value="GCASH">GCash</option><option value="MAYA">Maya</option><option value="BANK_TRANSFER">Bank Transfer</option><option value="CREDIT_CARD">Credit Card</option><option value="SPLIT">Split</option></select></div>
                 <div className="space-y-2"><Label htmlFor="notes">Release Notes</Label><Input id="notes" name="notes" placeholder="Released by, remarks, etc." /></div>
                 <Button type="submit" variant="workflow" className="w-full" disabled={releaseMutation.isPending || salespersonQuery.isLoading || !salespersonId}>{releaseMutation.isPending ? "Releasing..." : "Confirm Release"}</Button>
-              </form> : <p className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">This order cannot be released in its current state or with your capabilities.</p>}
+              </form> : <p className="mt-6 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-4 text-sm text-amber-800 dark:text-amber-300">This order cannot be released in its current state or with your capabilities.</p>}
             </CardContent>
           </Card>
         </div>
@@ -172,9 +172,9 @@ export default function ReleaseCustomerOrderPage() {
 }
 
 function Info({ label, value }: { label: string; value: string }) {
-  return <div><p className="text-sm text-slate-500">{label}</p><p className="mt-1 font-medium text-foreground">{value}</p></div>;
+  return <div><p className="text-sm text-muted-foreground">{label}</p><p className="mt-1 font-medium text-foreground">{value}</p></div>;
 }
 
 function Summary({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
-  return <div className={`flex items-center justify-between ${strong ? "text-base font-semibold" : "text-sm"}`}><span className="text-slate-500">{label}</span><span>{value}</span></div>;
+  return <div className={`flex items-center justify-between ${strong ? "text-base font-semibold" : "text-sm"}`}><span className="text-muted-foreground">{label}</span><span>{value}</span></div>;
 }

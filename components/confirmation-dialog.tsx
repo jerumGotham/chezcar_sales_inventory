@@ -33,7 +33,7 @@ export function ConfirmationDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
-          <div className="flex size-10 items-center justify-center rounded-full bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300">
+          <div className="flex size-10 items-center justify-center rounded-full bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-300 dark:bg-red-950 dark:text-red-300">
             <AlertTriangle className="size-5" aria-hidden="true" />
           </div>
           <DialogTitle>{title}</DialogTitle>

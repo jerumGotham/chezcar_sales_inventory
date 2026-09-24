@@ -145,10 +145,10 @@ function formatPeso(value: number | null) {
 
 function getStatusBadgeClass(status: ProductStatus) {
   if (status === "Active") {
-    return "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50";
+    return "border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:bg-emerald-950/40";
   }
 
-  return "border border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-100";
+  return "border border-border bg-muted text-foreground hover:bg-muted";
 }
 
 const reactSelectStyles: StylesConfig<SelectOption, false> = {
@@ -197,7 +197,7 @@ const reactSelectStyles: StylesConfig<SelectOption, false> = {
 function Fact({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-xs uppercase tracking-wide text-slate-500">{label}</dt>
+      <dt className="text-xs uppercase tracking-wide text-muted-foreground">{label}</dt>
       <dd className="mt-1 text-sm break-words">{value || "-"}</dd>
     </div>
   );
@@ -541,7 +541,7 @@ export default function ProductsPage() {
           <Card>
             <CardContent className="flex items-start justify-between p-5">
               <div>
-                <p className="text-sm text-slate-500">Total Products</p>
+                <p className="text-sm text-muted-foreground">Total Products</p>
                 <h3 className="mt-3 text-3xl font-bold text-foreground">
                   {summary.totalProducts}
                 </h3>
@@ -549,7 +549,7 @@ export default function ProductsPage() {
                   Master product catalog
                 </p>
               </div>
-              <div className="rounded-full bg-sky-50 p-2">
+              <div className="rounded-full bg-sky-50 dark:bg-sky-950/40 p-2">
                 <Package2 className="h-5 w-5 text-sky-600" />
               </div>
             </CardContent>
@@ -558,7 +558,7 @@ export default function ProductsPage() {
           <Card>
             <CardContent className="flex items-start justify-between p-5">
               <div>
-                <p className="text-sm text-slate-500">Active Products</p>
+                <p className="text-sm text-muted-foreground">Active Products</p>
                 <h3 className="mt-3 text-3xl font-bold text-foreground">
                   {summary.activeProducts}
                 </h3>
@@ -566,7 +566,7 @@ export default function ProductsPage() {
                   Available for use in transactions
                 </p>
               </div>
-              <div className="rounded-full bg-emerald-50 p-2">
+              <div className="rounded-full bg-emerald-50 dark:bg-emerald-950/40 p-2">
                 <Tags className="h-5 w-5 text-emerald-600" />
               </div>
             </CardContent>
@@ -575,7 +575,7 @@ export default function ProductsPage() {
           <Card>
             <CardContent className="flex items-start justify-between p-5">
               <div>
-                <p className="text-sm text-slate-500">With Reorder Level</p>
+                <p className="text-sm text-muted-foreground">With Reorder Level</p>
                 <h3 className="mt-3 text-3xl font-bold text-foreground">
                   {summary.withReorderLevel}
                 </h3>
@@ -583,7 +583,7 @@ export default function ProductsPage() {
                   Configured for stock monitoring
                 </p>
               </div>
-              <div className="rounded-full bg-amber-50 p-2">
+              <div className="rounded-full bg-amber-50 dark:bg-amber-950/40 p-2">
                 <AlertTriangle className="h-5 w-5 text-amber-600" />
               </div>
             </CardContent>
@@ -592,16 +592,16 @@ export default function ProductsPage() {
           <Card>
             <CardContent className="flex items-start justify-between p-5">
               <div>
-                <p className="text-sm text-slate-500">Inactive Products</p>
+                <p className="text-sm text-muted-foreground">Inactive Products</p>
                 <h3 className="mt-3 text-3xl font-bold text-foreground">
                   {summary.inactiveProducts}
                 </h3>
-                <p className="mt-2 text-sm text-slate-600">
+                <p className="mt-2 text-sm text-muted-foreground">
                   Hidden from active usage
                 </p>
               </div>
-              <div className="rounded-full bg-slate-100 p-2">
-                <Ban className="h-5 w-5 text-slate-600" />
+              <div className="rounded-full bg-muted p-2">
+                <Ban className="h-5 w-5 text-muted-foreground" />
               </div>
             </CardContent>
           </Card>
@@ -696,13 +696,13 @@ export default function ProductsPage() {
                 <h3 className="text-base font-semibold text-foreground">
                   Product Master List
                 </h3>
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted-foreground">
                   Showing {showingFrom} to {showingTo} of {meta.total} products
                   {isFetching && !isLoading ? " • Updating..." : ""}
                 </p>
                 {/* The figure is a total, so on All Branches it does not say
                     where the stock sits. Pick a branch to read it per branch. */}
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-muted-foreground">
                   Stock counts {appliedBranch === "all" ? "every branch you can see, combined" : branchOptions.find((option) => option.value === appliedBranch)?.label ?? "the selected branch"}.
                 </p>
               </div>
@@ -711,37 +711,37 @@ export default function ProductsPage() {
 
             <div className="overflow-x-auto">
               <table className={`w-full ${hasProductActions ? "min-w-[1240px]" : "min-w-[1110px]"}`}>
-                <thead className="bg-slate-50">
+                <thead className="bg-muted">
                   <tr className="border-b">
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Image
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Item Code
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Name
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Brand
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Vehicle Compatibility</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Vehicle Compatibility</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Price
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Reorder Level
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Stock
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Status
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Description
                     </th>
-                    {hasProductActions && <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Action</th>}
+                    {hasProductActions && <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Action</th>}
                   </tr>
                 </thead>
 
@@ -749,7 +749,7 @@ export default function ProductsPage() {
                   {isLoading ? (
                     <tr>
                       <td colSpan={hasProductActions ? 11 : 10} className="px-5 py-16 text-center">
-                        <div className="flex items-center justify-center gap-2 text-slate-500">
+                        <div className="flex items-center justify-center gap-2 text-muted-foreground">
                           <Loader2 className="h-4 w-4 animate-spin" />
                           Loading products...
                         </div>
@@ -768,7 +768,7 @@ export default function ProductsPage() {
                     <tr>
                       <td
                         colSpan={hasProductActions ? 11 : 10}
-                        className="px-5 py-16 text-center text-slate-500"
+                        className="px-5 py-16 text-center text-muted-foreground"
                       >
                         No products found.
                       </td>
@@ -777,10 +777,10 @@ export default function ProductsPage() {
                     rows.map((product) => (
                       <tr
                         key={product.id}
-                        className="border-b transition-colors hover:bg-slate-50"
+                        className="border-b transition-colors hover:bg-muted"
                       >
                         <td className="px-5 py-3">
-                          <div className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border bg-slate-50">
+                          <div className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border bg-muted">
                             {product.imageUrl ? (
                               <Image
                                 src={product.imageUrl}
@@ -795,29 +795,29 @@ export default function ProductsPage() {
                             )}
                           </div>
                         </td>
-                        <td className="px-5 py-4 text-sm text-slate-600">
+                        <td className="px-5 py-4 text-sm text-muted-foreground">
                           {product.itemCode}
                         </td>
                         <td className="px-5 py-4 text-sm font-medium text-foreground">
                           {product.name}
                         </td>
-                        <td className="px-5 py-4 text-sm text-slate-600">
+                        <td className="px-5 py-4 text-sm text-muted-foreground">
                           {product.brand}
                         </td>
-                        <td className="px-5 py-4 text-sm text-slate-600">
+                        <td className="px-5 py-4 text-sm text-muted-foreground">
                           {product.vehicleCompatibilities.length === 0
                             ? "Universal / not specified"
                             : product.vehicleCompatibilities
                                 .map((compatibility) => `${compatibility.make ? `${compatibility.make} ` : ""}${compatibility.model} (${compatibilityYears(compatibility)})`)
                                 .join(", ")}
                         </td>
-                        <td className="px-5 py-4 text-sm font-medium text-slate-700">
+                        <td className="px-5 py-4 text-sm font-medium text-foreground">
                           {formatPeso(product.price)}
                         </td>
-                        <td className="px-5 py-4 text-sm text-slate-600">
+                        <td className="px-5 py-4 text-sm text-muted-foreground">
                           {product.reorderLevel}
                         </td>
-                        <td className="px-5 py-4 text-sm font-medium text-slate-700">
+                        <td className="px-5 py-4 text-sm font-medium text-foreground">
                           {product.stockOnHand}
                         </td>
                         <td className="px-5 py-4 text-sm">
@@ -827,7 +827,7 @@ export default function ProductsPage() {
                             {product.status}
                           </Badge>
                         </td>
-                        <td className="px-5 py-4 text-sm text-slate-600">
+                        <td className="px-5 py-4 text-sm text-muted-foreground">
                           <span className="line-clamp-1">
                             {product.description || "-"}
                           </span>
@@ -906,8 +906,8 @@ export default function ProductsPage() {
           </DialogHeader>
 
           <div className="grid gap-6 py-2">
-            {canUpdateImage && <div className="grid gap-4 rounded-xl border bg-slate-50/60 p-4 sm:grid-cols-[112px_1fr] sm:items-center">
-              <div className="relative flex h-28 w-28 items-center justify-center overflow-hidden rounded-xl border bg-white">
+            {canUpdateImage && <div className="grid gap-4 rounded-xl border bg-muted/60 p-4 sm:grid-cols-[112px_1fr] sm:items-center">
+              <div className="relative flex h-28 w-28 items-center justify-center overflow-hidden rounded-xl border bg-card">
                 {imagePreviewUrl || (!removeImage && selectedProduct?.imageUrl) ? (
                   <Image
                     src={imagePreviewUrl ?? selectedProduct?.imageUrl ?? ""}
@@ -934,7 +934,7 @@ export default function ProductsPage() {
                       setRemoveImage(false);
                     }}
                   />
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-muted-foreground">
                     JPEG, PNG, or WebP up to 6 MB.
                   </p>
                 </div>
@@ -966,7 +966,7 @@ export default function ProductsPage() {
                   placeholder="ITM-0013"
                 />
                 {selectedProduct && !selectedProduct.canEditItemCode && (
-                  <p className="text-xs text-slate-500">Item code is locked because this product already has balances or history.</p>
+                  <p className="text-xs text-muted-foreground">Item code is locked because this product already has balances or history.</p>
                 )}
               </div>
 
@@ -1027,7 +1027,7 @@ export default function ProductsPage() {
                   disabled={Boolean(selectedProduct && !canUpdate)}
                   onChange={(event) => setForm((current) => ({ ...current, reorderLevel: event.target.value }))}
                 />
-                <p className="text-xs text-slate-500">Applied to this product across every location.</p>
+                <p className="text-xs text-muted-foreground">Applied to this product across every location.</p>
               </div>
 
               <div className="space-y-2">
@@ -1059,7 +1059,7 @@ export default function ProductsPage() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <Label>Vehicle Compatibility</Label>
-                    <p className="text-xs text-slate-500">Add each compatible make, model, and year range separately.</p>
+                    <p className="text-xs text-muted-foreground">Add each compatible make, model, and year range separately.</p>
                   </div>
                   <Button
                     type="button"
@@ -1090,7 +1090,7 @@ export default function ProductsPage() {
             </div>
 
             {form.status === "INACTIVE" && selectedProduct?.hasStock && (
-              <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+              <div className="rounded-xl border border-amber-100 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
                 This product has stock or reservations. It will remain visible in inventory/history but cannot be selected for new workflows after deactivation.
               </div>
             )}
@@ -1102,7 +1102,7 @@ export default function ProductsPage() {
             )}
 
             {!selectedProduct && (
-              <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-700">
+              <div className="rounded-xl border border-sky-100 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/40 px-4 py-3 text-sm text-sky-700 dark:text-sky-300">
                 After creating this product, use the Inventory module to receive
                 opening stock through the Receive from Supplier screen in Inventory.
               </div>
@@ -1140,10 +1140,10 @@ export default function ProductsPage() {
                   alt={productToView.name}
                   width={640}
                   height={640}
-                  className="max-h-64 w-full rounded-xl border bg-slate-50 object-contain"
+                  className="max-h-64 w-full rounded-xl border bg-muted object-contain"
                 />
               ) : (
-                <p className="rounded-xl bg-slate-100 p-3 text-sm text-slate-600">No product image uploaded.</p>
+                <p className="rounded-xl bg-muted p-3 text-sm text-muted-foreground">No product image uploaded.</p>
               )}
 
               <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
@@ -1157,7 +1157,7 @@ export default function ProductsPage() {
                   value={productToView.warrantyDurationMonths ? `${productToView.warrantyDurationMonths} months` : "Not recorded"}
                 />
                 <div>
-                  <dt className="text-xs uppercase tracking-wide text-slate-500">Status</dt>
+                  <dt className="text-xs uppercase tracking-wide text-muted-foreground">Status</dt>
                   <dd className="mt-1">
                     <Badge className={getStatusBadgeClass(productToView.status)}>{productToView.status}</Badge>
                   </dd>
@@ -1167,13 +1167,13 @@ export default function ProductsPage() {
               <section>
                 <h3 className="mb-2 text-sm font-medium">Vehicle compatibility</h3>
                 {productToView.vehicleCompatibilities.length === 0 ? (
-                  <p className="text-sm text-slate-500">None recorded.</p>
+                  <p className="text-sm text-muted-foreground">None recorded.</p>
                 ) : (
                   <ul className="space-y-1 text-sm">
                     {productToView.vehicleCompatibilities.map((compatibility, index) => (
                       <li key={compatibility.id ?? index}>
                         {`${compatibility.make ? `${compatibility.make} ` : ""}${compatibility.model}`}
-                        <span className="text-slate-500">{` (${compatibilityYears(compatibility)})`}</span>
+                        <span className="text-muted-foreground">{` (${compatibilityYears(compatibility)})`}</span>
                       </li>
                     ))}
                   </ul>
@@ -1183,7 +1183,7 @@ export default function ProductsPage() {
               <section>
                 <h3 className="mb-2 text-sm font-medium">Description</h3>
                 {/* The row clamps this to a single line; here it runs in full. */}
-                <p className="whitespace-pre-wrap text-sm text-slate-600">
+                <p className="whitespace-pre-wrap text-sm text-muted-foreground">
                   {productToView.description?.trim() || "No description recorded."}
                 </p>
               </section>

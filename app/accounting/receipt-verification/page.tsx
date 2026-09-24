@@ -342,7 +342,7 @@ function comparisonDifferences(sale: Sale, comparison: ReceiptComparison) {
 
 export default function ReceiptVerificationPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-slate-500">Loading receipt...</div>}>
+    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading receipt...</div>}>
       <VerificationTabRouter />
     </Suspense>
   );
@@ -999,7 +999,7 @@ function ReceiptVerificationContent() {
             onSubmit={applyFilters}
           >
             <div className="relative xl:col-span-2">
-              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 aria-label="Search receipts"
                 value={searchDraft}
@@ -1084,7 +1084,7 @@ function ReceiptVerificationContent() {
               </Button>
             </div>
           </form>
-          <p className="mt-3 text-xs text-slate-500">
+          <p className="mt-3 text-xs text-muted-foreground">
             Date filters use the sale posting date. Search also checks receipt
             booklet and reference.
           </p>
@@ -1093,12 +1093,12 @@ function ReceiptVerificationContent() {
       {/* Above the panels, because reviewing and resolving clear the selection
           and close the detail pane the old error sat at the bottom of. */}
       {formNotice ? (
-        <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
+        <p role="status" className="rounded-lg border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 p-3 text-sm text-emerald-800 dark:text-emerald-300 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
           {formNotice}
         </p>
       ) : null}
       {formError ? (
-        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+        <p role="alert" className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-3 text-sm text-red-700 dark:text-red-300 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
           {formError}
         </p>
       ) : null}
@@ -1108,7 +1108,7 @@ function ReceiptVerificationContent() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-base font-semibold">Sales queue</h2>
-                <p className="text-sm text-slate-500" aria-live="polite">
+                <p className="text-sm text-muted-foreground" aria-live="polite">
                   {meta.totalItems === 0
                     ? "No matching receipts"
                     : `Showing ${showingFrom}-${showingTo} of ${meta.totalItems} receipt${meta.totalItems === 1 ? "" : "s"}`}
@@ -1126,7 +1126,7 @@ function ReceiptVerificationContent() {
             </div>
             <div className="mt-4 overflow-x-auto">
               {isLoading ? (
-                <div className="flex items-center gap-2 py-12 text-sm text-slate-500">
+                <div className="flex items-center gap-2 py-12 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" /> Loading
                   receipts...
                 </div>
@@ -1148,7 +1148,7 @@ function ReceiptVerificationContent() {
                 </div>
               ) : sales.length === 0 ? (
                 <div className="flex flex-col items-center gap-3 py-12 text-center">
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-muted-foreground">
                     {hasActiveFilters
                       ? "No receipts match the current filters."
                       : "There are no receipts to verify yet."}
@@ -1162,7 +1162,7 @@ function ReceiptVerificationContent() {
               ) : (
                 <table className="w-full min-w-[840px] text-left text-sm">
                   <thead>
-                    <tr className="border-b text-xs uppercase tracking-wide text-slate-500">
+                    <tr className="border-b text-xs uppercase tracking-wide text-muted-foreground">
                       <th className="px-3 py-3">Receipt</th>
                       <th className="px-3 py-3">Branch</th>
                       <th className="px-3 py-3">Customer</th>
@@ -1181,22 +1181,22 @@ function ReceiptVerificationContent() {
                         aria-selected={selectedId === sale.id}
                         className={
                           selectedId === sale.id
-                            ? "cursor-pointer border-b bg-emerald-50 ring-1 ring-inset ring-emerald-200 last:border-0"
-                            : "cursor-pointer border-b transition-colors hover:bg-slate-50 last:border-0"
+                            ? "cursor-pointer border-b bg-emerald-50 dark:bg-emerald-950/40 ring-1 ring-inset ring-emerald-200 last:border-0"
+                            : "cursor-pointer border-b transition-colors hover:bg-muted last:border-0"
                         }
                       >
                         <td className="px-3 py-4">
                           <p className="font-medium">
                             {sale.manualReceiptNumber}
                           </p>
-                          <p className="text-xs text-slate-500">
+                          <p className="text-xs text-muted-foreground">
                             {sale.reference}
                           </p>
                         </td>
-                        <td className="px-3 py-4 text-slate-600">
+                        <td className="px-3 py-4 text-muted-foreground">
                           {sale.branch}
                         </td>
-                        <td className="px-3 py-4 text-slate-600">
+                        <td className="px-3 py-4 text-muted-foreground">
                           {sale.customer}
                         </td>
                         <td className="px-3 py-4 font-medium">
@@ -1204,7 +1204,7 @@ function ReceiptVerificationContent() {
                         </td>
                         <td className="px-3 py-4">
                           {sale.status === "VOIDED" ? (
-                            <span className="text-slate-400">-</span>
+                            <span className="text-muted-foreground">-</span>
                           ) : (
                             <Badge variant={sale.receiptPhotoUrl ? "secondary" : "outline"}>
                               {sale.receiptPhotoUrl ? "Attached" : "Pending"}
@@ -1219,13 +1219,13 @@ function ReceiptVerificationContent() {
                               <ReviewBadge status={sale.reviewStatus} />
                             )}
                             {sale.correctionRequest?.status === "PENDING" ? (
-                              <Badge className="border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-50">
+                              <Badge className="border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 hover:bg-amber-50 dark:bg-amber-950/40">
                                 Correction requested
                               </Badge>
                             ) : null}
                           </div>
                          </td>
-                         <td className="max-w-56 px-3 py-4 text-xs text-slate-600">
+                         <td className="max-w-56 px-3 py-4 text-xs text-muted-foreground">
                            <span className="line-clamp-2">{sale.resolutionNote ?? sale.correctionRequest?.resolutionNote ?? "-"}</span>
                          </td>
                         <td className="px-3 py-4 text-right">
@@ -1252,7 +1252,7 @@ function ReceiptVerificationContent() {
         <Card className="min-w-0">
           <CardContent className="min-w-0 p-5">
             {!selectedSale ? (
-              <div className="flex min-h-80 items-center justify-center text-center text-sm text-slate-500">
+              <div className="flex min-h-80 items-center justify-center text-center text-sm text-muted-foreground">
                 Select a receipt to compare its line items and manual receipt
                 evidence.
               </div>
@@ -1260,13 +1260,13 @@ function ReceiptVerificationContent() {
               <div className="space-y-5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-xs uppercase tracking-wide text-slate-500">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
                       {selectedSale.reference}
                     </p>
                     <h2 className="mt-1 text-lg font-semibold">
                       Receipt {selectedSale.manualReceiptNumber}
                     </h2>
-                    <p className="text-sm text-slate-500">
+                    <p className="text-sm text-muted-foreground">
                       {selectedSale.branch} • Salesperson: {selectedSale.salesperson?.name ?? "Not recorded (legacy)"} • Encoded by: {selectedSale.postedBy}
                     </p>
                   </div>
@@ -1279,7 +1279,7 @@ function ReceiptVerificationContent() {
                 </div>
                 {selectedSale.correctionRequest ? (
                   <div className={selectedSale.correctionRequest.status === "PENDING"
-                    ? "space-y-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+                    ? "space-y-4 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-4 text-sm text-amber-900 dark:text-amber-300 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
                     : "space-y-2 rounded-xl border bg-muted/40 p-4 text-sm text-foreground"}
                   >
                     <div>
@@ -1301,7 +1301,7 @@ function ReceiptVerificationContent() {
                       ) : null}
                     </div>
                     {selectedSale.correctionRequest.status === "PENDING" && canVoidReplace && selectedSale.status === "POSTED" ? (
-                      <div className="space-y-3 border-t border-amber-200 pt-3">
+                      <div className="space-y-3 border-t border-amber-200 dark:border-amber-900 pt-3">
                         <div className="space-y-2">
                           <Label htmlFor="correction-resolution-note">Admin resolution note</Label>
                           <Textarea
@@ -1335,7 +1335,7 @@ function ReceiptVerificationContent() {
                           ) : null}
                         </div>
                         {!["ACCIDENTAL_SUBMISSION", "DUPLICATE_SUBMISSION", "SALE_DID_NOT_HAPPEN"].includes(selectedSale.correctionRequest.reason) ? (
-                          <p className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-800 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
+                          <p className="rounded-lg border border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/40 p-3 text-xs text-sky-800 dark:text-sky-300 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
                             If a real sale occurred with wrong information, keep this sale posted and use receipt mismatch plus void-and-replace after evidence review.
                           </p>
                         ) : null}
@@ -1344,7 +1344,7 @@ function ReceiptVerificationContent() {
                         </p>
                       </div>
                     ) : selectedSale.correctionRequest.status === "PENDING" ? (
-                      <p className="border-t border-amber-200 pt-3 text-xs">
+                      <p className="border-t border-amber-200 dark:border-amber-900 pt-3 text-xs">
                         Inventory remains deducted while this request waits for Admin resolution.
                       </p>
                     ) : null}
@@ -1364,7 +1364,7 @@ function ReceiptVerificationContent() {
                   <div className="space-y-4 rounded-xl border p-4">
                     <div>
                       <p className="font-semibold">Uploaded receipt photo</p>
-                      <p className="mt-1 text-xs text-slate-500">This is the receipt Accounting must verify.</p>
+                      <p className="mt-1 text-xs text-muted-foreground">This is the receipt Accounting must verify.</p>
                     </div>
                     {canViewEvidence && selectedSale.receiptPhotoUrl ? (
                       <Image
@@ -1373,12 +1373,12 @@ function ReceiptVerificationContent() {
                         width={800}
                         height={1000}
                         unoptimized
-                        className="max-h-[32rem] w-full rounded-xl border bg-slate-50 object-contain"
+                        className="max-h-[32rem] w-full rounded-xl border bg-muted object-contain"
                       />
                     ) : !canViewEvidence && selectedSale.receiptPhotoUrl ? (
-                      <p className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700">You do not have permission to view receipt evidence.</p>
+                      <p className="rounded-lg bg-muted p-3 text-sm text-foreground">You do not have permission to view receipt evidence.</p>
                     ) : (
-                      <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">No receipt image uploaded.</p>
+                      <p className="rounded-lg bg-amber-50 dark:bg-amber-950/40 p-3 text-sm text-amber-800 dark:text-amber-300">No receipt image uploaded.</p>
                     )}
                     {canDeleteEvidence &&
                     selectedSale.receiptPhotoUrl &&
@@ -1414,7 +1414,7 @@ function ReceiptVerificationContent() {
                   />
                 )}
                 {selectedSale.status === "VOIDED" && (
-                  <div className="rounded-xl bg-slate-100 p-3 text-sm text-slate-700">
+                  <div className="rounded-xl bg-muted p-3 text-sm text-foreground">
                     <p className="font-medium">This sale is voided and excluded from active sales.</p>
                     {selectedSale.resolutionNote ? (
                       <p className="mt-1">Resolution note: {selectedSale.resolutionNote}</p>
@@ -1422,14 +1422,14 @@ function ReceiptVerificationContent() {
                   </div>
                 )}
                 {selectedSale.reviewStatus === "VERIFIED" && selectedSale.resolutionNote && (
-                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+                  <div className="rounded-xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 p-3 text-sm text-emerald-800 dark:text-emerald-300">
                     <p className="font-medium">Original encoding confirmed</p>
                     <p className="mt-1">Resolution note: {selectedSale.resolutionNote}</p>
                   </div>
                 )}
                 {selectedSale.reviewStatus === "MISMATCH_REPORTED" && (
                   <div className="space-y-3">
-                    <div className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800">
+                    <div className="rounded-xl bg-rose-50 dark:bg-rose-950/40 p-3 text-sm text-rose-800 dark:text-rose-300">
                       <p className="font-medium">
                         Reported mismatch:{" "}
                         {selectedSale.mismatchCategory?.replaceAll("_", " ") ??
@@ -1438,7 +1438,7 @@ function ReceiptVerificationContent() {
                       <p className="mt-1">
                         {selectedSale.reviewNotes || "No notes recorded."}
                       </p>
-                      <p className="mt-2 border-t border-rose-200 pt-2 font-medium">
+                      <p className="mt-2 border-t border-rose-200 dark:border-rose-900 pt-2 font-medium">
                         {branchFindingSummary(selectedSale)}
                       </p>
                       {selectedSale.branchResponseNote && (
@@ -1454,13 +1454,13 @@ function ReceiptVerificationContent() {
                 )}
                 {selectedSale.branchResponse === "WRONG_RECEIPT_PHOTO" &&
                 selectedSale.reviewStatus !== "MISMATCH_REPORTED" && (
-                  <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
+                  <div className="rounded-xl border border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/40 p-3 text-sm text-sky-900 dark:text-sky-300 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
                     <p className="font-medium">Replacement photo submitted for Accounting re-review</p>
                     <p className="mt-1">
                       The previous mismatch was reopened as unverified. This photo correction did not change the sale or create any stock movement.
                     </p>
                     {selectedSale.branchResponseNote ? (
-                      <p className="mt-2 border-t border-sky-200 pt-2 dark:border-sky-800">
+                      <p className="mt-2 border-t border-sky-200 dark:border-sky-900 pt-2 dark:border-sky-800">
                         Branch note: {selectedSale.branchResponseNote}
                       </p>
                     ) : null}
@@ -1468,12 +1468,12 @@ function ReceiptVerificationContent() {
                 )}
                 {canRespond &&
                   selectedSale.reviewStatus === "MISMATCH_REPORTED" && (
-                    <div className="space-y-4 rounded-xl border border-sky-200 bg-sky-50/60 p-4">
+                    <div className="space-y-4 rounded-xl border border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/60 p-4">
                       <div>
                         <p className="font-semibold text-sky-950">
                           Branch double-check
                         </p>
-                        <p className="mt-1 text-sm text-sky-800">
+                        <p className="mt-1 text-sm text-sky-800 dark:text-sky-300">
                           Compare the original encoding with the physical receipt,
                           then tell Admin and Accounting what should happen next.
                         </p>
@@ -1497,7 +1497,7 @@ function ReceiptVerificationContent() {
                           />
                           <span>
                             <span className="block font-medium">Wrong receipt photo uploaded.</span>
-                            <span className="mt-1 block text-xs text-slate-600 dark:text-slate-300">
+                            <span className="mt-1 block text-xs text-muted-foreground">
                               Upload the correct replacement photo below. Accounting will re-review it, and no stock quantity changes.
                             </span>
                           </span>
@@ -1519,17 +1519,17 @@ function ReceiptVerificationContent() {
                           />
                           <span>
                             <span className="block font-medium">Sale was encoded incorrectly.</span>
-                            <span className="mt-1 block text-xs text-slate-600 dark:text-slate-300">
+                            <span className="mt-1 block text-xs text-muted-foreground">
                               Add a note for Admin. If Admin voids the sale, the original stock quantities will be restored.
                             </span>
                           </span>
                         </label>
                       </fieldset>
                       {branchResponse === "WRONG_RECEIPT_PHOTO" && (
-                        <div className="space-y-3 rounded-xl border border-sky-200 bg-background p-4 dark:border-sky-800">
+                        <div className="space-y-3 rounded-xl border border-sky-200 dark:border-sky-900 bg-background p-4 dark:border-sky-800">
                           <div>
                             <Label htmlFor="branch-replacement-photo">Correct replacement receipt photo</Label>
-                            <p className="mt-1 text-xs text-slate-500">
+                            <p className="mt-1 text-xs text-muted-foreground">
                               This image is uploaded first. The mismatch stays open if the finding cannot be submitted, so you can retry.
                             </p>
                           </div>
@@ -1574,7 +1574,7 @@ function ReceiptVerificationContent() {
                         </div>
                       )}
                       {branchResponse === "SALE_ENCODED_INCORRECT" && (
-                        <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                        <p className="rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-3 text-xs text-amber-900 dark:text-amber-300 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
                           No replacement photo or receipt number is needed. Stock remains unchanged until Admin approves the void.
                         </p>
                       )}
@@ -1610,7 +1610,7 @@ function ReceiptVerificationContent() {
                     </div>
                   )}
                 {selectedSale.status === "POSTED" && !selectedSale.receiptPhotoUrl && !photoPreview ? (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  <div className="rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-3 text-sm text-amber-800 dark:text-amber-300">
                     Receipt evidence is pending. Attach the handwritten receipt photo before confirming the sale or reporting a mismatch.
                   </div>
                 ) : null}
@@ -1622,7 +1622,7 @@ function ReceiptVerificationContent() {
                       <Label htmlFor="receipt-photo">
                         {selectedSale.receiptPhotoUrl ? "Replace receipt photo" : "Attach receipt photo"}
                       </Label>
-                      <p className="mt-1 text-xs text-slate-500">
+                      <p className="mt-1 text-xs text-muted-foreground">
                         Choose a file only when the receipt is missing or the current photo is unreadable.
                       </p>
                     </div>
@@ -1673,7 +1673,7 @@ function ReceiptVerificationContent() {
                   <div className="space-y-4 rounded-xl border p-4">
                     <div>
                         <p className="font-semibold">Accounting verification details</p>
-                      <p className="mt-1 text-xs text-slate-500">
+                      <p className="mt-1 text-xs text-muted-foreground">
                         These editable fields start with the system sale values. Compare them with the uploaded receipt photo, then correct only the values that differ.
                       </p>
                     </div>
@@ -1698,7 +1698,7 @@ function ReceiptVerificationContent() {
                           onChange={(event) => updateComparison({ receiptNumber: event.target.value })}
                         />
                         {selectedSale.reviewStatus === "MISMATCH_REPORTED" && (
-                          <p className="text-xs text-slate-500">
+                          <p className="text-xs text-muted-foreground">
                             This must differ from the voided original receipt.
                           </p>
                         )}
@@ -1741,12 +1741,12 @@ function ReceiptVerificationContent() {
                           ? "Correction details"
                           : "Receipt item details"}
                       </p>
-                      <p className="mt-1 text-xs text-slate-500">
+                      <p className="mt-1 text-xs text-muted-foreground">
                         {selectedSale.reviewStatus === "MISMATCH_REPORTED"
                           ? "The values reported by Accounting are loaded below. Change only what the replacement sale needs."
                           : "Enter the quantity and unit price shown on the handwritten receipt."}
                       </p>
-                      <div className="mt-4 hidden grid-cols-[minmax(0,1fr)_100px_120px_40px] gap-2 px-1 text-xs font-medium uppercase tracking-wide text-slate-500 sm:grid">
+                      <div className="mt-4 hidden grid-cols-[minmax(0,1fr)_100px_120px_40px] gap-2 px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground sm:grid">
                         <span>Item code - name</span>
                         <span>Quantity</span>
                         <span>Unit price</span>
@@ -1760,7 +1760,7 @@ function ReceiptVerificationContent() {
                           return (
                             <div
                               key={index}
-                              className="grid gap-2 rounded-lg bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_100px_120px_40px] sm:bg-transparent sm:p-0"
+                              className="grid gap-2 rounded-lg bg-muted p-3 sm:grid-cols-[minmax(0,1fr)_100px_120px_40px] sm:bg-transparent sm:p-0"
                             >
                               <div className="space-y-1">
                                 <Input
@@ -1777,7 +1777,7 @@ function ReceiptVerificationContent() {
                                   }
                                 />
                                 {saleLine ? (
-                                  <p className="px-1 text-xs text-slate-500">
+                                  <p className="px-1 text-xs text-muted-foreground">
                                     {saleLine.itemCode} - {saleLine.name}
                                   </p>
                                 ) : null}
@@ -1878,7 +1878,7 @@ function ReceiptVerificationContent() {
                           <CheckCircle2 className="mr-2 h-4 w-4" />
                           Confirm correct
                         </Button>
-                        <span className="self-center text-xs text-slate-500">
+                        <span className="self-center text-xs text-muted-foreground">
                           Correct all comparison fields and attach receipt evidence before confirming.
                         </span>
                       </div>
@@ -1948,7 +1948,7 @@ function ReceiptVerificationContent() {
                 {(canResolve || canVoidReplace) &&
                   selectedSale.reviewStatus === "MISMATCH_REPORTED" &&
                   !selectedSale.branchResponse && (
-                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                    <div className="rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-3 text-sm text-amber-800 dark:text-amber-300">
                       Final resolution is available after the branch submits its
                       double-check response.
                     </div>
@@ -1961,7 +1961,7 @@ function ReceiptVerificationContent() {
                       canVoidReplace)) && (
                     <div className="space-y-4 border-t pt-4">
                       {selectedSale.branchResponse === "SALE_ENCODED_INCORRECT" ? (
-                        <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+                        <p className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-3 text-sm text-red-900 dark:text-red-300 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
                           Voiding restores every original sale line to branch inventory, records reversal movements, and creates no replacement sale.
                         </p>
                       ) : null}
@@ -2034,7 +2034,7 @@ function ReceiptVerificationContent() {
                 selectedSale.branchResponse === "RECEIPT_CORRECTION_NEEDED" &&
                 canResolve &&
                 !canVoidReplace ? (
-                  <p className="rounded-lg bg-slate-100 p-3 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+                  <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">
                     The branch confirmed a correction. You do not have permission to void and replace the original sale.
                   </p>
                 ) : null}
@@ -2042,7 +2042,7 @@ function ReceiptVerificationContent() {
                 selectedSale.branchResponse === "SALE_ENCODED_INCORRECT" &&
                 canResolve &&
                 !canVoidReplace ? (
-                  <p className="rounded-lg bg-slate-100 p-3 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+                  <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">
                     This finding requires Admin permission to void the sale and restore its original inventory quantities.
                   </p>
                 ) : null}
@@ -2109,23 +2109,23 @@ function ReceiptSummary({
 }) {
   return (
     <div className="overflow-hidden rounded-xl border">
-      <div className="border-b bg-slate-50 px-3 py-2">
+      <div className="border-b bg-muted px-3 py-2">
         <p className="text-sm font-semibold">{title}</p>
       </div>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 p-3 text-sm">
-        <div><dt className="text-xs text-slate-500">Booklet</dt><dd>{receiptBooklet || "None"}</dd></div>
-        <div><dt className="text-xs text-slate-500">Receipt number</dt><dd>{receiptNumber}</dd></div>
-        <div><dt className="text-xs text-slate-500">Payment method</dt><dd>{paymentMethod.replaceAll("_", " ")}</dd></div>
-        <div><dt className="text-xs text-slate-500">Discount</dt><dd>{formatPeso(discountAmount)}</dd></div>
-        <div><dt className="text-xs text-slate-500">Amount paid</dt><dd>{formatPeso(amountPaid)}</dd></div>
-        <div><dt className="text-xs text-slate-500">Total</dt><dd className="font-semibold">{formatPeso(totalAmount)}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Booklet</dt><dd>{receiptBooklet || "None"}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Receipt number</dt><dd>{receiptNumber}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Payment method</dt><dd>{paymentMethod.replaceAll("_", " ")}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Discount</dt><dd>{formatPeso(discountAmount)}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Amount paid</dt><dd>{formatPeso(amountPaid)}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Total</dt><dd className="font-semibold">{formatPeso(totalAmount)}</dd></div>
       </dl>
       <div className="divide-y border-t">
         {lines.map((line, index) => (
           <div key={`${line.itemCode}-${index}`} className="flex items-center justify-between gap-3 p-3 text-sm">
             <div>
               <p className="font-medium">{line.name ?? line.itemCode}</p>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-muted-foreground">
                 {line.name ? `${line.itemCode} • ` : ""}Qty {line.quantity} at {formatPeso(line.unitPrice)}
               </p>
             </div>
@@ -2143,16 +2143,16 @@ function MismatchDetails({
   differences: ComparisonDifference[];
 }) {
   return (
-    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+    <div className="rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-3 text-sm text-amber-900 dark:text-amber-300">
       <p className="font-semibold">Mismatch details</p>
       <div className="mt-2 space-y-2">
         {differences.map((difference) => (
           <div
             key={`${difference.label}-${difference.encodedValue}-${difference.reportedValue}`}
-            className="rounded-md bg-white/70 px-3 py-2"
+            className="rounded-md bg-card/70 px-3 py-2"
           >
             <p className="font-medium">{difference.label}</p>
-            <p className="text-xs text-amber-800">
+            <p className="text-xs text-amber-800 dark:text-amber-300">
               Encoded: {difference.encodedValue} → Reported:{" "}
               {difference.reportedValue}
             </p>
@@ -2165,9 +2165,9 @@ function MismatchDetails({
 
 function ReviewBadge({ status }: { status: Sale["reviewStatus"] }) {
   if (status === "VERIFIED")
-    return <Badge className="bg-emerald-100 text-emerald-700">Verified</Badge>;
+    return <Badge className="bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300">Verified</Badge>;
   if (status === "MISMATCH_REPORTED")
-    return <Badge className="bg-rose-100 text-rose-700">Mismatch</Badge>;
+    return <Badge className="bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300">Mismatch</Badge>;
   return <Badge variant="outline">Unverified</Badge>;
 }
 
@@ -2175,7 +2175,7 @@ function SaleStatusBadge({ status }: { status: Sale["status"] }) {
   return status === "POSTED" ? (
     <Badge variant="outline">Posted</Badge>
   ) : (
-    <Badge className="bg-slate-200 text-slate-700">Voided</Badge>
+    <Badge className="bg-slate-200 text-foreground">Voided</Badge>
   );
 }
 
@@ -2189,9 +2189,9 @@ function SummaryCard({
   tone: "amber" | "rose" | "emerald";
 }) {
   const styles = {
-    amber: "border-amber-200 bg-amber-50/70 text-amber-900",
-    rose: "border-rose-200 bg-rose-50/70 text-rose-900",
-    emerald: "border-emerald-200 bg-emerald-50/70 text-emerald-900",
+    amber: "border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/70 text-amber-900 dark:text-amber-300",
+    rose: "border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/70 text-rose-900 dark:text-rose-300",
+    emerald: "border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/70 text-emerald-900 dark:text-emerald-300",
   } as const;
   return (
     <Card className={styles[tone]}>

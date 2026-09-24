@@ -137,7 +137,7 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
               showLabels ? "justify-start gap-3" : "justify-center px-0",
               active
                 ? "border-brand-200 bg-brand-100 text-brand-800 shadow-sm hover:bg-brand-100 dark:border-brand-500/30 dark:bg-brand-500/15 dark:text-brand-100"
-                : "border-transparent text-slate-600 hover:border-brand-100 hover:bg-brand-50 hover:text-brand-700 dark:text-slate-300 dark:hover:border-white/10 dark:hover:bg-white/5 dark:hover:text-white",
+                : "border-transparent text-muted-foreground hover:border-brand-100 hover:bg-brand-50 hover:text-brand-700 dark:hover:border-white/10",
             )}
           >
             <Icon
@@ -145,7 +145,7 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
                 "h-4 w-4 shrink-0",
                 active
                   ? "text-brand-700 dark:text-brand-200"
-                  : "text-slate-400 group-hover:text-brand-600 dark:text-slate-500 dark:group-hover:text-white",
+                  : "text-muted-foreground group-hover:text-brand-600 dark:group-hover:text-white",
               )}
             />
             {showLabels ? (
@@ -164,7 +164,7 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
       <Button
         variant="outline"
         size="icon"
-        className="fixed left-4 top-4 z-50 rounded-2xl border-brand-200 bg-white text-brand-700 shadow-sm backdrop-blur hover:bg-brand-50 hover:text-brand-800 dark:border-white/10 dark:bg-card dark:text-white dark:hover:bg-white/10 lg:hidden"
+        className="fixed left-4 top-4 z-50 rounded-2xl border-brand-200 bg-card text-brand-700 shadow-sm backdrop-blur hover:bg-brand-50 hover:text-brand-800 lg:hidden"
         onClick={() => setIsMobileOpen(true)}
         aria-label="Open navigation menu"
       >
@@ -178,10 +178,10 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
         )}
       >
         <div className="sticky top-0 h-screen p-3">
-          <Card className="flex h-full flex-col overflow-hidden border-brand-100 bg-white/95 text-slate-900 shadow-soft dark:border-white/10 dark:bg-card dark:text-white">
+          <Card className="flex h-full flex-col overflow-hidden border-brand-100 bg-card/95 text-foreground shadow-soft">
             <CardHeader
               className={cn(
-                "gap-4 border-b border-brand-100 bg-brand-100 dark:border-white/10 dark:bg-white/5",
+                "gap-4 border-b border-brand-100 bg-brand-100",
                 isDesktopExpanded ? "p-5" : "items-center p-4",
               )}
             >
@@ -202,15 +202,26 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
                       it in text beside a thumbnail too small to read. */}
                   {isDesktopExpanded ? (
                     <div className="min-w-0">
+                      {/* Dark ink for a light sidebar, white for a dark one.
+                          Swapped by class so no theme state is needed here. */}
                       <Image
                         src="/predator-mark.png"
                         alt="Predator Offroad PH"
                         width={840}
                         height={280}
-                        className="h-auto w-[210px] max-w-full"
+                        className="h-auto w-[210px] max-w-full dark:hidden"
                         priority
                       />
-                      <CardTitle className="mt-2 text-sm font-medium tracking-wide text-slate-500 dark:text-slate-400">
+                      <Image
+                        src="/predator-mark-light.png"
+                        alt=""
+                        aria-hidden="true"
+                        width={2029}
+                        height={369}
+                        className="hidden h-auto w-[210px] max-w-full dark:block"
+                        priority
+                      />
+                      <CardTitle className="mt-2 text-sm font-medium tracking-wide text-muted-foreground">
                         Sales &amp; Inventory
                       </CardTitle>
                     </div>
@@ -240,7 +251,7 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
                   {/* <Button
                     variant="ghost"
                     size="icon"
-                    className="h-9 w-9 rounded-xl border border-brand-100 bg-white text-slate-600 hover:bg-brand-50 hover:text-brand-700 dark:border-white/10 dark:bg-white/5 dark:text-white/70 dark:hover:bg-white/10 dark:hover:text-white"
+                    className="h-9 w-9 rounded-xl border border-brand-100 bg-card text-muted-foreground hover:bg-brand-50 hover:text-brand-700"
                     onClick={toggleDesktopSidebar}
                     aria-label={
                       isDesktopExpanded ? "Collapse sidebar" : "Expand sidebar"
@@ -256,10 +267,10 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
                     variant="ghost"
                     size="icon"
                     className={cn(
-                      "h-9 w-9 rounded-xl border border-brand-100 bg-white hover:bg-brand-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10",
+                      "h-9 w-9 rounded-xl border border-brand-100 bg-card hover:bg-brand-50",
                       isDesktopPinned
                         ? "text-brand-600 dark:text-brand-300"
-                        : "text-slate-500 dark:text-white/60",
+                        : "text-muted-foreground",
                     )}
                     onClick={toggleDesktopPin}
                     aria-label={
@@ -301,8 +312,8 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
         )}
         aria-hidden={!isMobileOpen}
       >
-        <Card className="flex h-full flex-col overflow-hidden border-brand-100 bg-white text-slate-900 shadow-soft dark:border-white/10 dark:bg-card dark:text-white">
-          <CardHeader className="gap-4 border-b border-brand-100 bg-brand-100 p-5 dark:border-white/10 dark:bg-white/5">
+        <Card className="flex h-full flex-col overflow-hidden border-brand-100 bg-card text-foreground shadow-soft">
+          <CardHeader className="gap-4 border-b border-brand-100 bg-brand-100 p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <Image
@@ -310,10 +321,19 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
                   alt="Predator Offroad PH"
                   width={840}
                   height={280}
-                  className="h-auto w-[210px] max-w-full"
+                  className="h-auto w-[210px] max-w-full dark:hidden"
                   priority
                 />
-                <CardTitle className="mt-2 text-sm font-medium tracking-wide text-slate-500 dark:text-slate-400">
+                <Image
+                  src="/predator-mark-light.png"
+                  alt=""
+                  aria-hidden="true"
+                  width={2029}
+                  height={369}
+                  className="hidden h-auto w-[210px] max-w-full dark:block"
+                  priority
+                />
+                <CardTitle className="mt-2 text-sm font-medium tracking-wide text-muted-foreground">
                   Sales &amp; Inventory
                 </CardTitle>
               </div>
@@ -321,7 +341,7 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-10 w-10 rounded-xl border border-brand-100 bg-white text-slate-600 hover:bg-brand-50 hover:text-brand-700 dark:border-white/10 dark:bg-white/5 dark:text-white/70 dark:hover:bg-white/10 dark:hover:text-white"
+                className="h-10 w-10 rounded-xl border border-brand-100 bg-card text-muted-foreground hover:bg-brand-50 hover:text-brand-700"
                 onClick={() => setIsMobileOpen(false)}
                 aria-label="Close navigation menu"
               >

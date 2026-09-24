@@ -164,7 +164,7 @@ export default function NotificationsPage() {
       }
     >
       <Tabs value={activeTab} onValueChange={(value) => { setActiveTab(value); setPage(1); }}>
-        <TabsList className="mb-5 bg-green-50 dark:bg-slate-900">
+        <TabsList className="mb-5 bg-green-50 dark:bg-emerald-950/40">
           <TabsTrigger value="all">All</TabsTrigger>
           <TabsTrigger value="unread">Unread</TabsTrigger>
         </TabsList>
@@ -177,7 +177,7 @@ export default function NotificationsPage() {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[820px] text-left text-sm">
-              <thead className="border-b bg-slate-50 text-xs uppercase tracking-wide text-slate-500 dark:bg-slate-900 dark:text-slate-400">
+              <thead className="border-b bg-muted text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="w-12 px-4 py-3">Type</th>
                   <th className="px-4 py-3">Notification</th>
@@ -190,7 +190,7 @@ export default function NotificationsPage() {
               <tbody>
                 {notificationsQuery.isLoading ? (
                   <tr>
-                    <td className="px-4 py-10 text-center text-slate-500" colSpan={6}>
+                    <td className="px-4 py-10 text-center text-muted-foreground" colSpan={6}>
                       Loading notifications...
                     </td>
                   </tr>
@@ -202,7 +202,7 @@ export default function NotificationsPage() {
                   </tr>
                 ) : filteredNotifications.length === 0 ? (
                   <tr>
-                    <td className="px-4 py-10 text-center text-slate-500" colSpan={6}>
+                    <td className="px-4 py-10 text-center text-muted-foreground" colSpan={6}>
                       No notifications available.
                     </td>
                   </tr>
@@ -213,23 +213,23 @@ export default function NotificationsPage() {
                       <tr
                         key={notification.id}
                         onClick={destination ? () => activateNotification(notification, destination) : undefined}
-                        className={`border-b last:border-0 ${notification.read ? "bg-white dark:bg-slate-950" : "bg-green-50/60 dark:bg-emerald-950/30"} ${destination ? "cursor-pointer transition-colors hover:bg-green-100/60 dark:hover:bg-emerald-950/50" : ""}`}
+                        className={`border-b last:border-0 ${notification.read ? "bg-card" : "bg-green-50 dark:bg-emerald-950/30"} ${destination ? "cursor-pointer transition-colors hover:bg-green-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-950/50" : ""}`}
                       >
                         <td className="px-4 py-3">
                           <TypeIcon type={notification.type} />
                         </td>
                         <td className="max-w-xl px-4 py-3">
-                          <p className="font-medium text-slate-900 dark:text-slate-100">
+                          <p className="font-medium text-foreground">
                             {notification.title}
                           </p>
-                          <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                          <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-muted-foreground">
                             {notification.description}
                           </p>
                         </td>
-                        <td className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">
+                        <td className="px-4 py-3 font-medium text-muted-foreground">
                           {notification.relatedReference ?? "-"}
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-slate-500 dark:text-slate-400">
+                        <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
                           {notification.time}
                         </td>
                         <td className="px-4 py-3">

@@ -15,8 +15,10 @@ import { authClient } from "@/lib/auth-client";
 import { markHeaderNotificationRead } from "@/lib/header-notifications";
 
 const THEME_KEY = "chezcar-theme";
-// Temporary light-only release; retain dark-mode code and saved preferences for later.
-const FORCE_LIGHT_THEME = true;
+// Dark-only release. The class is already set on <html> by the root layout so
+// the first paint is dark; this keeps the toggle and saved preference dormant
+// rather than deleting the code behind them.
+const FORCE_DARK_THEME = true;
 
 type HeaderNotification = {
   id: string;
@@ -63,7 +65,7 @@ export function AppHeader({
   const canMarkNotificationsRead = useCan("notifications:mark-read");
   const queryClient = useQueryClient();
   const identityEmail = access.authenticated ? access.identity.email : null;
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [isReady, setIsReady] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isPasswordOpen, setIsPasswordOpen] = useState(false);
@@ -142,8 +144,8 @@ export function AppHeader({
   }, [toast]);
 
   useEffect(() => {
-    if (FORCE_LIGHT_THEME) {
-      applyTheme("light");
+    if (FORCE_DARK_THEME) {
+      applyTheme("dark");
       return;
     }
     const storedTheme = window.localStorage.getItem(THEME_KEY);
@@ -162,7 +164,7 @@ export function AppHeader({
   }, []);
 
   useEffect(() => {
-    if (FORCE_LIGHT_THEME || !isReady) {
+    if (FORCE_DARK_THEME || !isReady) {
       return;
     }
 
@@ -218,17 +220,17 @@ export function AppHeader({
    */
   return (
     <>
-      <div className="mb-6 lg:sticky lg:top-0 lg:z-30 lg:-mx-8 lg:-mt-8 lg:bg-white lg:px-8 lg:pt-8 lg:dark:bg-background">
-        <div className="flex flex-col gap-4 rounded-[1.75rem] border border-brand-100 bg-white px-5 py-4 shadow-sm dark:border-slate-800 dark:bg-slate-950 lg:flex-row lg:items-center lg:justify-between">
+      <div className="mb-6 lg:sticky lg:top-0 lg:z-30 lg:-mx-8 lg:-mt-8 lg:bg-card lg:px-8 lg:pt-8 lg:">
+        <div className="flex flex-col gap-4 rounded-[1.75rem] border border-brand-100 bg-card px-5 py-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-2xl font-bold text-foreground">{title}</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>
+            <p className="text-sm text-muted-foreground">{subtitle}</p>
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-3">
             {access.authenticated ? (
               <div
-                className="flex min-h-11 max-w-full items-center gap-2 rounded-2xl border border-brand-100 bg-brand-50/70 px-3 py-2 text-sm text-foreground dark:border-slate-800 dark:bg-slate-900"
+                className="flex min-h-11 max-w-full items-center gap-2 rounded-2xl border border-brand-100 bg-brand-50/70 px-3 py-2 text-sm text-foreground"
                 aria-label={`Current scope: ${access.scope.label}`}
               >
                 <MapPin
@@ -236,7 +238,7 @@ export function AppHeader({
                   aria-hidden="true"
                 />
                 <span className="min-w-0">
-                  <span className="block text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  <span className="block text-xs font-semibold text-muted-foreground">
                     Current scope
                   </span>
                   <span className="block break-words font-semibold">
@@ -253,7 +255,7 @@ export function AppHeader({
             {canViewAudit ? (
               <Link
                 href="/audit"
-                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100"
                 aria-label="Audit trail"
                 title="Audit trail"
               >
@@ -264,7 +266,7 @@ export function AppHeader({
             {canViewNotifications ? (
               <Link
                 href="/notifications"
-                className="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+                className="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100"
                 aria-label={unreadCount > 0 ? `${unreadCount} unread notifications` : "Notifications"}
               >
                 <Bell className="h-5 w-5" />
@@ -276,11 +278,11 @@ export function AppHeader({
               </Link>
             ) : null}
 
-            {!FORCE_LIGHT_THEME && (
+            {!FORCE_DARK_THEME && (
               <Button
                 variant="outline"
                 size="icon"
-                className="rounded-2xl border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100 hover:text-brand-800 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+                className="rounded-2xl border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100 hover:text-brand-800"
                 onClick={() =>
                   setTheme((current) => (current === "light" ? "dark" : "light"))
                 }
@@ -300,7 +302,7 @@ export function AppHeader({
               <div className="relative" ref={menuRef}>
                 <button
                   type="button"
-                  className="flex items-center gap-3 rounded-2xl border border-brand-100 bg-brand-50/70 px-3 py-2 text-left transition hover:bg-brand-100 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800"
+                  className="flex items-center gap-3 rounded-2xl border border-brand-100 bg-brand-50/70 px-3 py-2 text-left transition hover:bg-brand-100"
                   onClick={() => setIsMenuOpen((current) => !current)}
                   aria-expanded={isMenuOpen}
                   aria-haspopup="menu"
@@ -310,14 +312,14 @@ export function AppHeader({
                     alt="Current user avatar"
                     width={40}
                     height={40}
-                    className="rounded-full border border-brand-100 bg-white dark:border-slate-700 dark:bg-slate-950"
+                    className="rounded-full border border-brand-100 bg-card"
                   />
                   <div className="hidden min-w-0 sm:block">
                     <p className="truncate text-sm font-semibold text-foreground">
                       {access.identity.name}
                     </p>
                     <p
-                      className="truncate text-xs text-slate-500 dark:text-slate-400"
+                      className="truncate text-xs text-muted-foreground"
                       title={access.identity.roleName}
                     >
                       {access.identity.roleName}
@@ -325,7 +327,7 @@ export function AppHeader({
                   </div>
                   <ChevronDown
                     className={cn(
-                      "h-4 w-4 text-slate-500 transition-transform dark:text-slate-400",
+                      "h-4 w-4 text-muted-foreground transition-transform",
                       isMenuOpen && "rotate-180",
                     )}
                   />
@@ -333,27 +335,27 @@ export function AppHeader({
 
                 <div
                   className={cn(
-                    "absolute right-0 top-[calc(100%+0.75rem)] z-30 w-56 rounded-2xl border border-brand-100 bg-white p-2 shadow-soft transition dark:border-slate-800 dark:bg-slate-950",
+                    "absolute right-0 top-[calc(100%+0.75rem)] z-30 w-56 rounded-2xl border border-brand-100 bg-card p-2 shadow-soft transition",
                     isMenuOpen
                       ? "pointer-events-auto translate-y-0 opacity-100"
                       : "pointer-events-none -translate-y-2 opacity-0",
                   )}
                   role="menu"
                 >
-                  <div className="rounded-xl bg-brand-50/80 px-3 py-2 dark:bg-slate-900">
+                  <div className="rounded-xl bg-brand-50/80 px-3 py-2">
                     <p className="text-sm font-semibold text-foreground">
                       {access.identity.name}
                     </p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                    <p className="text-xs text-muted-foreground">
                       {access.identity.email}
                     </p>
-                    <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                    <p className="text-xs font-medium text-muted-foreground">
                       {access.identity.roleName}
                     </p>
                   </div>
                   <button
                     type="button"
-                    className="mt-2 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-foreground transition hover:bg-brand-50 dark:hover:bg-slate-900"
+                    className="mt-2 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-foreground transition hover:bg-brand-50"
                     role="menuitem"
                     onClick={() => {
                       setIsMenuOpen(false);
@@ -365,7 +367,7 @@ export function AppHeader({
                   </button>
                   <button
                     type="button"
-                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10"
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 dark:bg-red-950/40 dark:text-red-300 dark:hover:bg-red-500/10"
                     role="menuitem"
                     onClick={async () => {
                       setIsMenuOpen(false);
@@ -384,7 +386,7 @@ export function AppHeader({
         </div>
       </div>
       {canViewNotifications && toast ? (
-        <div className="fixed right-4 top-4 z-50 w-[min(24rem,calc(100vw-2rem))] rounded-2xl border border-brand-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900" role="status" aria-live="polite">
+        <div className="fixed right-4 top-4 z-50 w-[min(24rem,calc(100vw-2rem))] rounded-2xl border border-brand-200 bg-card p-4 shadow-xl" role="status" aria-live="polite">
           <div className="flex items-start gap-3">
             <button
               type="button"
@@ -393,9 +395,9 @@ export function AppHeader({
             >
               <p className="text-xs font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">New notification</p>
               <p className="mt-1 font-semibold text-foreground">{toast.title}</p>
-              <p className="mt-1 line-clamp-2 text-sm text-slate-500 dark:text-slate-400">{toast.description}</p>
+              <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{toast.description}</p>
             </button>
-            <button type="button" className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => setToast(null)} aria-label="Dismiss notification">
+            <button type="button" className="rounded-lg p-1 text-muted-foreground hover:bg-muted" onClick={() => setToast(null)} aria-label="Dismiss notification">
               <X className="h-4 w-4" />
             </button>
           </div>

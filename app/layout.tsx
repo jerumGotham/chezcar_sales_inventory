@@ -18,10 +18,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html
       lang="en"
-      className={cn("font-sans", geist.variable)}
+      // Set on the server so the first paint is already dark; applying it from
+      // an effect flashed a light screen first.
+      className={cn("dark font-sans", geist.variable)}
+      style={{ colorScheme: "dark" }}
       suppressHydrationWarning
     >
-      <body className="overflow-x-hidden bg-white text-foreground transition-colors dark:bg-background">
+      <body className="overflow-x-hidden bg-background text-foreground transition-colors">
         <Providers>
           <AppLayoutShell>{children}</AppLayoutShell>
         </Providers>

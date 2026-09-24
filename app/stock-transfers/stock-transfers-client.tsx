@@ -246,14 +246,14 @@ function getTransferStatusLabel(status: string) {
 }
 
 function getTransferStatusClass(status: string) {
-  if (status === "DRAFT") return "bg-slate-100 text-slate-700";
-  if (status === "FOR_DISPATCH") return "bg-blue-100 text-blue-700";
-  if (status === "IN_TRANSIT") return "bg-amber-100 text-amber-800";
-  if (status === "CANCELLED") return "bg-red-100 text-red-700";
+  if (status === "DRAFT") return "bg-muted text-foreground";
+  if (status === "FOR_DISPATCH") return "bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300";
+  if (status === "IN_TRANSIT") return "bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300";
+  if (status === "CANCELLED") return "bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-300";
   if (status === "DISCREPANCY_REPORTED") return "bg-orange-100 text-orange-800";
-  if (status === "UNDER_REVIEW") return "bg-violet-100 text-violet-700";
-  if (status === "RESOLVED") return "bg-emerald-100 text-emerald-700";
-  return "bg-slate-100 text-slate-700";
+  if (status === "UNDER_REVIEW") return "bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300";
+  if (status === "RESOLVED") return "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300";
+  return "bg-muted text-foreground";
 }
 
 function getDiscrepancyQuantityLabel(type: string) {
@@ -790,7 +790,7 @@ export function StockTransfersClient({
     >
       {message && (
         <div
-          className={`mb-4 flex items-start justify-between rounded-lg border px-4 py-3 text-sm ${messageKind === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-800"}`}
+          className={`mb-4 flex items-start justify-between rounded-lg border px-4 py-3 text-sm ${messageKind === "success" ? "border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300" : "border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-300"}`}
         >
           <div className="flex items-start gap-2">
             {messageKind === "success" ? (
@@ -900,7 +900,7 @@ export function StockTransfersClient({
               </div>
             ))}
             {validationErrors.length > 0 && (
-              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              <div className="rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 px-3 py-2 text-sm text-red-700 dark:text-red-300">
                 {validationErrors.map((error) => (
                   <p key={error}>{error}</p>
                 ))}
@@ -1185,14 +1185,14 @@ export function StockTransfersClient({
                 </Badge>
               </div>
             </div>
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-muted-foreground">
               {selected.status === "CANCELLED"
                 ? "This transfer was cancelled and all in-transit stock was restored to its source."
                 : "In-transit stock cannot be sold until the destination confirms receipt or a discrepancy is resolved."}
             </p>
-            <div className="flex flex-col gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm sm:flex-row sm:items-center sm:gap-2">
-              <span className="font-medium text-emerald-900">Transfer route:</span>
-              <span className="text-emerald-800">
+            <div className="flex flex-col gap-1 rounded-lg border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 px-4 py-3 text-sm sm:flex-row sm:items-center sm:gap-2">
+              <span className="font-medium text-emerald-900 dark:text-emerald-300">Transfer route:</span>
+              <span className="text-emerald-800 dark:text-emerald-300">
                 {selected.source.name} ({selected.source.code}) to {selected.destination.name} ({selected.destination.code})
               </span>
             </div>
@@ -1247,18 +1247,18 @@ export function StockTransfersClient({
               </p>
             )}
             {selected.status === "CANCELLED" && selected.cancellation && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+              <div className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-4 text-sm text-red-800 dark:text-red-300">
                 <p className="font-medium">Transfer cancelled</p>
                 <p className="mt-1">{selected.cancellation.reason}</p>
               </div>
             )}
             {selected.status === "RESOLVED" && selected.resolution && (
-              <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/60 p-4">
+              <div className="space-y-3 rounded-lg border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/60 p-4">
                 <div>
-                  <p className="font-medium text-emerald-900">
+                  <p className="font-medium text-emerald-900 dark:text-emerald-300">
                     Transfer closed by stock resolution
                   </p>
-                  <p className="text-sm text-emerald-800">
+                  <p className="text-sm text-emerald-800 dark:text-emerald-300">
                     The original discrepancy transfer is final. Create a
                     separate replacement transfer if the branch still needs the
                     shortage.
@@ -1267,7 +1267,7 @@ export function StockTransfersClient({
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[680px] text-sm">
                     <thead>
-                      <tr className="text-left text-emerald-900">
+                      <tr className="text-left text-emerald-900 dark:text-emerald-300">
                         <th className="py-2 pr-3">Product</th>
                         <th className="py-2 pr-3">Branch stock posted</th>
                         <th className="py-2 pr-3">Restored to SR</th>
@@ -1277,7 +1277,7 @@ export function StockTransfersClient({
                     <tbody>
                       {selected.lines?.map((line) => (
                         <tr
-                          className="border-t border-emerald-200"
+                          className="border-t border-emerald-200 dark:border-emerald-900"
                           key={line.id}
                         >
                           <td className="py-3 pr-3">
@@ -1297,7 +1297,7 @@ export function StockTransfersClient({
                     </tbody>
                   </table>
                 </div>
-                <p className="text-sm text-emerald-900">
+                <p className="text-sm text-emerald-900 dark:text-emerald-300">
                   <b>Resolution notes:</b> {selected.resolution.notes}
                 </p>
                 {canCreate && shortageDraftLines.length > 0 && (
@@ -1347,7 +1347,7 @@ export function StockTransfersClient({
                       ? "Count the items you received"
                       : "Confirm the items you received"}
                   </p>
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-muted-foreground">
                     {canReceive
                       ? "Use Confirm exact receipt only when every count matches the dispatch."
                       : "Record any difference between the dispatched and received quantities."}
@@ -1363,14 +1363,14 @@ export function StockTransfersClient({
                         <Label htmlFor={`actual-${line.id}`}>
                           {line.product.name}
                         </Label>
-                        <p className="text-xs text-slate-500">
+                        <p className="text-xs text-muted-foreground">
                           Sent: {line.dispatchedQuantity}
                         </p>
                       </div>
                       <div className="space-y-1 text-right">
                         <Label
                           htmlFor={`actual-${line.id}`}
-                          className="text-xs text-slate-500"
+                          className="text-xs text-muted-foreground"
                         >
                           {getDiscrepancyQuantityLabel(discrepancyType)}
                         </Label>
@@ -1408,7 +1408,7 @@ export function StockTransfersClient({
                   </div>
                 )}
                 {canReportDiscrepancy && (
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-muted-foreground">
                     Enter the actual quantity received for each line above.
                     Missing or damaged quantity is calculated from the difference
                     between sent and actual quantity.
@@ -1427,7 +1427,7 @@ export function StockTransfersClient({
                   </div>
                 )}
                 {canReportDiscrepancy && !hasDiscrepancy && (
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-muted-foreground">
                     Tip: lower the actual quantity for missing stock, or choose
                     another incident type for wrong or damaged items.
                   </p>
@@ -1476,10 +1476,10 @@ export function StockTransfersClient({
             )}
 
             {canCancel && selected.status === "IN_TRANSIT" && (
-              <div className="space-y-3 rounded-lg border border-red-200 bg-red-50/60 p-4">
+              <div className="space-y-3 rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/60 p-4">
                 <div>
-                  <p className="font-medium text-red-900">Cancel in-transit transfer</p>
-                  <p className="text-sm text-red-800">
+                  <p className="font-medium text-red-900 dark:text-red-300">Cancel in-transit transfer</p>
+                  <p className="text-sm text-red-800 dark:text-red-300">
                     Use only when the shipment will not be received. All in-transit quantities will be returned to the source location.
                   </p>
                 </div>
@@ -1536,7 +1536,7 @@ export function StockTransfersClient({
                     <p className="font-medium">
                       Approve discrepancy resolution
                     </p>
-                    <p className="text-sm text-slate-500">
+                    <p className="text-sm text-muted-foreground">
                       Actual received stock goes to the branch. Choose whether
                       each shortage is returned to the source location or written off as
                       a loss.
@@ -1593,7 +1593,7 @@ export function StockTransfersClient({
                                     />
                                   </div>
                                 ) : (
-                                  <span className="text-slate-500">
+                                  <span className="text-muted-foreground">
                                     No shortage
                                   </span>
                                 )}
@@ -1631,25 +1631,25 @@ export function StockTransfersClient({
                   <div className="space-y-3 rounded-lg border p-4">
                     <div>
                       <p className="font-medium">Admin history</p>
-                      <p className="text-sm text-slate-500">
+                      <p className="text-sm text-muted-foreground">
                         Transfer lifecycle events and responsible users.
                       </p>
                     </div>
                     <div className="space-y-3">
                       {selected.timeline.map((item) => (
                         <div
-                          className="rounded-md bg-slate-50 p-3 text-sm"
+                          className="rounded-md bg-muted p-3 text-sm"
                           key={`${item.label}-${item.at}`}
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <span className="font-medium">{item.label}</span>
-                            <span className="text-xs text-slate-500">
+                            <span className="text-xs text-muted-foreground">
                               {new Date(item.at).toLocaleString()}
                             </span>
                           </div>
-                          <p className="text-slate-600">{item.actor}</p>
+                          <p className="text-muted-foreground">{item.actor}</p>
                           {item.notes && (
-                            <p className="mt-1 text-slate-500">{item.notes}</p>
+                            <p className="mt-1 text-muted-foreground">{item.notes}</p>
                           )}
                         </div>
                       ))}
@@ -1658,7 +1658,7 @@ export function StockTransfersClient({
                   <div className="space-y-3 rounded-lg border p-4">
                     <div>
                       <p className="font-medium">Inventory audit</p>
-                      <p className="text-sm text-slate-500">
+                      <p className="text-sm text-muted-foreground">
                         Posted movements from dispatch, receipt, return to Stock
                         Room, or loss.
                       </p>
@@ -1667,7 +1667,7 @@ export function StockTransfersClient({
                       {selected.movements.length > 0 ? (
                         selected.movements.map((movement) => (
                           <div
-                            className="rounded-md bg-slate-50 p-3 text-sm"
+                            className="rounded-md bg-muted p-3 text-sm"
                             key={movement.id}
                           >
                             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1678,18 +1678,18 @@ export function StockTransfersClient({
                                 className={
                                   movement.quantity < 0
                                     ? "text-red-600"
-                                    : "text-emerald-700"
+                                    : "text-emerald-700 dark:text-emerald-300"
                                 }
                               >
                                 {movement.quantity > 0 ? "+" : ""}
                                 {movement.quantity}
                               </span>
                             </div>
-                            <p className="text-slate-600">
+                            <p className="text-muted-foreground">
                               {movement.product.itemCode} -{" "}
                               {movement.product.name}
                             </p>
-                            <p className="text-slate-500">
+                            <p className="text-muted-foreground">
                               {movement.location
                                 ? `${movement.location.name} (${movement.location.code})`
                                 : "No stock location"}{" "}
@@ -1699,7 +1699,7 @@ export function StockTransfersClient({
                           </div>
                         ))
                       ) : (
-                        <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-500">
+                        <p className="rounded-md bg-muted p-3 text-sm text-muted-foreground">
                           No inventory movements posted yet.
                         </p>
                       )}
@@ -1771,7 +1771,7 @@ export function StockTransfersClient({
         </CardContent>
         <CardContent className="p-0">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-muted-foreground">
               {transfers.isFetching && !transfers.isLoading ? "Updating..." : ""}
             </p>
             <TablePagination
@@ -1787,7 +1787,7 @@ export function StockTransfersClient({
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[700px]">
-              <thead className="bg-slate-50">
+              <thead className="bg-muted">
                 <tr>
                   <th className="p-3 text-left">Reference</th>
                   <th className="p-3 text-left">Source</th>
@@ -1858,7 +1858,7 @@ export function StockTransfersClient({
                   ))
                 ) : (
                   <tr>
-                    <td className="p-6 text-slate-500" colSpan={6}>
+                    <td className="p-6 text-muted-foreground" colSpan={6}>
                       No transfers yet.
                     </td>
                   </tr>

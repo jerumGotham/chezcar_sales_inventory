@@ -317,7 +317,7 @@ export default function CreateJobOrderPage() {
                   <h3 className="text-base font-semibold text-foreground">
                     Items / Parts
                   </h3>
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-muted-foreground">
                     Optional. You can leave this empty for service-only
                     transactions.
                   </p>
@@ -331,7 +331,7 @@ export default function CreateJobOrderPage() {
 
               <div className="space-y-4">
                 {items.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+                  <div className="rounded-xl border border-dashed border-border bg-muted px-4 py-10 text-center text-sm text-muted-foreground">
                     No items added yet.
                   </div>
                 ) : (
@@ -341,7 +341,7 @@ export default function CreateJobOrderPage() {
                     return (
                       <div
                         key={index}
-                        className="rounded-2xl border border-slate-200 p-4"
+                        className="rounded-2xl border border-border p-4"
                       >
                         <div className="mb-3 flex items-center justify-between">
                           <Badge variant="outline">Item #{index + 1}</Badge>
@@ -394,7 +394,7 @@ export default function CreateJobOrderPage() {
                           </div>
                         </div>
 
-                        <div className="mt-3 text-right text-sm text-slate-600">
+                        <div className="mt-3 text-right text-sm text-muted-foreground">
                           Amount:{" "}
                           <span className="font-semibold text-foreground">
                             {formatPeso(amount)}
@@ -417,21 +417,21 @@ export default function CreateJobOrderPage() {
               </h3>
 
               <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-500">Items Count</span>
+                <span className="text-muted-foreground">Items Count</span>
                 <span className="font-medium text-foreground">
                   {items.reduce((sum, row) => sum + row.quantity, 0)}
                 </span>
               </div>
 
               <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-500">Service Fee</span>
+                <span className="text-muted-foreground">Service Fee</span>
                 <span className="font-medium text-foreground">
                   {formatPeso(parsedServiceFee)}
                 </span>
               </div>
 
               <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-500">Parts Total</span>
+                <span className="text-muted-foreground">Parts Total</span>
                 <span className="font-medium text-foreground">
                   {formatPeso(partsTotal)}
                 </span>

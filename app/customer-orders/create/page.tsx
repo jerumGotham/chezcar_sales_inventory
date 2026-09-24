@@ -263,9 +263,9 @@ export default function CreateCustomerOrderPage() {
         </div>
       }
     >
-      {!activeLocationId ? <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">Select a branch to load available stock before adding order items.</p> : null}
-      {optionsQuery.isError ? <p className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{(optionsQuery.error as Error).message}</p> : null}
-      {errorMessage ? <p className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{errorMessage}</p> : null}
+      {!activeLocationId ? <p className="mb-4 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-4 text-sm text-amber-800 dark:text-amber-300">Select a branch to load available stock before adding order items.</p> : null}
+      {optionsQuery.isError ? <p className="mb-4 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-4 text-sm text-red-700 dark:text-red-300">{(optionsQuery.error as Error).message}</p> : null}
+      {errorMessage ? <p className="mb-4 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-4 text-sm text-red-700 dark:text-red-300">{errorMessage}</p> : null}
       <div className="grid gap-6 xl:grid-cols-[1.5fr_0.9fr]">
         <div className="space-y-6">
           <Card>
@@ -281,7 +281,7 @@ export default function CreateCustomerOrderPage() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <Label>Customer</Label>
-                    <Link href="/customers" className="text-xs font-semibold text-emerald-700 hover:text-emerald-800">Manage customers</Link>
+                    <Link href="/customers" className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 dark:text-emerald-300">Manage customers</Link>
                   </div>
                   <Select
                     instanceId="create-order-customer"
@@ -292,7 +292,7 @@ export default function CreateCustomerOrderPage() {
                     placeholder="Select customer"
                     styles={reactSelectStyles}
                   />
-                  {optionsQuery.data && customerOptions.length === 0 ? <p className="text-xs text-amber-700">No active customers yet. Add one from the Customers page.</p> : null}
+                  {optionsQuery.data && customerOptions.length === 0 ? <p className="text-xs text-amber-700 dark:text-amber-300">No active customers yet. Add one from the Customers page.</p> : null}
                 </div>
 
                 <div className="space-y-2">
@@ -316,7 +316,7 @@ export default function CreateCustomerOrderPage() {
                     noOptionsMessage={() => "No eligible salespersons in your authorized locations"}
                     styles={reactSelectStyles}
                   />
-                  {activeLocationId && !optionsQuery.isLoading && salespersonOptions.length === 0 ? <p className="text-xs text-amber-700">No eligible Salesperson is available in your authorized locations. Update Personnel Maintenance first.</p> : null}
+                  {activeLocationId && !optionsQuery.isLoading && salespersonOptions.length === 0 ? <p className="text-xs text-amber-700 dark:text-amber-300">No eligible Salesperson is available in your authorized locations. Update Personnel Maintenance first.</p> : null}
                 </div>
 
                 <div className="space-y-2">
@@ -408,14 +408,14 @@ export default function CreateCustomerOrderPage() {
               </div>
 
               <div className="space-y-4">
-                {optionsQuery.data && itemOptions.length === 0 ? <div className="rounded-xl border border-dashed border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">{includeUnavailable ? "No active products are available for ordering." : "No available stock at this branch. Select Waiting for stock to order unavailable products."}</div> : null}
+                {optionsQuery.data && itemOptions.length === 0 ? <div className="rounded-xl border border-dashed border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-4 text-sm text-amber-800 dark:text-amber-300">{includeUnavailable ? "No active products are available for ordering." : "No available stock at this branch. Select Waiting for stock to order unavailable products."}</div> : null}
                 {items.map((row, index) => {
                   const amount = row.quantity * row.unitPrice;
 
                   return (
                     <div
                       key={index}
-                      className="rounded-2xl border border-slate-200 p-4"
+                      className="rounded-2xl border border-border p-4"
                     >
                       <div className="mb-3 flex items-center justify-between">
                         <Badge variant="outline">Item #{index + 1}</Badge>
@@ -470,7 +470,7 @@ export default function CreateCustomerOrderPage() {
                         </div>
                       </div>
 
-                      <div className="mt-3 text-right text-sm text-slate-600">
+                      <div className="mt-3 text-right text-sm text-muted-foreground">
                         Amount:{" "}
                         <span className="font-semibold text-foreground">
                           {formatPeso(amount)}
@@ -493,14 +493,14 @@ export default function CreateCustomerOrderPage() {
 
               <div className="mt-4 space-y-4">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500">Total Items</span>
+                  <span className="text-muted-foreground">Total Items</span>
                   <span className="font-medium text-foreground">
                     {items.reduce((sum, row) => sum + row.quantity, 0)}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500">Subtotal</span>
+                  <span className="text-muted-foreground">Subtotal</span>
                   <span className="font-medium text-foreground">
                     {formatPeso(subtotal)}
                   </span>

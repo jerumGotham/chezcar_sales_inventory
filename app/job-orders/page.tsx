@@ -215,18 +215,18 @@ function getStatusBadgeClass(status: string) {
   const normalized = status.toLowerCase();
 
   if (normalized.includes("completed") || normalized.includes("ready")) {
-    return "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50";
+    return "border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:bg-emerald-950/40";
   }
 
   if (normalized.includes("progress") || normalized.includes("pending")) {
-    return "border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50";
+    return "border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:bg-amber-950/40";
   }
 
   if (normalized.includes("cancel")) {
-    return "border border-red-200 bg-red-50 text-red-700 hover:bg-red-50";
+    return "border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 hover:bg-red-50 dark:bg-red-950/40";
   }
 
-  return "border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-50";
+  return "border border-border bg-muted text-foreground hover:bg-muted";
 }
 
 async function mockFetchJobOrders(params: {
@@ -439,7 +439,7 @@ export default function JobOrdersPage() {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Card>
             <CardContent className="p-5">
-              <p className="text-sm text-slate-500">Total Job Orders</p>
+              <p className="text-sm text-muted-foreground">Total Job Orders</p>
               <h3 className="mt-3 text-3xl font-bold text-foreground">
                 {summary.totalJobOrders}
               </h3>
@@ -451,7 +451,7 @@ export default function JobOrdersPage() {
 
           <Card>
             <CardContent className="p-5">
-              <p className="text-sm text-slate-500">In Progress</p>
+              <p className="text-sm text-muted-foreground">In Progress</p>
               <h3 className="mt-3 text-3xl font-bold text-foreground">
                 {summary.inProgress}
               </h3>
@@ -463,7 +463,7 @@ export default function JobOrdersPage() {
 
           <Card>
             <CardContent className="p-5">
-              <p className="text-sm text-slate-500">Ready for Release</p>
+              <p className="text-sm text-muted-foreground">Ready for Release</p>
               <h3 className="mt-3 text-3xl font-bold text-foreground">
                 {summary.readyForRelease}
               </h3>
@@ -475,11 +475,11 @@ export default function JobOrdersPage() {
 
           <Card>
             <CardContent className="p-5">
-              <p className="text-sm text-slate-500">Completed</p>
+              <p className="text-sm text-muted-foreground">Completed</p>
               <h3 className="mt-3 text-3xl font-bold text-foreground">
                 {summary.completed}
               </h3>
-              <p className="mt-2 text-sm text-slate-600">
+              <p className="mt-2 text-sm text-muted-foreground">
                 Finished service transactions
               </p>
             </CardContent>
@@ -540,7 +540,7 @@ export default function JobOrdersPage() {
                 <h3 className="text-base font-semibold text-foreground">
                   Job Order List
                 </h3>
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted-foreground">
                   Showing {showingFrom} to {showingTo} of {meta.total} job
                   orders
                   {isFetching && !isLoading ? " • Updating..." : ""}
@@ -551,36 +551,36 @@ export default function JobOrdersPage() {
 
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1280px]">
-                <thead className="bg-slate-50">
+                <thead className="bg-muted">
                   <tr className="border-b">
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       JO No.
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Customer
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Vehicle
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Branch
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Service
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Status
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Service Fee
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Parts Total
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Total Amount
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Action
                     </th>
                   </tr>
@@ -590,7 +590,7 @@ export default function JobOrdersPage() {
                   {isLoading ? (
                     <tr>
                       <td colSpan={10} className="px-5 py-16 text-center">
-                        <div className="flex items-center justify-center gap-2 text-slate-500">
+                        <div className="flex items-center justify-center gap-2 text-muted-foreground">
                           <Loader2 className="h-4 w-4 animate-spin" />
                           Loading job orders...
                         </div>
@@ -600,7 +600,7 @@ export default function JobOrdersPage() {
                     <tr>
                       <td
                         colSpan={10}
-                        className="px-5 py-16 text-center text-slate-500"
+                        className="px-5 py-16 text-center text-muted-foreground"
                       >
                         No job orders found.
                       </td>
@@ -609,21 +609,21 @@ export default function JobOrdersPage() {
                     rows.map((job) => (
                       <tr
                         key={job.id}
-                        className="border-b transition-colors hover:bg-slate-50"
+                        className="border-b transition-colors hover:bg-muted"
                       >
-                        <td className="px-5 py-4 text-sm font-medium text-slate-700">
+                        <td className="px-5 py-4 text-sm font-medium text-foreground">
                           {job.joNo}
                         </td>
                         <td className="px-5 py-4 text-sm text-foreground">
                           {job.customer}
                         </td>
-                        <td className="px-5 py-4 text-sm text-slate-600">
+                        <td className="px-5 py-4 text-sm text-muted-foreground">
                           {job.vehicle}
                         </td>
-                        <td className="px-5 py-4 text-sm text-slate-600">
+                        <td className="px-5 py-4 text-sm text-muted-foreground">
                           {job.branch}
                         </td>
-                        <td className="max-w-[320px] px-5 py-4 text-sm text-slate-600">
+                        <td className="max-w-[320px] px-5 py-4 text-sm text-muted-foreground">
                           <p className="line-clamp-2">{job.service}</p>
                         </td>
                         <td className="px-5 py-4 text-sm">
@@ -631,13 +631,13 @@ export default function JobOrdersPage() {
                             {job.status}
                           </Badge>
                         </td>
-                        <td className="px-5 py-4 text-sm text-slate-700">
+                        <td className="px-5 py-4 text-sm text-foreground">
                           {formatPeso(job.serviceFee)}
                         </td>
-                        <td className="px-5 py-4 text-sm text-slate-700">
+                        <td className="px-5 py-4 text-sm text-foreground">
                           {formatPeso(job.partsTotal)}
                         </td>
-                        <td className="px-5 py-4 text-sm font-semibold text-slate-900">
+                        <td className="px-5 py-4 text-sm font-semibold text-foreground">
                           {formatPeso(job.totalAmount)}
                         </td>
                         <td className="px-5 py-4">
@@ -716,25 +716,25 @@ export default function JobOrdersPage() {
                 <Card>
                   <CardContent className="grid gap-3 p-5">
                     <div>
-                      <p className="text-sm text-slate-500">Customer</p>
-                      <p className="font-medium text-slate-900">
+                      <p className="text-sm text-muted-foreground">Customer</p>
+                      <p className="font-medium text-foreground">
                         {selectedJobOrder.customer}
                       </p>
                     </div>
                     <div>
-                      <p className="text-sm text-slate-500">Vehicle</p>
-                      <p className="font-medium text-slate-900">
+                      <p className="text-sm text-muted-foreground">Vehicle</p>
+                      <p className="font-medium text-foreground">
                         {selectedJobOrder.vehicle}
                       </p>
                     </div>
                     <div>
-                      <p className="text-sm text-slate-500">Branch</p>
-                      <p className="font-medium text-slate-900">
+                      <p className="text-sm text-muted-foreground">Branch</p>
+                      <p className="font-medium text-foreground">
                         {selectedJobOrder.branch}
                       </p>
                     </div>
                     <div>
-                      <p className="text-sm text-slate-500">Status</p>
+                      <p className="text-sm text-muted-foreground">Status</p>
                       <Badge
                         className={getStatusBadgeClass(selectedJobOrder.status)}
                       >
@@ -747,26 +747,26 @@ export default function JobOrdersPage() {
                 <Card>
                   <CardContent className="grid gap-3 p-5">
                     <div>
-                      <p className="text-sm text-slate-500">Service Fee</p>
-                      <p className="font-semibold text-slate-900">
+                      <p className="text-sm text-muted-foreground">Service Fee</p>
+                      <p className="font-semibold text-foreground">
                         {formatPeso(selectedJobOrder.serviceFee)}
                       </p>
                     </div>
                     <div>
-                      <p className="text-sm text-slate-500">Parts Total</p>
-                      <p className="font-semibold text-slate-900">
+                      <p className="text-sm text-muted-foreground">Parts Total</p>
+                      <p className="font-semibold text-foreground">
                         {formatPeso(selectedJobOrder.partsTotal)}
                       </p>
                     </div>
                     <div>
-                      <p className="text-sm text-slate-500">Total Amount</p>
-                      <p className="font-semibold text-emerald-700">
+                      <p className="text-sm text-muted-foreground">Total Amount</p>
+                      <p className="font-semibold text-emerald-700 dark:text-emerald-300">
                         {formatPeso(selectedJobOrder.totalAmount)}
                       </p>
                     </div>
                     <div>
-                      <p className="text-sm text-slate-500">Created At</p>
-                      <p className="font-medium text-slate-900">
+                      <p className="text-sm text-muted-foreground">Created At</p>
+                      <p className="font-medium text-foreground">
                         {selectedJobOrder.createdAt}
                       </p>
                     </div>
@@ -776,10 +776,10 @@ export default function JobOrdersPage() {
 
               <Card>
                 <CardContent className="p-5">
-                  <p className="mb-2 text-sm font-semibold text-slate-900">
+                  <p className="mb-2 text-sm font-semibold text-foreground">
                     Service Details
                   </p>
-                  <p className="whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                  <p className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
                     {selectedJobOrder.service}
                   </p>
                 </CardContent>
@@ -787,10 +787,10 @@ export default function JobOrdersPage() {
 
               <Card>
                 <CardContent className="p-5">
-                  <p className="mb-2 text-sm font-semibold text-slate-900">
+                  <p className="mb-2 text-sm font-semibold text-foreground">
                     Notes
                   </p>
-                  <p className="whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                  <p className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
                     {selectedJobOrder.notes || "—"}
                   </p>
                 </CardContent>
@@ -799,7 +799,7 @@ export default function JobOrdersPage() {
               <Card>
                 <CardContent className="p-5">
                   <div className="mb-3 flex items-center justify-between">
-                    <p className="text-sm font-semibold text-slate-900">
+                    <p className="text-sm font-semibold text-foreground">
                       Items Used
                     </p>
                     <Badge variant="outline">
@@ -808,24 +808,24 @@ export default function JobOrdersPage() {
                   </div>
 
                   {selectedJobOrder.items.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                    <div className="rounded-xl border border-dashed border-border bg-muted px-4 py-8 text-center text-sm text-muted-foreground">
                       No items used. This is a service-only transaction.
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full min-w-[560px]">
-                        <thead className="bg-slate-50">
+                        <thead className="bg-muted">
                           <tr className="border-b">
-                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                               Item
                             </th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                               Qty
                             </th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                               Unit Price
                             </th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                               Amount
                             </th>
                           </tr>
@@ -836,16 +836,16 @@ export default function JobOrdersPage() {
                               key={`${item.productId}-${index}`}
                               className="border-b"
                             >
-                              <td className="px-4 py-3 text-sm text-slate-700">
+                              <td className="px-4 py-3 text-sm text-foreground">
                                 {item.productName}
                               </td>
-                              <td className="px-4 py-3 text-sm text-slate-700">
+                              <td className="px-4 py-3 text-sm text-foreground">
                                 {item.quantity}
                               </td>
-                              <td className="px-4 py-3 text-sm text-slate-700">
+                              <td className="px-4 py-3 text-sm text-foreground">
                                 {formatPeso(item.unitPrice)}
                               </td>
-                              <td className="px-4 py-3 text-sm font-medium text-slate-900">
+                              <td className="px-4 py-3 text-sm font-medium text-foreground">
                                 {formatPeso(item.quantity * item.unitPrice)}
                               </td>
                             </tr>
@@ -863,7 +863,7 @@ export default function JobOrdersPage() {
             {selectedJobOrder && selectedJobOrder.status !== "Completed" && (
               <Button
                 variant="outline"
-                className="border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 hover:text-violet-800"
+                className="border-violet-200 dark:border-violet-900 bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:bg-violet-950/40 hover:text-violet-800 dark:text-violet-300"
                 onClick={() => handleQuickComplete(selectedJobOrder)}
               >
                 <CheckCircle2 className="mr-2 h-4 w-4" />
