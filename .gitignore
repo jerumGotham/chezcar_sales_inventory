@@ -55,5 +55,9 @@ next-env.d.ts
 /opencode.json
 _*.mjs
 _*.png
+# Except the two the deployment runbook depends on: a clone that cannot run
+# them cannot follow docs/DEPLOYMENT-RUNBOOK.md.
+!_staging-load.mjs
+!_staging-images.mjs
 docs/manual/_manual.html
 docs/manual/*.pdf

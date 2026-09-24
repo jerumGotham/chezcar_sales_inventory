@@ -2,6 +2,11 @@
 
 The application is built from the checked-in `Dockerfile`. GitHub Actions verifies every pull request and push to `main`. A successful `main` push publishes that verified image to GitHub Container Registry (GHCR) with immutable commit-SHA and mutable `production` tags. Coolify deployment is manual at `https://chezcar.antiguasbakeandcuisine.com`.
 
+This file covers the image, Coolify, and the release record. For the ordered
+commands that load a deployed database afterwards — migrations, catalogue,
+photos, suppliers, reorder levels, and opening branch stock — see
+[`DEPLOYMENT-RUNBOOK.md`](./DEPLOYMENT-RUNBOOK.md).
+
 The current Coolify target is **staging, not the final production environment**. The image tag `production` and Next.js `NODE_ENV=production` describe the image/runtime, not the business environment or permission to erase data. Use staging-specific database credentials and storage. The existing migration and first-owner flows below are deployment procedures; they must not be confused with the separate manual staging reset.
 
 ## Staging Deployment Record
