@@ -144,12 +144,21 @@ async function waitForPostgres(
 ) {
   let lastError: unknown;
 
-  for (let attempt = 0; attempt < 40; attempt += 1) {
+  // Probed over TCP rather than the default Unix socket. While the postgres
+  // image runs initdb it starts a temporary server with listen_addresses
+  // empty, and a socket probe calls that one ready; migrate deploy then
+  // connects to the published port and gets "the database system is starting
+  // up". Only the TCP listener means the server outside clients reach is up.
+  for (let attempt = 0; attempt < 120; attempt += 1) {
     try {
       await runCommand("docker", [
         "exec",
         config.containerName,
         "pg_isready",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "5432",
         "--username",
         config.user,
         "--dbname",
@@ -158,7 +167,7 @@ async function waitForPostgres(
       return;
     } catch (error) {
       lastError = error;
-      await pause(250);
+      await pause(500);
     }
   }
 
