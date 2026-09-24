@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { requireCapability } from "@/lib/server/authorization";
 import { loadShellAccess } from "@/lib/server/shell";
-import { listActiveBranches, listAccessibleOperationalLocations } from "@/lib/server/locations";
+import { listActiveBranches, listAccessibleActiveBranches } from "@/lib/server/locations";
 import { StockTransfersClient } from "./stock-transfers-client";
 
 export default async function StockTransfersPage({
@@ -17,7 +17,9 @@ export default async function StockTransfersPage({
   const actor = await requireCapability(requestHeaders, "stock-transfers:view");
 
   // Stock can leave any location the user holds, and land at any active branch.
-  const sources = await listAccessibleOperationalLocations(actor);
+  // Both ends of a transfer are branches now, so the source list matches the
+  // destination list and both come from Branch Maintenance.
+  const sources = await listAccessibleActiveBranches(actor);
   const branches = await listActiveBranches();
   const { transferId } = await searchParams;
   return (

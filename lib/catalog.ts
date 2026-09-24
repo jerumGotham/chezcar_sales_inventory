@@ -95,6 +95,8 @@ export type InventoryRow = {
   name: string;
   category: string;
   location: string;
+  /** The branch's short code, for places too narrow to carry its full name. */
+  locationCode: string;
   onHand: number;
   reserved: number;
   quarantined: number;

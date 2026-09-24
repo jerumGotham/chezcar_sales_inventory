@@ -40,7 +40,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { correctInventory, fetchInventory, fetchInventoryMovements, updateInventoryUnitCost } from "@/lib/catalog";
+import { correctInventory, fetchInventory, fetchInventoryMovements } from "@/lib/catalog";
 import type { LocationScopeDto } from "@/lib/contracts/access";
 import { fetchInventoryAvailability } from "@/lib/inventory-availability";
 
@@ -54,7 +54,6 @@ import {
   getAvailableStock,
   getGroupedStatus,
   getStockBadgeClass,
-  formatPeso,
   reactSelectStyles,
   type InventoryRow,
   type ProductGroupRow,
@@ -93,7 +92,6 @@ export function InventoryClient({
   const canSelectLocations = scope.kind !== "location";
   const canReceiveSupplierStock = useCan("inventory-receiving:create");
   const canAdjustStock = useCan("inventory:adjust");
-  const canUpdateCost = useCan("inventory:cost:update");
   const canViewMovements = useCan("inventory-movements:view");
   const canViewAvailability = useCan("inventory-availability:view");
   const canViewStockTransfers = useCan("stock-transfers:view");
@@ -154,7 +152,10 @@ export function InventoryClient({
   const [page, setPage] = useState(1);
   const pageSize = 10;
 
-  const [expandedProducts, setExpandedProducts] = useState<
+  // Tracks what is shut rather than what is open, so every row starts expanded:
+  // the per-branch breakdown is the reason to be on this screen, and hiding it
+  // behind a click each made the page look emptier than the stock it holds.
+  const [collapsedProducts, setCollapsedProducts] = useState<
     Record<string, boolean>
   >({});
 
@@ -162,7 +163,6 @@ export function InventoryClient({
 
   const [isAdjustOpen, setIsAdjustOpen] = useState(false);
   const [isQuickAdjustOpen, setIsQuickAdjustOpen] = useState(false);
-  const [isCostOpen, setIsCostOpen] = useState(false);
   const [isStockCardOpen, setIsStockCardOpen] = useState(false);
   const [isAvailabilityOpen, setIsAvailabilityOpen] = useState(false);
 
@@ -182,11 +182,6 @@ export function InventoryClient({
   const [quickAdjustReference, setQuickAdjustReference] = useState("");
   const [quickAdjustReason, setQuickAdjustReason] = useState("");
   const [quickAdjustRemarks, setQuickAdjustRemarks] = useState("");
-  const [costBalance, setCostBalance] = useState<InventoryRow | null>(null);
-  const [newUnitCost, setNewUnitCost] = useState("");
-  const [costReference, setCostReference] = useState("");
-  const [costReason, setCostReason] = useState("");
-  const [costRemarks, setCostRemarks] = useState("");
   const [mutationError, setMutationError] = useState("");
   // Both mutations just closed their modal, so an adjustment that applied
   // looked the same as one that silently did nothing.
@@ -474,7 +469,7 @@ export function InventoryClient({
   };
 
   const toggleExpanded = (itemCodeKey: string) => {
-    setExpandedProducts((prev) => ({
+    setCollapsedProducts((prev) => ({
       ...prev,
       [itemCodeKey]: !prev[itemCodeKey],
     }));
@@ -530,37 +525,6 @@ export function InventoryClient({
       remarks: adjustRemarks,
     });
   };
-
-  const openCostModal = (item: InventoryRow) => {
-    setCostBalance(item);
-    setNewUnitCost(String(item.unitCost));
-    setCostReference("");
-    setCostReason("");
-    setCostRemarks("");
-    setMutationError("");
-    setMutationNotice("");
-    setIsCostOpen(true);
-  };
-
-  const costMutation = useMutation({
-    mutationFn: () => {
-      if (!canUpdateCost) throw new Error("You do not have permission to edit inventory cost.");
-      if (!costBalance) throw new Error("Select an inventory balance first.");
-      return updateInventoryUnitCost(costBalance.id, {
-        unitCost: Number(newUnitCost),
-        reference: costReference,
-        reason: costReason,
-        remarks: costRemarks,
-      });
-    },
-    onSuccess: () => {
-      refreshInventory();
-      setIsCostOpen(false);
-      setCostBalance(null);
-      setMutationNotice("Unit cost updated.");
-    },
-    onError: (saveError) => { setMutationNotice(""); setMutationError(saveError.message); },
-  });
 
   return (
     <>
@@ -797,9 +761,6 @@ export function InventoryClient({
                       Reorder Level
                     </th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Unit Cost
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Branches
                     </th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -814,7 +775,7 @@ export function InventoryClient({
                 <tbody>
                   {isLoading ? (
                     <tr>
-                      <td colSpan={11} className="px-5 py-16 text-center">
+                      <td colSpan={10} className="px-5 py-16 text-center">
                         <div className="flex items-center justify-center gap-2 text-muted-foreground">
                           <Loader2 className="h-4 w-4 animate-spin" />
                           Loading inventory...
@@ -824,7 +785,7 @@ export function InventoryClient({
                   ) : error ? (
                     <tr>
                       <td
-                        colSpan={11}
+                        colSpan={10}
                         className="px-5 py-16 text-center text-red-600"
                       >
                         {error.message}
@@ -833,7 +794,7 @@ export function InventoryClient({
                   ) : groupedRows.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={11}
+                        colSpan={10}
                         className="px-5 py-16 text-center text-muted-foreground"
                       >
                         No inventory records found.
@@ -844,8 +805,10 @@ export function InventoryClient({
                       const containsLinkedBalance = group.locations.some(
                         (item) => item.id === initialBalanceId,
                       );
+                      // A row reached from a notification link stays open even
+                      // if the reader had shut it.
                       const isExpanded =
-                        containsLinkedBalance || !!expandedProducts[group.itemCode];
+                        containsLinkedBalance || !collapsedProducts[group.itemCode];
                       const stockedLocations = group.locations.filter(
                         (item) => item.onHand > 0,
                       );
@@ -892,16 +855,14 @@ export function InventoryClient({
                               {group.reorderLevel}
                             </td>
 
-                            <td className="px-5 py-4 text-sm text-muted-foreground">
-                              {formatPeso(group.unitCost)}
-                            </td>
-
                             {/* A bare count told nobody where the stock was, and
                                 the answer was one expand away. */}
                             <td className="px-5 py-4 text-sm text-muted-foreground">
                               {stockedLocations.length ? (
                                 <span className="block max-w-56 text-xs leading-relaxed">
-                                  {stockedLocations.map((item) => item.location).join(", ")}
+                                  {/* Codes, not names: the column is narrow and a
+                                      row can hold several branches at once. */}
+                                  {stockedLocations.map((item) => item.locationCode ?? item.location).join(", ")}
                                 </span>
                               ) : (
                                 <span className="text-xs text-muted-foreground">No stock</span>
@@ -935,18 +896,13 @@ export function InventoryClient({
                                      </>
                                    )}
                                  </Button>
-                                  {canUpdateCost && group.locations[0] && (
-                                   <Button variant="edit" size="sm" onClick={() => openCostModal(group.locations[0])}>
-                                     Edit Cost
-                                   </Button>
-                                 )}
                                </div>
                             </td>
                           </tr>
 
                           {isExpanded && (
                             <tr>
-                              <td colSpan={11} className="bg-muted p-0">
+                              <td colSpan={10} className="bg-muted p-0">
                                 <div className="p-5">
                                   <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                                     <div>
@@ -1266,71 +1222,6 @@ export function InventoryClient({
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={isCostOpen}
-        onOpenChange={(open) => {
-          setIsCostOpen(open);
-          if (!open) {
-            setCostBalance(null);
-            setMutationError("");
-    setMutationNotice("");
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Edit Unit Cost</DialogTitle>
-            <DialogDescription>
-              Update the costing basis for one product and location. This does not change stock quantity.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div className="space-y-2">
-              <Label>Inventory Balance</Label>
-              <Select
-                instanceId="cost-balance"
-                options={balanceOptions}
-                value={costBalance ? { value: costBalance.id, label: `${costBalance.itemCode} - ${costBalance.name} (${costBalance.location})` } : null}
-                onChange={(option) => {
-                  const balance = flatRows.find((item) => item.id === option?.value) ?? null;
-                  setCostBalance(balance);
-                  if (balance) setNewUnitCost(String(balance.unitCost));
-                }}
-                isSearchable
-                placeholder="Select product and location"
-                styles={reactSelectStyles}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="new-unit-cost">New Unit Cost</Label>
-              <Input id="new-unit-cost" type="number" min="0.01" step="0.01" value={newUnitCost} onChange={(event) => setNewUnitCost(event.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="cost-reference">Reference No. (optional)</Label>
-              <Input id="cost-reference" value={costReference} onChange={(event) => setCostReference(event.target.value)} placeholder="COST-000123" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="cost-reason">Reason</Label>
-              <Input id="cost-reason" value={costReason} onChange={(event) => setCostReason(event.target.value)} placeholder="Supplier price update, encoding correction, etc." />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="cost-remarks">Remarks (optional)</Label>
-              <Input id="cost-remarks" value={costRemarks} onChange={(event) => setCostRemarks(event.target.value)} placeholder="Additional notes" />
-            </div>
-            {mutationError && <p className="text-sm font-medium text-red-600">{mutationError}</p>}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCostOpen(false)}>Cancel</Button>
-            <Button
-              variant="edit"
-              onClick={() => costMutation.mutate()}
-              disabled={costMutation.isPending || !costBalance || Number(newUnitCost) <= 0 || !costReason.trim()}
-            >
-              {costMutation.isPending ? "Saving..." : "Save Cost"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
 
       <Sheet open={isStockCardOpen} onOpenChange={setIsStockCardOpen}>

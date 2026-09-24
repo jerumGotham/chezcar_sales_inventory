@@ -15,6 +15,8 @@ export type InventoryRow = {
   name: string;
   category: string;
   location: string;
+  /** Short branch code. Absent on the fixtures, which never had one. */
+  locationCode?: string;
   onHand: number;
   reserved: number;
   quarantined: number;
@@ -65,6 +67,8 @@ export type BranchAvailabilityRow = {
   itemName: string;
   category: string;
   location: string;
+  /** Short branch code. Absent on the fixtures, which never had one. */
+  locationCode?: string;
   onHand: number;
   reserved: number;
   quarantined: number;

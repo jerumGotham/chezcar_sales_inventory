@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { requireCapability } from "@/lib/server/authorization";
-import { listAccessibleOperationalLocations } from "@/lib/server/locations";
+import { listAccessibleActiveBranches } from "@/lib/server/locations";
 import { loadShellAccess } from "@/lib/server/shell";
 
 import {
@@ -30,8 +30,11 @@ export default async function InventoryPage({
   }
 
   const actor = await requireCapability(requestHeaders, "inventory:view");
+  // Branches only, matching Branch Maintenance. The Stock Room is a warehouse
+  // and reaching it is the business of Receiving and Stock Transfers, which
+  // list it themselves; offering it here read as a sixth branch.
   const orderedLocations: InventoryLocationOption[] =
-    await listAccessibleOperationalLocations(actor);
+    await listAccessibleActiveBranches(actor);
 
   return (
     <InventoryClient

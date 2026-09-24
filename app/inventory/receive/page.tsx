@@ -5,7 +5,7 @@ import { prisma } from "@/lib/server/prisma";
 import { loadShellAccess } from "@/lib/server/shell";
 import { requireCapability } from "@/lib/server/authorization";
 import { listActiveSupplierOptionsForReceiving } from "@/lib/server/services/suppliers";
-import { listAccessibleOperationalLocations } from "@/lib/server/locations";
+import { listAccessibleActiveBranches } from "@/lib/server/locations";
 
 import { ReceiveStockForm } from "./receive-stock-form";
 
@@ -24,7 +24,9 @@ export default async function ReceiveStockPage() {
       select: { id: true, itemCode: true, name: true },
     }),
     listActiveSupplierOptionsForReceiving(actor),
-    listAccessibleOperationalLocations(actor),
+    // Branches only, as Branch Maintenance defines them. A delivery is
+    // received at the branch that physically took it.
+    listAccessibleActiveBranches(actor),
   ]);
 
   return (

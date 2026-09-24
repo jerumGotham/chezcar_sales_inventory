@@ -592,7 +592,7 @@ export async function listInventory(
          inventoryBalances: {
           where: balanceWhere,
           orderBy: { location: { name: "asc" } },
-          include: { location: { select: { name: true } } },
+          include: { location: { select: { name: true, code: true } } },
         },
       },
     }),
@@ -629,6 +629,7 @@ export async function listInventory(
       name: product.name,
       category: product.category ?? "Uncategorized",
       location: balance.location.name,
+      locationCode: balance.location.code,
       onHand: balance.onHand,
       reserved: balance.reserved,
       quarantined: balance.quarantined,
@@ -691,7 +692,7 @@ export async function listInventoryMovements(
       take: query.pageSize,
       include: {
         product: { select: { itemCode: true, name: true, reorderLevel: true } },
-        location: { select: { name: true } },
+        location: { select: { name: true, code: true } },
         transfer: { select: { reference: true } },
         receipt: { select: { reference: true } },
       },
@@ -799,7 +800,7 @@ export async function correctInventoryBalance(
       where: { id: balance.id },
       include: {
         product: { select: { itemCode: true, name: true, category: true, reorderLevel: true } },
-        location: { select: { name: true } },
+        location: { select: { name: true, code: true } },
       },
     });
 
@@ -857,7 +858,7 @@ export async function updateInventoryUnitCost(
       data: { unitCost: new Prisma.Decimal(input.unitCost), version: { increment: 1 } },
       include: {
         product: { select: { itemCode: true, name: true, category: true, reorderLevel: true } },
-        location: { select: { name: true } },
+        location: { select: { name: true, code: true } },
       },
     });
 
@@ -895,7 +896,7 @@ function serializeInventoryBalance(
     unitCost: Prisma.Decimal;
     updatedAt: Date;
     product: { itemCode: string; name: string; category: string | null; reorderLevel: number };
-    location: { name: string };
+    location: { name: string; code: string };
   },
   status: InventoryStatus,
 ): InventoryRow {
@@ -905,6 +906,7 @@ function serializeInventoryBalance(
     name: balance.product.name,
     category: balance.product.category ?? "Uncategorized",
     location: balance.location.name,
+    locationCode: balance.location.code,
     onHand: balance.onHand,
     reserved: balance.reserved,
     quarantined: balance.quarantined,
