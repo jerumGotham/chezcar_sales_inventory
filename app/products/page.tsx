@@ -49,12 +49,6 @@ type SelectOption = {
 const ALL_BRANCHES_OPTION: SelectOption = { value: "all", label: "All Branches" };
 const ALL_BRANDS_OPTION: SelectOption = { value: "all", label: "All Brands" };
 
-const STATUS_OPTIONS: SelectOption[] = [
-  { value: "all", label: "All Statuses" },
-  { value: "Active", label: "Active" },
-  { value: "Inactive", label: "Inactive" },
-];
-
 const STOCK_STATUS_OPTIONS: SelectOption[] = [
   { value: "all", label: "All Stock" },
   { value: "has-stock", label: "With Stock" },
@@ -65,7 +59,7 @@ type ProductForm = {
   itemCode: string;
   name: string;
   category: string;
-  brand: string;
+  supplierId: string;
   description: string;
   price: string;
   reorderLevel: string;
@@ -82,7 +76,7 @@ const EMPTY_PRODUCT_FORM: ProductForm = {
   itemCode: "",
   name: "",
   category: "",
-  brand: "",
+  supplierId: "",
   description: "",
   price: "",
   reorderLevel: "0",
@@ -183,7 +177,7 @@ export default function ProductsPage() {
   const [itemCode, setItemCode] = useState("");
   const [name, setName] = useState("");
   const [brand, setBrand] = useState<SelectOption>(ALL_BRANDS_OPTION);
-  const [status, setStatus] = useState<SelectOption>(STATUS_OPTIONS[0]);
+  const [description, setDescription] = useState("");
   const [stockStatus, setStockStatus] = useState<SelectOption>(STOCK_STATUS_OPTIONS[0]);
   const [branch, setBranch] = useState<SelectOption>(ALL_BRANCHES_OPTION);
   const [vehicleMake, setVehicleMake] = useState("");
@@ -193,7 +187,7 @@ export default function ProductsPage() {
   const [appliedItemCode, setAppliedItemCode] = useState("");
   const [appliedName, setAppliedName] = useState("");
   const [appliedBrand, setAppliedBrand] = useState("all");
-  const [appliedStatus, setAppliedStatus] = useState("all");
+  const [appliedDescription, setAppliedDescription] = useState("");
   const [appliedStockStatus, setAppliedStockStatus] = useState("all");
   const [appliedBranch, setAppliedBranch] = useState("all");
   const [appliedVehicleMake, setAppliedVehicleMake] = useState("all");
@@ -245,7 +239,7 @@ export default function ProductsPage() {
         itemCode: appliedItemCode,
         name: appliedName,
         brand: appliedBrand,
-        status: appliedStatus,
+        description: appliedDescription,
         stockStatus: appliedStockStatus,
         locationId: appliedBranch,
         vehicleMake: appliedVehicleMake,
@@ -260,7 +254,7 @@ export default function ProductsPage() {
         itemCode: appliedItemCode,
         name: appliedName,
         brand: appliedBrand,
-        status: appliedStatus,
+        description: appliedDescription,
         stockStatus: appliedStockStatus,
         locationId: appliedBranch,
         vehicleMake: appliedVehicleMake,
@@ -278,10 +272,15 @@ export default function ProductsPage() {
       label: `${location.code} - ${location.name}`,
     })),
   ], [data?.filterOptions.locations]);
+  // The same suppliers the filter offers, without the "All" row.
+  const supplierOptions = useMemo(
+    () => (data?.filterOptions.brands ?? []).map((supplier) => ({ value: supplier.id, label: supplier.name })),
+    [data?.filterOptions.brands],
+  );
   const brandOptions = useMemo(() => {
     return [
       ALL_BRANDS_OPTION,
-      ...(data?.filterOptions.brands ?? []).map((value) => ({ value, label: value })),
+      ...(data?.filterOptions.brands ?? []).map((supplier) => ({ value: supplier.id, label: supplier.name })),
     ];
   }, [data?.filterOptions.brands]);
   const invalidateProductQueries = () => {
@@ -303,7 +302,7 @@ export default function ProductsPage() {
         itemCode: form.itemCode,
         name: form.name,
         category: form.category || undefined,
-        brand: form.brand || undefined,
+        supplierId: form.supplierId || undefined,
         description: form.description || undefined,
         price: form.price ? Number(form.price) : null,
         reorderLevel: Number(form.reorderLevel || 0),
@@ -393,7 +392,7 @@ export default function ProductsPage() {
     setAppliedItemCode(itemCode);
     setAppliedName(name);
     setAppliedBrand(brand.value);
-    setAppliedStatus(status.value);
+    setAppliedDescription(description.trim());
     setAppliedStockStatus(stockStatus.value);
     setAppliedBranch(branch.value);
     setAppliedVehicleMake(vehicleMake || "all");
@@ -405,7 +404,7 @@ export default function ProductsPage() {
     setItemCode("");
     setName("");
     setBrand(ALL_BRANDS_OPTION);
-    setStatus(STATUS_OPTIONS[0]);
+    setDescription("");
     setStockStatus(STOCK_STATUS_OPTIONS[0]);
     setBranch(ALL_BRANCHES_OPTION);
     setVehicleMake("");
@@ -415,7 +414,7 @@ export default function ProductsPage() {
     setAppliedItemCode("");
     setAppliedName("");
     setAppliedBrand("all");
-    setAppliedStatus("all");
+    setAppliedDescription("");
     setAppliedStockStatus("all");
     setAppliedBranch("all");
     setAppliedVehicleMake("all");
@@ -431,7 +430,7 @@ export default function ProductsPage() {
         itemCode: product.itemCode,
         name: product.name,
         category: product.category === "Uncategorized" ? "" : product.category,
-        brand: product.brand === "Unbranded" ? "" : product.brand,
+        supplierId: product.supplierId ?? "",
         description: product.description ?? "",
         price: product.price?.toString() ?? "",
         reorderLevel: String(product.reorderLevel),
@@ -582,17 +581,11 @@ export default function ProductsPage() {
             <Input placeholder="Car model" value={vehicleModel} onChange={(event) => setVehicleModel(event.target.value)} />
             <Input type="number" min="1886" max="2200" placeholder="Vehicle year" value={vehicleYear} onChange={(event) => setVehicleYear(event.target.value)} />
 
-            <div className="w-full">
-              <Select
-                instanceId="products-status-filter"
-                options={STATUS_OPTIONS}
-                value={status}
-                onChange={(option) => setStatus(option ?? STATUS_OPTIONS[0])}
-                isSearchable
-                placeholder="Select status"
-                styles={reactSelectStyles}
-              />
-            </div>
+            <Input
+              placeholder="Search description"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+            />
 
             <div className="w-full">
               <Select
@@ -951,13 +944,20 @@ export default function ProductsPage() {
               </div>
 
               <div className="space-y-2">
+                {/* Still labelled Brand, but it is the supplier the product is
+                    bought from. Clearable, because a product may have none. */}
                 <Label htmlFor="brand">Brand</Label>
-                <Input
-                  id="brand"
-                  value={form.brand}
-                  disabled={Boolean(selectedProduct && !canUpdate)}
-                  onChange={(event) => setForm((current) => ({ ...current, brand: event.target.value }))}
-                  placeholder="Brand"
+                <Select
+                  instanceId="product-brand"
+                  inputId="brand"
+                  options={supplierOptions}
+                  value={supplierOptions.find((option) => option.value === form.supplierId) ?? null}
+                  isDisabled={Boolean(selectedProduct && !canUpdate)}
+                  onChange={(option) => setForm((current) => ({ ...current, supplierId: option?.value ?? "" }))}
+                  isSearchable
+                  isClearable
+                  placeholder="Select brand"
+                  styles={reactSelectStyles}
                 />
               </div>
 

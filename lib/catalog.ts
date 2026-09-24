@@ -54,6 +54,7 @@ export type ProductRow = {
   name: string;
   category: string;
   brand: string;
+  supplierId: string | null;
   price: number | null;
   reorderLevel: number;
   warrantyDurationMonths: number | null;
@@ -72,7 +73,8 @@ export type ProductsApiResponse = {
   meta: PaginationMeta;
   filterOptions: {
     categories: string[];
-    brands: string[];
+    /** Suppliers, shown as Brand. The id is what the filter sends back. */
+    brands: Array<{ id: string; name: string }>;
     vehicleMakes: string[];
     vehicleModels: string[];
     locations: Array<{ id: string; code: string; name: string }>;

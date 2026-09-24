@@ -46,11 +46,12 @@ const baseListQuery = {
 
 export const productListQuerySchema = z.object({
   ...baseListQuery,
+  /** A Supplier id, shown as Brand in the UI, or "all". */
   brand: z.string().trim().max(100).default("all"),
+  description: z.string().trim().max(200).default(""),
   vehicleMake: z.string().trim().max(100).default("all"),
   vehicleModel: z.string().trim().max(200).default("all"),
   vehicleYear: z.union([z.literal("all"), z.coerce.number().int().min(1886).max(2200)]).default("all"),
-  status: z.enum(["all", "Active", "Inactive"]).default("all"),
   stockStatus: z.enum(["all", "has-stock", "no-stock"]).default("all"),
   /** A single branch to scope the stock figure and filter to, or "all". */
   locationId: z.string().trim().max(100).default("all"),
@@ -78,7 +79,8 @@ export const productMutationSchema = z.object({
   itemCode: z.string().trim().min(1).max(100),
   name: z.string().trim().min(1).max(200),
   category: optionalText,
-  brand: optionalText,
+  /** A Supplier id. The UI calls it Brand. Blank means the product has none. */
+  supplierId: z.string().trim().max(100).optional(),
   description: z.string().trim().max(2_000).optional(),
   price: z.union([positivePrice, z.null()]),
   reorderLevel: z.coerce.number().int().min(0).default(0),
@@ -254,7 +256,10 @@ export async function listProducts(
       ? { contains: query.name, mode: "insensitive" }
       : undefined,
     category: query.category === "all" ? undefined : query.category,
-    brand: query.brand === "all" ? undefined : query.brand,
+    supplierId: query.brand === "all" ? undefined : query.brand,
+    description: query.description
+      ? { contains: query.description, mode: "insensitive" }
+      : undefined,
     vehicleCompatibilities: query.vehicleMake === "all" && query.vehicleModel === "all" && query.vehicleYear === "all"
       ? undefined
       : {
@@ -267,12 +272,6 @@ export async function listProducts(
             ],
           },
         },
-    status:
-      query.status === "all"
-        ? undefined
-        : query.status === "Active"
-          ? "ACTIVE"
-          : "INACTIVE",
   };
 
   if (query.stockStatus === "has-stock") {
@@ -297,10 +296,12 @@ export async function listProducts(
         select: { make: true, model: true },
         distinct: ["make", "model"],
       }),
-      prisma.product.findMany({
-        where: { brand: { not: null } },
-        distinct: ["brand"],
-        select: { brand: true },
+      // Brands are suppliers, so the options come from that table rather than
+      // from whatever text happens to sit on a product.
+      prisma.supplier.findMany({
+        where: { status: "ACTIVE" },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
       }),
     ]);
   const { meta, skip } = pagination(query.page, query.pageSize, total);
@@ -328,6 +329,7 @@ export async function listProducts(
       name: product.name,
       category: product.category ?? "Uncategorized",
       brand: product.brand ?? "Unbranded",
+      supplierId: product.supplierId,
       price: product.price?.toNumber() ?? null,
        reorderLevel: product.reorderLevel,
        warrantyDurationMonths: product.warrantyDurationMonths,
@@ -350,7 +352,7 @@ export async function listProducts(
     meta,
     filterOptions: {
       categories: categoryRows.map((product) => product.category).filter((value): value is string => Boolean(value)).sort(),
-      brands: brandRows.map((product) => product.brand).filter((value): value is string => Boolean(value)).sort(),
+      brands: brandRows.map((supplier) => ({ id: supplier.id, name: supplier.name })),
       vehicleMakes: [...new Set(compatibilityRows.map((row) => row.make).filter((value): value is string => Boolean(value)))].sort(),
       vehicleModels: [...new Set(compatibilityRows.map((row) => row.model))].sort(),
       // The branches this caller may scope the stock figure to.
@@ -371,16 +373,34 @@ function assertInventoryMutationScope(actor: AuthContext, locationId: string) {
   }
 }
 
-function normalizeProductInput(input: z.infer<typeof productMutationSchema>) {
+/**
+ * Resolves the supplier and writes its name into brand beside the link, so the
+ * reports and exports that read brand keep reading one field. A supplier id
+ * that does not exist is refused rather than silently stored.
+ */
+async function normalizeProductInput(input: z.infer<typeof productMutationSchema>) {
   if (input.status === "ACTIVE" && (input.price === null || input.price <= 0)) {
     throw new ProductMutationError("INVALID_PRICE", "Active products require a price greater than zero");
+  }
+
+  let supplierId: string | null = input.supplierId || null;
+  let brand: string | null = null;
+  if (supplierId) {
+    const supplier = await prisma.supplier.findUnique({
+      where: { id: supplierId },
+      select: { id: true, name: true },
+    });
+    if (!supplier) throw new ProductMutationError("INVALID_SUPPLIER", "Selected brand no longer exists", 409);
+    supplierId = supplier.id;
+    brand = supplier.name;
   }
 
   return {
     itemCode: input.itemCode,
     name: input.name,
     category: input.category || null,
-    brand: input.brand || null,
+    supplierId,
+    brand,
     description: input.description || null,
     price: input.price === null ? null : new Prisma.Decimal(input.price),
     reorderLevel: input.reorderLevel,
@@ -403,7 +423,7 @@ async function productUsage(productId: string) {
 
 export async function createProduct(actor: AuthContext, input: z.infer<typeof productMutationSchema>) {
   assertCapability(actor, "products:create");
-  const data = normalizeProductInput(input);
+  const data = await normalizeProductInput(input);
 
   try {
     const product = await prisma.product.create({
@@ -434,7 +454,7 @@ export async function updateProduct(actor: AuthContext, productId: string, input
   assertCapability(actor, "products:update");
   const existing = await prisma.product.findUnique({ where: { id: productId } });
   if (!existing) throw new ProductMutationError("NOT_FOUND", "Product not found", 404);
-  const data = normalizeProductInput(input);
+  const data = await normalizeProductInput(input);
   const usageCount = await productUsage(productId);
 
   if (existing.itemCode !== data.itemCode && usageCount > 0) {
