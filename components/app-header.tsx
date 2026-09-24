@@ -221,7 +221,7 @@ export function AppHeader({
   return (
     <>
       <div className="mb-6 lg:sticky lg:top-0 lg:z-30 lg:-mx-8 lg:-mt-8 lg:bg-card lg:px-8 lg:pt-8 lg:">
-        <div className="flex flex-col gap-4 rounded-[1.75rem] border border-brand-100 bg-card px-5 py-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-4 rounded-[1.75rem] border border-border bg-card px-5 py-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-2xl font-bold text-foreground">{title}</h2>
             <p className="text-sm text-muted-foreground">{subtitle}</p>
@@ -230,11 +230,11 @@ export function AppHeader({
           <div className="flex flex-wrap items-center justify-end gap-3">
             {access.authenticated ? (
               <div
-                className="flex min-h-11 max-w-full items-center gap-2 rounded-2xl border border-brand-100 bg-brand-50/70 px-3 py-2 text-sm text-foreground"
+                className="flex min-h-11 max-w-full items-center gap-2 rounded-2xl border border-border bg-muted px-3 py-2 text-sm text-foreground"
                 aria-label={`Current scope: ${access.scope.label}`}
               >
                 <MapPin
-                  className="h-4 w-4 shrink-0 text-brand-700 dark:text-brand-300"
+                  className="h-4 w-4 shrink-0 text-muted-foreground"
                   aria-hidden="true"
                 />
                 <span className="min-w-0">
@@ -255,7 +255,7 @@ export function AppHeader({
             {canViewAudit ? (
               <Link
                 href="/audit"
-                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-border bg-muted text-foreground hover:bg-accent"
                 aria-label="Audit trail"
                 title="Audit trail"
               >
@@ -266,7 +266,7 @@ export function AppHeader({
             {canViewNotifications ? (
               <Link
                 href="/notifications"
-                className="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100"
+                className="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-border bg-muted text-foreground hover:bg-accent"
                 aria-label={unreadCount > 0 ? `${unreadCount} unread notifications` : "Notifications"}
               >
                 <Bell className="h-5 w-5" />
@@ -282,7 +282,7 @@ export function AppHeader({
               <Button
                 variant="outline"
                 size="icon"
-                className="rounded-2xl border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100 hover:text-brand-800"
+                className="rounded-2xl border-border bg-muted text-foreground hover:bg-accent"
                 onClick={() =>
                   setTheme((current) => (current === "light" ? "dark" : "light"))
                 }
@@ -302,7 +302,7 @@ export function AppHeader({
               <div className="relative" ref={menuRef}>
                 <button
                   type="button"
-                  className="flex items-center gap-3 rounded-2xl border border-brand-100 bg-brand-50/70 px-3 py-2 text-left transition hover:bg-brand-100"
+                  className="flex items-center gap-3 rounded-2xl border border-border bg-muted px-3 py-2 text-left transition hover:bg-accent"
                   onClick={() => setIsMenuOpen((current) => !current)}
                   aria-expanded={isMenuOpen}
                   aria-haspopup="menu"
@@ -312,7 +312,7 @@ export function AppHeader({
                     alt="Current user avatar"
                     width={40}
                     height={40}
-                    className="rounded-full border border-brand-100 bg-card"
+                    className="rounded-full border border-border bg-card"
                   />
                   <div className="hidden min-w-0 sm:block">
                     <p className="truncate text-sm font-semibold text-foreground">
@@ -335,14 +335,14 @@ export function AppHeader({
 
                 <div
                   className={cn(
-                    "absolute right-0 top-[calc(100%+0.75rem)] z-30 w-56 rounded-2xl border border-brand-100 bg-card p-2 shadow-soft transition",
+                    "absolute right-0 top-[calc(100%+0.75rem)] z-30 w-56 rounded-2xl border border-border bg-popover p-2 shadow-soft transition",
                     isMenuOpen
                       ? "pointer-events-auto translate-y-0 opacity-100"
                       : "pointer-events-none -translate-y-2 opacity-0",
                   )}
                   role="menu"
                 >
-                  <div className="rounded-xl bg-brand-50/80 px-3 py-2">
+                  <div className="rounded-xl bg-muted px-3 py-2">
                     <p className="text-sm font-semibold text-foreground">
                       {access.identity.name}
                     </p>
@@ -355,7 +355,7 @@ export function AppHeader({
                   </div>
                   <button
                     type="button"
-                    className="mt-2 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-foreground transition hover:bg-brand-50"
+                    className="mt-2 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent"
                     role="menuitem"
                     onClick={() => {
                       setIsMenuOpen(false);
@@ -386,14 +386,14 @@ export function AppHeader({
         </div>
       </div>
       {canViewNotifications && toast ? (
-        <div className="fixed right-4 top-4 z-50 w-[min(24rem,calc(100vw-2rem))] rounded-2xl border border-brand-200 bg-card p-4 shadow-xl" role="status" aria-live="polite">
+        <div className="fixed right-4 top-4 z-50 w-[min(24rem,calc(100vw-2rem))] rounded-2xl border border-border bg-popover p-4 shadow-xl" role="status" aria-live="polite">
           <div className="flex items-start gap-3">
             <button
               type="button"
               className="min-w-0 flex-1 text-left"
               onClick={() => void openToastNotification()}
             >
-              <p className="text-xs font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">New notification</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">New notification</p>
               <p className="mt-1 font-semibold text-foreground">{toast.title}</p>
               <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{toast.description}</p>
             </button>

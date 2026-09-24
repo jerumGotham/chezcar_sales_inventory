@@ -137,7 +137,7 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
               showLabels ? "justify-start gap-3" : "justify-center px-0",
               active
                 ? "border-brand-200 bg-brand-100 text-brand-800 shadow-sm hover:bg-brand-100 dark:border-brand-500/30 dark:bg-brand-500/15 dark:text-brand-100"
-                : "border-transparent text-muted-foreground hover:border-brand-100 hover:bg-brand-50 hover:text-brand-700 dark:hover:border-white/10",
+                : "border-transparent text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground dark:hover:border-white/10",
             )}
           >
             <Icon
@@ -145,7 +145,7 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
                 "h-4 w-4 shrink-0",
                 active
                   ? "text-brand-700 dark:text-brand-200"
-                  : "text-muted-foreground group-hover:text-brand-600 dark:group-hover:text-white",
+                  : "text-muted-foreground group-hover:text-foreground",
               )}
             />
             {showLabels ? (
@@ -164,7 +164,7 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
       <Button
         variant="outline"
         size="icon"
-        className="fixed left-4 top-4 z-50 rounded-2xl border-brand-200 bg-card text-brand-700 shadow-sm backdrop-blur hover:bg-brand-50 hover:text-brand-800 lg:hidden"
+        className="fixed left-4 top-4 z-50 rounded-2xl border-border bg-card text-foreground shadow-sm backdrop-blur hover:bg-muted lg:hidden"
         onClick={() => setIsMobileOpen(true)}
         aria-label="Open navigation menu"
       >
@@ -178,10 +178,10 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
         )}
       >
         <div className="sticky top-0 h-screen p-3">
-          <Card className="flex h-full flex-col overflow-hidden border-brand-100 bg-card/95 text-foreground shadow-soft">
+          <Card className="flex h-full flex-col overflow-hidden border-border bg-card/95 text-foreground shadow-soft">
             <CardHeader
               className={cn(
-                "gap-4 border-b border-brand-100 bg-brand-100",
+                "gap-4 border-b border-border bg-muted",
                 isDesktopExpanded ? "p-5" : "items-center p-4",
               )}
             >
@@ -251,7 +251,7 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
                   {/* <Button
                     variant="ghost"
                     size="icon"
-                    className="h-9 w-9 rounded-xl border border-brand-100 bg-card text-muted-foreground hover:bg-brand-50 hover:text-brand-700"
+                    className="h-9 w-9 rounded-xl border border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground"
                     onClick={toggleDesktopSidebar}
                     aria-label={
                       isDesktopExpanded ? "Collapse sidebar" : "Expand sidebar"
@@ -267,7 +267,7 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
                     variant="ghost"
                     size="icon"
                     className={cn(
-                      "h-9 w-9 rounded-xl border border-brand-100 bg-card hover:bg-brand-50",
+                      "h-9 w-9 rounded-xl border border-border bg-card hover:bg-muted",
                       isDesktopPinned
                         ? "text-brand-600 dark:text-brand-300"
                         : "text-muted-foreground",
@@ -312,8 +312,8 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
         )}
         aria-hidden={!isMobileOpen}
       >
-        <Card className="flex h-full flex-col overflow-hidden border-brand-100 bg-card text-foreground shadow-soft">
-          <CardHeader className="gap-4 border-b border-brand-100 bg-brand-100 p-5">
+        <Card className="flex h-full flex-col overflow-hidden border-border bg-card text-foreground shadow-soft">
+          <CardHeader className="gap-4 border-b border-border bg-muted p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <Image
@@ -341,7 +341,7 @@ export function AppSidebar({ menu }: { menu: readonly ShellMenuEntryDto[] }) {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-10 w-10 rounded-xl border border-brand-100 bg-card text-muted-foreground hover:bg-brand-50 hover:text-brand-700"
+                className="h-10 w-10 rounded-xl border border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground"
                 onClick={() => setIsMobileOpen(false)}
                 aria-label="Close navigation menu"
               >
