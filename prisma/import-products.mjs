@@ -84,6 +84,12 @@ function normalizeString(value) {
 function parsePrice(value) {
   const text = String(value ?? "").replace(/[\s\u20B1]/g, "").replace(/,/g, "");
   if (text === "") return { price: null, reason: "blank" };
+
+  // "FREE" is a stated price, not a missing one: the item is given away. It
+  // becomes 0.00, which a blank cell must never do, because a blank means
+  // nobody has said what the item costs.
+  if (text.toUpperCase() === "FREE") return { price: new Prisma.Decimal(0), reason: null };
+
   if (!/^\d+(\.\d+)?$/.test(text)) return { price: null, reason: "not a number" };
 
   const decimal = new Prisma.Decimal(text).toDecimalPlaces(2);

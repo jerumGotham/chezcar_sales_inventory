@@ -1071,6 +1071,10 @@ export default function ProductsPage() {
                   alt={productToView.name}
                   width={640}
                   height={640}
+                  // The route behind this URL requires products:view. Optimising
+                  // it would have the server fetch it without the viewer's
+                  // cookies, which comes back 401 and renders a broken image.
+                  unoptimized
                   className="max-h-64 w-full rounded-xl border bg-muted object-contain"
                 />
               ) : (
