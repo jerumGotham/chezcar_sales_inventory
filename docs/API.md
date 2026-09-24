@@ -84,7 +84,6 @@ The complete list and Role Maintenance labels are generated from `CAPABILITY_CAT
 | `GET`, `POST`, `DELETE` | `/api/products/:productId/image` | Prisma Product + private persistent image storage | `products:view` / `products:image:update` |
 | `GET` | `/api/inventory` | Prisma Product/InventoryBalance/Location | `inventory:view`; `format=pdf` uses `inventory:view` on the same authorized query |
 | `GET` | `/api/inventory/availability` | Prisma Product/InventoryBalance/Location | `inventory-availability:view`; active scoped locations only |
-| `PATCH` | `/api/inventory/:balanceId` | Prisma Product/InventoryBalance | `inventory:cost:update`; non-owner actors remain location-scoped |
 | `POST` | `/api/inventory/:balanceId/adjustment` | Prisma InventoryBalance/InventoryMovement/Notification | `inventory:adjust`; non-owner actors remain location-scoped |
 | `GET` | `/api/inventory/movements` | Prisma InventoryMovement | `inventory-movements:view` |
 | `GET`, `POST` | `/api/stock-transfers?page=1&pageSize=10` | Prisma transfer ledger | `stock-transfers:view` / `stock-transfers:create`; server-paginated list. `POST` takes an optional `sourceId`, which must be one of the actor's assigned locations and cannot equal the destination; a single-location actor may omit it. `GET` also accepts `status`, `sourceId`, `destinationId`, and a `reference` substring, and returns transfers where the actor holds either end |

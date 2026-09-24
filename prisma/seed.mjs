@@ -31,7 +31,7 @@ const ALL_CAPABILITIES = Object.freeze([
   "sales:evidence:view", "sales:evidence:upload", "sales:evidence:delete", "products:view", "products:create",
   "products:update", "products:delete", "products:image:update", "inventory:view",
   "inventory-availability:view", "inventory-movements:view", "inventory:adjust",
-  "inventory:cost:update", "stock-receipts:view", "inventory-receiving:create",
+  "stock-receipts:view", "inventory-receiving:create",
   "stock-transfers:view", "stock-transfers:create", "stock-transfers:update",
   "stock-transfers:delete", "stock-transfers:finalize", "stock-transfers:dispatch", "stock-transfers:cancel",
   "stock-transfers:receive", "stock-transfers:report-discrepancy",

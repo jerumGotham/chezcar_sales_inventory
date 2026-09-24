@@ -38,7 +38,6 @@ export const CAPABILITY_CATALOG = [
   { id: "inventory-availability:view", module: "Inventory", label: "View inventory availability" },
   { id: "inventory-movements:view", module: "Inventory", label: "View stock movements" },
   { id: "inventory:adjust", module: "Inventory", label: "Adjust stock" },
-  { id: "inventory:cost:update", module: "Inventory", label: "Edit inventory cost" },
   { id: "stock-receipts:view", module: "Inventory", label: "View supplier receipts" },
   { id: "inventory-receiving:create", module: "Inventory", label: "Receive inventory" },
   { id: "stock-transfers:view", module: "Stock Transfers", label: "View stock transfers" },

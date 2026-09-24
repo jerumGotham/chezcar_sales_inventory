@@ -28,7 +28,6 @@ const IMPLIED_CAPABILITIES: Partial<Record<CapabilityId, readonly CapabilityId[]
   "inventory-availability:view": ["inventory:view"],
   "inventory-movements:view": ["inventory:view"],
   "inventory:adjust": ["inventory:view", "inventory-movements:view"],
-  "inventory:cost:update": ["inventory:view", "inventory-movements:view"],
   "stock-receipts:view": ["inventory:view"],
   "inventory-receiving:create": ["inventory:view", "inventory-movements:view", "stock-receipts:view"],
   "stock-transfers:create": ["stock-transfers:view"],

@@ -114,13 +114,6 @@ export const inventoryCorrectionSchema = z.object({
   path: ["quantity"],
 });
 
-export const inventoryUnitCostSchema = z.object({
-  unitCost: z.coerce.number().positive(),
-  reference: z.string().trim().max(100).optional(),
-  reason: z.string().trim().min(1).max(500),
-  remarks: z.string().trim().max(1_000).optional(),
-});
-
 export const inventoryMovementsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
@@ -241,12 +234,8 @@ export async function listProducts(
   query: ProductListQuery,
   context: PersistedAccessContext,
 ): Promise<ProductsApiResponse> {
-  // Branches only. The Stock Room is a warehouse, so counting it under a filter
-  // labelled All Branches would make the total disagree with the sum of the
-  // branches a reader can pick; its stock is the Inventory module's to show.
-  const branches = (await listAccessibleOperationalLocations(context)).filter(
-    (location) => location.type === "BRANCH",
-  );
+  // Every operational location is a branch, so no filtering is left to do.
+  const branches = await listAccessibleOperationalLocations(context);
   const branchIds = branches.map((location) => location.id);
   // A requested branch only ever narrows this: one the caller cannot see falls
   // back to the whole set rather than widening it.
@@ -835,56 +824,6 @@ export async function correctInventoryBalance(
 
     return serializeInventoryBalance(updated, nextStatus);
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-}
-
-export async function updateInventoryUnitCost(
-  actor: AuthContext,
-  balanceId: string,
-  input: z.infer<typeof inventoryUnitCostSchema>,
-) {
-  assertCapability(actor, "inventory:cost:update");
-  const updated = await prisma.$transaction(async (tx) => {
-    const balance = await tx.inventoryBalance.findUnique({
-      where: { id: balanceId },
-      select: { productId: true, locationId: true, unitCost: true },
-    });
-    if (!balance) {
-      throw new InventoryMutationError("NOT_FOUND", "Inventory balance not found", 404);
-    }
-    assertInventoryMutationScope(actor, balance.locationId);
-
-    const result = await tx.inventoryBalance.update({
-      where: { id: balanceId },
-      data: { unitCost: new Prisma.Decimal(input.unitCost), version: { increment: 1 } },
-      include: {
-        product: { select: { itemCode: true, name: true, category: true, reorderLevel: true } },
-        location: { select: { name: true, code: true } },
-      },
-    });
-
-    await tx.inventoryMovement.create({
-      data: {
-        productId: balance.productId,
-        locationId: balance.locationId,
-        quantity: 0,
-        type: "MANUAL_ADJUSTMENT",
-        actorId: actor.userId,
-        reference: input.reference || null,
-        remarks: [
-          input.reason,
-          `Unit cost changed from ${balance.unitCost.toString()} to ${input.unitCost}`,
-          input.remarks,
-        ].filter(Boolean).join(" - "),
-      },
-    });
-
-    return result;
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-
-  return serializeInventoryBalance(
-    updated,
-    stockStatus(updated.onHand, updated.reserved, updated.quarantined, updated.product.reorderLevel),
-  );
 }
 
 function serializeInventoryBalance(

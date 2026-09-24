@@ -209,10 +209,3 @@ export function correctInventory(
 ) {
   return sendJson<{ data: InventoryRow }>(`/api/inventory/${balanceId}/adjustment`, "POST", input);
 }
-
-export function updateInventoryUnitCost(
-  balanceId: string,
-  input: { unitCost: number; reference?: string; reason: string; remarks?: string },
-) {
-  return sendJson<{ data: InventoryRow }>(`/api/inventory/${balanceId}`, "PATCH", input);
-}
