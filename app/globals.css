@@ -47,6 +47,31 @@
     --sidebar-border: oklch(0.92 0.01 145);
     --sidebar-ring: oklch(0.63 0.18 146);
   }
+  /*
+   * A light island inside the dark application. The tokens are redeclared so
+   * everything nested reads light on its own, rather than each child carrying
+   * its own override. Used by the sign-in card, which floats on the dark page.
+   */
+  .surface-light {
+    color-scheme: light;
+    --background: oklch(0.99 0.01 145);
+    --foreground: oklch(0.24 0.03 145);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.24 0.03 145);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.24 0.03 145);
+    --primary: oklch(0.63 0.18 146);
+    --primary-foreground: oklch(0.17 0.02 145);
+    --secondary: oklch(0.97 0.02 145);
+    --secondary-foreground: oklch(0.3 0.05 145);
+    --muted: oklch(0.97 0.01 145);
+    --muted-foreground: oklch(0.5 0.03 145);
+    --accent: oklch(0.96 0.03 145);
+    --accent-foreground: oklch(0.3 0.05 145);
+    --border: oklch(0.92 0.01 145);
+    --input: oklch(0.92 0.01 145);
+    --ring: oklch(0.63 0.18 146);
+  }
   .dark {
     color-scheme: dark;
     --background: oklch(0.2 0.02 145);
