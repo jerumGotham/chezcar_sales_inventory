@@ -661,7 +661,7 @@ export default function ProductsPage() {
                 {/* The figure is a total, so on All Branches it does not say
                     where the stock sits. Pick a branch to read it per branch. */}
                 <p className="text-xs text-muted-foreground">
-                  Stock counts {appliedBranch === "all" ? "every branch you can see, combined" : branchOptions.find((option) => option.value === appliedBranch)?.label ?? "the selected branch"}.
+                  Stock counts {appliedBranch === "all" ? "every branch you can see, combined" : branchOptions.find((option) => option.value === appliedBranch)?.label ?? "the selected branch"}. Stock Room is not a branch and is excluded; see it in Inventory.
                 </p>
               </div>
               <TablePagination page={meta.page} totalPages={meta.totalPages} onPageChange={setPage} busy={isFetching} />

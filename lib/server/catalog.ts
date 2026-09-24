@@ -234,13 +234,18 @@ export async function listProducts(
   query: ProductListQuery,
   context: PersistedAccessContext,
 ): Promise<ProductsApiResponse> {
-  // The requested branch is intersected with what the caller may already see,
-  // so asking for another branch narrows the scope and never widens it.
-  const allowed = hasAllLocationAccess(context) ? null : [...context.locationIds];
+  // Branches only. The Stock Room is a warehouse, so counting it under a filter
+  // labelled All Branches would make the total disagree with the sum of the
+  // branches a reader can pick; its stock is the Inventory module's to show.
+  const branches = (await listAccessibleOperationalLocations(context)).filter(
+    (location) => location.type === "BRANCH",
+  );
+  const branchIds = branches.map((location) => location.id);
+  // A requested branch only ever narrows this: one the caller cannot see falls
+  // back to the whole set rather than widening it.
   const requested = query.locationId === "all" ? null : query.locationId;
-  const effective =
-    requested && (!allowed || allowed.includes(requested)) ? [requested] : allowed;
-  const locationId = effective ? { in: effective } : undefined;
+  const effective = requested && branchIds.includes(requested) ? [requested] : branchIds;
+  const locationId = { in: effective };
   const where: Prisma.ProductWhereInput = {
     itemCode: query.itemCode
       ? { contains: query.itemCode, mode: "insensitive" }
@@ -276,9 +281,8 @@ export async function listProducts(
     where.inventoryBalances = { none: { locationId, onHand: { gt: 0 } } };
   }
 
-  const [accessibleLocations, total, totalProducts, activeProducts, inactiveProducts, withReorderLevel, categoryRows, compatibilityRows, brandRows] =
+  const [total, totalProducts, activeProducts, inactiveProducts, withReorderLevel, categoryRows, compatibilityRows, brandRows] =
     await Promise.all([
-      listAccessibleOperationalLocations(context),
       prisma.product.count({ where }),
       prisma.product.count(),
       prisma.product.count({ where: { status: "ACTIVE" } }),
@@ -350,7 +354,7 @@ export async function listProducts(
       vehicleMakes: [...new Set(compatibilityRows.map((row) => row.make).filter((value): value is string => Boolean(value)))].sort(),
       vehicleModels: [...new Set(compatibilityRows.map((row) => row.model))].sort(),
       // The branches this caller may scope the stock figure to.
-      locations: accessibleLocations.map((location) => ({ id: location.id, code: location.code, name: location.name })),
+      locations: branches.map((location) => ({ id: location.id, code: location.code, name: location.name })),
     },
     summary: {
       totalProducts,
