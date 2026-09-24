@@ -1,5 +1,6 @@
-import { updateRoleRequestSchema } from "@/lib/contracts/roles";
+import { deleteRoleRequestSchema, updateRoleRequestSchema } from "@/lib/contracts/roles";
 import {
+  deleteRoleDefinition,
   getRoleDefinition,
   requireRoleManager,
   rolesErrorResponse,
@@ -26,5 +27,16 @@ export async function PATCH(request: Request, context: RoleRouteContext) {
     return Response.json({ data: await updateRoleDefinition(actor, roleId, input) });
   } catch (error) {
     return rolesErrorResponse(error, "Unable to update role");
+  }
+}
+
+export async function DELETE(request: Request, context: RoleRouteContext) {
+  try {
+    const actor = await requireRoleManager(request.headers, "roles:delete");
+    const { roleId } = await context.params;
+    const input = deleteRoleRequestSchema.parse(await request.json());
+    return Response.json({ data: await deleteRoleDefinition(actor, roleId, input) });
+  } catch (error) {
+    return rolesErrorResponse(error, "Unable to delete role");
   }
 }

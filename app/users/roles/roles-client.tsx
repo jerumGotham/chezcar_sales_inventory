@@ -2,8 +2,9 @@
 
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Pencil, ShieldCheck, X } from "lucide-react";
+import { Loader2, Pencil, ShieldCheck, Trash2, X } from "lucide-react";
 
+import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -290,9 +291,35 @@ export function RolesClient({
   const queryClient = useQueryClient();
   const canCreate = capabilities.includes("roles:create");
   const canUpdate = capabilities.includes("roles:update");
+  const canDelete = capabilities.includes("roles:delete");
   const [editor, setEditor] = useState<EditorState>(null);
   const [banner, setBanner] = useState<string | null>(null);
   const query = useQuery({ queryKey: ["roles"], queryFn: listRoles });
+  const [roleToDelete, setRoleToDelete] = useState<RoleDefinitionDto | null>(null);
+  const deleteMutation = useMutation({
+    mutationFn: async (role: RoleDefinitionDto) => {
+      // The version goes with it, so a role edited meanwhile is not removed on
+      // the strength of what this page last saw.
+      const response = await fetch(`/api/roles/${role.id}`, {
+        method: "DELETE",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ version: role.version }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error?.message ?? "Unable to delete role");
+      return role;
+    },
+    onSuccess: async (role) => {
+      setRoleToDelete(null);
+      await queryClient.invalidateQueries({ queryKey: ["roles"] });
+      setBanner(`${role.name} deleted.`);
+    },
+    onError: (error: Error) => {
+      setRoleToDelete(null);
+      setBanner(error.message);
+    },
+  });
 
   async function handleSaved(message: string) {
     await queryClient.invalidateQueries({ queryKey: ["roles"] });
@@ -390,21 +417,46 @@ export function RolesClient({
                             <Badge variant="outline">
                               Immutable, full access
                             </Badge>
-                          ) : canUpdate &&
-                            role.id !== currentRoleId &&
-                            role.permissions.every((permission) =>
-                              capabilities.includes(permission),
-                            ) ? (
-                            <Button
-                              size="sm"
-                              variant="edit"
-                              onClick={() => setEditor({ mode: "edit", role })}
-                            >
-                              <Pencil className="mr-2 size-4" /> Edit
-                            </Button>
-                          ) : (
-                            <span className="text-muted-foreground text-sm">—</span>
-                          )}
+                          ) : (() => {
+                            // The same reach test the edit path uses: a role
+                            // granting more than you hold is not yours to touch.
+                            const mayTouch =
+                              role.id !== currentRoleId &&
+                              role.permissions.every((permission) => capabilities.includes(permission));
+                            if (!mayTouch || (!canUpdate && !canDelete)) {
+                              return <span className="text-muted-foreground text-sm">—</span>;
+                            }
+                            return (
+                              <div className="flex flex-wrap gap-2">
+                                {canUpdate ? (
+                                  <Button
+                                    size="sm"
+                                    variant="edit"
+                                    onClick={() => setEditor({ mode: "edit", role })}
+                                  >
+                                    <Pencil className="mr-2 size-4" /> Edit
+                                  </Button>
+                                ) : null}
+                                {canDelete ? (
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    // A role with people on it cannot be removed
+                                    // at all, so say why here rather than after.
+                                    disabled={role.assignedUserCount > 0 || deleteMutation.isPending}
+                                    title={
+                                      role.assignedUserCount > 0
+                                        ? `${role.assignedUserCount} user(s) are on this role. Move them first.`
+                                        : undefined
+                                    }
+                                    onClick={() => setRoleToDelete(role)}
+                                  >
+                                    <Trash2 className="mr-2 size-4" /> Delete
+                                  </Button>
+                                ) : null}
+                              </div>
+                            );
+                          })()}
                         </td>
                       </tr>
                     ))}
@@ -425,6 +477,23 @@ export function RolesClient({
           onSaved={(message) => void handleSaved(message)}
         />
       )}
+      <ConfirmationDialog
+        open={Boolean(roleToDelete)}
+        title="Delete this role?"
+        description={
+          roleToDelete
+            ? `${roleToDelete.name} and its ${roleToDelete.permissions.length} permission(s) will be permanently deleted. This cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete role"
+        cancelLabel="Keep role"
+        onOpenChange={(open) => {
+          if (!open && !deleteMutation.isPending) setRoleToDelete(null);
+        }}
+        onConfirm={() => {
+          if (roleToDelete) deleteMutation.mutate(roleToDelete);
+        }}
+      />
     </>
   );
 }

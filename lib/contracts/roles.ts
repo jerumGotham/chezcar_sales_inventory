@@ -110,6 +110,7 @@ export const CAPABILITY_CATALOG = [
   { id: "roles:view", module: "Role Maintenance", label: "View roles" },
   { id: "roles:create", module: "Role Maintenance", label: "Add roles" },
   { id: "roles:update", module: "Role Maintenance", label: "Edit roles" },
+  { id: "roles:delete", module: "Role Maintenance", label: "Delete roles" },
 ] as const;
 
 export type CapabilityId = (typeof CAPABILITY_CATALOG)[number]["id"];
@@ -166,6 +167,10 @@ export const updateRoleRequestSchema = z
     { message: "At least one change is required" },
   );
 export type UpdateRoleRequest = z.infer<typeof updateRoleRequestSchema>;
+
+/** Deleting takes the version too, so a role edited meanwhile is not removed. */
+export const deleteRoleRequestSchema = z.object({ version: z.number().int().min(1) });
+export type DeleteRoleRequest = z.infer<typeof deleteRoleRequestSchema>;
 
 export type RoleDefinitionDto = {
   id: string;

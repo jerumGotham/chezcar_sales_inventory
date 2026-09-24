@@ -83,6 +83,7 @@ const IMPLIED_CAPABILITIES: Partial<Record<CapabilityId, readonly CapabilityId[]
   "supplier-claims:print": ["supplier-claims:view"],
   "roles:create": ["roles:view"],
   "roles:update": ["roles:view"],
+  "roles:delete": ["roles:view"],
 };
 
 export function hasCapability(

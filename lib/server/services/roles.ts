@@ -11,6 +11,7 @@ import {
   type CreateRoleRequest,
   type RoleDefinitionDto,
   type UpdateRoleRequest,
+  type DeleteRoleRequest,
 } from "@/lib/contracts/roles";
 import {
   authorizationErrorResponse,
@@ -265,6 +266,67 @@ export async function updateRoleDefinition(
     }
     throw error;
   }
+}
+
+/**
+ * Removing a role is permanent, so it is refused rather than cascaded whenever
+ * something still depends on it. User.roleDefinitionId is ON DELETE RESTRICT;
+ * the assigned-user check exists so that arrives as a sentence naming the
+ * count instead of a database constraint error.
+ */
+export async function deleteRoleDefinition(
+  actor: PersistedAccessContext,
+  roleId: string,
+  input: DeleteRoleRequest,
+): Promise<{ id: string; name: string }> {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "RoleDefinition" WHERE "id" = ${roleId} FOR UPDATE`;
+    const current = await tx.roleDefinition.findUnique({
+      where: { id: roleId },
+      select: { id: true, name: true, isOwner: true, version: true, permissions: true },
+    });
+    if (!current) throw roleFailure(404, "ROLE_NOT_FOUND", "Role not found");
+    if (current.isOwner) {
+      throw roleFailure(403, "OWNER_ROLE_IMMUTABLE", "The owner Admin role cannot be deleted");
+    }
+    if (current.version !== input.version) {
+      throw roleFailure(409, "ROLE_VERSION_CONFLICT", "This role was changed by another request. Reload and try again.");
+    }
+
+    if (!actor.isOwner) {
+      const assignedToActor = await tx.user.findFirst({
+        where: { id: actor.userId, roleDefinitionId: roleId },
+        select: { id: true },
+      });
+      if (assignedToActor) {
+        throw roleFailure(403, "SELF_ROLE_EDIT_FORBIDDEN", "You cannot delete your own assigned role");
+      }
+      // The same ceiling the edit path applies: a role granting more than the
+      // actor holds is not theirs to remove either.
+      assertGrantCeiling(actor, current.permissions as CapabilityId[]);
+    }
+
+    const assigned = await tx.user.count({ where: { roleDefinitionId: roleId } });
+    if (assigned > 0) {
+      throw roleFailure(
+        409,
+        "ROLE_IN_USE",
+        `${assigned} user${assigned === 1 ? " is" : "s are"} still assigned to this role. Move them to another role first.`,
+      );
+    }
+
+    await tx.roleDefinition.delete({ where: { id: roleId } });
+    // Recorded inside the transaction: a deleted role leaves nothing else
+    // behind, so the trail is the only account of what it could reach.
+    await recordAuditLog({
+      category: "Master Data",
+      action: "Role Deleted",
+      actorId: actor.userId,
+      reference: current.name,
+      details: `${current.name} with ${current.permissions.length} permissions`,
+    });
+    return { id: current.id, name: current.name };
+  });
 }
 
 export function rolesErrorResponse(error: unknown, context: string): Response {
