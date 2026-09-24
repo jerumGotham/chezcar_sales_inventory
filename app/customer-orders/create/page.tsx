@@ -5,7 +5,6 @@ import Link from "next/link";
 import { Route } from "next";
 import { useRouter } from "next/navigation";
 import Select from "react-select";
-import type { StylesConfig } from "react-select";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Trash2, UserRound, Package2 } from "lucide-react";
 
@@ -17,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useShellAccess } from "@/components/shell-access-context";
 import { hasCapability } from "@/lib/permissions";
+import { reactSelectStyles } from "@/lib/select-styles";
 
 type SelectOption = {
   value: string;
@@ -43,48 +43,6 @@ const DOWNPAYMENT_METHOD_OPTIONS: SelectOption[] = [
   { value: "SPLIT", label: "Split Payment" },
 ];
 
-const reactSelectStyles: StylesConfig<SelectOption, false> = {
-  control: (base, state) => ({
-    ...base,
-    minHeight: "40px",
-    borderRadius: "0.75rem",
-    borderColor: state.isFocused ? "#10b981" : "#e2e8f0",
-    boxShadow: "none",
-    "&:hover": {
-      borderColor: "#10b981",
-    },
-  }),
-  valueContainer: (base) => ({
-    ...base,
-    paddingLeft: "10px",
-    paddingRight: "10px",
-  }),
-  input: (base) => ({
-    ...base,
-    color: "#0f172a",
-  }),
-  placeholder: (base) => ({
-    ...base,
-    color: "#94a3b8",
-    fontSize: "14px",
-  }),
-  menu: (base) => ({
-    ...base,
-    borderRadius: "0.75rem",
-    overflow: "hidden",
-    zIndex: 50,
-  }),
-  option: (base, state) => ({
-    ...base,
-    backgroundColor: state.isSelected
-      ? "#10b981"
-      : state.isFocused
-        ? "#ecfdf5"
-        : "#ffffff",
-    color: state.isSelected ? "#ffffff" : "#0f172a",
-    cursor: "pointer",
-  }),
-};
 
 function formatPeso(value: number) {
   return `₱${value.toLocaleString("en-PH")}`;

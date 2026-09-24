@@ -62,6 +62,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { themedSelectStyles } from "@/lib/select-styles";
 
 type Product = {
   id?: string | number;
@@ -178,42 +179,20 @@ function formatPeso(amount: number) {
   }).format(amount);
 }
 
+// The counter's control is taller than the rest of the app, so it keeps its own
+// sizing and takes the shared theme colours for everything else.
 const selectStyles: StylesConfig<SelectOption, false> = {
+  ...themedSelectStyles<SelectOption>(),
   control: (base, state) => ({
     ...base,
     minHeight: 44,
     borderRadius: 12,
-    borderColor: state.isFocused ? "#16a34a" : "#e2e8f0",
+    backgroundColor: "var(--background)",
+    borderColor: state.isFocused ? "var(--ring)" : "var(--input)",
     boxShadow: "none",
-    "&:hover": {
-      borderColor: "#16a34a",
-    },
+    "&:hover": { borderColor: "var(--ring)" },
   }),
-  menu: (base) => ({
-    ...base,
-    borderRadius: 12,
-    overflow: "hidden",
-    zIndex: 50,
-  }),
-  valueContainer: (base) => ({
-    ...base,
-    paddingLeft: 12,
-    paddingRight: 12,
-  }),
-  placeholder: (base) => ({
-    ...base,
-    color: "#94a3b8",
-  }),
-  option: (base, state) => ({
-    ...base,
-    backgroundColor: state.isSelected
-      ? "#16a34a"
-      : state.isFocused
-        ? "#f1f5f9"
-        : "white",
-    color: state.isSelected ? "white" : "#0f172a",
-    cursor: "pointer",
-  }),
+  valueContainer: (base) => ({ ...base, paddingLeft: 12, paddingRight: 12 }),
 };
 
 const EMPTY_CUSTOMER_FORM: CustomerFormState = {

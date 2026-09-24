@@ -6,7 +6,6 @@ import type { Route } from "next";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Select from "react-select";
-import type { StylesConfig } from "react-select";
 import {
   FileText,
   Loader2,
@@ -41,6 +40,7 @@ import type {
   SaleCorrectionRequestDto,
   SaleCorrectionRequestReasonDto,
 } from "@/lib/contracts/sales";
+import { reactSelectStyles } from "@/lib/select-styles";
 
 type SelectOption = {
   value: string;
@@ -291,48 +291,6 @@ async function fetchDirectSales(): Promise<DirectSalesApiResponse> {
   return (await response.json()) as DirectSalesApiResponse;
 }
 
-const reactSelectStyles: StylesConfig<SelectOption, false> = {
-  control: (base, state) => ({
-    ...base,
-    minHeight: "40px",
-    borderRadius: "0.75rem",
-    borderColor: state.isFocused ? "#10b981" : "#e2e8f0",
-    boxShadow: "none",
-    "&:hover": {
-      borderColor: "#10b981",
-    },
-  }),
-  valueContainer: (base) => ({
-    ...base,
-    paddingLeft: "10px",
-    paddingRight: "10px",
-  }),
-  input: (base) => ({
-    ...base,
-    color: "#0f172a",
-  }),
-  placeholder: (base) => ({
-    ...base,
-    color: "#94a3b8",
-    fontSize: "14px",
-  }),
-  menu: (base) => ({
-    ...base,
-    borderRadius: "0.75rem",
-    overflow: "hidden",
-    zIndex: 50,
-  }),
-  option: (base, state) => ({
-    ...base,
-    backgroundColor: state.isSelected
-      ? "#10b981"
-      : state.isFocused
-        ? "#ecfdf5"
-        : "#ffffff",
-    color: state.isSelected ? "#ffffff" : "#0f172a",
-    cursor: "pointer",
-  }),
-};
 
 export default function CustomerOrdersPage() {
   const searchParams = useSearchParams();

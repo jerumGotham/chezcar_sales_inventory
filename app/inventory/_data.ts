@@ -500,15 +500,22 @@ export async function mockFetchInventory(params: {
   };
 }
 
+/*
+ * Driven by the theme tokens rather than fixed hex, so the control, the menu,
+ * and the options follow the palette instead of staying white on a dark page.
+ * Written as var() because react-select emits inline style, which Tailwind
+ * classes never reach.
+ */
 export const reactSelectStyles: StylesConfig<SelectOption, false> = {
   control: (base, state) => ({
     ...base,
     minHeight: "40px",
     borderRadius: "0.75rem",
-    borderColor: state.isFocused ? "#10b981" : "#e2e8f0",
+    backgroundColor: "var(--background)",
+    borderColor: state.isFocused ? "var(--ring)" : "var(--input)",
     boxShadow: "none",
     "&:hover": {
-      borderColor: "#10b981",
+      borderColor: "var(--ring)",
     },
   }),
   valueContainer: (base) => ({
@@ -518,27 +525,53 @@ export const reactSelectStyles: StylesConfig<SelectOption, false> = {
   }),
   input: (base) => ({
     ...base,
-    color: "#0f172a",
+    color: "var(--foreground)",
+  }),
+  singleValue: (base) => ({
+    ...base,
+    color: "var(--foreground)",
   }),
   placeholder: (base) => ({
     ...base,
-    color: "#94a3b8",
+    color: "var(--muted-foreground)",
     fontSize: "14px",
+  }),
+  indicatorSeparator: (base) => ({
+    ...base,
+    backgroundColor: "var(--border)",
+  }),
+  dropdownIndicator: (base) => ({
+    ...base,
+    color: "var(--muted-foreground)",
+  }),
+  clearIndicator: (base) => ({
+    ...base,
+    color: "var(--muted-foreground)",
   }),
   menu: (base) => ({
     ...base,
     borderRadius: "0.75rem",
     overflow: "hidden",
     zIndex: 70,
+    backgroundColor: "var(--popover)",
+    border: "1px solid var(--border)",
+  }),
+  menuList: (base) => ({
+    ...base,
+    backgroundColor: "var(--popover)",
   }),
   option: (base, state) => ({
     ...base,
     backgroundColor: state.isSelected
-      ? "#10b981"
+      ? "var(--primary)"
       : state.isFocused
-        ? "#ecfdf5"
-        : "#ffffff",
-    color: state.isSelected ? "#ffffff" : "#0f172a",
+        ? "var(--accent)"
+        : "var(--popover)",
+    color: state.isSelected ? "var(--primary-foreground)" : "var(--popover-foreground)",
     cursor: "pointer",
+  }),
+  noOptionsMessage: (base) => ({
+    ...base,
+    color: "var(--muted-foreground)",
   }),
 };
