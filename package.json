@@ -24,7 +24,8 @@
     "db:staging:reset": "node prisma/reset-staging-data.mjs",
     "verify:phase-01": "node scripts/verify-phase-01.mjs",
     "db:reset-owner-password": "node prisma/reset-owner-password.mjs",
-    "db:suppliers-from-brands": "node prisma/seed-suppliers-from-brands.mjs"
+    "db:suppliers-from-brands": "node prisma/seed-suppliers-from-brands.mjs",
+    "db:reorder-levels": "node prisma/seed-reorder-levels.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",
