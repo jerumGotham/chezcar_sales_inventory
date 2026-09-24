@@ -3,47 +3,57 @@ import { pathToFileURL } from "node:url";
 import { PrismaClient } from "@prisma/client";
 
 /**
- * Sets a reorder level of 2 on the catalogue, which is the point the Inventory
- * screen starts calling a product low. Perfume is left alone: it is bought and
- * sold in a different rhythm from the rest of the catalogue, so the same
- * threshold would only produce noise for it.
+ * Sets the reorder level the Inventory screen uses to decide a product is low.
+ * The catalogue gets 2. Perfume gets 20, because it moves far faster than the
+ * rest of the catalogue and 2 would only warn once the shelf was already bare.
  *
  * Safe to run more than once: it writes only the products that do not already
- * hold the target, so a second run reports nothing changed.
+ * hold their target, so a second run reports nothing changed.
  */
 
-const TARGET_REORDER_LEVEL = 2;
+const CATALOGUE_REORDER_LEVEL = 2;
+const PERFUME_REORDER_LEVEL = 20;
 
-/** Matched on the name, which is the only place perfume is identified. */
-const EXCLUDED_NAME_PATTERN = "%perfume%";
+/** The name is the only place perfume is identified; it has no category. */
+const PERFUME_NAME = "perfume";
 
-export async function seedReorderLevels(prisma, { target = TARGET_REORDER_LEVEL } = {}) {
-  const excluded = await prisma.product.findMany({
-    where: { name: { contains: "perfume", mode: "insensitive" } },
-    select: { id: true, itemCode: true, name: true, reorderLevel: true },
+export async function seedReorderLevels(
+  prisma,
+  { catalogue = CATALOGUE_REORDER_LEVEL, perfume = PERFUME_REORDER_LEVEL } = {},
+) {
+  const perfumeProducts = await prisma.product.findMany({
+    where: { name: { contains: PERFUME_NAME, mode: "insensitive" } },
+    select: { id: true, itemCode: true, name: true },
   });
-  const excludedIds = excluded.map((product) => product.id);
+  const perfumeIds = perfumeProducts.map((product) => product.id);
 
-  const { count } = await prisma.product.updateMany({
-    where: {
-      id: { notIn: excludedIds },
-      reorderLevel: { not: target },
-    },
-    data: { reorderLevel: target },
-  });
+  const [catalogueResult, perfumeResult] = await Promise.all([
+    prisma.product.updateMany({
+      where: { id: { notIn: perfumeIds }, reorderLevel: { not: catalogue } },
+      data: { reorderLevel: catalogue },
+    }),
+    perfumeIds.length === 0
+      ? Promise.resolve({ count: 0 })
+      : prisma.product.updateMany({
+          where: { id: { in: perfumeIds }, reorderLevel: { not: perfume } },
+          data: { reorderLevel: perfume },
+        }),
+  ]);
 
   const totalProducts = await prisma.product.count();
 
   return {
-    target,
-    productsUpdated: count,
-    productsAlreadyAtTarget: totalProducts - excluded.length - count,
-    excludedPattern: EXCLUDED_NAME_PATTERN,
-    excluded: excluded.map((product) => ({
-      itemCode: product.itemCode,
-      name: product.name,
-      reorderLevel: product.reorderLevel,
-    })),
+    catalogue: {
+      target: catalogue,
+      updated: catalogueResult.count,
+      alreadyAtTarget: totalProducts - perfumeProducts.length - catalogueResult.count,
+    },
+    perfume: {
+      target: perfume,
+      matchedOn: PERFUME_NAME,
+      updated: perfumeResult.count,
+      products: perfumeProducts.map((product) => ({ itemCode: product.itemCode, name: product.name })),
+    },
   };
 }
 
