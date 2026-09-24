@@ -93,6 +93,11 @@ export const inventoryListQuerySchema = z.object({
   ...baseListQuery,
   balanceId: z.string().trim().max(100).optional(),
   location: z.string().trim().max(150).default("all"),
+  /** A Supplier id, shown as Brand, matching the products list. */
+  brand: z.string().trim().max(100).default("all"),
+  description: z.string().trim().max(200).default(""),
+  vehicleModel: z.string().trim().max(200).default("all"),
+  vehicleYear: z.union([z.literal("all"), z.coerce.number().int().min(1886).max(2200)]).default("all"),
   status: z
     .enum(["all", "In Stock", "Low Stock", "Out of Stock"])
     .default("all"),
@@ -558,7 +563,25 @@ export async function listInventory(
     name: query.name
       ? { contains: query.name, mode: "insensitive" }
       : undefined,
-    category: query.category === "all" ? undefined : query.category,
+    supplierId: query.brand === "all" ? undefined : query.brand,
+    description: query.description
+      ? { contains: query.description, mode: "insensitive" }
+      : undefined,
+    vehicleCompatibilities: query.vehicleModel === "all" && query.vehicleYear === "all"
+      ? undefined
+      : {
+          some: {
+            model: query.vehicleModel === "all" ? undefined : { contains: query.vehicleModel, mode: "insensitive" },
+            ...(query.vehicleYear === "all"
+              ? {}
+              : {
+                  AND: [
+                    { OR: [{ startYear: null }, { startYear: { lte: query.vehicleYear } }] },
+                    { OR: [{ endYear: null }, { endYear: { gte: query.vehicleYear } }] },
+                  ],
+                }),
+          },
+        },
     inventoryBalances: { some: balanceWhere },
   };
   const [matchingProducts, summaryBalances, incomingItems] = await Promise.all([
@@ -623,9 +646,18 @@ export async function listInventory(
      (balance) => stockStatus(balance.onHand, balance.reserved, balance.quarantined, balance.product.reorderLevel) !== "In Stock",
   ).length;
 
+  // The same supplier list the products filter offers, so Brand means the same
+  // thing on both screens.
+  const brands = await prisma.supplier.findMany({
+    where: { status: "ACTIVE" },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+
   return {
     data: rows,
     meta,
+    filterOptions: { brands },
     summary: {
       totalProducts: new Set(summaryBalances.map((balance) => balance.productId))
         .size,

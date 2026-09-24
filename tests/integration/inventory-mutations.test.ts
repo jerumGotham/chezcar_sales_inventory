@@ -158,11 +158,11 @@ describe("inventory corrections and reorder levels", () => {
        const { listInventory } = await import("../../lib/server/catalog");
       const adminActor = actor(fixture.users.admin, null);
 
-      await expect(listInventory({ page: 1, pageSize: 10, itemCode: "AVAILABLE-FILTER", name: "", category: "all", location: "all", status: "Out of Stock" }, adminActor)).resolves.toMatchObject({
+      await expect(listInventory({ page: 1, pageSize: 10, itemCode: "AVAILABLE-FILTER", name: "", category: "all", brand: "all", description: "", vehicleModel: "all", vehicleYear: "all", location: "all", status: "Out of Stock" }, adminActor)).resolves.toMatchObject({
         data: [expect.objectContaining({ itemCode: "AVAILABLE-FILTER", status: "Out of Stock" })],
         meta: expect.objectContaining({ total: 1 }),
       });
-      await expect(listInventory({ page: 1, pageSize: 10, itemCode: "AVAILABLE-FILTER", name: "", category: "all", location: "all", status: "In Stock" }, adminActor)).resolves.toMatchObject({
+      await expect(listInventory({ page: 1, pageSize: 10, itemCode: "AVAILABLE-FILTER", name: "", category: "all", brand: "all", description: "", vehicleModel: "all", vehicleYear: "all", location: "all", status: "In Stock" }, adminActor)).resolves.toMatchObject({
         data: [],
         meta: expect.objectContaining({ total: 0 }),
       });

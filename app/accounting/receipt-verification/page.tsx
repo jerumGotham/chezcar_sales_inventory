@@ -1470,7 +1470,7 @@ function ReceiptVerificationContent() {
                   selectedSale.reviewStatus === "MISMATCH_REPORTED" && (
                     <div className="space-y-4 rounded-xl border border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/60 p-4">
                       <div>
-                        <p className="font-semibold text-sky-950">
+                        <p className="font-semibold text-sky-950 dark:text-sky-200">
                           Branch double-check
                         </p>
                         <p className="mt-1 text-sm text-sky-800 dark:text-sky-300">

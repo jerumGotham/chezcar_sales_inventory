@@ -107,6 +107,8 @@ export type InventoryRow = {
 export type InventoryApiResponse = {
   data: InventoryRow[];
   meta: PaginationMeta;
+  /** Suppliers, shown as Brand, the same list the products filter offers. */
+  filterOptions: { brands: Array<{ id: string; name: string }> };
   summary: {
     totalProducts: number;
     totalUnits: number;

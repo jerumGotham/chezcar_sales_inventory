@@ -76,6 +76,7 @@ export type InventoryClientProps = {
 };
 
 const ALL_LOCATIONS_VALUE = "all";
+const ALL_BRANDS_OPTION: SelectOption = { value: "all", label: "All Brands" };
 const numberFormatter = new Intl.NumberFormat("en-PH");
 
 function locationLabel(location: InventoryLocationOption): string {
@@ -118,7 +119,10 @@ export function InventoryClient({
 
   const [itemCode, setItemCode] = useState("");
   const [name, setName] = useState("");
-  const [category, setCategory] = useState<SelectOption>(CATEGORY_OPTIONS[0]);
+  const [description, setDescription] = useState("");
+  const [vehicleModel, setVehicleModel] = useState("");
+  const [vehicleYear, setVehicleYear] = useState("");
+  const [brand, setBrand] = useState<SelectOption>(ALL_BRANDS_OPTION);
   const initialLocationValue =
     canSelectLocations && initialLocationCode &&
     locations.some((item) => item.code === initialLocationCode)
@@ -131,7 +135,10 @@ export function InventoryClient({
 
   const [appliedItemCode, setAppliedItemCode] = useState("");
   const [appliedName, setAppliedName] = useState("");
-  const [appliedCategory, setAppliedCategory] = useState("all");
+  const [appliedDescription, setAppliedDescription] = useState("");
+  const [appliedVehicleModel, setAppliedVehicleModel] = useState("all");
+  const [appliedVehicleYear, setAppliedVehicleYear] = useState<string | number>("all");
+  const [appliedBrand, setAppliedBrand] = useState("all");
   const [appliedLocation, setAppliedLocation] =
     useState(initialLocationValue);
   const [appliedStatus, setAppliedStatus] = useState("all");
@@ -217,7 +224,10 @@ export function InventoryClient({
         balanceId: initialBalanceId,
         itemCode: appliedItemCode,
         name: appliedName,
-        category: appliedCategory,
+        description: appliedDescription,
+        vehicleModel: appliedVehicleModel,
+        vehicleYear: appliedVehicleYear,
+        brand: appliedBrand,
         location: appliedLocation,
         status: appliedStatus,
       },
@@ -229,7 +239,10 @@ export function InventoryClient({
         ...(initialBalanceId ? { balanceId: initialBalanceId } : {}),
         itemCode: appliedItemCode,
         name: appliedName,
-        category: appliedCategory,
+        description: appliedDescription,
+        vehicleModel: appliedVehicleModel,
+        vehicleYear: appliedVehicleYear,
+        brand: appliedBrand,
         location: appliedLocation,
         status: appliedStatus,
       }),
@@ -310,6 +323,10 @@ export function InventoryClient({
   });
 
   const flatRows = useMemo(() => data?.data ?? [], [data?.data]);
+  const brandOptions = useMemo(() => [
+    ALL_BRANDS_OPTION,
+    ...(data?.filterOptions.brands ?? []).map((supplier) => ({ value: supplier.id, label: supplier.name })),
+  ], [data?.filterOptions.brands]);
   const balanceOptions: SelectOption[] = flatRows.map((item) => ({
     value: item.id,
     label: `${item.itemCode} - ${item.name} (${item.location})`,
@@ -415,17 +432,23 @@ export function InventoryClient({
     if (initialBalanceId) params.set("balanceId", initialBalanceId);
     if (appliedItemCode) params.set("itemCode", appliedItemCode);
     if (appliedName) params.set("name", appliedName);
-    if (appliedCategory !== "all") params.set("category", appliedCategory);
+    if (appliedDescription) params.set("description", appliedDescription);
+    if (appliedVehicleModel !== "all") params.set("vehicleModel", appliedVehicleModel);
+    if (appliedVehicleYear !== "all") params.set("vehicleYear", String(appliedVehicleYear));
+    if (appliedBrand !== "all") params.set("brand", appliedBrand);
     if (appliedLocation !== ALL_LOCATIONS_VALUE) params.set("location", appliedLocation);
     if (appliedStatus !== "all") params.set("status", appliedStatus);
     return params.toString();
-  }, [initialBalanceId, appliedItemCode, appliedName, appliedCategory, appliedLocation, appliedStatus]);
+  }, [initialBalanceId, appliedItemCode, appliedName, appliedDescription, appliedVehicleModel, appliedVehicleYear, appliedBrand, appliedLocation, appliedStatus]);
 
   const handleApplyFilters = () => {
     setPage(1);
     setAppliedItemCode(itemCode);
     setAppliedName(name);
-    setAppliedCategory(category.value);
+    setAppliedDescription(description.trim());
+    setAppliedVehicleModel(vehicleModel.trim() || "all");
+    setAppliedVehicleYear(vehicleYear.trim() ? Number(vehicleYear) : "all");
+    setAppliedBrand(brand.value);
     setAppliedLocation(canSelectLocations ? location : scopedLocationValue);
     setAppliedStatus(status.value);
   };
@@ -433,12 +456,18 @@ export function InventoryClient({
   const handleResetFilters = () => {
     setItemCode("");
     setName("");
-    setCategory(CATEGORY_OPTIONS[0]);
+    setDescription("");
+    setVehicleModel("");
+    setVehicleYear("");
+    setBrand(ALL_BRANDS_OPTION);
     setLocation(scopedLocationValue);
     setStatus(STATUS_OPTIONS[0]);
     setAppliedItemCode("");
     setAppliedName("");
-    setAppliedCategory("all");
+    setAppliedDescription("");
+    setAppliedVehicleModel("all");
+    setAppliedVehicleYear("all");
+    setAppliedBrand("all");
     setAppliedLocation(scopedLocationValue);
     setAppliedStatus("all");
     setPage(1);
@@ -602,11 +631,14 @@ export function InventoryClient({
           </Card>
         </div>
 
-        <Card className="mt-6 border-violet-200 dark:border-violet-900 bg-violet-50 dark:bg-violet-950/50">
+        {/* A plain card. The violet tint fought the buttons it holds, and its
+            title was near-black violet with no dark counterpart, so on a dark
+            page it disappeared into its own background. */}
+        <Card className="mt-6">
           <CardContent className="flex flex-col gap-4 p-5">
             <div>
-              <p className="font-semibold text-violet-950">Stock Transfers</p>
-              <p className="mt-1 text-sm text-violet-800 dark:text-violet-300">
+              <p className="font-semibold text-foreground">Stock Transfers</p>
+              <p className="mt-1 text-sm text-muted-foreground">
                 {canReceiveSupplierStock
                   ? "Create and dispatch Stock Room transfers separately from receiving."
                   : "Review transfer work separately from inventory counts."}
@@ -638,15 +670,35 @@ export function InventoryClient({
               onChange={(e) => setName(e.target.value)}
             />
 
+            <Input
+              placeholder="Search description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+
+            <Input
+              placeholder="Car model"
+              value={vehicleModel}
+              onChange={(e) => setVehicleModel(e.target.value)}
+            />
+
+            <Input
+              type="number"
+              min="1886"
+              max="2200"
+              placeholder="Vehicle year"
+              value={vehicleYear}
+              onChange={(e) => setVehicleYear(e.target.value)}
+            />
+
             <div className="w-full">
               <Select
-                instanceId="inventory-category-filter"
-                options={CATEGORY_OPTIONS}
-                value={category}
-                onChange={(option) =>
-                  setCategory(option ?? CATEGORY_OPTIONS[0])
-                }
+                instanceId="inventory-brand-filter"
+                options={brandOptions}
+                value={brand}
+                onChange={(option) => setBrand(option ?? ALL_BRANDS_OPTION)}
                 isSearchable
+                placeholder="Select brand"
                 styles={reactSelectStyles}
               />
             </div>

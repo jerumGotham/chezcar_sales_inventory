@@ -29,6 +29,7 @@ const inventory: InventoryApiResponse = {
     },
   ],
   meta: { page: 1, pageSize: 5000, total: 1, totalPages: 1 },
+  filterOptions: { brands: [] },
   summary: { totalProducts: 1, totalUnits: 10, needsRestock: 0, incomingItems: 3, incomingItemsLabel: "Incoming items" },
 };
 

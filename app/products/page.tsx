@@ -46,7 +46,6 @@ type SelectOption = {
   label: string;
 };
 
-const ALL_BRANCHES_OPTION: SelectOption = { value: "all", label: "All Branches" };
 const ALL_BRANDS_OPTION: SelectOption = { value: "all", label: "All Brands" };
 
 const STOCK_STATUS_OPTIONS: SelectOption[] = [
@@ -179,7 +178,6 @@ export default function ProductsPage() {
   const [brand, setBrand] = useState<SelectOption>(ALL_BRANDS_OPTION);
   const [description, setDescription] = useState("");
   const [stockStatus, setStockStatus] = useState<SelectOption>(STOCK_STATUS_OPTIONS[0]);
-  const [branch, setBranch] = useState<SelectOption>(ALL_BRANCHES_OPTION);
   const [vehicleMake, setVehicleMake] = useState("");
   const [vehicleModel, setVehicleModel] = useState("");
   const [vehicleYear, setVehicleYear] = useState("");
@@ -189,7 +187,6 @@ export default function ProductsPage() {
   const [appliedBrand, setAppliedBrand] = useState("all");
   const [appliedDescription, setAppliedDescription] = useState("");
   const [appliedStockStatus, setAppliedStockStatus] = useState("all");
-  const [appliedBranch, setAppliedBranch] = useState("all");
   const [appliedVehicleMake, setAppliedVehicleMake] = useState("all");
   const [appliedVehicleModel, setAppliedVehicleModel] = useState("all");
   const [appliedVehicleYear, setAppliedVehicleYear] = useState("all");
@@ -241,7 +238,6 @@ export default function ProductsPage() {
         brand: appliedBrand,
         description: appliedDescription,
         stockStatus: appliedStockStatus,
-        locationId: appliedBranch,
         vehicleMake: appliedVehicleMake,
         vehicleModel: appliedVehicleModel,
         vehicleYear: appliedVehicleYear,
@@ -256,7 +252,6 @@ export default function ProductsPage() {
         brand: appliedBrand,
         description: appliedDescription,
         stockStatus: appliedStockStatus,
-        locationId: appliedBranch,
         vehicleMake: appliedVehicleMake,
         vehicleModel: appliedVehicleModel,
         vehicleYear: appliedVehicleYear,
@@ -265,13 +260,6 @@ export default function ProductsPage() {
   });
 
   const rows = useMemo(() => data?.data ?? [], [data?.data]);
-  const branchOptions = useMemo(() => [
-    ALL_BRANCHES_OPTION,
-    ...(data?.filterOptions.locations ?? []).map((location) => ({
-      value: location.id,
-      label: `${location.code} - ${location.name}`,
-    })),
-  ], [data?.filterOptions.locations]);
   // The same suppliers the filter offers, without the "All" row.
   const supplierOptions = useMemo(
     () => (data?.filterOptions.brands ?? []).map((supplier) => ({ value: supplier.id, label: supplier.name })),
@@ -394,7 +382,6 @@ export default function ProductsPage() {
     setAppliedBrand(brand.value);
     setAppliedDescription(description.trim());
     setAppliedStockStatus(stockStatus.value);
-    setAppliedBranch(branch.value);
     setAppliedVehicleMake(vehicleMake || "all");
     setAppliedVehicleModel(vehicleModel || "all");
     setAppliedVehicleYear(vehicleYear || "all");
@@ -406,7 +393,6 @@ export default function ProductsPage() {
     setBrand(ALL_BRANDS_OPTION);
     setDescription("");
     setStockStatus(STOCK_STATUS_OPTIONS[0]);
-    setBranch(ALL_BRANCHES_OPTION);
     setVehicleMake("");
     setVehicleModel("");
     setVehicleYear("");
@@ -416,7 +402,6 @@ export default function ProductsPage() {
     setAppliedBrand("all");
     setAppliedDescription("");
     setAppliedStockStatus("all");
-    setAppliedBranch("all");
     setAppliedVehicleMake("all");
     setAppliedVehicleModel("all");
     setAppliedVehicleYear("all");
@@ -601,18 +586,6 @@ export default function ProductsPage() {
 
             <div className="w-full">
               <Select
-                instanceId="products-branch-filter"
-                options={branchOptions}
-                value={branch}
-                onChange={(option) => setBranch(option ?? ALL_BRANCHES_OPTION)}
-                isSearchable
-                placeholder="Select branch"
-                styles={reactSelectStyles}
-              />
-            </div>
-
-            <div className="w-full">
-              <Select
                 instanceId="products-stock-status-filter"
                 options={STOCK_STATUS_OPTIONS}
                 value={stockStatus}
@@ -651,10 +624,10 @@ export default function ProductsPage() {
                   Showing {showingFrom} to {showingTo} of {meta.total} products
                   {isFetching && !isLoading ? " • Updating..." : ""}
                 </p>
-                {/* The figure is a total, so on All Branches it does not say
-                    where the stock sits. Pick a branch to read it per branch. */}
+                {/* A catalogue total. Which branch holds what is Inventory's
+                    question, and it answers it far better than a number here. */}
                 <p className="text-xs text-muted-foreground">
-                  Stock counts {appliedBranch === "all" ? "every branch you can see, combined" : branchOptions.find((option) => option.value === appliedBranch)?.label ?? "the selected branch"}. Stock Room is not a branch and is excluded; see it in Inventory.
+                  Stock counts every branch you can see, combined. Stock Room is excluded; see it in Inventory.
                 </p>
               </div>
               <TablePagination page={meta.page} totalPages={meta.totalPages} onPageChange={setPage} busy={isFetching} />
