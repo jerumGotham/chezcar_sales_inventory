@@ -24,6 +24,7 @@ import { PrismaClient } from "@prisma/client";
 const BRANCH_COLUMNS = { 8: "QC", 9: "BL", 10: "LU", 11: "VC", 12: "SP" };
 const TOTAL_COLUMN = 13;
 const ITEM_CODE_COLUMN = 0;
+const ITEM_NAME_COLUMN = 1;
 
 /**
  * Parses the whole file rather than a line at a time. Several description cells
@@ -68,9 +69,18 @@ export async function readBranchStock(filePath) {
 
   const entries = [];
   const disagreements = [];
-  for (const row of rows.slice(headerIndex + 1)) {
+  const unnamed = [];
+  for (const [offset, row] of rows.slice(headerIndex + 1).entries()) {
     const itemCode = (row[ITEM_CODE_COLUMN] ?? "").trim();
     if (!itemCode || row.length <= TOTAL_COLUMN) continue;
+
+    // A row with no ITEM NAME never became a product, so there is nothing to
+    // hold its stock. Skipped by the blank name rather than by row number, so
+    // the rule still holds when rows move.
+    if (!(row[ITEM_NAME_COLUMN] ?? "").trim()) {
+      unnamed.push({ sheetRow: headerIndex + 2 + offset, itemCode });
+      continue;
+    }
 
     const quantities = Object.entries(BRANCH_COLUMNS).map(([column, code]) => ({
       code,
@@ -90,11 +100,11 @@ export async function readBranchStock(filePath) {
     }
   }
 
-  return { entries, disagreements };
+  return { entries, disagreements, unnamed };
 }
 
 export async function seedBranchStock(prisma, filePath, { dryRun = false } = {}) {
-  const { entries, disagreements } = await readBranchStock(filePath);
+  const { entries, disagreements, unnamed } = await readBranchStock(filePath);
   if (disagreements.length > 0) {
     throw new Error(
       `${disagreements.length} row(s) do not match their own TOTAL STOCK AVAILABLE; ` +
@@ -118,6 +128,8 @@ export async function seedBranchStock(prisma, filePath, { dryRun = false } = {})
     unchanged: 0,
     unknownProducts: [...new Set(entries.filter((entry) => !productByCode.has(entry.itemCode)).map((entry) => entry.itemCode))],
     unknownBranches: [...new Set(entries.filter((entry) => !locationByCode.has(entry.code)).map((entry) => entry.code))],
+    // Listed rather than dropped in silence, so a sheet fix is easy to spot.
+    skippedUnnamedRows: unnamed,
     dryRun,
   };
 
