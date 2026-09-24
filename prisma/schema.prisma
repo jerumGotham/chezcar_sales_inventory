@@ -307,6 +307,16 @@ model Product {
   name                   String
   description            String?
   category               String?
+  /**
+   * The supplier this product is bought from, shown as "Brand" in the UI.
+   * Optional: a product may have none.
+   */
+  supplierId             String?
+  supplier               Supplier?                     @relation("ProductSupplier", fields: [supplierId], references: [id])
+  /**
+   * The supplier's name at the time of writing, kept beside the link the way
+   * SupplierClaim keeps supplierName, so reports and exports read one field.
+   */
   brand                  String?
   imageKey               String?                       @unique
   imageType              String?
@@ -338,6 +348,7 @@ model Product {
   createdAt              DateTime                      @default(now())
   updatedAt              DateTime                      @updatedAt
 
+  @@index([supplierId])
   @@index([createdById])
   @@index([updatedById])
   @@index([deactivatedById])
@@ -364,6 +375,7 @@ model Supplier {
   reactivatedBy   User?           @relation("SupplierReactivatedBy", fields: [reactivatedById], references: [id])
   stockReceipts   StockReceipt[]
   supplierClaims  SupplierClaim[]
+  products        Product[]       @relation("ProductSupplier")
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
