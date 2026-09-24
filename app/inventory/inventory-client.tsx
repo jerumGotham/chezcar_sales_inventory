@@ -657,7 +657,7 @@ export function InventoryClient({
         </Card>
 
         <Card className="mt-6">
-          <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-6">
+          <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
             <Input
               placeholder="Item Code"
               value={itemCode}
@@ -668,12 +668,6 @@ export function InventoryClient({
               placeholder="Search item name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-            />
-
-            <Input
-              placeholder="Search description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
             />
 
             <Input
@@ -689,6 +683,12 @@ export function InventoryClient({
               placeholder="Vehicle year"
               value={vehicleYear}
               onChange={(e) => setVehicleYear(e.target.value)}
+            />
+
+            <Input
+              placeholder="Search description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
             />
 
             <div className="w-full">
@@ -720,21 +720,20 @@ export function InventoryClient({
                 value={status}
                 onChange={(option) => setStatus(option ?? STATUS_OPTIONS[0])}
                 isSearchable
+                placeholder="Stock status"
                 styles={reactSelectStyles}
               />
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 md:col-span-2 xl:col-span-4 xl:justify-end">
               <Button
-                className="flex-1"
                 onClick={handleApplyFilters}
               >
-                Apply
+                Apply Filters
               </Button>
 
               <Button
                 variant="outline"
-                className="flex-1"
                 onClick={handleResetFilters}
               >
                 Reset
