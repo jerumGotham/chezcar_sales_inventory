@@ -19,6 +19,7 @@ import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { PageShell } from "@/components/page-shell";
 import { TablePagination } from "@/components/table-pagination";
 import { useCan } from "@/components/shell-access-context";
+import { ZoomableImage } from "@/components/zoomable-image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -1060,22 +1061,36 @@ export default function ProductsPage() {
       <Dialog open={Boolean(productToView)} onOpenChange={(open) => { if (!open) setProductToView(null); }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{productToView?.name ?? "Product"}</DialogTitle>
-            <DialogDescription>{productToView?.itemCode}</DialogDescription>
+            {/*
+              The code and the name sat on two unlabelled lines, so which was
+              which had to be inferred. They are labelled the same way as the
+              facts below. DialogTitle still carries the name, because the
+              dialog is announced by it.
+            */}
+            <div className="grid gap-3 text-left sm:grid-cols-[auto_1fr] sm:gap-8">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Item Code</p>
+                <p className="mt-1 text-sm font-semibold">{productToView?.itemCode || "-"}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Name</p>
+                <DialogTitle className="mt-1 text-base font-semibold">
+                  {productToView?.name ?? "Product"}
+                </DialogTitle>
+              </div>
+            </div>
+            <DialogDescription className="sr-only">
+              {productToView
+                ? `Details for ${productToView.name}, item code ${productToView.itemCode}.`
+                : "Product details."}
+            </DialogDescription>
           </DialogHeader>
           {productToView ? (
             <div className="space-y-5">
               {productToView.imageUrl ? (
-                <Image
+                <ZoomableImage
                   src={productToView.imageUrl}
                   alt={productToView.name}
-                  width={640}
-                  height={640}
-                  // The route behind this URL requires products:view. Optimising
-                  // it would have the server fetch it without the viewer's
-                  // cookies, which comes back 401 and renders a broken image.
-                  unoptimized
-                  className="max-h-64 w-full rounded-xl border bg-muted object-contain"
                 />
               ) : (
                 <p className="rounded-xl bg-muted p-3 text-sm text-muted-foreground">No product image uploaded.</p>
