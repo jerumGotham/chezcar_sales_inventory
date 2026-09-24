@@ -29,6 +29,7 @@ export async function seedSuppliersFromBrands(prisma) {
     brandsCleared: 0,
     suppliersCreated: 0,
     suppliersMatched: 0,
+    codesFilled: 0,
     productsLinked: 0,
     productsWithoutSupplier: 0,
   };
@@ -48,7 +49,7 @@ export async function seedSuppliersFromBrands(prisma) {
   }
 
   // 2. One supplier per distinct brand, reusing anything already there.
-  const existing = await prisma.supplier.findMany({ select: { id: true, name: true } });
+  const existing = await prisma.supplier.findMany({ select: { id: true, name: true, code: true } });
   const byKey = new Map(existing.map((supplier) => [normalizeKey(supplier.name), supplier.id]));
 
   const wanted = new Map();
@@ -58,13 +59,23 @@ export async function seedSuppliersFromBrands(prisma) {
     wanted.set(normalizeKey(name), name);
   }
 
+  const byId = new Map(existing.map((supplier) => [supplier.id, supplier]));
   for (const [key, name] of wanted) {
-    if (byKey.has(key)) {
+    const existingId = byKey.get(key);
+    if (existingId) {
       summary.suppliersMatched += 1;
+      // A supplier created before the code was carried over still has none, so
+      // fill it in rather than leaving the earlier rows half done.
+      if (byId.get(existingId)?.code !== name) {
+        await prisma.supplier.update({ where: { id: existingId }, data: { code: name } });
+        summary.codesFilled += 1;
+      }
       continue;
     }
     const created = await prisma.supplier.create({
-      data: { name, status: "ACTIVE", notes: "Created from the product catalogue brand list." },
+      // The brand text is both the name and the code: there is no separate
+      // code in the sheet, and an invented one would match nothing.
+      data: { name, code: name, status: "ACTIVE", notes: "Created from the product catalogue brand list." },
       select: { id: true },
     });
     byKey.set(key, created.id);
