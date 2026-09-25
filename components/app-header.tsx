@@ -15,11 +15,6 @@ import { authClient } from "@/lib/auth-client";
 import { markHeaderNotificationRead } from "@/lib/header-notifications";
 
 const THEME_KEY = "chezcar-theme";
-// Dark-only release. The class is already set on <html> by the root layout so
-// the first paint is dark; this keeps the toggle and saved preference dormant
-// rather than deleting the code behind them.
-const FORCE_DARK_THEME = true;
-
 type HeaderNotification = {
   id: string;
   cursor: string;
@@ -144,17 +139,17 @@ export function AppHeader({
   }, [toast]);
 
   useEffect(() => {
-    if (FORCE_DARK_THEME) {
-      applyTheme("dark");
-      return;
+    // Dark unless the reader asked for light. That is what the server renders
+    // and what the script in <head> has already applied, so this only catches
+    // up the React state. Reading the system preference here instead would
+    // flip a page that had already painted.
+    let storedTheme: string | null = null;
+    try {
+      storedTheme = window.localStorage.getItem(THEME_KEY);
+    } catch {
+      storedTheme = null;
     }
-    const storedTheme = window.localStorage.getItem(THEME_KEY);
-    const nextTheme =
-      storedTheme === "dark" || storedTheme === "light"
-        ? storedTheme
-        : window.matchMedia("(prefers-color-scheme: dark)").matches
-          ? "dark"
-          : "light";
+    const nextTheme = storedTheme === "light" ? "light" : "dark";
 
     // Hydrate the persisted theme after the browser becomes available.
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -164,11 +159,15 @@ export function AppHeader({
   }, []);
 
   useEffect(() => {
-    if (FORCE_DARK_THEME || !isReady) {
+    if (!isReady) {
       return;
     }
 
-    window.localStorage.setItem(THEME_KEY, theme);
+    // A browser with site data blocked still gets the theme it clicked for;
+    // it just will not be remembered next time.
+    try {
+      window.localStorage.setItem(THEME_KEY, theme);
+    } catch {}
     applyTheme(theme);
   }, [isReady, theme]);
 
@@ -278,25 +277,24 @@ export function AppHeader({
               </Link>
             ) : null}
 
-            {!FORCE_DARK_THEME && (
-              <Button
-                variant="outline"
-                size="icon"
-                className="rounded-2xl border-border bg-muted text-foreground hover:bg-accent"
-                onClick={() =>
-                  setTheme((current) => (current === "light" ? "dark" : "light"))
-                }
-                aria-label={
-                  theme === "light" ? "Switch to dark mode" : "Switch to light mode"
-                }
-              >
-                {theme === "light" ? (
-                  <Moon className="h-5 w-5" />
-                ) : (
-                  <Sun className="h-5 w-5" />
-                )}
-              </Button>
-            )}
+            <Button
+              variant="outline"
+              size="icon"
+              className="rounded-2xl border-border bg-muted text-foreground hover:bg-accent"
+              onClick={() =>
+                setTheme((current) => (current === "light" ? "dark" : "light"))
+              }
+              aria-label={
+                theme === "light" ? "Switch to dark mode" : "Switch to light mode"
+              }
+              title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+            >
+              {theme === "light" ? (
+                <Moon className="h-5 w-5" />
+              ) : (
+                <Sun className="h-5 w-5" />
+              )}
+            </Button>
 
             {access.authenticated ? (
               <div className="relative" ref={menuRef}>
