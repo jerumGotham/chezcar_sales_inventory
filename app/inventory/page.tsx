@@ -30,9 +30,7 @@ export default async function InventoryPage({
   }
 
   const actor = await requireCapability(requestHeaders, "inventory:view");
-  // Branches only, matching Branch Maintenance. The Stock Room is a warehouse
-  // and reaching it is the business of Receiving and Stock Transfers, which
-  // list it themselves; offering it here read as a sixth branch.
+  // Branches only, as Branch Maintenance defines them.
   const orderedLocations: InventoryLocationOption[] =
     await listAccessibleActiveBranches(actor);
 

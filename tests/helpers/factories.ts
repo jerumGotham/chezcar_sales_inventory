@@ -89,8 +89,8 @@ type CanonicalUsers = {
 };
 
 type InvalidAssignmentUsers = {
-  stockAtBranch: User;
-  branchAtStockRoom: User;
+  stockAtWarehouse: User;
+  branchAtWarehouse: User;
 };
 
 export type AuthFixture = {
@@ -130,6 +130,8 @@ export async function createLocationFixture(
 export async function createLocationFixtures(
   prisma: PrismaClient,
 ): Promise<LocationFixtures> {
+  // No longer an operational location: it is kept as the one non-branch row
+  // every "branches only" query and assignment guard is measured against.
   const stockRoom = await createLocationFixture(prisma, {
     code: "SR",
     name: "Stock Room",
@@ -165,8 +167,10 @@ function isValidAssignment(
     case "ADMIN":
     case "ACCOUNTING_STAFF":
       return locationId === null;
+    // Stock Staff work out of a branch like everyone else now that stock moves
+    // branch to branch. The warehouse row below stays in the fixture precisely
+    // so an assignment to it can be proved invalid.
     case "STOCK_STAFF":
-      return locationId === locations.stockRoom.id;
     case "BRANCH_STAFF":
       return locationId !== null && branchIds.has(locationId);
   }
@@ -289,7 +293,8 @@ async function createCanonicalUsers(
         namespace,
         key: "stock-staff",
         role: "STOCK_STAFF",
-        locationId: locations.stockRoom.id,
+        // A third branch, so a scope test can still tell the two staff apart.
+        locationId: locations.branches.SP.id,
       }),
       createUserFixture(prisma, locations, {
         namespace,
@@ -329,22 +334,24 @@ async function createInvalidAssignmentUsers(
       allowInvalidAssignment: true,
     });
 
-  const [stockAtBranch, branchAtStockRoom] = await Promise.all([
+  // Both operational roles now belong to a branch, so the warehouse is the one
+  // place either of them can be wrongly assigned to.
+  const [stockAtWarehouse, branchAtWarehouse] = await Promise.all([
     createInvalid({
-      key: "invalid-stock-at-branch",
+      key: "invalid-stock-at-warehouse",
       role: "STOCK_STAFF",
-      locationId: locations.branches.BL.id,
+      locationId: locations.stockRoom.id,
     }),
     createInvalid({
-      key: "invalid-branch-at-stock-room",
+      key: "invalid-branch-at-warehouse",
       role: "BRANCH_STAFF",
       locationId: locations.stockRoom.id,
     }),
   ]);
 
   return {
-    stockAtBranch,
-    branchAtStockRoom,
+    stockAtWarehouse,
+    branchAtWarehouse,
   };
 }
 

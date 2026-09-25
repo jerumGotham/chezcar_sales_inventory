@@ -342,18 +342,33 @@ describe("user management list and create", () => {
         };
       }
 
+      // A user is assigned to branches, and the Stock Room is a warehouse.
+      // It used to be offered beside them and resolved for Stock Staff; it is
+      // now refused, so no role can be pointed at it.
+      const stockRoomAttempt = await postUser({
+        roleId: "role-stock-staff",
+        name: "Stock Person",
+        email: "Stock.Person@Example.test",
+        temporaryPassword: "Temp-Pass-123",
+        locationIds: [locations.stockRoom.id],
+      });
+      expect(stockRoomAttempt.status).toBe(400);
+      expect(stockRoomAttempt.body.error?.code).toBe("INVALID_ASSIGNMENT");
+      expect(
+        await prisma.user.findUnique({ where: { email: "stock.person@example.test" } }),
+      ).toBeNull();
+
       const stockResult = await postUser({
         roleId: "role-stock-staff",
         name: "Stock Person",
         email: "Stock.Person@Example.test",
         temporaryPassword: "Temp-Pass-123",
-        // Hostile extra field must be ignored: Stock Staff resolves to SR only.
-        locationIds: [locations.stockRoom.id],
+        locationIds: [locations.branches.QC.id],
       });
       expect(stockResult.status).toBe(201);
       expect(stockResult.body.error).toBeUndefined();
       expect(stockResult.body.data?.roleName).toBe("Stock Staff");
-      expect(stockResult.body.data?.locations[0]?.code).toBe("SR");
+      expect(stockResult.body.data?.locations[0]?.code).toBe("QC");
       expect(stockResult.body.data?.credentialSetupRequired).toBe(true);
       expect(stockResult.body.data?.isOwner).toBe(false);
       const stockDtoJson = JSON.stringify(stockResult.body);
@@ -364,7 +379,7 @@ describe("user management list and create", () => {
         where: { email: "stock.person@example.test" },
         include: { accounts: true },
       });
-      expect(stockRow.locationId).toBe(locations.stockRoom.id);
+      expect(stockRow.locationId).toBe(locations.branches.QC.id);
       expect(stockRow.accounts).toHaveLength(1);
       expect(stockRow.accounts[0]?.password).toBeTruthy();
       expect(stockRow.accounts[0]?.password).not.toBe("Temp-Pass-123");
@@ -406,24 +421,18 @@ describe("user management list and create", () => {
         await prisma.user.findUnique({ where: { email: "no.branch@example.test" } }),
       ).toBeNull();
 
-      await prisma.location.update({
-        where: { id: locations.stockRoom.id },
-        data: { isActive: false },
-      });
-      const unavailableStockRoom = await postUser({
+      // Every role needs a branch now, so leaving one out is refused whoever
+      // the user is. This used to turn on whether the Stock Room was active.
+      const missingStockBranch = await postUser({
         roleId: "role-stock-staff",
         name: "Late Stock",
         email: "late.stock@example.test",
         temporaryPassword: "Temp-Pass-123",
       });
-      expect(unavailableStockRoom.status).toBe(400);
+      expect(missingStockBranch.status).toBe(400);
       expect(
         await prisma.user.findUnique({ where: { email: "late.stock@example.test" } }),
       ).toBeNull();
-      await prisma.location.update({
-        where: { id: locations.stockRoom.id },
-        data: { isActive: true },
-      });
     });
   }, 90_000);
 

@@ -115,8 +115,8 @@ describe("persisted branch maintenance", () => {
       await expect(listActiveBranches(prisma)).resolves.toEqual([
         { id: active.id, code: "DV", name: "Davao City" },
       ]);
+      // Branches only. A warehouse row is no longer an operational location.
       await expect(listActiveOperationalLocations(prisma)).resolves.toEqual([
-        expect.objectContaining({ code: "SR", type: "WAREHOUSE" }),
         expect.objectContaining({ code: "DV", type: "BRANCH" }),
       ]);
 

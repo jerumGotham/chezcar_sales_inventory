@@ -32,7 +32,7 @@ describe("stock transfer posting", () => {
       });
       await prisma.inventoryBalance.createMany({
         data: [
-          { locationId: fixture.locations.stockRoom.id, productId: product.id, onHand: 10 },
+          { locationId: fixture.locations.branches.SP.id, productId: product.id, onHand: 10 },
           { locationId: fixture.locations.branches.LU.id, productId: product.id, onHand: 4 },
         ],
       });
@@ -65,7 +65,7 @@ describe("stock transfer posting", () => {
         "../../lib/server/catalog"
       );
       const { listSales } = await import("../../lib/server/services/customer-sales");
-      const stockActor = actor(fixture.users.stockStaff, fixture.locations.stockRoom);
+      const stockActor = actor(fixture.users.stockStaff, fixture.locations.branches.SP);
       const qcActor = actor(fixture.users.branchStaff, fixture.locations.branches.QC);
 
       const qcTransfer = await createTransfer(stockActor, {
@@ -80,7 +80,7 @@ describe("stock transfer posting", () => {
       expect(
         canAccessTransferRecord(
           stockActor,
-          fixture.locations.stockRoom.id,
+          fixture.locations.branches.SP.id,
           fixture.locations.branches.LU.id,
         ),
       ).toBe(true);
@@ -158,7 +158,7 @@ describe("stock transfer posting", () => {
       });
       await prisma.inventoryBalance.create({
         data: {
-          locationId: fixture.locations.stockRoom.id,
+          locationId: fixture.locations.branches.SP.id,
           productId: product.id,
           onHand: 10,
           reserved: 2,
@@ -171,7 +171,7 @@ describe("stock transfer posting", () => {
       const adminActor = actor(fixture.users.admin, null);
 
       const draft = await createTransfer(adminActor, {
-        sourceId: fixture.locations.stockRoom.id,
+        sourceId: fixture.locations.branches.SP.id,
         destinationId: fixture.locations.branches.QC.id,
         lines: [{ productId: product.id, quantity: 5 }],
       });
@@ -205,7 +205,7 @@ describe("stock transfer posting", () => {
         await prisma.inventoryBalance.findUniqueOrThrow({
           where: {
             locationId_productId: {
-              locationId: fixture.locations.stockRoom.id,
+              locationId: fixture.locations.branches.SP.id,
               productId: product.id,
             },
           },
@@ -257,7 +257,7 @@ describe("stock transfer posting", () => {
       });
       await prisma.inventoryBalance.create({
         data: {
-          locationId: fixture.locations.stockRoom.id,
+          locationId: fixture.locations.branches.SP.id,
           productId: product.id,
           onHand: 10,
           unitCost: 1,
@@ -272,7 +272,7 @@ describe("stock transfer posting", () => {
         submitInvestigation,
       } = await import("../../lib/server/services/stock-transfers");
       const { listNotifications, markNotificationRead } = await import("../../lib/server/services/notifications");
-      const stockActor = actor(fixture.users.stockStaff, fixture.locations.stockRoom);
+      const stockActor = actor(fixture.users.stockStaff, fixture.locations.branches.SP);
       const branchActor = actor(fixture.users.branchStaff, fixture.locations.branches.QC);
       const adminActor = actor(fixture.users.admin, null);
 
@@ -316,7 +316,7 @@ describe("stock transfer posting", () => {
       });
 
       const replacement = await createTransfer(adminActor, {
-        sourceId: fixture.locations.stockRoom.id,
+        sourceId: fixture.locations.branches.SP.id,
         destinationId: fixture.locations.branches.QC.id,
         replacementForTransferId: draft.id,
         lines: [{ productId: product.id, quantity: 1 }],

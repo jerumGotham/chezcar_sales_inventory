@@ -10,6 +10,7 @@ import type {
   InventoryApiResponse,
   InventoryMovementRow,
   InventoryMovementsApiResponse,
+  InventoryBalanceRow,
   InventoryRow,
   InventoryStatus,
   ProductsApiResponse,
@@ -22,7 +23,6 @@ import {
 import {
   canAccessLocation,
   evaluateAccess,
-  hasAllLocationAccess,
   type PersistedAccessContext,
   validatePersistedAssignment,
 } from "@/lib/server/policy/access";
@@ -128,7 +128,8 @@ type InventoryListQuery = z.infer<typeof inventoryListQuerySchema>;
 type InventoryMovementsQuery = z.infer<typeof inventoryMovementsQuerySchema>;
 
 export type ResolvedLocationScope =
-  | { kind: "all"; locationIds?: string[] }
+  /** Every branch the caller can reach. Always listed, never "no filter". */
+  | { kind: "all"; locationIds: string[] }
   /** Several named branches, each one checked against the caller's access. */
   | { kind: "locations"; locationIds: string[] }
   | { kind: "location"; locationId: string };
@@ -136,10 +137,9 @@ export type ResolvedLocationScope =
 /** The Prisma locationId filter a resolved scope stands for. */
 export function scopeLocationFilter(
   scope: ResolvedLocationScope,
-): string | { in: string[] } | undefined {
+): string | { in: string[] } {
   if (scope.kind === "location") return scope.locationId;
-  if (scope.kind === "locations") return { in: scope.locationIds };
-  return scope.locationIds ? { in: scope.locationIds } : undefined;
+  return { in: scope.locationIds };
 }
 
 export class ProductMutationError extends Error {
@@ -181,6 +181,22 @@ export function parseInventoryMovementsQuery(
   return inventoryMovementsQuerySchema.parse(input);
 }
 
+/**
+ * What "All locations" resolves to: every active branch the caller can reach.
+ *
+ * It is never "no filter". Stock lives in branches, and a list that simply
+ * dropped the location clause would surface a balance parked on an inactive or
+ * non-branch row, which is exactly what an all-location reader would trust as
+ * sellable stock.
+ */
+async function resolveAllLocations(
+  context: PersistedAccessContext,
+): Promise<ResolvedLocationScope> {
+  // Already narrowed to the caller's own branches, so nothing is left to trim.
+  const accessible = await listAccessibleOperationalLocations(context);
+  return { kind: "all", locationIds: accessible.map((location) => location.id) };
+}
+
 export async function resolveLocationScope(
   context: PersistedAccessContext,
   requestedLocation: string,
@@ -193,18 +209,14 @@ export async function resolveLocationScope(
   }
 
   if (requestedLocation === "all") {
-    return hasAllLocationAccess(context)
-      ? { kind: "all" }
-      : { kind: "all", locationIds: [...context.locationIds] };
+    return resolveAllLocations(context);
   }
 
   // Several branches arrive comma separated. Every one of them is resolved and
   // access-checked on its own, so naming an extra branch widens nothing.
   const requested = [...new Set(requestedLocation.split(",").map((value) => value.trim()).filter(Boolean))];
   if (requested.length === 0) {
-    return hasAllLocationAccess(context)
-      ? { kind: "all" }
-      : { kind: "all", locationIds: [...context.locationIds] };
+    return resolveAllLocations(context);
   }
 
   const resolved: string[] = [];
@@ -527,6 +539,26 @@ export async function deleteProduct(actor: AuthContext, productId: string) {
   return { id: productId };
 }
 
+/**
+ * Flattens a product's fitments into the two columns the branch inventory
+ * sheet has always carried, one for the vehicle and one for its years.
+ *
+ * A product may hold several fitments where the sheet held one line, so every
+ * distinct value is joined rather than the first one winning. Blanks are
+ * dropped: an encoder who left the year open should leave the cell empty, not
+ * print a stray comma.
+ */
+function fitmentLabels(
+  compatibilities: ReadonlyArray<{ model: string; yearsLabel: string | null }>,
+): { carModel: string; yearModel: string } {
+  const distinct = (values: ReadonlyArray<string>) =>
+    Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).join(", ");
+  return {
+    carModel: distinct(compatibilities.map((item) => item.model)),
+    yearModel: distinct(compatibilities.map((item) => item.yearsLabel ?? "")),
+  };
+}
+
 function stockStatus(onHand: number, reserved: number, quarantined: number, reorderLevel: number): InventoryStatus {
   const available = availableStock({ onHand, reserved, quarantined });
   if (available <= 0) return "Out of Stock";
@@ -583,6 +615,10 @@ export async function listInventory(
           orderBy: { location: { name: "asc" } },
           include: { location: { select: { name: true, code: true } } },
         },
+        vehicleCompatibilities: {
+          orderBy: [{ make: "asc" }, { model: "asc" }],
+          select: { model: true, yearsLabel: true },
+        },
       },
     }),
     prisma.inventoryBalance.findMany({
@@ -611,11 +647,20 @@ export async function listInventory(
         .filter((product) => product.inventoryBalances.length > 0);
   const { meta, skip } = pagination(query.page, query.pageSize, productsWithMatchingStatus.length);
   const products = productsWithMatchingStatus.slice(skip, skip + query.pageSize);
-  const rows: InventoryRow[] = products.flatMap((product) =>
-    product.inventoryBalances.map((balance) => ({
+  const rows: InventoryRow[] = products.flatMap((product) => {
+    const fitment = fitmentLabels(product.vehicleCompatibilities);
+    const imageUrl = product.imageKey
+      ? `/api/products/${product.id}/image?v=${product.updatedAt.getTime()}`
+      : null;
+    return product.inventoryBalances.map((balance) => ({
       id: balance.id,
       itemCode: product.itemCode,
       name: product.name,
+      description: product.description ?? "",
+      brand: product.brand ?? "",
+      carModel: fitment.carModel,
+      yearModel: fitment.yearModel,
+      imageUrl,
       category: product.category ?? "Uncategorized",
       location: balance.location.name,
       locationCode: balance.location.code,
@@ -626,8 +671,8 @@ export async function listInventory(
       unitCost: balance.unitCost.toNumber(),
       lastUpdated: balance.updatedAt.toISOString(),
        status: stockStatus(balance.onHand, balance.reserved, balance.quarantined, product.reorderLevel),
-    })),
-  );
+    }));
+  });
   const totalUnits = summaryBalances.reduce(
     (sum, balance) => sum + balance.onHand,
     0,
@@ -838,7 +883,7 @@ function serializeInventoryBalance(
     location: { name: string; code: string };
   },
   status: InventoryStatus,
-): InventoryRow {
+): InventoryBalanceRow {
   return {
     id: balance.id,
     itemCode: balance.product.itemCode,

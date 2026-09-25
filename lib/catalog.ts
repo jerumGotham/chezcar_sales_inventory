@@ -93,6 +93,14 @@ export type InventoryRow = {
   id: string;
   itemCode: string;
   name: string;
+  description: string;
+  /** The supplier name kept on the product, shown as Brand. */
+  brand: string;
+  /** Every fitment model the product carries, joined for one column. */
+  carModel: string;
+  /** Every fitment year label the product carries, joined for one column. */
+  yearModel: string;
+  imageUrl: string | null;
   category: string;
   location: string;
   /** The branch's short code, for places too narrow to carry its full name. */
@@ -105,6 +113,19 @@ export type InventoryRow = {
   lastUpdated: string;
   status: InventoryStatus;
 };
+
+/**
+ * What an adjustment confirms: the balance it just changed.
+ *
+ * It is deliberately narrower than a list row. The list carries the product's
+ * catalogue detail so the screen can read like the branch sheet; an adjustment
+ * runs inside a serializable transaction and has no business joining the
+ * catalogue to echo back fields the caller already had on screen.
+ */
+export type InventoryBalanceRow = Omit<
+  InventoryRow,
+  "description" | "brand" | "carModel" | "yearModel" | "imageUrl"
+>;
 
 export type InventoryApiResponse = {
   data: InventoryRow[];
@@ -207,5 +228,5 @@ export function correctInventory(
     remarks?: string;
   },
 ) {
-  return sendJson<{ data: InventoryRow }>(`/api/inventory/${balanceId}/adjustment`, "POST", input);
+  return sendJson<{ data: InventoryBalanceRow }>(`/api/inventory/${balanceId}/adjustment`, "POST", input);
 }

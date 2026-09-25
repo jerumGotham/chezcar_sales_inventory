@@ -72,7 +72,7 @@ const managedUserSelect = {
     where: {
       location: {
         isActive: true,
-        OR: [{ type: "BRANCH" }, { code: "SR", type: "WAREHOUSE" }],
+        type: "BRANCH",
       },
     },
     select: { location: { select: { id: true, code: true, name: true, type: true } } },
@@ -321,7 +321,7 @@ async function resolveAssignmentLocationIds(
     throw lifecycleFailure(403, "FORBIDDEN", "A selected location is outside your access");
   }
   const count = await db.location.count({
-    where: { id: { in: ids }, isActive: true, OR: [{ type: "BRANCH" }, { code: "SR", type: "WAREHOUSE" }] },
+    where: { id: { in: ids }, isActive: true, type: "BRANCH" },
   });
   if (count !== ids.length) {
     throw lifecycleFailure(400, "INVALID_ASSIGNMENT", "Select only active operational locations");
@@ -355,7 +355,7 @@ export async function listUsers(actor: PersistedAccessContext, query: UserListQu
                 locationId: { in: [...actor.locationIds] },
                 location: {
                   isActive: true,
-                  OR: [{ type: "BRANCH" }, { code: "SR", type: "WAREHOUSE" }],
+                  type: "BRANCH",
                 },
               },
             },
@@ -366,7 +366,7 @@ export async function listUsers(actor: PersistedAccessContext, query: UserListQu
                 locationId: { notIn: [...actor.locationIds] },
                 location: {
                   isActive: true,
-                  OR: [{ type: "BRANCH" }, { code: "SR", type: "WAREHOUSE" }],
+                  type: "BRANCH",
                 },
               },
             },

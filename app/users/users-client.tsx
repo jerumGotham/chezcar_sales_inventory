@@ -144,7 +144,7 @@ function staffRoleLabel(user: ManagedUserDto): string {
 function locationScopeLabel(user: ManagedUserDto): string {
   if (user.isOwner || user.locations.length === 0) return "All locations";
   return user.locations
-    .map((location) => location.code === "SR" ? "Stock Room (SR)" : location.code)
+    .map((location) => location.code)
     .join(", ");
 }
 
@@ -648,9 +648,7 @@ function UserFormDialog({
                             setFieldErrors((previous) => ({ ...previous, branch: undefined }));
                           }}
                         />
-                        {location.code === "SR"
-                          ? "Stock Room (SR)"
-                          : `${location.name} (${location.code})`}
+                        {`${location.name} (${location.code})`}
                       </label>
                     ))}
                     {fieldErrors.branch && (
@@ -1145,9 +1143,7 @@ export function UsersClient({
       options.push({
         value: location.code,
         label:
-          location.code === "SR"
-            ? "Stock Room (SR)"
-            : `${location.name} (${location.code})`,
+          `${location.name} (${location.code})`,
       });
     }
     options.push({ value: "none", label: "Not assigned" });

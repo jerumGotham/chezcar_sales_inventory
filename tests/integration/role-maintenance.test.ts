@@ -47,7 +47,7 @@ describe("role and location authorization maintenance", () => {
       ).rejects.toMatchObject({ code: "LOCATION_ASSIGNMENT_REQUIRED", status: 409 });
 
       await updateStaffUser(actor, fixture.users.branchStaff.id, {
-        locationIds: [fixture.locations.branches.QC.id, fixture.locations.stockRoom.id],
+        locationIds: [fixture.locations.branches.QC.id, fixture.locations.branches.BL.id],
       });
       const updated = await updateRoleDefinition(actor, role.id, {
         version: role.version,
@@ -60,7 +60,7 @@ describe("role and location authorization maintenance", () => {
         orderBy: { locationId: "asc" },
       });
       expect(assignments.map(({ locationId }) => locationId).sort()).toEqual(
-        [fixture.locations.branches.QC.id, fixture.locations.stockRoom.id].sort(),
+        [fixture.locations.branches.QC.id, fixture.locations.branches.BL.id].sort(),
       );
 
       await expect(

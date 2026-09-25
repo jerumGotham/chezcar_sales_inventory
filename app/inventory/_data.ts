@@ -13,6 +13,12 @@ export type InventoryRow = {
   id: string;
   itemCode: string;
   name: string;
+  /** Catalogue detail the API sends. Absent on the fixtures, which never had it. */
+  description?: string;
+  brand?: string;
+  carModel?: string;
+  yearModel?: string;
+  imageUrl?: string | null;
   category: string;
   location: string;
   /** Short branch code. Absent on the fixtures, which never had one. */
@@ -29,6 +35,11 @@ export type InventoryRow = {
 export type ProductGroupRow = {
   itemCode: string;
   name: string;
+  description: string;
+  brand: string;
+  carModel: string;
+  yearModel: string;
+  imageUrl: string | null;
   category: string;
   totalOnHand: number;
   totalReserved: number;
@@ -38,7 +49,6 @@ export type ProductGroupRow = {
   unitCost: number;
   locations: InventoryRow[];
   status: InventoryStatus;
-  lastUpdated: string;
 };
 
 export type StockMovement = {

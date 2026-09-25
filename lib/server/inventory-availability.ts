@@ -97,7 +97,7 @@ export async function listInventoryAvailability(
         : { in: [...context.locationIds] },
     location: {
       isActive: true,
-      OR: [{ type: "BRANCH" }, { code: "SR", type: "WAREHOUSE" }],
+      type: "BRANCH",
     },
   };
   const productWhere: Prisma.ProductWhereInput = {

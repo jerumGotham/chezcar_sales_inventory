@@ -20,16 +20,6 @@ export function isActiveBranch(
   return location?.type === "BRANCH" && location.isActive;
 }
 
-export function isActiveStockRoom(
-  location: Pick<Location, "code" | "type" | "isActive"> | null,
-): boolean {
-  return (
-    location?.code === "SR" &&
-    location.type === "WAREHOUSE" &&
-    location.isActive
-  );
-}
-
 export async function listActiveBranches(
   db: LocationDb = prisma,
 ): Promise<ActiveBranchOption[]> {
@@ -71,17 +61,13 @@ export async function listActiveOperationalLocations(
   const locations = await db.location.findMany({
     where: {
       isActive: true,
-      OR: [{ type: "BRANCH" }, { code: "SR", type: "WAREHOUSE" }],
+      type: "BRANCH",
     },
     select: { id: true, code: true, name: true, type: true, isActive: true },
     orderBy: [{ code: "asc" }, { name: "asc" }],
   });
 
-  return locations.sort((left, right) => {
-    if (left.code === "SR") return -1;
-    if (right.code === "SR") return 1;
-    return left.code.localeCompare(right.code);
-  });
+  return locations;
 }
 
 export async function listAccessibleOperationalLocations(
@@ -91,18 +77,14 @@ export async function listAccessibleOperationalLocations(
   const locations = await db.location.findMany({
     where: {
       isActive: true,
-      OR: [{ type: "BRANCH" }, { code: "SR", type: "WAREHOUSE" }],
+      type: "BRANCH",
       ...accessibleLocationWhere(context),
     },
     select: { id: true, code: true, name: true, type: true, isActive: true },
     orderBy: [{ code: "asc" }, { name: "asc" }],
   });
 
-  return locations.sort((left, right) => {
-    if (left.code === "SR") return -1;
-    if (right.code === "SR") return 1;
-    return left.code.localeCompare(right.code);
-  });
+  return locations;
 }
 
 export async function findActiveOperationalLocation(
@@ -113,7 +95,7 @@ export async function findActiveOperationalLocation(
     where: {
       isActive: true,
       OR: [{ id: value }, { code: value }],
-      AND: { OR: [{ type: "BRANCH" }, { code: "SR", type: "WAREHOUSE" }] },
+      AND: { type: "BRANCH" },
     },
     select: { id: true },
   });
@@ -123,7 +105,7 @@ export async function findActiveOperationalLocation(
     where: {
       isActive: true,
       name: value,
-      OR: [{ type: "BRANCH" }, { code: "SR", type: "WAREHOUSE" }],
+      type: "BRANCH",
     },
     select: { id: true },
     take: 2,

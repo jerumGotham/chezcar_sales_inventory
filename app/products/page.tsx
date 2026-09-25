@@ -628,7 +628,7 @@ export default function ProductsPage() {
                 {/* A catalogue total. Which branch holds what is Inventory's
                     question, and it answers it far better than a number here. */}
                 <p className="text-xs text-muted-foreground">
-                  Stock counts every branch you can see, combined. Stock Room is excluded; see it in Inventory.
+                  Stock counts every branch you can see, combined.
                 </p>
               </div>
               <TablePagination page={meta.page} totalPages={meta.totalPages} onPageChange={setPage} busy={isFetching} />

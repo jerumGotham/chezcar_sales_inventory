@@ -60,7 +60,7 @@ async function loadPersistedAccessContext(
         where: {
           location: {
             isActive: true,
-            OR: [{ type: "BRANCH" }, { code: "SR", type: "WAREHOUSE" }],
+            type: "BRANCH",
           },
         },
         select: { locationId: true },

@@ -52,7 +52,7 @@ describe("product images", () => {
       const admin = authContextFor(fixture.users.admin, null);
       const stock = authContextFor(
         fixture.users.stockStaff,
-        fixture.locations.stockRoom,
+        fixture.locations.branches.SP,
       );
       const {
         ProductImageError,

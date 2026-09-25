@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import Select from "react-select";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -18,6 +19,7 @@ import {
 
 import { LocationScopeControl, parseScopeValue } from "@/components/location-scope-control";
 import { PageShell } from "@/components/page-shell";
+import { ZoomableImage } from "@/components/zoomable-image";
 import { TablePagination } from "@/components/table-pagination";
 import { useCan } from "@/components/shell-access-context";
 import { Badge } from "@/components/ui/badge";
@@ -80,6 +82,103 @@ const numberFormatter = new Intl.NumberFormat("en-PH");
 
 function locationLabel(location: InventoryLocationOption): string {
   return `${location.name} (${location.code})`;
+}
+
+/**
+ * One labelled catalogue value from the branch sheet.
+ *
+ * The label is carried on every value rather than once in a column header,
+ * because a card has no header row and because a reader who does not recognise
+ * "1003" needs to be told which of these is the code and which is the name.
+ *
+ * The grey belongs to the label and the weight to the value: the label is read
+ * once to learn the layout, while the value is what someone came to find.
+ */
+function CatalogField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </dt>
+      <dd
+        // Long sheet text is clamped so one wordy description cannot push the
+        // totals below it out of reach.
+        className="mt-0.5 line-clamp-2 text-sm font-semibold text-foreground"
+        title={value || undefined}
+      >
+        {/* An empty cell stays grey: a dash is the absence of a value, not one. */}
+        {value || <span className="font-normal text-muted-foreground">&mdash;</span>}
+      </dd>
+    </div>
+  );
+}
+
+function StockTotal({
+  label,
+  value,
+  className = "text-foreground",
+}: {
+  label: string;
+  value: number;
+  className?: string;
+}) {
+  return (
+    <div>
+      <dt className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </dt>
+      <dd className={`mt-0.5 text-lg font-semibold ${className}`}>
+        {numberFormatter.format(value)}
+      </dd>
+    </div>
+  );
+}
+
+/**
+ * The card's thumbnail, which opens the photo full size.
+ *
+ * A product with no photo is a plain panel rather than a dead button, so the
+ * pointer never promises something to click that will not open.
+ */
+function ProductPhotoButton({
+  imageUrl,
+  name,
+  onOpen,
+}: {
+  imageUrl: string | null;
+  name: string;
+  onOpen: () => void;
+}) {
+  if (!imageUrl) {
+    return (
+      <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-xl border border-dashed bg-muted text-xs text-muted-foreground sm:h-32 sm:w-32">
+        No photo
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`Open the photo of ${name}`}
+      className="group relative h-28 w-28 shrink-0 cursor-zoom-in overflow-hidden rounded-xl border bg-muted sm:h-32 sm:w-32"
+    >
+      <Image
+        src={imageUrl}
+        alt={name}
+        fill
+        sizes="128px"
+        // The route behind this checks the session, and the optimiser fetches
+        // without one.
+        unoptimized
+        className="object-cover"
+      />
+      <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-black/60 py-1 text-center text-[10px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
+        Click to open
+      </span>
+    </button>
+  );
 }
 
 export function InventoryClient({
@@ -160,6 +259,8 @@ export function InventoryClient({
   >({});
 
   const [selectedItem, setSelectedItem] = useState<InventoryRow | null>(null);
+  /** The product whose photo is open full size, or null when none is. */
+  const [photoToView, setPhotoToView] = useState<ProductGroupRow | null>(null);
 
   const [isAdjustOpen, setIsAdjustOpen] = useState(false);
   const [isQuickAdjustOpen, setIsQuickAdjustOpen] = useState(false);
@@ -363,14 +464,16 @@ export function InventoryClient({
         0,
       );
 
-      const latestUpdated = rows
-        .map((row) => row.lastUpdated)
-        .sort()
-        .slice(-1)[0];
-
       return {
         itemCode,
         name: first.name,
+        // Catalogue detail is the same on every balance of one product, so the
+        // first row speaks for the group.
+        description: first.description ?? "",
+        brand: first.brand ?? "",
+        carModel: first.carModel ?? "",
+        yearModel: first.yearModel ?? "",
+        imageUrl: first.imageUrl ?? null,
         category: first.category,
         totalOnHand,
         totalReserved,
@@ -380,7 +483,6 @@ export function InventoryClient({
         unitCost: first.unitCost,
         locations: rows,
         status: getGroupedStatus(rows),
-        lastUpdated: latestUpdated,
       };
     });
   }, [flatRows]);
@@ -604,7 +706,7 @@ export function InventoryClient({
               <p className="font-semibold text-foreground">Stock Transfers</p>
               <p className="mt-1 text-sm text-muted-foreground">
                 {canReceiveSupplierStock
-                  ? "Create and dispatch Stock Room transfers separately from receiving."
+                  ? "Create and dispatch branch-to-branch transfers separately from receiving."
                   : "Review transfer work separately from inventory counts."}
               </p>
             </div>
@@ -737,278 +839,241 @@ export function InventoryClient({
               <TablePagination page={meta.page} totalPages={meta.totalPages} onPageChange={setPage} busy={isFetching} />
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1500px]">
-                <thead className="bg-muted">
-                  <tr className="border-b">
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Product
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Category
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Total On Hand
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Total Reserved
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total Quarantined</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Total Available
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Reorder Level
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Branches
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Status
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Expand
-                    </th>
-                  </tr>
-                </thead>
+            {/* Cards rather than a wide table: fourteen sheet columns could not
+                be read side by side without a horizontal scroll, and a label
+                beside each value matters more here than column alignment,
+                because not everyone reading this recognises an item by code. */}
+            <div className="space-y-4 p-4 sm:p-5">
+              {isLoading ? (
+                <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading inventory...
+                </div>
+              ) : error ? (
+                <p className="py-16 text-center text-red-600">{error.message}</p>
+              ) : groupedRows.length === 0 ? (
+                <p className="py-16 text-center text-muted-foreground">
+                  No inventory records found.
+                </p>
+              ) : (
+                groupedRows.map((group) => {
+                  const containsLinkedBalance = group.locations.some(
+                    (item) => item.id === initialBalanceId,
+                  );
+                  // A row reached from a notification link stays open even if
+                  // the reader had shut it.
+                  const isExpanded =
+                    containsLinkedBalance || !collapsedProducts[group.itemCode];
+                  const stockedLocations = group.locations.filter(
+                    (item) => item.onHand > 0,
+                  );
+                  const visibleLocations = canSelectLocations
+                    ? group.locations
+                    : stockedLocations;
+                  const emptyLocationCount =
+                    group.locations.length - stockedLocations.length;
 
-                <tbody>
-                  {isLoading ? (
-                    <tr>
-                      <td colSpan={10} className="px-5 py-16 text-center">
-                        <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Loading inventory...
-                        </div>
-                      </td>
-                    </tr>
-                  ) : error ? (
-                    <tr>
-                      <td
-                        colSpan={10}
-                        className="px-5 py-16 text-center text-red-600"
-                      >
-                        {error.message}
-                      </td>
-                    </tr>
-                  ) : groupedRows.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={10}
-                        className="px-5 py-16 text-center text-muted-foreground"
-                      >
-                        No inventory records found.
-                      </td>
-                    </tr>
-                  ) : (
-                    groupedRows.map((group) => {
-                      const containsLinkedBalance = group.locations.some(
-                        (item) => item.id === initialBalanceId,
-                      );
-                      // A row reached from a notification link stays open even
-                      // if the reader had shut it.
-                      const isExpanded =
-                        containsLinkedBalance || !collapsedProducts[group.itemCode];
-                      const stockedLocations = group.locations.filter(
-                        (item) => item.onHand > 0,
-                      );
-                      const visibleLocations = canSelectLocations
-                        ? group.locations
-                        : stockedLocations;
-                      const emptyLocationCount = group.locations.length - stockedLocations.length;
+                  return (
+                    <div
+                      key={group.itemCode}
+                      className={`overflow-hidden rounded-2xl border bg-card ${containsLinkedBalance ? "ring-2 ring-amber-400" : ""}`}
+                    >
+                      <div className="flex flex-col gap-5 p-4 sm:flex-row sm:p-5">
+                        <ProductPhotoButton
+                          imageUrl={group.imageUrl}
+                          name={group.name}
+                          onOpen={() => setPhotoToView(group)}
+                        />
 
-                      return (
-                        <React.Fragment key={group.itemCode}>
-                          <tr
-                            className={`border-b bg-card transition-colors hover:bg-muted ${containsLinkedBalance ? "ring-2 ring-inset ring-amber-400" : ""}`}
-                          >
-                            <td className="px-5 py-4">
-                              <div>
-                                <p className="text-sm font-semibold text-foreground">
-                                  {group.name}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  {group.itemCode} • Last updated:{" "}
-                                  {group.lastUpdated}
-                                </p>
-                              </div>
-                            </td>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <dl className="grid min-w-0 flex-1 gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
+                              {/* The order Products uses, so the two screens
+                                  read the same way round: identity, then brand
+                                  and fitment, and the long description last. */}
+                              <CatalogField label="Item Code" value={group.itemCode} />
+                              <CatalogField label="Name" value={group.name} />
+                              <CatalogField label="Brand" value={group.brand} />
+                              <CatalogField label="Car Model" value={group.carModel} />
+                              <CatalogField label="Year Model" value={group.yearModel} />
+                              <CatalogField label="Description" value={group.description} />
+                            </dl>
+                            <Badge className={getStockBadgeClass(group.status)}>
+                              {group.status}
+                            </Badge>
+                          </div>
 
-                            <td className="px-5 py-4 text-sm text-muted-foreground">
-                              {group.category}
-                            </td>
+                          <dl className="mt-5 grid grid-cols-2 gap-4 border-t pt-4 sm:grid-cols-4">
+                            <StockTotal label="Total On Hand" value={group.totalOnHand} />
+                            <StockTotal label="Total Reserved" value={group.totalReserved} />
+                            <StockTotal
+                              label="Total Quarantined"
+                              value={group.totalQuarantined}
+                              className="text-amber-700 dark:text-amber-300"
+                            />
+                            <StockTotal
+                              label="Total Available"
+                              value={group.totalAvailable}
+                              className="text-emerald-700 dark:text-emerald-300"
+                            />
+                          </dl>
 
-                            <td className="px-5 py-4 text-sm text-muted-foreground">
-                              {group.totalOnHand}
-                            </td>
-
-                            <td className="px-5 py-4 text-sm text-muted-foreground">
-                              {group.totalReserved}
-                            </td>
-                            <td className="px-5 py-4 text-sm text-amber-700 dark:text-amber-300">{group.totalQuarantined}</td>
-
-                            <td className="px-5 py-4 text-sm font-semibold text-foreground">
-                              {group.totalAvailable}
-                            </td>
-
-                            <td className="px-5 py-4 text-sm text-muted-foreground">
-                              {group.reorderLevel}
-                            </td>
-
-                            {/* A bare count told nobody where the stock was, and
-                                the answer was one expand away. */}
-                            <td className="px-5 py-4 text-sm text-muted-foreground">
+                          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+                            {/* Codes, not names: a product can sit in several
+                                branches at once. */}
+                            <p className="min-w-0 text-sm">
+                              <span className="text-muted-foreground">Branches: </span>
                               {stockedLocations.length ? (
-                                <span className="block max-w-56 text-xs leading-relaxed">
-                                  {/* Codes, not names: the column is narrow and a
-                                      row can hold several branches at once. */}
-                                  {stockedLocations.map((item) => item.locationCode ?? item.location).join(", ")}
+                                <span className="font-semibold text-foreground">
+                                  {stockedLocations
+                                    .map((item) => item.locationCode ?? item.location)
+                                    .join(", ")}
                                 </span>
                               ) : (
-                                <span className="text-xs text-muted-foreground">No stock</span>
+                                <span className="text-muted-foreground">No stock</span>
                               )}
-                            </td>
+                            </p>
+                            <Button
+                              variant="view"
+                              size="sm"
+                              onClick={() => toggleExpanded(group.itemCode)}
+                            >
+                              {isExpanded ? (
+                                <>
+                                  <ChevronUp className="mr-1 h-4 w-4" />
+                                  Hide
+                                </>
+                              ) : (
+                                <>
+                                  <ChevronDown className="mr-1 h-4 w-4" />
+                                  View
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
 
-                            <td className="px-5 py-4 text-sm">
-                              <Badge
-                                className={getStockBadgeClass(group.status)}
-                              >
-                                {group.status}
-                              </Badge>
-                            </td>
+                      {isExpanded && (
+                        <div className="border-t bg-muted p-4 sm:p-5">
+                          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <p className="font-semibold text-foreground">
+                                Where this product is available
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {canSelectLocations
+                                  ? "Admin can review and edit each location's reorder level."
+                                  : "Only locations with stock are shown."}
+                              </p>
+                            </div>
+                            {emptyLocationCount > 0 && (
+                              <p className="text-sm text-muted-foreground">
+                                {emptyLocationCount} location
+                                {emptyLocationCount === 1 ? " has" : "s have"} no stock.
+                              </p>
+                            )}
+                          </div>
 
-                            <td className="px-5 py-4">
-                               <div className="flex flex-wrap gap-2">
-                                 <Button
-                                   variant="view"
-                                   size="sm"
-                                   onClick={() => toggleExpanded(group.itemCode)}
-                                 >
-                                   {isExpanded ? (
-                                     <>
-                                       <ChevronUp className="mr-1 h-4 w-4" />
-                                       Hide
-                                     </>
-                                   ) : (
-                                     <>
-                                       <ChevronDown className="mr-1 h-4 w-4" />
-                                       View
-                                     </>
-                                   )}
-                                 </Button>
-                               </div>
-                            </td>
-                          </tr>
+                          {visibleLocations.length === 0 ? (
+                            <div className="mt-4 rounded-xl border border-dashed bg-card px-5 py-6 text-sm text-muted-foreground">
+                              This product has no stock in any location yet.
+                            </div>
+                          ) : (
+                            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                              {visibleLocations.map((item) => {
+                                const available = getAvailableStock(item);
+                                const isLinkedBalance = item.id === initialBalanceId;
 
-                          {isExpanded && (
-                            <tr>
-                              <td colSpan={10} className="bg-muted p-0">
-                                <div className="p-5">
-                                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                                    <div>
-                                      <p className="font-semibold text-foreground">
-                                        Where this product is available
-                                      </p>
-                                      <p className="text-sm text-muted-foreground">
-                                        {canSelectLocations
-                                          ? "Admin can review and edit each location's reorder level."
-                                          : "Only locations with stock are shown."}
-                                      </p>
+                                return (
+                                  <div
+                                    key={item.id}
+                                    className={`rounded-xl border bg-card p-4 ${isLinkedBalance ? "border-amber-400 ring-2 ring-amber-200 dark:ring-amber-900" : ""}`}
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="flex items-center gap-2 font-semibold text-foreground">
+                                        <Building2 className="h-4 w-4 text-violet-600" />
+                                        {item.location}
+                                      </div>
+                                      <Badge className={getStockBadgeClass(item.status)}>
+                                        {item.status}
+                                      </Badge>
                                     </div>
-                                    {emptyLocationCount > 0 && (
-                                      <p className="text-sm text-muted-foreground">
-                                        {emptyLocationCount} location
-                                        {emptyLocationCount === 1 ? " has" : "s have"} no stock.
+                                    {isLinkedBalance && (
+                                      <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                                        Linked inventory alert
                                       </p>
                                     )}
-                                  </div>
-
-                                   {visibleLocations.length === 0 ? (
-                                     <div className="mt-4 rounded-xl border border-dashed bg-card px-5 py-6 text-sm text-muted-foreground">
-                                       This product has no stock in any location yet.
-                                     </div>
-                                   ) : (
-                                     <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                                       {visibleLocations.map((item) => {
-                                        const isStockRoom =
-                                          item.location === "Stock Room";
-                                        const available = getAvailableStock(item);
-
-                                          const isLinkedBalance =
-                                            item.id === initialBalanceId;
-
-                                          return (
-                                           <div
-                                             key={item.id}
-                                             className={`rounded-xl border bg-card p-4 ${isLinkedBalance ? "border-amber-400 ring-2 ring-amber-200 dark:ring-amber-900" : ""}`}
-                                           >
-                                            <div className="flex items-start justify-between gap-3">
-                                              <div className="flex items-center gap-2 font-semibold text-foreground">
-                                                {isStockRoom ? (
-                                                  <Warehouse className="h-4 w-4 text-sky-600" />
-                                                ) : (
-                                                  <Building2 className="h-4 w-4 text-violet-600" />
-                                                )}
-                                                {item.location}
-                                              </div>
-                                               <Badge className={getStockBadgeClass(item.status)}>
-                                                 {item.status}
-                                               </Badge>
-                                             </div>
-                                             {isLinkedBalance && (
-                                               <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
-                                                 Linked inventory alert
-                                               </p>
-                                             )}
-                                            <div className="mt-4 grid grid-cols-3 gap-3 border-t pt-3">
-                                              <div>
-                                                <p className="text-xs text-muted-foreground">On hand</p>
-                                                <p className="text-lg font-semibold text-foreground">
-                                                  {item.onHand} pieces
-                                                </p>
-                                              </div>
-                                              <div>
-                                                <p className="text-xs text-muted-foreground">Quarantined</p>
-                                                <p className="text-lg font-semibold text-amber-700 dark:text-amber-300">{item.quarantined} pieces</p>
-                                              </div>
-                                              <div>
-                                                <p className="text-xs text-muted-foreground">Ready to sell</p>
-                                                <p className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">
-                                                  {available} pieces
-                                                </p>
-                                              </div>
-                                            </div>
-                                            {canAdjustStock && (
-                                              <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
-                                                <Button
-                                                  variant="warning"
-                                                  size="sm"
-                                                  onClick={() => openQuickAdjustModal(item)}
-                                                >
-                                                  Quick Adjust
-                                                </Button>
-                                              </div>
-                                            )}
-                                          </div>
-                                        );
-                                      })}
+                                    <div className="mt-4 grid grid-cols-3 gap-3 border-t pt-3">
+                                      <div>
+                                        <p className="text-xs text-muted-foreground">On hand</p>
+                                        <p className="text-lg font-semibold text-foreground">
+                                          {item.onHand} pieces
+                                        </p>
+                                      </div>
+                                      <div>
+                                        <p className="text-xs text-muted-foreground">Quarantined</p>
+                                        <p className="text-lg font-semibold text-amber-700 dark:text-amber-300">
+                                          {item.quarantined} pieces
+                                        </p>
+                                      </div>
+                                      <div>
+                                        <p className="text-xs text-muted-foreground">Ready to sell</p>
+                                        <p className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">
+                                          {available} pieces
+                                        </p>
+                                      </div>
                                     </div>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
+                                    {canAdjustStock && (
+                                      <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
+                                        <Button
+                                          variant="warning"
+                                          size="sm"
+                                          onClick={() => openQuickAdjustModal(item)}
+                                        >
+                                          Quick Adjust
+                                        </Button>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
                           )}
-                        </React.Fragment>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
             </div>
 
           </CardContent>
         </Card>
       </PageShell>
+
+      <Dialog
+        open={photoToView !== null}
+        onOpenChange={(open) => {
+          if (!open) setPhotoToView(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-2xl">
+          {photoToView?.imageUrl && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Product Photo</DialogTitle>
+                {/* The code and the name are both named, because a photo alone
+                    does not say which row it was opened from. */}
+                <DialogDescription>
+                  Item Code: {photoToView.itemCode} &middot; Name: {photoToView.name}
+                </DialogDescription>
+              </DialogHeader>
+              <ZoomableImage src={photoToView.imageUrl} alt={photoToView.name} />
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={isAdjustOpen}

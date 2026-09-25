@@ -22,24 +22,24 @@ describe("supplier receipt posting", () => {
       const fixture = await createAuthFixture(prisma, { namespace: "stock-receipt" });
       const product = await prisma.product.create({ data: { itemCode: "RECEIPT-ITEM", name: "Original Product Name", status: "ACTIVE" } });
       const supplier = await prisma.supplier.create({ data: { name: "Acme Supplier" } });
-      await prisma.inventoryBalance.create({ data: { locationId: fixture.locations.stockRoom.id, productId: product.id, onHand: 4, quarantined: 2, unitCost: 1 } });
+      await prisma.inventoryBalance.create({ data: { locationId: fixture.locations.branches.SP.id, productId: product.id, onHand: 4, quarantined: 2, unitCost: 1 } });
       const { createStockReceipt } = await import("../../lib/server/services/stock-receipts");
 
-      const receipt = await createStockReceipt(actor(fixture.users.stockStaff, fixture.locations.stockRoom), {
+      const receipt = await createStockReceipt(actor(fixture.users.stockStaff, fixture.locations.branches.SP), {
         reference: "DR-1001", supplierId: supplier.id, notes: "Morning delivery", lines: [{ productId: product.id, expectedQuantity: 6, acceptedQuantity: 6, quarantinedQuantity: 0, missingQuantity: 0, unitCost: 25 }],
       });
 
-      expect(receipt.location.code).toBe("SR");
+      expect(receipt.location.code).toBe("SP");
       expect(receipt).toMatchObject({ supplier: { id: supplier.id, name: "Acme Supplier" }, supplierName: "Acme Supplier" });
       expect(receipt.lines).toMatchObject([{ productId: product.id, quantity: 6, acceptedQuantity: 6, quarantinedQuantity: 0, missingQuantity: 0, productItemCode: "RECEIPT-ITEM", productName: "Original Product Name" }]);
       await prisma.product.update({ where: { id: product.id }, data: { name: "Renamed Product" } });
-      expect(await prisma.inventoryBalance.findUniqueOrThrow({ where: { locationId_productId: { locationId: fixture.locations.stockRoom.id, productId: product.id } } })).toMatchObject({ onHand: 10, quarantined: 2, unitCost: expect.anything() });
-      expect((await prisma.inventoryBalance.findUniqueOrThrow({ where: { locationId_productId: { locationId: fixture.locations.stockRoom.id, productId: product.id } } })).unitCost.toNumber()).toBe(25);
-      expect(await prisma.inventoryMovement.findMany({ where: { receiptId: receipt.id } })).toMatchObject([{ productId: product.id, locationId: fixture.locations.stockRoom.id, quantity: 6, type: "SUPPLIER_RECEIPT", actorId: fixture.users.stockStaff.id }]);
+      expect(await prisma.inventoryBalance.findUniqueOrThrow({ where: { locationId_productId: { locationId: fixture.locations.branches.SP.id, productId: product.id } } })).toMatchObject({ onHand: 10, quarantined: 2, unitCost: expect.anything() });
+      expect((await prisma.inventoryBalance.findUniqueOrThrow({ where: { locationId_productId: { locationId: fixture.locations.branches.SP.id, productId: product.id } } })).unitCost.toNumber()).toBe(25);
+      expect(await prisma.inventoryMovement.findMany({ where: { receiptId: receipt.id } })).toMatchObject([{ productId: product.id, locationId: fixture.locations.branches.SP.id, quantity: 6, type: "SUPPLIER_RECEIPT", actorId: fixture.users.stockStaff.id }]);
       expect(await prisma.stockReceiptLine.findFirstOrThrow({ where: { receiptId: receipt.id } })).toMatchObject({ productName: "Original Product Name" });
       await prisma.supplier.update({ where: { id: supplier.id }, data: { name: "Renamed Supplier" } });
       const { listStockReceipts } = await import("../../lib/server/services/stock-receipts");
-      await expect(listStockReceipts(actor(fixture.users.stockStaff, fixture.locations.stockRoom))).resolves.toMatchObject([
+      await expect(listStockReceipts(actor(fixture.users.stockStaff, fixture.locations.branches.SP))).resolves.toMatchObject([
         { supplierName: "Acme Supplier", supplier: { id: supplier.id, name: "Renamed Supplier" } },
       ]);
     });
@@ -51,11 +51,11 @@ describe("supplier receipt posting", () => {
       const product = await prisma.product.create({ data: { itemCode: "RECEIPT-DUP", name: "Receipt Duplicate", status: "ACTIVE" } });
       const supplier = await prisma.supplier.create({ data: { name: "Acme Supplier" } });
       const { createStockReceipt } = await import("../../lib/server/services/stock-receipts");
-      const stockActor = actor(fixture.users.stockStaff, fixture.locations.stockRoom);
+      const stockActor = actor(fixture.users.stockStaff, fixture.locations.branches.SP);
       const input = { reference: "DR-1002", supplierId: supplier.id, lines: [{ productId: product.id, expectedQuantity: 3, acceptedQuantity: 3, quarantinedQuantity: 0, missingQuantity: 0, unitCost: 12.5 }] };
       await createStockReceipt(stockActor, input);
       await expect(createStockReceipt(stockActor, input)).rejects.toMatchObject({ code: "DUPLICATE_REFERENCE" });
-      expect(await prisma.inventoryBalance.findUniqueOrThrow({ where: { locationId_productId: { locationId: fixture.locations.stockRoom.id, productId: product.id } } })).toMatchObject({ onHand: 3 });
+      expect(await prisma.inventoryBalance.findUniqueOrThrow({ where: { locationId_productId: { locationId: fixture.locations.branches.SP.id, productId: product.id } } })).toMatchObject({ onHand: 3 });
       expect(await prisma.inventoryMovement.count({ where: { productId: product.id, type: "SUPPLIER_RECEIPT" } })).toBe(1);
     });
   }, 30_000);
@@ -67,11 +67,11 @@ describe("supplier receipt posting", () => {
       const supplier = await prisma.supplier.create({ data: { name: "Claim Supplier" } });
       const { createStockReceipt } = await import("../../lib/server/services/stock-receipts");
 
-      const receipt = await createStockReceipt(actor(fixture.users.stockStaff, fixture.locations.stockRoom), {
+      const receipt = await createStockReceipt(actor(fixture.users.stockStaff, fixture.locations.branches.SP), {
         reference: "DR-CLAIM-1", supplierId: supplier.id, lines: [{ productId: product.id, expectedQuantity: 3, acceptedQuantity: 0, quarantinedQuantity: 2, missingQuantity: 1, claimReason: "DAMAGE", unitCost: 15 }],
       });
 
-      await expect(prisma.inventoryBalance.findUniqueOrThrow({ where: { locationId_productId: { locationId: fixture.locations.stockRoom.id, productId: product.id } } })).resolves.toMatchObject({ onHand: 2, quarantined: 2 });
+      await expect(prisma.inventoryBalance.findUniqueOrThrow({ where: { locationId_productId: { locationId: fixture.locations.branches.SP.id, productId: product.id } } })).resolves.toMatchObject({ onHand: 2, quarantined: 2 });
       await expect(prisma.supplierClaim.findUniqueOrThrow({ where: { sourceReceiptId: receipt.id }, include: { lines: true } })).resolves.toMatchObject({ lines: [{ productId: product.id, quarantinedQuantity: 2, openQuarantinedQuantity: 2, missingQuantity: 1 }] });
     });
   }, 30_000);
@@ -79,7 +79,7 @@ describe("supplier receipt posting", () => {
   it("limits manually sourced claims to exact receipt exception splits", async () => {
     await withDisposableDatabase(async ({ prisma }) => {
       const fixture = await createAuthFixture(prisma, { namespace: "stock-receipt-source-claim" });
-      const location = fixture.locations.stockRoom;
+      const location = fixture.locations.branches.SP;
       const admin = actor(fixture.users.admin, null);
       const product = await prisma.product.create({ data: { itemCode: "SOURCE-CLAIM", name: "Source Claim Item", status: "ACTIVE" } });
       const foreignProduct = await prisma.product.create({ data: { itemCode: "SOURCE-FOREIGN", name: "Foreign Source Item", status: "ACTIVE" } });
@@ -87,7 +87,7 @@ describe("supplier receipt posting", () => {
       const { createStockReceipt } = await import("../../lib/server/services/stock-receipts");
       const { createSupplierClaim } = await import("../../lib/server/services/supplier-claims");
 
-      const cleanReceipt = await createStockReceipt(admin, { reference: "DR-CLEAN-SOURCE", supplierId: supplier.id, locationId: fixture.locations.stockRoom.id, lines: [{ productId: product.id, expectedQuantity: 1, acceptedQuantity: 1, quarantinedQuantity: 0, missingQuantity: 0, unitCost: 10 }] });
+      const cleanReceipt = await createStockReceipt(admin, { reference: "DR-CLEAN-SOURCE", supplierId: supplier.id, locationId: fixture.locations.branches.SP.id, lines: [{ productId: product.id, expectedQuantity: 1, acceptedQuantity: 1, quarantinedQuantity: 0, missingQuantity: 0, unitCost: 10 }] });
       await expect(createSupplierClaim(admin, { idempotencyKey: crypto.randomUUID(), supplierId: supplier.id, locationId: location.id, sourceReceiptId: cleanReceipt.id, lines: [{ productId: product.id, reason: "INCOMPLETE", quarantinedQuantity: 0, missingQuantity: 1, unitCost: 10 }] })).rejects.toMatchObject({ code: "INVALID_SOURCE" });
 
       const exceptionReceipt = await prisma.stockReceipt.create({ data: { reference: "DR-EXCEPTION-SOURCE", supplierId: supplier.id, supplierName: supplier.name, locationId: location.id, receivedById: fixture.users.admin.id, lines: { create: { productId: product.id, quantity: 3, acceptedQuantity: 1, quarantinedQuantity: 1, missingQuantity: 1, productItemCode: product.itemCode, productName: product.name } } } });
@@ -108,12 +108,12 @@ describe("supplier receipt posting", () => {
       const product = await prisma.product.create({ data: { itemCode: "RECEIPT-AUTH", name: "Receipt Authorization", status: "ACTIVE" } });
       const supplier = await prisma.supplier.create({ data: { name: "Acme Supplier" } });
       const { createStockReceipt } = await import("../../lib/server/services/stock-receipts");
-      const input = { reference: "DR-1003", supplierId: supplier.id, locationId: fixture.locations.stockRoom.id, lines: [{ productId: product.id, expectedQuantity: 1, acceptedQuantity: 1, quarantinedQuantity: 0, missingQuantity: 0, unitCost: 10 }] };
+      const input = { reference: "DR-1003", supplierId: supplier.id, locationId: fixture.locations.branches.SP.id, lines: [{ productId: product.id, expectedQuantity: 1, acceptedQuantity: 1, quarantinedQuantity: 0, missingQuantity: 0, unitCost: 10 }] };
       await expect(createStockReceipt(actor(fixture.users.admin, null), { ...input, locationId: undefined })).rejects.toMatchObject({ code: "LOCATION_REQUIRED" });
-      await expect(createStockReceipt(actor(fixture.users.admin, null), input)).resolves.toMatchObject({ location: { code: "SR" } });
+      await expect(createStockReceipt(actor(fixture.users.admin, null), input)).resolves.toMatchObject({ location: { code: "SP" } });
       await expect(createStockReceipt(actor(fixture.users.branchStaff, fixture.locations.branches.QC), input)).rejects.toMatchObject({ code: "FORBIDDEN" });
       expect(await prisma.stockReceipt.count()).toBe(1);
-      expect(await prisma.inventoryBalance.findUnique({ where: { locationId_productId: { locationId: fixture.locations.stockRoom.id, productId: product.id } } })).toMatchObject({ onHand: 1 });
+      expect(await prisma.inventoryBalance.findUnique({ where: { locationId_productId: { locationId: fixture.locations.branches.SP.id, productId: product.id } } })).toMatchObject({ onHand: 1 });
       expect(await prisma.inventoryBalance.findUnique({ where: { locationId_productId: { locationId: fixture.locations.branches.QC.id, productId: product.id } } })).toBeNull();
       await prisma.supplier.update({ where: { id: supplier.id }, data: { status: "INACTIVE" } });
       await expect(createStockReceipt(actor(fixture.users.admin, null), { ...input, reference: "DR-1004" })).rejects.toMatchObject({ code: "INVALID_SUPPLIER" });
@@ -161,7 +161,7 @@ describe("supplier receipt posting", () => {
 
       expect(receipt.location.id).toBe(fixture.locations.branches.QC.id);
       expect(await prisma.inventoryBalance.findUniqueOrThrow({ where: { locationId_productId: { locationId: fixture.locations.branches.QC.id, productId: product.id } } })).toMatchObject({ onHand: 4 });
-      expect(await prisma.inventoryBalance.findUnique({ where: { locationId_productId: { locationId: fixture.locations.stockRoom.id, productId: product.id } } })).toBeNull();
+      expect(await prisma.inventoryBalance.findUnique({ where: { locationId_productId: { locationId: fixture.locations.branches.SP.id, productId: product.id } } })).toBeNull();
       expect(await prisma.inventoryMovement.findMany({ where: { receiptId: receipt.id } })).toMatchObject([{ locationId: fixture.locations.branches.QC.id, type: "SUPPLIER_RECEIPT" }]);
 
       await expect(createStockReceipt(branchReceiver, {

@@ -44,7 +44,7 @@ describe("persisted authorization factories", () => {
       ).toEqual(
         expect.arrayContaining([
           { role: "ADMIN", status: "ACTIVE", locationId: null },
-          { role: "STOCK_STAFF", status: "ACTIVE", locationId: fixture.locations.stockRoom.id },
+          { role: "STOCK_STAFF", status: "ACTIVE", locationId: fixture.locations.branches.SP.id },
           { role: "BRANCH_STAFF", status: "ACTIVE", locationId: fixture.locations.branches.QC.id },
           { role: "ACCOUNTING_STAFF", status: "ACTIVE", locationId: null },
           { role: "BRANCH_STAFF", status: "INACTIVE", locationId: fixture.locations.branches.BL.id },
@@ -91,7 +91,7 @@ describe("persisted authorization factories", () => {
         invalidUsers.map(({ role, locationId }) => ({ role, locationId })),
       ).toEqual(
         expect.arrayContaining([
-          { role: "STOCK_STAFF", locationId: withInvalidAssignments.locations.branches.BL.id },
+          { role: "STOCK_STAFF", locationId: withInvalidAssignments.locations.stockRoom.id },
           { role: "BRANCH_STAFF", locationId: withInvalidAssignments.locations.stockRoom.id },
         ]),
       );

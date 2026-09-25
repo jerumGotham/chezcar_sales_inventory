@@ -118,7 +118,7 @@ describe("live inventory availability", () => {
         category: "Film",
         reorderLevel: 1,
         balances: [
-          { locationId: fixture.locations.stockRoom.id, onHand: 10, reserved: 2 },
+          { locationId: fixture.locations.branches.SP.id, onHand: 10, reserved: 2 },
           { locationId: fixture.locations.branches.QC.id, onHand: 5, reserved: 4 },
           { locationId: extraLocation.id, onHand: 1, reserved: 1 },
           { locationId: inactiveLocation.id, onHand: 99, reserved: 0 },
@@ -192,7 +192,7 @@ describe("live inventory availability", () => {
       const assignedStockBody = (await assignedStockResponse.json()) as AvailabilityBody;
       expect(assignedStockResponse.status).toBe(200);
       expect(new Set(assignedStockBody.data?.map((row) => row.location.code))).toEqual(
-        new Set(["SR"]),
+        new Set(["SP"]),
       );
 
       const filteredResponse = await GET(

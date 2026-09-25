@@ -53,9 +53,12 @@ function inventoryRequest(user: User | null, query: readonly RequestQueryEntry[]
 
 async function seedInventoryMarkers(prisma: PrismaClient, fixture: AuthFixture) {
   const markers = [
+    // The warehouse marker stays: no role may ever see it now that stock lives
+    // in branches, so it is the row that proves the scope holds.
     ["MARKER-SR", fixture.locations.stockRoom.id],
     ["MARKER-QC", fixture.locations.branches.QC.id],
     ["MARKER-BL", fixture.locations.branches.BL.id],
+    ["MARKER-SP", fixture.locations.branches.SP.id],
   ] as const;
 
   for (const [itemCode, locationId] of markers) {
@@ -130,9 +133,9 @@ describe("inventory persisted location scope", () => {
         inventoryRequest(fixture.users.stockStaff, [["location", "all"]]),
       );
       expect(stockAll.status).toBe(200);
-      expect(markerCodes((await stockAll.json()) as InventoryBody)).toEqual(["MARKER-SR"]);
+      expect(markerCodes((await stockAll.json()) as InventoryBody)).toEqual(["MARKER-SP"]);
 
-      for (const location of ["QC Branch", "BL Branch"]) {
+      for (const location of ["QC Branch", "BL Branch", "Stock Room"]) {
         const response = await GET(
           inventoryRequest(fixture.users.stockStaff, [["location", location]]),
         );
@@ -143,10 +146,12 @@ describe("inventory persisted location scope", () => {
       const adminAll = await GET(
         inventoryRequest(fixture.users.admin, [["location", "all"]]),
       );
+      // Not MARKER-SR: all locations means every branch, and the warehouse is
+      // no longer one of them.
       expect(markerCodes((await adminAll.json()) as InventoryBody)).toEqual([
         "MARKER-BL",
         "MARKER-QC",
-        "MARKER-SR",
+        "MARKER-SP",
       ]);
 
       const adminBranch = await GET(
