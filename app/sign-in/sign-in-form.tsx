@@ -97,7 +97,7 @@ export function SignInForm({ callbackUrl }: { callbackUrl: string }) {
   }
 
   return (
-    <Card className="surface-light w-full max-w-md border-emerald-100 bg-card/95 text-card-foreground shadow-2xl shadow-emerald-950/10">
+    <Card className="surface-light w-full max-w-md border-neutral-200 bg-card/95 text-card-foreground shadow-2xl shadow-black/20">
       <CardHeader className="space-y-1.5 pb-5">
         {/* The wordmark is above this card, on the dark page, in the light
             variant drawn for that background. */}

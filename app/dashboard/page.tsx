@@ -192,7 +192,7 @@ export default function DashboardPage() {
                           <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} tickFormatter={(value) => summary.salesFilter.period === "today" ? String(value) : String(value).slice(5)} />
                          <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11 }} tickFormatter={(value) => `₱${Math.round(Number(value) / 1000)}k`} width={52} />
                          <Tooltip formatter={(value) => formatPeso(Number(value))} />
-                         <Line type="monotone" dataKey="sales" name="Sales" stroke="#059669" strokeWidth={3} dot={false} />
+                         <Line type="monotone" dataKey="sales" name="Sales" stroke="#e5e5e5" strokeWidth={3} dot={false} />
                        </LineChart>
                      )}
                    </ChartFrame>
@@ -216,7 +216,7 @@ export default function DashboardPage() {
                            <XAxis type="number" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} tickFormatter={(value) => `₱${Math.round(Number(value) / 1000)}k`} />
                            <YAxis type="category" dataKey="branch" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} width={72} />
                            <Tooltip formatter={(value) => formatPeso(Number(value))} />
-                           <Bar dataKey="sales" name="Sales" fill="#0ea5e9" radius={[0, 6, 6, 0]} />
+                           <Bar dataKey="sales" name="Sales" fill="#a3a3a3" radius={[0, 6, 6, 0]} />
                          </BarChart>
                      )}
                    </ChartFrame>
