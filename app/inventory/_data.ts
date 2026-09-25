@@ -409,16 +409,25 @@ export function formatPeso(value: number) {
   return `₱${value.toLocaleString("en-PH")}`;
 }
 
+/*
+ * The three states are deliberately not equal. All three used to be pale
+ * chips at the same weight, which on the black page read as three shades of
+ * off-white and made the one worth acting on easy to skim past.
+ *
+ * In Stock is the ordinary state and stays quiet. Low Stock and Out of Stock
+ * are filled solid, so they carry the only saturated colour on the screen and
+ * the eye lands on them first.
+ */
 export function getStockBadgeClass(status: InventoryStatus) {
   if (status === "In Stock") {
-    return "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50";
+    return "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-300 dark:hover:bg-emerald-950/50";
   }
 
   if (status === "Low Stock") {
-    return "border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50";
+    return "border border-amber-500 bg-amber-400 font-semibold uppercase tracking-wide text-amber-950 hover:bg-amber-400 dark:border-amber-300 dark:bg-amber-400 dark:text-amber-950 dark:hover:bg-amber-400";
   }
 
-  return "border border-red-200 bg-red-50 text-red-700 hover:bg-red-50";
+  return "border border-red-700 bg-red-600 font-semibold uppercase tracking-wide text-white hover:bg-red-600 dark:border-red-400 dark:bg-red-600 dark:text-white dark:hover:bg-red-600";
 }
 
 export function getLocationBadgeClass(location: string) {

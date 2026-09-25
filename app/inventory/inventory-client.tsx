@@ -959,13 +959,16 @@ export function InventoryClient({
                           <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                             <div>
                               <p className="font-semibold text-foreground">
-                                Where this product is available
+                                Branches Availability
                               </p>
-                              <p className="text-sm text-muted-foreground">
-                                {canSelectLocations
-                                  ? "Admin can review and edit each location's reorder level."
-                                  : "Only locations with stock are shown."}
-                              </p>
+                              {/* The reorder level is not edited here, so the
+                                  line that said an admin could was describing
+                                  something this panel does not do. */}
+                              {!canSelectLocations && (
+                                <p className="text-sm text-muted-foreground">
+                                  Only locations with stock are shown.
+                                </p>
+                              )}
                             </div>
                             {emptyLocationCount > 0 && (
                               <p className="text-sm text-muted-foreground">
