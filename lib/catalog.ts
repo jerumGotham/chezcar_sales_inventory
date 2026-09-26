@@ -100,6 +100,8 @@ export type InventoryRow = {
   carModel: string;
   /** Every fitment year label the product carries, joined for one column. */
   yearModel: string;
+  /** The selling price, as the Products screen shows it. Null until one is set. */
+  price: number | null;
   imageUrl: string | null;
   category: string;
   location: string;
@@ -124,7 +126,7 @@ export type InventoryRow = {
  */
 export type InventoryBalanceRow = Omit<
   InventoryRow,
-  "description" | "brand" | "carModel" | "yearModel" | "imageUrl"
+  "description" | "brand" | "carModel" | "yearModel" | "imageUrl" | "price"
 >;
 
 export type InventoryApiResponse = {

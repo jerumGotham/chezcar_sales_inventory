@@ -24,7 +24,7 @@ const inventory: InventoryApiResponse = {
   data: [
     {
       id: "balance-1", itemCode: "ITM-001", name: "Brake Pad", description: "Front brake pad set",
-      brand: "Predator", carModel: "Hilux", yearModel: "2016-2020", imageUrl: null,
+      brand: "Predator", carModel: "Hilux", yearModel: "2016-2020", price: 1250, imageUrl: null,
       category: "Brakes", location: "Binan", locationCode: "BL",
       onHand: 10, reserved: 2, quarantined: 1, reorderLevel: 5, unitCost: 250,
       lastUpdated: "2026-09-18T01:00:00.000Z", status: "In Stock",
@@ -38,6 +38,25 @@ const inventory: InventoryApiResponse = {
 describe("list PDF exports", () => {
   it("renders an inventory copy with its rows", async () => {
     const body = await listPdf.createInventoryListPdf(inventory, metadata);
+    expect(header(body)).toBe("%PDF-");
+    expect(body.byteLength).toBeGreaterThan(1000);
+  });
+
+  it("renders one line per product with a column per branch", async () => {
+    // The same product in two branches. The export has to fold these into one
+    // line and give each branch its own column, which is the whole shape of
+    // the sheet this replaces.
+    const [balance] = inventory.data;
+    const body = await listPdf.createInventoryListPdf(
+      {
+        ...inventory,
+        data: [
+          balance,
+          { ...balance, id: "balance-2", location: "Quezon City", locationCode: "QC", onHand: 4, reserved: 0, quarantined: 0 },
+        ],
+      },
+      metadata,
+    );
     expect(header(body)).toBe("%PDF-");
     expect(body.byteLength).toBeGreaterThan(1000);
   });

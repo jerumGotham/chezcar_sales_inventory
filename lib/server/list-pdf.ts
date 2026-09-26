@@ -52,27 +52,85 @@ export async function createInventoryListPdf(
     [inventory.summary.incomingItemsLabel, String(inventory.summary.incomingItems)],
   ], true);
 
-  const totals = inventory.data.reduce((sum, row) => ({
-    onHand: sum.onHand + row.onHand,
-    reserved: sum.reserved + row.reserved,
-    quarantined: sum.quarantined + row.quarantined,
-    available: sum.available + Math.max(row.onHand - row.reserved - row.quarantined, 0),
-  }), { onHand: 0, reserved: 0, quarantined: 0, available: 0 });
+  /*
+   * One line per product, laid out like the branch sheet this replaces: the
+   * catalogue detail, then a column per branch holding what that branch can
+   * sell, then the total and the price.
+   *
+   * The export used to print a line per branch balance, which repeated the
+   * catalogue detail once for every branch and left the reader adding the
+   * numbers up by hand. Reorder level and status are not printed: the sheet
+   * does not carry them, and a printed page cannot be acted on the way the
+   * screen can.
+   */
+  const products = new Map<string, typeof inventory.data>();
+  for (const row of inventory.data) {
+    products.set(row.itemCode, [...(products.get(row.itemCode) ?? []), row]);
+  }
+
+  const available = (row: (typeof inventory.data)[number]) =>
+    Math.max(row.onHand - row.reserved - row.quarantined, 0);
+
+  /*
+   * Branch columns come from the rows themselves, so a renamed or added branch
+   * shows up without touching this file. The sheet's own order is kept for the
+   * five everyone knows; anything else follows alphabetically rather than
+   * being dropped.
+   */
+  const SHEET_ORDER = ["QC", "BL", "LU", "VC", "SP"];
+  const branchCodes = [...new Set(inventory.data.map((row) => row.locationCode).filter(Boolean))]
+    .sort((left, right) => {
+      const leftRank = SHEET_ORDER.indexOf(left);
+      const rightRank = SHEET_ORDER.indexOf(right);
+      if (leftRank !== -1 && rightRank !== -1) return leftRank - rightRank;
+      if (leftRank !== -1) return -1;
+      if (rightRank !== -1) return 1;
+      return left.localeCompare(right);
+    });
+
+  const branchTotals = new Map(branchCodes.map((code) => [code, 0]));
+  let exportedAvailable = 0;
+
+  const productRows = [...products.values()].map((rows) => {
+    const [first] = rows;
+    const perBranch = new Map(branchCodes.map((code) => [code, 0]));
+    for (const row of rows) {
+      perBranch.set(row.locationCode, (perBranch.get(row.locationCode) ?? 0) + available(row));
+    }
+    const total = [...perBranch.values()].reduce((sum, value) => sum + value, 0);
+    exportedAvailable += total;
+    for (const code of branchCodes) {
+      branchTotals.set(code, (branchTotals.get(code) ?? 0) + (perBranch.get(code) ?? 0));
+    }
+
+    return [
+      first.itemCode,
+      first.name,
+      first.description || "",
+      first.brand || "Unbranded",
+      first.carModel || "Not set",
+      first.yearModel || "Not set",
+      ...branchCodes.map((code) => String(perBranch.get(code) ?? 0)),
+      String(total),
+      first.price === null ? "No price" : money(first.price),
+    ];
+  });
 
   builder.table("Stock on record", [
-    { header: "Item code", width: 1.3 }, { header: "Product", width: 3 }, { header: "Category", width: 1.3 },
-    { header: "Location", width: 1.5 }, { header: "On hand", width: 0.9, numeric: true },
-    { header: "Reserved", width: 0.9, numeric: true }, { header: "Quarantined", width: 1, numeric: true },
-    { header: "Available", width: 0.9, numeric: true }, { header: "Reorder", width: 0.9, numeric: true },
-    { header: "Status", width: 1.1 }, { header: "Last updated", width: 1.5 },
+    { header: "Item Code", width: 0.9 }, { header: "Item Name", width: 1.8 },
+    { header: "Description", width: 2.4 }, { header: "Brand", width: 1 },
+    { header: "Car Model", width: 1.2 }, { header: "Year Model", width: 1.1 },
+    ...branchCodes.map((code) => ({ header: code, width: 0.5, numeric: true })),
+    { header: "Total Stock Available", width: 1.1, numeric: true },
+    { header: "Price", width: 1.2, numeric: true },
   ], [
-    ...inventory.data.map((row) => [
-      row.itemCode, row.name, row.category, row.location,
-      String(row.onHand), String(row.reserved), String(row.quarantined),
-      String(Math.max(row.onHand - row.reserved - row.quarantined, 0)), String(row.reorderLevel),
-      row.status, dateTime(row.lastUpdated),
-    ]),
-    ["EXPORTED TOTAL", "", "", "", String(totals.onHand), String(totals.reserved), String(totals.quarantined), String(totals.available), "", "", ""],
+    ...productRows,
+    [
+      "EXPORTED TOTAL", "", "", "", "", "",
+      ...branchCodes.map((code) => String(branchTotals.get(code) ?? 0)),
+      String(exportedAvailable),
+      "",
+    ],
   ], true);
 
   return builder.finish();

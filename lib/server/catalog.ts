@@ -660,6 +660,7 @@ export async function listInventory(
       brand: product.brand ?? "",
       carModel: fitment.carModel,
       yearModel: fitment.yearModel,
+      price: product.price?.toNumber() ?? null,
       imageUrl,
       category: product.category ?? "Uncategorized",
       location: balance.location.name,
