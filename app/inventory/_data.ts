@@ -423,11 +423,15 @@ export function getStockBadgeClass(status: InventoryStatus) {
     return "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-300 dark:hover:bg-emerald-950/50";
   }
 
+  // Low Stock is the one that still needs someone to act, so it takes the
+  // bright red and reads as the alarm. Out of Stock is past acting on and
+  // takes the darker red: same family, so both still say something is wrong,
+  // but they are never mistaken for each other at a glance.
   if (status === "Low Stock") {
-    return "border border-amber-500 bg-amber-400 font-semibold uppercase tracking-wide text-amber-950 hover:bg-amber-400 dark:border-amber-300 dark:bg-amber-400 dark:text-amber-950 dark:hover:bg-amber-400";
+    return "border border-red-700 bg-red-600 font-semibold uppercase tracking-wide text-white hover:bg-red-600 dark:border-red-400 dark:bg-red-600 dark:text-white dark:hover:bg-red-600";
   }
 
-  return "border border-red-700 bg-red-600 font-semibold uppercase tracking-wide text-white hover:bg-red-600 dark:border-red-400 dark:bg-red-600 dark:text-white dark:hover:bg-red-600";
+  return "border border-red-950 bg-red-900 font-semibold uppercase tracking-wide text-red-50 hover:bg-red-900 dark:border-red-700 dark:bg-red-900 dark:text-red-50 dark:hover:bg-red-900";
 }
 
 export function getLocationBadgeClass(location: string) {
