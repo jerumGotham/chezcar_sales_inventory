@@ -127,7 +127,7 @@ function StockTotal({
       <dt className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         {label}
       </dt>
-      <dd className={`mt-0.5 text-lg font-semibold ${className}`}>
+      <dd className={`mt-0.5 text-base font-semibold ${className}`}>
         {numberFormatter.format(value)}
       </dd>
     </div>
@@ -151,7 +151,7 @@ function ProductPhotoButton({
 }) {
   if (!imageUrl) {
     return (
-      <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-xl border border-dashed bg-muted text-xs text-muted-foreground sm:h-32 sm:w-32">
+      <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg border border-dashed bg-muted text-[11px] text-muted-foreground sm:h-24 sm:w-24">
         No photo
       </div>
     );
@@ -162,7 +162,7 @@ function ProductPhotoButton({
       type="button"
       onClick={onOpen}
       aria-label={`Open the photo of ${name}`}
-      className="group relative h-28 w-28 shrink-0 cursor-zoom-in overflow-hidden rounded-xl border bg-muted sm:h-32 sm:w-32"
+      className="group relative h-20 w-20 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border bg-muted sm:h-24 sm:w-24"
     >
       <Image
         src={imageUrl}
@@ -843,7 +843,7 @@ export function InventoryClient({
                 be read side by side without a horizontal scroll, and a label
                 beside each value matters more here than column alignment,
                 because not everyone reading this recognises an item by code. */}
-            <div className="space-y-4 p-4 sm:p-5">
+            <div className="space-y-3 p-3 sm:p-4">
               {isLoading ? (
                 <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -876,9 +876,9 @@ export function InventoryClient({
                   return (
                     <div
                       key={group.itemCode}
-                      className={`overflow-hidden rounded-2xl border bg-card ${containsLinkedBalance ? "ring-2 ring-amber-400" : ""}`}
+                      className={`overflow-hidden rounded-xl border bg-card ${containsLinkedBalance ? "ring-2 ring-amber-400" : ""}`}
                     >
-                      <div className="flex flex-col gap-5 p-4 sm:flex-row sm:p-5">
+                      <div className="flex flex-col gap-4 p-3 sm:flex-row sm:p-4">
                         <ProductPhotoButton
                           imageUrl={group.imageUrl}
                           name={group.name}
@@ -887,7 +887,7 @@ export function InventoryClient({
 
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-start justify-between gap-3">
-                            <dl className="grid min-w-0 flex-1 gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
+                            <dl className="grid min-w-0 flex-1 gap-x-5 gap-y-2 sm:grid-cols-2 xl:grid-cols-3">
                               {/* The order Products uses, so the two screens
                                   read the same way round: identity, then brand
                                   and fitment, and the long description last. */}
@@ -903,7 +903,7 @@ export function InventoryClient({
                             </Badge>
                           </div>
 
-                          <dl className="mt-5 grid grid-cols-2 gap-4 border-t pt-4 sm:grid-cols-4">
+                          <dl className="mt-3 grid grid-cols-2 gap-3 border-t pt-3 sm:grid-cols-4">
                             <StockTotal label="Total On Hand" value={group.totalOnHand} />
                             <StockTotal label="Total Reserved" value={group.totalReserved} />
                             <StockTotal
@@ -918,7 +918,7 @@ export function InventoryClient({
                             />
                           </dl>
 
-                          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+                          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t pt-3">
                             {/* Codes, not names: a product can sit in several
                                 branches at once. */}
                             <p className="min-w-0 text-sm">
@@ -955,7 +955,7 @@ export function InventoryClient({
                       </div>
 
                       {isExpanded && (
-                        <div className="border-t bg-muted p-4 sm:p-5">
+                        <div className="border-t bg-muted p-3 sm:p-4">
                           <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                             <div>
                               <p className="font-semibold text-foreground">
@@ -983,64 +983,89 @@ export function InventoryClient({
                               This product has no stock in any location yet.
                             </div>
                           ) : (
-                            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                              {visibleLocations.map((item) => {
-                                const available = getAvailableStock(item);
-                                const isLinkedBalance = item.id === initialBalanceId;
-
-                                return (
-                                  <div
-                                    key={item.id}
-                                    className={`rounded-xl border bg-card p-4 ${isLinkedBalance ? "border-amber-400 ring-2 ring-amber-200 dark:ring-amber-900" : ""}`}
-                                  >
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div className="flex items-center gap-2 font-semibold text-foreground">
-                                        <Building2 className="h-4 w-4 text-violet-600" />
-                                        {item.location}
-                                      </div>
-                                      <Badge className={getStockBadgeClass(item.status)}>
-                                        {item.status}
-                                      </Badge>
-                                    </div>
-                                    {isLinkedBalance && (
-                                      <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
-                                        Linked inventory alert
-                                      </p>
-                                    )}
-                                    <div className="mt-4 grid grid-cols-3 gap-3 border-t pt-3">
-                                      <div>
-                                        <p className="text-xs text-muted-foreground">On hand</p>
-                                        <p className="text-lg font-semibold text-foreground">
-                                          {item.onHand} pieces
-                                        </p>
-                                      </div>
-                                      <div>
-                                        <p className="text-xs text-muted-foreground">Quarantined</p>
-                                        <p className="text-lg font-semibold text-amber-700 dark:text-amber-300">
-                                          {item.quarantined} pieces
-                                        </p>
-                                      </div>
-                                      <div>
-                                        <p className="text-xs text-muted-foreground">Ready to sell</p>
-                                        <p className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">
-                                          {available} pieces
-                                        </p>
-                                      </div>
-                                    </div>
+                            <div className="mt-3 overflow-x-auto rounded-xl border bg-card">
+                              {/*
+                                A table rather than a card each. Five branches
+                                of cards pushed the next product off the screen,
+                                and the numbers are what the reader came for: a
+                                row apiece puts them in columns that line up.
+                              */}
+                              <table className="w-full min-w-[640px] text-sm">
+                                <thead className="bg-muted">
+                                  <tr className="border-b">
+                                    <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                      Branch
+                                    </th>
+                                    <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                      Status
+                                    </th>
+                                    <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                      On hand
+                                    </th>
+                                    <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                      Quarantined
+                                    </th>
+                                    <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                      Ready to sell
+                                    </th>
                                     {canAdjustStock && (
-                                      <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
-                                        <Button
-                                          variant="warning"
-                                          size="sm"
-                                          onClick={() => openQuickAdjustModal(item)}
-                                        >
-                                          Quick Adjust
-                                        </Button>
-                                      </div>
+                                      <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                        Action
+                                      </th>
                                     )}
-                                  </div>
-                                );
-                              })}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {visibleLocations.map((item) => {
+                                    const available = getAvailableStock(item);
+                                    const isLinkedBalance = item.id === initialBalanceId;
+
+                                    return (
+                                      <tr
+                                        key={item.id}
+                                        className={`border-b last:border-b-0 ${isLinkedBalance ? "bg-amber-50 dark:bg-amber-950/30" : ""}`}
+                                      >
+                                        <td className="px-4 py-2">
+                                          <div className="flex items-center gap-2 font-medium text-foreground">
+                                            <Building2 className="h-4 w-4 text-muted-foreground" />
+                                            {item.location}
+                                          </div>
+                                          {isLinkedBalance && (
+                                            <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                                              Linked inventory alert
+                                            </p>
+                                          )}
+                                        </td>
+                                        <td className="px-4 py-2">
+                                          <Badge className={getStockBadgeClass(item.status)}>
+                                            {item.status}
+                                          </Badge>
+                                        </td>
+                                        <td className="px-4 py-2 text-right font-semibold text-foreground">
+                                          {item.onHand}
+                                        </td>
+                                        <td className="px-4 py-2 text-right font-semibold text-amber-700 dark:text-amber-300">
+                                          {item.quarantined}
+                                        </td>
+                                        <td className="px-4 py-2 text-right font-semibold text-emerald-700 dark:text-emerald-300">
+                                          {available}
+                                        </td>
+                                        {canAdjustStock && (
+                                          <td className="px-4 py-2 text-right">
+                                            <Button
+                                              variant="warning"
+                                              size="sm"
+                                              onClick={() => openQuickAdjustModal(item)}
+                                            >
+                                              Quick Adjust
+                                            </Button>
+                                          </td>
+                                        )}
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
                             </div>
                           )}
                         </div>
