@@ -2,10 +2,11 @@
 
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Contact, Loader2, Pencil, Plus, X } from "lucide-react";
+import { Contact, Loader2, Pencil, Plus } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
+import { StatusBanner } from "@/components/status-banner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -139,12 +140,9 @@ export function PersonnelClient({
       actions={canCreate ? <Button onClick={openCreate} disabled={branches.length === 0}><Plus className="mr-2 h-4 w-4" />Add personnel</Button> : undefined}
     >
       {banner ? (
-        <div role="status" className="border-primary/30 bg-primary/10 mb-4 flex items-start justify-between gap-3 rounded-xl border px-4 py-3">
-          <p className="text-primary break-words text-sm">{banner}</p>
-          <Button variant="ghost" size="icon-sm" aria-label="Dismiss notification" onClick={() => setBanner(null)}><X aria-hidden /></Button>
-        </div>
+        <StatusBanner tone="success" className="mb-4" onDismiss={() => setBanner(null)}>{banner}</StatusBanner>
       ) : null}
-      {statusMutation.error ? <p role="alert" className="mb-4 text-sm text-destructive">{statusMutation.error.message}</p> : null}
+      {statusMutation.error ? <StatusBanner tone="error" className="mb-4">{statusMutation.error.message}</StatusBanner> : null}
       {branches.length === 0 ? <p className="mb-4 rounded-md bg-amber-50 dark:bg-amber-950/40 p-3 text-sm text-amber-800 dark:text-amber-300">No active authorized branch is available for Personnel Maintenance.</p> : null}
       <Card className="min-w-0"><CardContent className="p-0">
         {query.isLoading ? (
@@ -172,7 +170,7 @@ export function PersonnelClient({
       />
 
       {((editing && canUpdate) || (!editing && canCreate)) ? (
-        <Dialog open={open} onOpenChange={setOpen}><DialogContent className="sm:max-w-lg"><form onSubmit={submit}><DialogHeader><DialogTitle>{editing ? "Edit personnel" : "Add personnel"}</DialogTitle><DialogDescription>Personnel records identify Salespersons and Installers but do not create system accounts.</DialogDescription></DialogHeader><div className="grid gap-4 py-5"><div className="space-y-2"><Label htmlFor="personnel-name">Name</Label><Input id="personnel-name" value={form.fullName} required maxLength={200} onChange={(event) => setForm((current) => ({ ...current, fullName: event.target.value }))} /></div><div className="space-y-2"><Label htmlFor="personnel-branch">Home branch</Label><select id="personnel-branch" value={form.locationId} required className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" onChange={(event) => setForm((current) => ({ ...current, locationId: event.target.value }))}>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.code} - {branch.name}</option>)}</select></div><div className="space-y-2"><Label htmlFor="personnel-type">Personnel type</Label><select id="personnel-type" value={form.type} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" onChange={(event) => setForm((current) => ({ ...current, type: event.target.value as PersonnelDto["type"] }))}><option value="SALESPERSON">Salesperson</option><option value="INSTALLER">Installer</option><option value="BOTH">Salesperson & Installer</option></select></div></div>{formError ? <p role="alert" className="mb-4 text-sm text-destructive">{formError}</p> : null}<DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" disabled={saveMutation.isPending || !form.locationId}>{saveMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}{editing ? "Save changes" : "Add personnel"}</Button></DialogFooter></form></DialogContent></Dialog>
+        <Dialog open={open} onOpenChange={setOpen}><DialogContent className="sm:max-w-lg"><form onSubmit={submit}><DialogHeader><DialogTitle>{editing ? "Edit personnel" : "Add personnel"}</DialogTitle><DialogDescription>Personnel records identify Salespersons and Installers but do not create system accounts.</DialogDescription></DialogHeader><div className="grid gap-4 py-5"><div className="space-y-2"><Label htmlFor="personnel-name">Name</Label><Input id="personnel-name" value={form.fullName} required maxLength={200} onChange={(event) => setForm((current) => ({ ...current, fullName: event.target.value }))} /></div><div className="space-y-2"><Label htmlFor="personnel-branch">Home branch</Label><select id="personnel-branch" value={form.locationId} required className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" onChange={(event) => setForm((current) => ({ ...current, locationId: event.target.value }))}>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.code} - {branch.name}</option>)}</select></div><div className="space-y-2"><Label htmlFor="personnel-type">Personnel type</Label><select id="personnel-type" value={form.type} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" onChange={(event) => setForm((current) => ({ ...current, type: event.target.value as PersonnelDto["type"] }))}><option value="SALESPERSON">Salesperson</option><option value="INSTALLER">Installer</option><option value="BOTH">Salesperson & Installer</option></select></div></div>{formError ? <StatusBanner tone="error" className="mb-4">{formError}</StatusBanner> : null}<DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" disabled={saveMutation.isPending || !form.locationId}>{saveMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}{editing ? "Save changes" : "Add personnel"}</Button></DialogFooter></form></DialogContent></Dialog>
       ) : null}
     </PageShell>
   );

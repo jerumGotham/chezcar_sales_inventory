@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { X } from "lucide-react";
 import Select from "react-select";
 
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
@@ -10,6 +9,7 @@ import { PageShell } from "@/components/page-shell";
 import { TablePagination } from "@/components/table-pagination";
 import { useCan } from "@/components/shell-access-context";
 import { Badge } from "@/components/ui/badge";
+import { StatusBanner } from "@/components/status-banner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -314,15 +314,10 @@ export default function CustomersPage() {
         }
       >
         {banner ? (
-          <div role="status" className="border-primary/30 bg-primary/10 mb-4 flex items-start justify-between gap-3 rounded-xl border px-4 py-3">
-            <p className="text-primary break-words text-sm">{banner}</p>
-            <Button variant="ghost" size="icon-sm" aria-label="Dismiss notification" onClick={() => setBanner(null)}>
-              <X aria-hidden />
-            </Button>
-          </div>
+          <StatusBanner tone="success" className="mb-4" onDismiss={() => setBanner(null)}>{banner}</StatusBanner>
         ) : null}
         {customerStatusMutation.error ? (
-          <p role="alert" className="mb-4 text-sm text-destructive">{(customerStatusMutation.error as Error).message}</p>
+          <StatusBanner tone="error" className="mb-4">{(customerStatusMutation.error as Error).message}</StatusBanner>
         ) : null}
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -413,7 +408,6 @@ export default function CustomersPage() {
                   {isFetching && !isLoading ? " • Updating..." : ""}
                 </p>
               </div>
-              <TablePagination page={meta.page} totalPages={meta.totalPages} onPageChange={setPage} busy={isFetching} />
             </div>
 
             <div className="overflow-x-auto">
@@ -563,6 +557,9 @@ export default function CustomersPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+            <div className="flex justify-end border-t px-5 py-3">
+              <TablePagination page={meta.page} totalPages={meta.totalPages} onPageChange={setPage} busy={isFetching} />
             </div>
 
 

@@ -2,11 +2,12 @@
 
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Pencil, ShieldCheck, Trash2, X } from "lucide-react";
+import { Loader2, Pencil, ShieldCheck, Trash2 } from "lucide-react";
 
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
+import { StatusBanner } from "@/components/status-banner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -223,9 +224,7 @@ function RoleEditor({
             })}
           </div>
           {error && (
-            <p role="alert" className="text-destructive text-sm">
-              {error}
-            </p>
+            <StatusBanner tone="error">{error}</StatusBanner>
           )}
         </form>
         <DialogFooter>
@@ -344,20 +343,7 @@ export function RolesClient({
         ) : undefined}
       >
         {banner && (
-          <div
-            role="status"
-            className="border-primary/30 bg-primary/10 mb-4 flex items-start justify-between gap-3 rounded-xl border px-4 py-3"
-          >
-            <p className="text-primary break-words text-sm">{banner}</p>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Dismiss notification"
-              onClick={() => setBanner(null)}
-            >
-              <X aria-hidden />
-            </Button>
-          </div>
+          <StatusBanner tone="success" className="mb-4" onDismiss={() => setBanner(null)}>{banner}</StatusBanner>
         )}
         <Card>
           <CardContent className="p-0">

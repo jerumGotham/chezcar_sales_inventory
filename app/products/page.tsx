@@ -12,13 +12,13 @@ import {
   Ban,
   ImagePlus,
   Trash2,
-  X,
 } from "lucide-react";
 
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { PageShell } from "@/components/page-shell";
 import { TablePagination } from "@/components/table-pagination";
 import { useCan } from "@/components/shell-access-context";
+import { StatusBanner } from "@/components/status-banner";
 import { ZoomableImage } from "@/components/zoomable-image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -39,7 +39,6 @@ import {
   type VehicleCompatibility,
   type ProductStatus,
 } from "@/lib/catalog";
-import { cn } from "@/lib/utils";
 import { reactSelectStyles } from "@/lib/select-styles";
 
 type SelectOption = {
@@ -460,25 +459,13 @@ export default function ProductsPage() {
         }
       >
         {banner && (
-          <div
-            role={banner.type === "error" ? "alert" : "status"}
-            className={cn(
-              "mb-6 flex items-start justify-between gap-3 rounded-xl border px-4 py-3",
-              banner.type === "error"
-                ? "border-destructive/30 bg-destructive/10 text-destructive"
-                : "border-primary/30 bg-primary/10 text-primary",
-            )}
+          <StatusBanner
+            tone={banner.type === "error" ? "error" : "success"}
+            className="mb-6"
+            onDismiss={() => setBanner(null)}
           >
-            <p className="break-words text-sm">{banner.message}</p>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Dismiss notification"
-              onClick={() => setBanner(null)}
-            >
-              <X aria-hidden />
-            </Button>
-          </div>
+            {banner.message}
+          </StatusBanner>
         )}
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Card>
@@ -631,7 +618,6 @@ export default function ProductsPage() {
                   Stock counts every branch you can see, combined.
                 </p>
               </div>
-              <TablePagination page={meta.page} totalPages={meta.totalPages} onPageChange={setPage} busy={isFetching} />
             </div>
 
             <div className="overflow-x-auto">
@@ -800,6 +786,9 @@ export default function ProductsPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+            <div className="flex justify-end border-t px-5 py-3">
+              <TablePagination page={meta.page} totalPages={meta.totalPages} onPageChange={setPage} busy={isFetching} />
             </div>
 
           </CardContent>

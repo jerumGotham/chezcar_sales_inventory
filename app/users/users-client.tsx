@@ -9,11 +9,12 @@ import {
   type Ref,
 } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, EyeOff, Loader2, TriangleAlert, X } from "lucide-react";
+import { Eye, EyeOff, Loader2, TriangleAlert } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { TablePagination } from "@/components/table-pagination";
 import { Badge } from "@/components/ui/badge";
+import { StatusBanner } from "@/components/status-banner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -1262,20 +1263,7 @@ export function UsersClient({
         }
       >
         {banner && (
-          <div
-            role="status"
-            className="border-primary/30 bg-primary/10 mb-4 flex items-start justify-between gap-3 rounded-xl border px-4 py-3"
-          >
-            <p className="text-primary break-words text-sm">{banner}</p>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Dismiss notification"
-              onClick={() => setBanner(null)}
-            >
-              <X aria-hidden />
-            </Button>
-          </div>
+          <StatusBanner tone="success" className="mb-4" onDismiss={() => setBanner(null)}>{banner}</StatusBanner>
         )}
 
         {/* Staff-only summary counts; the owner Admin is never counted. */}
@@ -1371,9 +1359,6 @@ export function UsersClient({
                 {meta.totalItems > 0 && isRefreshing ? " · " : ""}
                 {isRefreshing ? "Updating…" : ""}
               </p>
-              {meta.totalItems > 0 ? (
-                <TablePagination page={meta.page} totalPages={meta.totalPages} onPageChange={setPage} busy={isRefreshing} />
-              ) : null}
             </div>
 
             <Table className="min-w-[960px]">
@@ -1544,6 +1529,11 @@ export function UsersClient({
                 )}
               </TableBody>
             </Table>
+            <div className="flex justify-end border-t px-5 py-3">
+              {meta.totalItems > 0 ? (
+                <TablePagination page={meta.page} totalPages={meta.totalPages} onPageChange={setPage} busy={isRefreshing} />
+              ) : null}
+            </div>
 
           </CardContent>
         </Card>

@@ -2,9 +2,10 @@
 
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, Loader2, Pencil, Plus, X } from "lucide-react";
+import { Building2, Loader2, Pencil, Plus } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
+import { StatusBanner } from "@/components/status-banner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -150,20 +151,7 @@ export function BranchesClient({
       actions={canCreate ? <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" /> Add branch</Button> : undefined}
     >
       {banner ? (
-        <div
-          role="status"
-          className="border-primary/30 bg-primary/10 mb-4 flex items-start justify-between gap-3 rounded-xl border px-4 py-3"
-        >
-          <p className="text-primary break-words text-sm">{banner}</p>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Dismiss notification"
-            onClick={() => setBanner(null)}
-          >
-            <X aria-hidden />
-          </Button>
-        </div>
+        <StatusBanner tone="success" className="mb-4" onDismiss={() => setBanner(null)}>{banner}</StatusBanner>
       ) : null}
       <Card>
         <CardContent className="p-0">
@@ -208,7 +196,7 @@ export function BranchesClient({
               <div className="space-y-2 sm:col-span-2"><Label htmlFor="branch-email">Email</Label><Input id="branch-email" type="email" value={form.email} maxLength={200} onChange={(event) => setField("email", event.target.value)} /></div>
               <div className="space-y-2 sm:col-span-2"><Label htmlFor="branch-notes">Notes</Label><Textarea id="branch-notes" value={form.notes} maxLength={500} onChange={(event) => setField("notes", event.target.value)} /></div>
             </div>
-            {formError ? <p role="alert" className="mb-4 text-sm text-destructive">{formError}</p> : null}
+            {formError ? <StatusBanner tone="error" className="mb-4">{formError}</StatusBanner> : null}
             <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}{editing ? "Save changes" : "Add branch"}</Button></DialogFooter>
           </form>
         </DialogContent>
