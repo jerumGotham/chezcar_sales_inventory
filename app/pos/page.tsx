@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Select from "react-select";
 import Link from "next/link";
 import type { StylesConfig } from "react-select";
@@ -37,7 +37,8 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { PageShell } from "@/components/page-shell";
 import { TablePagination } from "@/components/table-pagination";
-import { useShellAccess } from "@/components/shell-access-context";
+import { StatusBanner } from "@/components/status-banner";
+import { useCan, useShellAccess } from "@/components/shell-access-context";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { products } from "@/lib/mock-data";
@@ -406,6 +407,10 @@ function AddCustomerDialog({
 function PosTab() {
   const access = useShellAccess();
   const queryClient = useQueryClient();
+  const canCreateCustomer = useCan("customers:create");
+  const [isCustomerFormOpen, setIsCustomerFormOpen] = useState(false);
+  const [customerForm, setCustomerForm] = useState({ name: "", mobile: "", email: "", address: "" });
+  const [customerFormError, setCustomerFormError] = useState("");
   const capabilities = access.authenticated ? access.capabilities : [];
   const canUploadReceiptEvidence = capabilities.includes("sales:evidence:upload");
   const canUseOfflineSales = capabilities.includes("offline-sales:snapshot") && capabilities.includes("offline-sales:sync");
@@ -425,6 +430,7 @@ function PosTab() {
     },
     enabled: access.authenticated,
   });
+
   const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
   const [offlineSnapshot, setOfflineSnapshot] = useState<OfflineSnapshot | null>(null);
   const [offlineSaleCount, setOfflineSaleCount] = useState(0);
@@ -483,6 +489,7 @@ function PosTab() {
   const [selectedCustomer, setSelectedCustomer] = useState<SelectOption | null>(
     mockCustomers[0],
   );
+
   const [selectedSalesperson, setSelectedSalesperson] = useState<SelectOption | null>(null);
   const [paymentType, setPaymentType] = useState<SelectOption | null>(null);
   const [manualReceiptNumber, setManualReceiptNumber] = useState("");
@@ -499,6 +506,39 @@ function PosTab() {
     { value: "guest", label: "Guest" },
     ...(posOptionsQuery.data?.customers.map((customer) => ({ value: customer.id, label: customer.name })) ?? []),
   ];
+
+  /*
+   * Adding a customer without leaving the sale. The cashier has the person in
+   * front of them, and sending them to Customer Maintenance and back loses the
+   * cart. On success the options are refetched and the new customer selected,
+   * so the next thing they do is carry on with the sale.
+   */
+  const createCustomerMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/customers", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: customerForm.name.trim(),
+          mobile: customerForm.mobile.trim() || undefined,
+          email: customerForm.email.trim() || undefined,
+          address: customerForm.address.trim() || undefined,
+        }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error?.message ?? "Unable to add the customer");
+      return json.data as { id: string; name: string };
+    },
+    onSuccess: async (customer: { id: string; name: string }) => {
+      await queryClient.invalidateQueries({ queryKey: ["pos-options"] });
+      setSelectedCustomer({ value: customer.id, label: customer.name });
+      setIsCustomerFormOpen(false);
+      setCustomerForm({ name: "", mobile: "", email: "", address: "" });
+      setCustomerFormError("");
+    },
+    onError: (error: Error) => setCustomerFormError(error.message),
+  });
   const salespersonOptions: SelectOption[] = (
     posOptionsQuery.data?.salespersons ?? offlineSnapshot?.salespersons ?? []
   ).map((personnel) => ({ value: personnel.id, label: personnel.fullName }));
@@ -951,13 +991,11 @@ function PosTab() {
                 <p className="text-xs text-muted-foreground">
                   Showing {filteredProducts.length === 0 ? 0 : (safeProductPage - 1) * productPageSize + 1}-{Math.min(safeProductPage * productPageSize, filteredProducts.length)} of {filteredProducts.length} product{filteredProducts.length !== 1 ? "s" : ""}.
                 </p>
-                <TablePagination page={safeProductPage} totalPages={productTotalPages} onPageChange={setProductPage} />
               </div>
 
               <div className="overflow-x-auto rounded-2xl border bg-card">
-                <div className="grid grid-cols-[1.8fr_1fr_110px_130px_120px] gap-3 border-b bg-muted px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <div className="grid grid-cols-[2.4fr_110px_130px_120px] gap-3 border-b bg-muted px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   <div>Product</div>
-                  <div>Category</div>
                   <div>Stock</div>
                   <div>Price</div>
                   <div className="text-right">Action</div>
@@ -972,7 +1010,7 @@ function PosTab() {
                     paginatedProducts.map((product) => (
                       <div
                         key={product.sku}
-                        className="grid grid-cols-[1.8fr_1fr_110px_130px_120px] items-center gap-3 border-b px-4 py-3 last:border-b-0 hover:bg-muted"
+                        className="grid grid-cols-[2.4fr_110px_130px_120px] items-center gap-3 border-b px-4 py-3 last:border-b-0 hover:bg-muted"
                       >
                         <div className="min-w-0">
                           <p className="truncate font-medium text-foreground">
@@ -981,10 +1019,6 @@ function PosTab() {
                           <p className="mt-1 text-xs text-muted-foreground">
                             Item Code: {product.sku}
                           </p>
-                        </div>
-
-                        <div className="truncate text-sm text-muted-foreground">
-                          {product.category}
                         </div>
 
                         <div>
@@ -1012,6 +1046,9 @@ function PosTab() {
                   )}
                 </div>
               </div>
+              <div className="flex justify-end border-t px-5 py-3">
+                <TablePagination page={safeProductPage} totalPages={productTotalPages} onPageChange={setProductPage} />
+              </div>
 
             </CardContent>
           </Card>
@@ -1030,7 +1067,23 @@ function PosTab() {
 
           <CardContent className="space-y-5">
             <div className="space-y-3">
-              <Label>Customer</Label>
+              <div className="flex items-center justify-between gap-3">
+                <Label>Customer</Label>
+                {canCreateCustomer ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setCustomerFormError("");
+                      setIsCustomerFormOpen(true);
+                    }}
+                  >
+                    <Plus className="mr-1 h-4 w-4" />
+                    Add customer
+                  </Button>
+                ) : null}
+              </div>
 
               <Select
                 instanceId="customer-select"
@@ -1263,6 +1316,80 @@ function PosTab() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog
+        open={isCustomerFormOpen}
+        onOpenChange={(open) => {
+          setIsCustomerFormOpen(open);
+          if (!open) setCustomerFormError("");
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add customer</DialogTitle>
+            <DialogDescription>
+              Only the name is required. The customer is saved and selected for
+              this sale straight away.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="pos-customer-name">Name</Label>
+              <Input
+                id="pos-customer-name"
+                value={customerForm.name}
+                maxLength={200}
+                onChange={(event) => setCustomerForm((current) => ({ ...current, name: event.target.value }))}
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="pos-customer-mobile">Mobile</Label>
+                <Input
+                  id="pos-customer-mobile"
+                  value={customerForm.mobile}
+                  maxLength={60}
+                  onChange={(event) => setCustomerForm((current) => ({ ...current, mobile: event.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="pos-customer-email">Email</Label>
+                <Input
+                  id="pos-customer-email"
+                  type="email"
+                  value={customerForm.email}
+                  maxLength={200}
+                  onChange={(event) => setCustomerForm((current) => ({ ...current, email: event.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pos-customer-address">Address</Label>
+              <Input
+                id="pos-customer-address"
+                value={customerForm.address}
+                maxLength={300}
+                onChange={(event) => setCustomerForm((current) => ({ ...current, address: event.target.value }))}
+              />
+            </div>
+            {customerFormError ? <StatusBanner tone="error">{customerFormError}</StatusBanner> : null}
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setIsCustomerFormOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={!customerForm.name.trim() || createCustomerMutation.isPending}
+              onClick={() => createCustomerMutation.mutate()}
+            >
+              {createCustomerMutation.isPending ? "Saving..." : "Add customer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={isCheckoutConfirmationOpen}
