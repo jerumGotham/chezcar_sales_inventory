@@ -1774,16 +1774,6 @@ export function StockTransfersClient({
             <p className="text-sm text-muted-foreground">
               {transfers.isFetching && !transfers.isLoading ? "Updating..." : ""}
             </p>
-            <TablePagination
-              page={transfers.data?.meta.page ?? page}
-              totalPages={transfers.data?.meta.totalPages ?? 1}
-              busy={transfers.isFetching}
-              onPageChange={(next) => {
-                // Paging away from the selected row used to clear it here too.
-                setSelectedTransferId("");
-                setPage(next);
-              }}
-            />
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[700px]">
@@ -1865,6 +1855,18 @@ export function StockTransfersClient({
                 )}
               </tbody>
             </table>
+          </div>
+          <div className="flex justify-end border-t px-5 py-3">
+            <TablePagination
+              page={transfers.data?.meta.page ?? page}
+              totalPages={transfers.data?.meta.totalPages ?? 1}
+              busy={transfers.isFetching}
+              onPageChange={(next) => {
+                // Paging away from the selected row used to clear it here too.
+                setSelectedTransferId("");
+                setPage(next);
+              }}
+            />
           </div>
         </CardContent>
       </Card>

@@ -504,7 +504,6 @@ export default function JobOrdersPage() {
                   {isFetching && !isLoading ? " • Updating..." : ""}
                 </p>
               </div>
-              <TablePagination page={meta.page} totalPages={meta.totalPages} onPageChange={setPage} busy={isFetching} />
             </div>
 
             <div className="overflow-x-auto">
@@ -645,6 +644,9 @@ export default function JobOrdersPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+            <div className="flex justify-end border-t px-5 py-3">
+              <TablePagination page={meta.page} totalPages={meta.totalPages} onPageChange={setPage} busy={isFetching} />
             </div>
 
           </CardContent>

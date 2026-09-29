@@ -399,14 +399,6 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
               <span className="text-muted-foreground text-sm">
                 {meta ? `${meta.totalItems} receipt(s)` : ""}
               </span>
-              {meta ? (
-                <TablePagination
-                  page={meta.page}
-                  totalPages={meta.totalPages}
-                  busy={isFetching}
-                  onPageChange={(next) => setFilters((current) => ({ ...current, page: next }))}
-                />
-              ) : null}
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] text-sm">
@@ -449,6 +441,16 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
                   )}
                 </tbody>
               </table>
+            </div>
+            <div className="flex justify-end border-t px-5 py-3">
+              {meta ? (
+                <TablePagination
+                  page={meta.page}
+                  totalPages={meta.totalPages}
+                  busy={isFetching}
+                  onPageChange={(next) => setFilters((current) => ({ ...current, page: next }))}
+                />
+              ) : null}
             </div>
           </CardContent>
         </Card>

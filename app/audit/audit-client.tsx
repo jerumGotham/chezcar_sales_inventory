@@ -151,7 +151,6 @@ export function AuditClient() {
               </p>
               {query.isFetching ? <Loader2 className="text-muted-foreground size-4 animate-spin" /> : null}
             </div>
-            <TablePagination page={meta.page} totalPages={meta.totalPages} onPageChange={setPage} busy={query.isFetching} />
           </div>
           <div className="overflow-x-auto">
             <Table>
@@ -179,6 +178,9 @@ export function AuditClient() {
                 )}
               </TableBody>
             </Table>
+          </div>
+          <div className="flex justify-end border-t px-5 py-3">
+            <TablePagination page={meta.page} totalPages={meta.totalPages} onPageChange={setPage} busy={query.isFetching} />
           </div>
 
         </CardContent>

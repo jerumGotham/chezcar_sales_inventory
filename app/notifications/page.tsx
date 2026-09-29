@@ -173,7 +173,6 @@ export default function NotificationsPage() {
       <Card>
         <CardContent className="p-0">
           <div className="flex justify-end border-b px-4 py-3">
-            <TablePagination page={currentPage} totalPages={totalPages} onPageChange={setPage} busy={notificationsQuery.isFetching} />
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[820px] text-left text-sm">
@@ -263,6 +262,9 @@ export default function NotificationsPage() {
                 )}
               </tbody>
             </table>
+          </div>
+          <div className="flex justify-end border-t px-5 py-3">
+            <TablePagination page={currentPage} totalPages={totalPages} onPageChange={setPage} busy={notificationsQuery.isFetching} />
           </div>
         </CardContent>
       </Card>

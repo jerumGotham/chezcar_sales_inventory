@@ -821,7 +821,6 @@ export default function CustomerOrdersPage() {
                 {isFetching && !isLoading ? " • Updating..." : ""}
               </p>
             </div>
-            <TablePagination page={meta.page} totalPages={meta.totalPages} onPageChange={setPage} busy={isFetching} />
           </div>
 
           <div className="overflow-x-auto">
@@ -997,6 +996,9 @@ export default function CustomerOrdersPage() {
                 )}
               </tbody>
             </table>
+          </div>
+          <div className="flex justify-end border-t px-5 py-3">
+            <TablePagination page={meta.page} totalPages={meta.totalPages} onPageChange={setPage} busy={isFetching} />
           </div>
 
         </CardContent>
@@ -1242,7 +1244,6 @@ export default function CustomerOrdersPage() {
 
             <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-3">
               <p className="text-sm text-muted-foreground">Showing {filteredSales.length === 0 ? 0 : (safeSalePage - 1) * pageSize + 1} to {Math.min(safeSalePage * pageSize, filteredSales.length)} of {filteredSales.length} sales</p>
-              <TablePagination page={safeSalePage} totalPages={saleTotalPages} onPageChange={setSalePage} busy={directSalesQuery.isFetching} />
             </div>
 
             <div className="overflow-x-auto">
@@ -1302,6 +1303,9 @@ export default function CustomerOrdersPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+            <div className="flex justify-end border-t px-5 py-3">
+              <TablePagination page={safeSalePage} totalPages={saleTotalPages} onPageChange={setSalePage} busy={directSalesQuery.isFetching} />
             </div>
 
           </CardContent>
