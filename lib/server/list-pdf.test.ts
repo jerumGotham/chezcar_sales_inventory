@@ -24,7 +24,7 @@ const inventory: InventoryApiResponse = {
   data: [
     {
       id: "balance-1", itemCode: "ITM-001", name: "Brake Pad", description: "Front brake pad set",
-      brand: "Predator", carModel: "Hilux", yearModel: "2016-2020", price: 1250, imageUrl: null,
+      brand: "Predator", carModel: "Hilux", yearModel: "2016-2020", price: 1250, basePrice: 1250, hasBranchPrice: false, imageUrl: null,
       category: "Brakes", location: "Binan", locationCode: "BL",
       onHand: 10, reserved: 2, quarantined: 1, reorderLevel: 5, unitCost: 250,
       lastUpdated: "2026-09-18T01:00:00.000Z", status: "In Stock",

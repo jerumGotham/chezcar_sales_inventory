@@ -19,6 +19,7 @@ import {
 
 import { LocationScopeControl, parseScopeValue } from "@/components/location-scope-control";
 import { PageShell } from "@/components/page-shell";
+import { StatusBanner } from "@/components/status-banner";
 import { ZoomableImage } from "@/components/zoomable-image";
 import { TablePagination } from "@/components/table-pagination";
 import { useCan } from "@/components/shell-access-context";
@@ -42,7 +43,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { correctInventory, fetchInventory, fetchInventoryMovements } from "@/lib/catalog";
+import { correctInventory, fetchInventory, fetchInventoryMovements, setBranchPrice } from "@/lib/catalog";
 import type { LocationScopeDto } from "@/lib/contracts/access";
 import { fetchInventoryAvailability } from "@/lib/inventory-availability";
 
@@ -56,6 +57,7 @@ import {
   getAvailableStock,
   getGroupedStatus,
   getStockBadgeClass,
+  formatPeso,
   reactSelectStyles,
   type InventoryRow,
   type ProductGroupRow,
@@ -191,6 +193,7 @@ export function InventoryClient({
   const canSelectLocations = scope.kind !== "location";
   const canReceiveSupplierStock = useCan("inventory-receiving:create");
   const canAdjustStock = useCan("inventory:adjust");
+  const canSetBranchPrice = useCan("inventory:price:update");
   const canViewMovements = useCan("inventory-movements:view");
   const canViewAvailability = useCan("inventory-availability:view");
   const canViewStockTransfers = useCan("stock-transfers:view");
@@ -264,6 +267,8 @@ export function InventoryClient({
 
   const [isAdjustOpen, setIsAdjustOpen] = useState(false);
   const [isQuickAdjustOpen, setIsQuickAdjustOpen] = useState(false);
+  const [priceRow, setPriceRow] = useState<InventoryRow | null>(null);
+  const [priceDraft, setPriceDraft] = useState("");
   const [isStockCardOpen, setIsStockCardOpen] = useState(false);
   const [isAvailabilityOpen, setIsAvailabilityOpen] = useState(false);
 
@@ -414,6 +419,24 @@ export function InventoryClient({
       setIsQuickAdjustOpen(false);
       resetAdjustmentFields();
       setMutationNotice(`Stock ${payload.type === "increase" ? "increased" : "decreased"} by ${payload.quantity}.`);
+    },
+    onError: (saveError) => { setMutationNotice(""); setMutationError(saveError.message); },
+  });
+
+  const branchPriceMutation = useMutation({
+    mutationFn: (payload: { balanceId: string; price: number | null }) => {
+      if (!canSetBranchPrice) throw new Error("You do not have permission to set a branch price.");
+      return setBranchPrice(payload.balanceId, payload.price);
+    },
+    onSuccess: (_, payload) => {
+      refreshInventory();
+      const branch = priceRow?.location ?? "This branch";
+      setPriceRow(null);
+      setMutationNotice(
+        payload.price === null
+          ? `${branch} follows the product price again.`
+          : `${branch} now sells this at ${formatPeso(payload.price)}.`,
+      );
     },
     onError: (saveError) => { setMutationNotice(""); setMutationError(saveError.message); },
   });
@@ -635,9 +658,7 @@ export function InventoryClient({
         subtitle={`Live stock levels for ${summaryScopeLabel}. Data comes from the database and survives reload.`}
       >
         {mutationNotice ? (
-          <p role="status" className="mb-4 rounded-lg border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 p-3 text-sm text-emerald-800 dark:text-emerald-300 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
-            {mutationNotice}
-          </p>
+          <StatusBanner tone="success" className="mb-4">{mutationNotice}</StatusBanner>
         ) : null}
         <p className="mb-4 text-sm text-muted-foreground">
           Showing totals for <span className="font-semibold text-foreground">{summaryScopeLabel}</span> only.
@@ -835,10 +856,6 @@ export function InventoryClient({
               </div>
             </div>
 
-            <div className="flex justify-end border-b px-5 py-3">
-              <TablePagination page={meta.page} totalPages={meta.totalPages} onPageChange={setPage} busy={isFetching} />
-            </div>
-
             {/* Cards rather than a wide table: fourteen sheet columns could not
                 be read side by side without a horizontal scroll, and a label
                 beside each value matters more here than column alignment,
@@ -1008,7 +1025,10 @@ export function InventoryClient({
                                     <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                                       Ready to sell
                                     </th>
-                                    {canAdjustStock && (
+                                    <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                      Price
+                                    </th>
+                                    {(canAdjustStock || canSetBranchPrice) && (
                                       <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                                         Action
                                       </th>
@@ -1050,15 +1070,57 @@ export function InventoryClient({
                                         <td className="px-4 py-2 text-right font-semibold text-emerald-700 dark:text-emerald-300">
                                           {available}
                                         </td>
-                                        {canAdjustStock && (
-                                          <td className="px-4 py-2 text-right">
-                                            <Button
-                                              variant="warning"
-                                              size="sm"
-                                              onClick={() => openQuickAdjustModal(item)}
+                                        <td className="px-4 py-2 text-right">
+                                          {item.price === null || item.price === undefined ? (
+                                            <span className="text-muted-foreground">No price</span>
+                                          ) : (
+                                            <span className="font-semibold text-foreground">
+                                              {formatPeso(item.price)}
+                                            </span>
+                                          )}
+                                          {/* Only a price this branch set is worth
+                                              calling out. Following the product is
+                                              the ordinary case and says nothing. */}
+                                          {item.hasBranchPrice && (
+                                            <span
+                                              className="ml-1 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300"
+                                              title={
+                                                item.basePrice === null || item.basePrice === undefined
+                                                  ? "This branch sets its own price"
+                                                  : `This branch sets its own price. The product is ${formatPeso(item.basePrice ?? 0)}.`
+                                              }
                                             >
-                                              Quick Adjust
-                                            </Button>
+                                              Branch
+                                            </span>
+                                          )}
+                                        </td>
+                                        {(canAdjustStock || canSetBranchPrice) && (
+                                          <td className="px-4 py-2 text-right">
+                                            <div className="flex justify-end gap-2">
+                                              {canSetBranchPrice && (
+                                                <Button
+                                                  variant="view"
+                                                  size="sm"
+                                                  onClick={() => {
+                                                    setMutationError("");
+                                                    setMutationNotice("");
+                                                    setPriceRow(item);
+                                                    setPriceDraft(item.price === null ? "" : String(item.price));
+                                                  }}
+                                                >
+                                                  Price
+                                                </Button>
+                                              )}
+                                              {canAdjustStock && (
+                                                <Button
+                                                  variant="warning"
+                                                  size="sm"
+                                                  onClick={() => openQuickAdjustModal(item)}
+                                                >
+                                                  Quick Adjust
+                                                </Button>
+                                              )}
+                                            </div>
                                           </td>
                                         )}
                                       </tr>
@@ -1075,10 +1137,82 @@ export function InventoryClient({
                 })
               )}
             </div>
+            <div className="flex justify-end border-t px-5 py-3">
+              <TablePagination page={meta.page} totalPages={meta.totalPages} onPageChange={setPage} busy={isFetching} />
+            </div>
 
           </CardContent>
         </Card>
       </PageShell>
+
+      <Dialog
+        open={priceRow !== null}
+        onOpenChange={(open) => {
+          if (!open) setPriceRow(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Branch price</DialogTitle>
+            <DialogDescription>
+              What {priceRow?.location ?? "this branch"} sells this for. Leave it
+              following the product unless this branch really does charge
+              differently.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-2">
+            <div className="space-y-2">
+              <Label>Product</Label>
+              <Input
+                value={priceRow ? `${priceRow.itemCode} - ${priceRow.name}` : ""}
+                disabled
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="branch-price">Price at this branch</Label>
+              <Input
+                id="branch-price"
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={priceDraft}
+                onChange={(event) => setPriceDraft(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                {priceRow?.basePrice === null || priceRow?.basePrice === undefined
+                  ? "This product has no price of its own."
+                  : `The product's price is ${formatPeso(priceRow.basePrice)}.`}
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:justify-between">
+            {/* Clearing is its own action rather than an empty field, so
+                nobody returns a branch to the product price by accident. */}
+            <Button
+              variant="outline"
+              disabled={!priceRow?.hasBranchPrice || branchPriceMutation.isPending}
+              onClick={() => {
+                if (priceRow) branchPriceMutation.mutate({ balanceId: priceRow.id, price: null });
+              }}
+            >
+              Use the product price
+            </Button>
+            <Button
+              disabled={branchPriceMutation.isPending || Number(priceDraft) <= 0}
+              onClick={() => {
+                if (priceRow) {
+                  branchPriceMutation.mutate({ balanceId: priceRow.id, price: Number(priceDraft) });
+                }
+              }}
+            >
+              {branchPriceMutation.isPending ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={photoToView !== null}
@@ -1186,7 +1320,7 @@ export function InventoryClient({
               </div>
             </div>
 
-            {mutationError && <p className="text-sm font-medium text-red-600">{mutationError}</p>}
+            {mutationError && <StatusBanner tone="error">{mutationError}</StatusBanner>}
 
             <div className="rounded-xl border border-amber-100 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
               Use stock adjustment only when the actual physical count does not
@@ -1289,7 +1423,7 @@ export function InventoryClient({
               </div>
             </div>
 
-            {mutationError && <p className="text-sm font-medium text-red-600">{mutationError}</p>}
+            {mutationError && <StatusBanner tone="error">{mutationError}</StatusBanner>}
 
             <div className="rounded-xl border border-amber-100 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
               Product and location are locked because this quick adjust only

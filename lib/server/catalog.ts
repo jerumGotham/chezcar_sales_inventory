@@ -114,6 +114,11 @@ export const inventoryCorrectionSchema = z.object({
   path: ["quantity"],
 });
 
+/** null clears the branch's own price and returns it to the product's. */
+export const branchPriceSchema = z.object({
+  price: z.union([positivePrice, z.null()]),
+});
+
 export const inventoryMovementsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
@@ -619,6 +624,8 @@ export async function listInventory(
           orderBy: [{ make: "asc" }, { model: "asc" }],
           select: { model: true, yearsLabel: true },
         },
+        // At most one per branch, so this is a handful of rows per product.
+        branchPrices: { select: { locationId: true, price: true } },
       },
     }),
     prisma.inventoryBalance.findMany({
@@ -649,6 +656,10 @@ export async function listInventory(
   const products = productsWithMatchingStatus.slice(skip, skip + query.pageSize);
   const rows: InventoryRow[] = products.flatMap((product) => {
     const fitment = fitmentLabels(product.vehicleCompatibilities);
+    const branchPrices = new Map(
+      product.branchPrices.map((entry) => [entry.locationId, entry.price.toNumber()]),
+    );
+    const basePrice = product.price?.toNumber() ?? null;
     const imageUrl = product.imageKey
       ? `/api/products/${product.id}/image?v=${product.updatedAt.getTime()}`
       : null;
@@ -660,7 +671,9 @@ export async function listInventory(
       brand: product.brand ?? "",
       carModel: fitment.carModel,
       yearModel: fitment.yearModel,
-      price: product.price?.toNumber() ?? null,
+      price: branchPrices.get(balance.locationId) ?? basePrice,
+      basePrice,
+      hasBranchPrice: branchPrices.has(balance.locationId),
       imageUrl,
       category: product.category ?? "Uncategorized",
       location: balance.location.name,
@@ -790,6 +803,86 @@ function serializeInventoryMovement(movement: {
     itemCode: movement.product.itemCode,
     itemName: movement.product.name,
   };
+}
+
+/**
+ * Sets what one branch sells a product for, or clears it back to the product's
+ * own price. Reached through the balance because that is what the Inventory
+ * screen has in hand, and because the balance is what carries the location the
+ * actor has to be authorized for; the price itself is stored against the
+ * product and the branch, not against the stock.
+ */
+export async function setBranchPrice(
+  actor: AuthContext,
+  balanceId: string,
+  input: z.infer<typeof branchPriceSchema>,
+) {
+  assertCapability(actor, "inventory:price:update");
+
+  return prisma.$transaction(async (tx) => {
+    const balance = await tx.inventoryBalance.findUnique({
+      where: { id: balanceId },
+      select: {
+        productId: true,
+        locationId: true,
+        product: { select: { itemCode: true, name: true, price: true } },
+        location: { select: { name: true, code: true } },
+      },
+    });
+    if (!balance) {
+      throw new InventoryMutationError("NOT_FOUND", "Inventory balance not found", 404);
+    }
+    assertInventoryMutationScope(actor, balance.locationId);
+
+    const where = {
+      productId_locationId: { productId: balance.productId, locationId: balance.locationId },
+    };
+    const existing = await tx.productBranchPrice.findUnique({ where });
+
+    if (input.price === null) {
+      if (!existing) {
+        throw new InventoryMutationError(
+          "NO_BRANCH_PRICE",
+          `${balance.location.name} already sells this at the product price`,
+          409,
+        );
+      }
+      await tx.productBranchPrice.delete({ where });
+    } else if (existing) {
+      await tx.productBranchPrice.update({
+        where,
+        data: { price: new Prisma.Decimal(input.price), version: { increment: 1 } },
+      });
+    } else {
+      await tx.productBranchPrice.create({
+        data: {
+          productId: balance.productId,
+          locationId: balance.locationId,
+          price: new Prisma.Decimal(input.price),
+        },
+      });
+    }
+
+    const basePrice = balance.product.price?.toNumber() ?? null;
+    const was = existing?.price.toNumber() ?? basePrice;
+    await recordAuditLog({
+      category: "Master Data",
+      action: "Branch Price Set",
+      actorId: actor.userId,
+      reference: `${balance.product.itemCode} at ${balance.location.code}`,
+      details: input.price === null
+        ? `${balance.product.name} at ${balance.location.name} follows the product price again`
+        : `${balance.product.name} at ${balance.location.name}: ${was === null ? "no price" : was} to ${input.price}`,
+    });
+
+    return {
+      productId: balance.productId,
+      locationId: balance.locationId,
+      price: input.price ?? basePrice,
+      basePrice,
+      hasBranchPrice: input.price !== null,
+    };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
 export async function correctInventoryBalance(

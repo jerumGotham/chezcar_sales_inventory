@@ -23,6 +23,12 @@ export type InventoryRow = {
   location: string;
   /** Short branch code. Absent on the fixtures, which never had one. */
   locationCode?: string;
+  /** What this branch sells it for: its own price when set, the product's otherwise. */
+  price?: number | null;
+  /** The product's own price, so a branch price reads as a departure from something. */
+  basePrice?: number | null;
+  /** True when this branch sets its own price rather than following the product. */
+  hasBranchPrice?: boolean;
   onHand: number;
   reserved: number;
   quarantined: number;

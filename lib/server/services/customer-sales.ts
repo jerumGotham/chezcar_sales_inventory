@@ -395,10 +395,27 @@ async function registerReceipt(tx: Prisma.TransactionClient, number: string, pur
   }
 }
 
-async function activeProducts(tx: Prisma.TransactionClient, ids: string[]) {
-  const products = await tx.product.findMany({ where: { id: { in: ids }, status: "ACTIVE" }, select: { id: true, itemCode: true, name: true, price: true, warrantyDurationMonths: true } });
+/**
+ * The products a transaction may charge for, priced for the branch making it.
+ *
+ * price is resolved here rather than at each caller: a branch that sets its own
+ * price sells at that price everywhere the transaction touches it, and leaving
+ * the substitution to the callers is how a total and the line it came from
+ * drift apart. A branch with no price of its own keeps the product's.
+ */
+async function activeProducts(tx: Prisma.TransactionClient, ids: string[], locationId: string) {
+  const products = await tx.product.findMany({
+    where: { id: { in: ids }, status: "ACTIVE" },
+    select: {
+      id: true, itemCode: true, name: true, price: true, warrantyDurationMonths: true,
+      branchPrices: { where: { locationId }, select: { price: true } },
+    },
+  });
   if (products.length !== new Set(ids).size) throw new CustomerSalesError("INVALID_LINES", "Every line must reference an active product", 400);
-  return new Map(products.map((product) => [product.id, product]));
+  return new Map(products.map((product) => [
+    product.id,
+    { ...product, price: product.branchPrices[0]?.price ?? product.price },
+  ]));
 }
 
 export async function createCustomer(actor: AuthContext, input: z.infer<typeof customerMutationSchema>) {
@@ -526,7 +543,7 @@ export async function createCustomerOrder(actor: AuthContext, input: z.infer<typ
     if (!location) throw new CustomerSalesError("INVALID_LOCATION", "Select an active branch", 400);
     const salesperson = await resolveActiveSalespersonForTransaction(tx, actor, input.salespersonId, locationId);
     if (!salesperson) throw new CustomerSalesError("INVALID_SALESPERSON", "Select an active salesperson within your authorized locations", 409);
-    const products = await activeProducts(tx, productIds);
+    const products = await activeProducts(tx, productIds, locationId);
     const customerId = await resolveCustomer(tx, actor, input.customer);
     const total = input.lines.reduce((sum, line) => {
       const product = products.get(line.productId)!;
@@ -1036,7 +1053,7 @@ async function createDirectSaleForActor(actor: AuthContext, rawInput: z.input<ty
     return await prisma.$transaction(async (tx) => {
     const location = await findActiveBranch(locationId, tx);
     if (!location) throw new CustomerSalesError("INVALID_LOCATION", "Select an active branch", 400);
-    const products = await activeProducts(tx, productIds);
+    const products = await activeProducts(tx, productIds, locationId);
     const customerId = input.customerId ?? (input.customer ? await resolveCustomer(tx, actor, input.customer) : null);
     const salesperson = await resolveActiveSalespersonForTransaction(tx, actor, input.salespersonId, locationId);
     if (!salesperson) throw new CustomerSalesError("INVALID_SALESPERSON", "Select an active salesperson within your authorized locations", 409);

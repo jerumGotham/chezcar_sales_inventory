@@ -100,8 +100,15 @@ export type InventoryRow = {
   carModel: string;
   /** Every fitment year label the product carries, joined for one column. */
   yearModel: string;
-  /** The selling price, as the Products screen shows it. Null until one is set. */
+  /**
+   * What this branch sells the product for: its own price when one is set,
+   * and the product's otherwise. This is the figure the POS charges.
+   */
   price: number | null;
+  /** The product's own price, kept beside it so a branch price can be seen as a departure from something. */
+  basePrice: number | null;
+  /** True when this branch has a price of its own rather than following the product. */
+  hasBranchPrice: boolean;
   imageUrl: string | null;
   category: string;
   location: string;
@@ -126,7 +133,7 @@ export type InventoryRow = {
  */
 export type InventoryBalanceRow = Omit<
   InventoryRow,
-  "description" | "brand" | "carModel" | "yearModel" | "imageUrl" | "price"
+  "description" | "brand" | "carModel" | "yearModel" | "imageUrl" | "price" | "basePrice" | "hasBranchPrice"
 >;
 
 export type InventoryApiResponse = {
@@ -190,7 +197,7 @@ async function fetchJson<T>(path: string, query: Record<string, QueryValue>) {
   return (await response.json()) as T;
 }
 
-async function sendJson<T>(path: string, method: "PATCH" | "POST", body: unknown) {
+async function sendJson<T>(path: string, method: "PATCH" | "POST" | "PUT", body: unknown) {
   const response = await fetch(path, {
     method,
     credentials: "same-origin",
@@ -231,4 +238,14 @@ export function correctInventory(
   },
 ) {
   return sendJson<{ data: InventoryBalanceRow }>(`/api/inventory/${balanceId}/adjustment`, "POST", input);
+}
+
+/**
+ * Sets what one branch sells a product for. A price of null clears the branch's
+ * own price and returns it to the product's.
+ */
+export function setBranchPrice(balanceId: string, price: number | null) {
+  return sendJson<{
+    data: { productId: string; locationId: string; price: number | null; basePrice: number | null; hasBranchPrice: boolean };
+  }>(`/api/inventory/${balanceId}/price`, "PUT", { price });
 }

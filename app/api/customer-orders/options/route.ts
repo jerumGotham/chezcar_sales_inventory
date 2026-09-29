@@ -25,7 +25,7 @@ export async function GET(request: Request) {
     const [customers, products, branches, salespersons] = await Promise.all([
       prisma.customer.findMany({ where: { status: "ACTIVE" }, orderBy: { name: "asc" }, take: 200, select: { id: true, name: true } }),
       locationId
-        ? prisma.product.findMany({ where: { status: "ACTIVE" }, orderBy: { itemCode: "asc" }, take: 2_000, select: { id: true, itemCode: true, name: true, category: true, price: true, inventoryBalances: { where: { locationId }, select: { onHand: true, reserved: true, quarantined: true } } } })
+        ? prisma.product.findMany({ where: { status: "ACTIVE" }, orderBy: { itemCode: "asc" }, take: 2_000, select: { id: true, itemCode: true, name: true, category: true, price: true, branchPrices: { where: { locationId }, select: { price: true } }, inventoryBalances: { where: { locationId }, select: { onHand: true, reserved: true, quarantined: true } } } })
         : Promise.resolve([]),
       listActiveBranches().then((rows) =>
         hasAllLocationAccess(actor)
@@ -38,7 +38,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       data: {
         customers,
-        products: products.map((product) => ({ id: product.id, itemCode: product.itemCode, name: product.name, category: product.category ?? "Uncategorized", price: product.price?.toNumber() ?? 0, availableQuantity: availableStock({ onHand: product.inventoryBalances[0]?.onHand ?? 0, reserved: product.inventoryBalances[0]?.reserved ?? 0, quarantined: product.inventoryBalances[0]?.quarantined ?? 0 }) })).filter((product) => includeUnavailable || product.availableQuantity > 0),
+        products: products.map((product) => ({ id: product.id, itemCode: product.itemCode, name: product.name, category: product.category ?? "Uncategorized", price: (product.branchPrices[0]?.price ?? product.price)?.toNumber() ?? 0, availableQuantity: availableStock({ onHand: product.inventoryBalances[0]?.onHand ?? 0, reserved: product.inventoryBalances[0]?.reserved ?? 0, quarantined: product.inventoryBalances[0]?.quarantined ?? 0 }) })).filter((product) => includeUnavailable || product.availableQuantity > 0),
         branches,
         salespersons,
       },

@@ -55,13 +55,14 @@ export async function createInventoryListPdf(
   /*
    * One line per product, laid out like the branch sheet this replaces: the
    * catalogue detail, then a column per branch holding what that branch can
-   * sell, then the total and the price.
+   * sell, and the total.
    *
    * The export used to print a line per branch balance, which repeated the
    * catalogue detail once for every branch and left the reader adding the
    * numbers up by hand. Reorder level and status are not printed: the sheet
    * does not carry them, and a printed page cannot be acted on the way the
-   * screen can.
+   * screen can. Price is not printed either: a branch can now sell at its own
+   * price, and one column could only ever be right for one of them.
    */
   const products = new Map<string, typeof inventory.data>();
   for (const row of inventory.data) {
@@ -112,7 +113,6 @@ export async function createInventoryListPdf(
       first.yearModel || "Not set",
       ...branchCodes.map((code) => String(perBranch.get(code) ?? 0)),
       String(total),
-      first.price === null ? "No price" : money(first.price),
     ];
   });
 
@@ -122,14 +122,12 @@ export async function createInventoryListPdf(
     { header: "Car Model", width: 1.2 }, { header: "Year Model", width: 1.1 },
     ...branchCodes.map((code) => ({ header: code, width: 0.5, numeric: true })),
     { header: "Total Stock Available", width: 1.1, numeric: true },
-    { header: "Price", width: 1.2, numeric: true },
   ], [
     ...productRows,
     [
       "EXPORTED TOTAL", "", "", "", "", "",
       ...branchCodes.map((code) => String(branchTotals.get(code) ?? 0)),
       String(exportedAvailable),
-      "",
     ],
   ], true);
 
