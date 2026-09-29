@@ -21,7 +21,7 @@ const LOCATION_DISPLAY_NAMES = Object.freeze({
 });
 const ALL_CAPABILITIES = Object.freeze([
   "locations:all",
-  "dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push",
+  "dashboard:view", "notifications:view", "notifications:mark-read",
   "audit:view",
   "customers:view", "customers:create", "customers:update", "customers:deactivate",
   "customer-orders:view", "customer-orders:create", "customer-orders:reserve",
@@ -71,7 +71,7 @@ const BUILT_IN_ROLES = Object.freeze([
     scope: "STOCK_ROOM",
     isOwner: false,
     permissions: [
-      "dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push",
+      "dashboard:view", "notifications:view", "notifications:mark-read",
       "customers:view", "customer-orders:view", "products:view",
       "inventory:view", "inventory-availability:view", "inventory-movements:view",
       "stock-receipts:view", "inventory-receiving:create", "stock-transfers:view",
@@ -91,7 +91,7 @@ const BUILT_IN_ROLES = Object.freeze([
     scope: "BRANCH",
     isOwner: false,
     permissions: [
-      "dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push",
+      "dashboard:view", "notifications:view", "notifications:mark-read",
       "customers:view", "customers:create", "customers:update", "customers:deactivate",
       "customer-orders:view", "customer-orders:create", "customer-orders:reserve",
       "customer-orders:record-payment", "customer-orders:release", "customer-orders:cancel",
@@ -113,7 +113,7 @@ const BUILT_IN_ROLES = Object.freeze([
     scope: "BUSINESS_WIDE",
     isOwner: false,
     permissions: [
-      "locations:all", "dashboard:view", "notifications:view", "notifications:mark-read", "notifications:push",
+      "locations:all", "dashboard:view", "notifications:view", "notifications:mark-read",
       "customers:view", "customer-orders:view", "sales:view", "sales:verify",
       "sales:verify:view", "sales:resolve", "sales:evidence:view", "sales:evidence:upload", "sales:evidence:delete",
       "reports:sales", "reports:salesperson-sales", "reports:inventory-summary", "reports:stock-movement", "reports:returns-warranty",

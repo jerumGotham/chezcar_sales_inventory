@@ -4,7 +4,6 @@ import type { NotificationType, Prisma } from "@prisma/client";
 
 import type { AuthContext } from "@/lib/server/authorization";
 import { prisma } from "@/lib/server/prisma";
-import { schedulePushDelivery } from "./push-notifications";
 
 export const NOTIFICATION_CHANNEL = "chezcar_notifications";
 
@@ -86,7 +85,6 @@ export async function createNotifications(
 
   await tx.notification.createMany({ data: notifications });
   await tx.$executeRaw`SELECT pg_notify(${NOTIFICATION_CHANNEL}, '')`;
-  schedulePushDelivery();
 }
 
 export async function findWorkflowNotificationRecipients(tx: Prisma.TransactionClient, locationId: string) {

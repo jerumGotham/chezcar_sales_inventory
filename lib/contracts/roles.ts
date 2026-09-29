@@ -5,7 +5,6 @@ export const CAPABILITY_CATALOG = [
   { id: "dashboard:view", module: "Dashboard", label: "View dashboard" },
   { id: "notifications:view", module: "Notifications", label: "View notifications" },
   { id: "notifications:mark-read", module: "Notifications", label: "Mark notifications as read" },
-  { id: "notifications:push", module: "Notifications", label: "Manage browser notifications" },
   { id: "customers:view", module: "Customers", label: "View customers" },
   { id: "customers:create", module: "Customers", label: "Add customers" },
   { id: "customers:update", module: "Customers", label: "Edit customers" },

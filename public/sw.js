@@ -174,19 +174,6 @@ self.addEventListener("fetch", (event) => {
   }
 });
 
-self.addEventListener("push", (event) => {
-  const payload = event.data ? event.data.json() : {};
-  const title = payload.title || "Predator notification";
-  const options = {
-    body: payload.description || "Open Predator to view details.",
-    icon: "/predator-icon-192.png",
-    badge: "/predator-icon-192.png",
-    data: { url: "/notifications", id: payload.id },
-  };
-
-  event.waitUntil(self.registration.showNotification(title, options));
-});
-
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const targetUrl = new URL(event.notification.data?.url || "/notifications", self.location.origin).href;

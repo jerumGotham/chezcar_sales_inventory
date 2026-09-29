@@ -2,7 +2,6 @@ import type { CapabilityId } from "@/lib/contracts/roles";
 
 const IMPLIED_CAPABILITIES: Partial<Record<CapabilityId, readonly CapabilityId[]>> = {
   "notifications:mark-read": ["notifications:view"],
-  "notifications:push": ["notifications:view"],
   "customers:create": ["customers:view"],
   "customers:update": ["customers:view"],
   "customers:deactivate": ["customers:view"],
