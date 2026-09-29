@@ -1,6 +1,7 @@
 import "./globals.css";
 import { ReactNode } from "react";
 import { Geist } from "next/font/google";
+import Script from "next/script";
 import { cn } from "@/lib/utils";
 import Providers from "./provider";
 import AppLayoutShell from "@/components/app-layout-shell";
@@ -12,6 +13,11 @@ const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
  * page flash first. It only ever removes the class the server already set;
  * anything it cannot read leaves the default dark in place. The key matches
  * THEME_KEY in components/app-header.tsx, which owns the toggle.
+ *
+ * Carried by next/script rather than a bare <script> element: React 19 never
+ * runs a script a component rendered, and says so in the console on every page
+ * load. beforeInteractive puts it in the document ahead of hydration, which is
+ * what this needs and what the warning was pointing at.
  */
 const THEME_SCRIPT = `try{if(localStorage.getItem("chezcar-theme")==="light"){document.documentElement.classList.remove("dark");document.documentElement.style.colorScheme="light"}}catch(e){}`;
 
@@ -35,7 +41,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       suppressHydrationWarning
     >
       <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        <Script
+          id="theme-preference"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }}
+        />
       </head>
       <body className="overflow-x-hidden bg-background text-foreground transition-colors">
         <Providers>
