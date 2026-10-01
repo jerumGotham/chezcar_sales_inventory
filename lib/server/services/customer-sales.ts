@@ -17,6 +17,11 @@ import {
   type SaleCorrectionRequestDto,
 } from "../../contracts/sales";
 import {
+  customerTypeSchema,
+  DEFAULT_CUSTOMER_TYPE,
+} from "../../contracts/customers";
+import { cancelOrderSettlementSchema } from "../../contracts/refunds";
+import {
   assertAnyCapability,
   assertCapability,
   AuthorizationError,
@@ -37,6 +42,13 @@ const money = z.coerce.number().min(0);
 
 export const customerMutationSchema = z.object({
   name: z.string().trim().min(1).max(200),
+  /**
+   * Optional rather than defaulted, so the inferred input stays assignable for
+   * the callers that post only a name — the offline sale payload and the order
+   * forms. A customer with no stated type is a person, which is what every
+   * customer captured before this was.
+   */
+  type: customerTypeSchema.optional(),
   mobile: z.string().trim().max(80).optional(),
   email: z.string().trim().email().max(200).optional().or(z.literal("")),
   address: z.string().trim().max(500).optional(),
@@ -92,7 +104,12 @@ export const releaseOrderSchema = z.object({
   notes: z.string().trim().max(1_000).optional(),
 });
 
-export const cancelOrderSchema = z.object({ note: z.string().trim().max(1_000).optional() });
+/**
+ * Cancelling. The settlement dropdown decides what happens to money already
+ * collected: the branch keeps it, or it goes back and sales fall by that much.
+ * Defined in lib/contracts/refunds so the dialog and the server agree.
+ */
+export const cancelOrderSchema = cancelOrderSettlementSchema;
 
 export const orderPaymentSchema = z.object({
   amount: z.coerce.number().positive().max(9_999_999_999.99),
@@ -336,7 +353,7 @@ async function resolveCustomer(tx: Prisma.TransactionClient, actor: AuthContext,
     if (!customer) throw new CustomerSalesError("INVALID_CUSTOMER", "Customer not found", 404);
     return customer.id;
   }
-  const customer = await tx.customer.create({ data: { name: input.name, mobile: input.mobile || null, email: input.email || null, address: input.address || null, source: input.source || null, notes: input.notes || null, createdById: actor.userId } });
+  const customer = await tx.customer.create({ data: { name: input.name, type: input.type ?? DEFAULT_CUSTOMER_TYPE, mobile: input.mobile || null, email: input.email || null, address: input.address || null, source: input.source || null, notes: input.notes || null, createdById: actor.userId } });
   return customer.id;
 }
 
@@ -420,7 +437,7 @@ async function activeProducts(tx: Prisma.TransactionClient, ids: string[], locat
 
 export async function createCustomer(actor: AuthContext, input: z.infer<typeof customerMutationSchema>) {
   assertCapability(actor, "customers:create");
-  const created = await prisma.customer.create({ data: { name: input.name, mobile: input.mobile || null, email: input.email || null, address: input.address || null, source: input.source || null, notes: input.notes || null, createdById: actor.userId } });
+  const created = await prisma.customer.create({ data: { name: input.name, type: input.type ?? DEFAULT_CUSTOMER_TYPE, mobile: input.mobile || null, email: input.email || null, address: input.address || null, source: input.source || null, notes: input.notes || null, createdById: actor.userId } });
   await recordAuditLog({ category: "Master Data", action: "Customer Created", actorId: actor.userId, reference: created.name, details: `${created.name}${created.mobile ? `, ${created.mobile}` : ""}` });
   return created;
 }
@@ -430,7 +447,10 @@ export async function updateCustomer(actor: AuthContext, id: string, input: z.in
   try {
     const updated = await prisma.customer.update({
       where: { id },
-      data: { name: input.name, mobile: input.mobile || null, email: input.email || null, address: input.address || null, source: input.source || null, notes: input.notes || null },
+      // Written only when stated. Falling back to the default here would
+      // quietly demote a Company back to Individual on any update that
+      // left the field out.
+      data: { name: input.name, ...(input.type ? { type: input.type } : {}), mobile: input.mobile || null, email: input.email || null, address: input.address || null, source: input.source || null, notes: input.notes || null },
     });
     await recordAuditLog({ category: "Master Data", action: "Customer Updated", actorId: actor.userId, reference: updated.name, details: `${updated.name}${updated.mobile ? `, ${updated.mobile}` : ""}` });
     return updated;
@@ -486,6 +506,7 @@ export async function listCustomers(actor: AuthContext, query: z.infer<typeof cu
       return {
         id: customer.id,
         name: customer.name,
+        type: customer.type,
         mobile: customer.mobile ?? "",
         email: customer.email,
         city: customer.address ?? "",
@@ -923,6 +944,63 @@ export async function cancelCustomerOrder(actor: AuthContext, id: string, input:
     if (order.status === "RESERVED" || order.status === "READY_FOR_RELEASE") {
       for (const line of order.lines) await tx.inventoryBalance.update({ where: { locationId_productId: { locationId: order.locationId, productId: line.productId } }, data: { reserved: { decrement: line.quantity }, version: { increment: 1 } } });
     }
+
+    // Money already collected. Forfeited, it stays revenue, which is what this
+    // workflow always did. Refunded, it goes back and the reports subtract it
+    // on today's date, leaving any period already reported untouched.
+    if (input.settlement === "REFUNDED") {
+      assertCapability(actor, "customer-orders:refund");
+      const collected = await tx.payment.aggregate({
+        where: { orderId: id, status: "ACTIVE" },
+        _sum: { amount: true },
+      });
+      const collectedAmount = collected._sum.amount?.toNumber() ?? 0;
+      if (collectedAmount <= 0) {
+        throw new CustomerSalesError("NOTHING_COLLECTED", "This order has no collected money to refund", 409);
+      }
+      const refundAmount = input.refundAmount ?? 0;
+      if (refundAmount > collectedAmount) {
+        throw new CustomerSalesError(
+          "REFUND_EXCEEDS_COLLECTED",
+          `This order only collected ${collectedAmount.toFixed(2)}`,
+          409,
+        );
+      }
+      const refund = await tx.refund.create({
+        data: {
+          reference: `REF-${randomUUID()}`,
+          kind: "CANCELLED_ORDER",
+          locationId: order.locationId,
+          customerId: order.customerId,
+          orderId: order.id,
+          amount: decimal(refundAmount),
+          method: (input.refundMethod ?? "CASH") as PaymentMethod,
+          acknowledgementNumber: input.acknowledgementNumber!,
+          reason: input.note!,
+          salespersonId: order.salespersonId,
+          salespersonName: order.salespersonName,
+          salespersonLocationId: order.salespersonLocationId,
+          salespersonLocationCode: order.salespersonLocationCode,
+          salespersonLocationName: order.salespersonLocationName,
+          refundedById: actor.userId,
+        },
+      });
+      await recordAuditLog({
+        category: "Customer Orders",
+        action: "Cancelled Order Refunded",
+        actorId: actor.userId,
+        reference: order.reference,
+        details: `${refundAmount.toFixed(2)} of ${collectedAmount.toFixed(2)} collected was handed back`,
+        facts: [
+          { label: "Refund reference", value: refund.reference },
+          { label: "Collected on this order", value: collectedAmount.toFixed(2) },
+          { label: "Handed back", value: refundAmount.toFixed(2) },
+          { label: "Acknowledgement slip", value: input.acknowledgementNumber! },
+          { label: "Reason", value: input.note! },
+        ],
+      });
+    }
+
     return serializeOrder(await tx.customerOrder.update({ where: { id }, data: { status: "CANCELLED", cancellationNote: input.note || null, cancelledById: actor.userId, cancelledAt: new Date() }, include: ORDER_INCLUDE }));
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
@@ -1110,6 +1188,14 @@ const SALE_INCLUDE = {
     },
   },
   postedBy: { select: { name: true } },
+  refunds: {
+    orderBy: { refundedAt: "desc" },
+    include: {
+      lines: true,
+      stockLocation: { select: { code: true, name: true } },
+      refundedBy: { select: { name: true } },
+    },
+  },
 } as const;
 
 export async function listSales(actor: AuthContext) {
@@ -1122,21 +1208,30 @@ export async function listSales(actor: AuthContext) {
 export async function getDirectSalesOverview(actor: AuthContext) {
   assertCapability(actor, "sales:view");
   const where = { locationId: locationIdFilter(actor), status: "POSTED" as const, orderId: null };
-  const [sales, totals] = await prisma.$transaction([
+  const [sales, totals, refunds] = await prisma.$transaction([
     prisma.sale.findMany({ where, orderBy: { postedAt: "desc" }, include: SALE_INCLUDE, take: 200 }),
     prisma.sale.aggregate({
       where,
       _count: { _all: true },
       _sum: { totalAmount: true, discountAmount: true, amountPaid: true },
     }),
+    // Money handed back on these same sales. A refund never edits the sale it
+    // reverses, so totalling Sale.totalAmount alone keeps showing money the
+    // branch no longer has.
+    prisma.refund.aggregate({
+      where: { kind: "POSTED_SALE", sale: where },
+      _sum: { amount: true },
+    }),
   ], { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+  const refundedAmount = refunds._sum.amount?.toNumber() ?? 0;
   return {
     data: sales.map(serializeSaleWithCorrection),
     summary: {
       totalSales: totals._count._all,
-      totalAmount: totals._sum.totalAmount?.toNumber() ?? 0,
+      totalAmount: (totals._sum.totalAmount?.toNumber() ?? 0) - refundedAmount,
       totalDiscounts: totals._sum.discountAmount?.toNumber() ?? 0,
-      totalAmountPaid: totals._sum.amountPaid?.toNumber() ?? 0,
+      totalAmountPaid: (totals._sum.amountPaid?.toNumber() ?? 0) - refundedAmount,
+      totalRefunded: refundedAmount,
     },
   };
 }
@@ -1839,7 +1934,24 @@ export async function getDashboardSummary(
     locationId: selectedSalesBranch?.id ?? locationIdFilter(actor),
   };
   const agedOrderDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1_000);
-  const [todaySales, mtdSales, filteredSales, openOrders, readyOrders, flagged, unverified, verifiedToday, agedOrders, lowBalances, supplierReceiptsToday, transferDrafts, transfersForDispatch, inTransitTransfers, discrepanciesNeedingAction, incomingTransfers, chartSales] = await Promise.all([
+  // Money handed back, in the same windows and scope as the sales above. The
+  // dashboard reads Sale.totalAmount, which a refund never edits, so without
+  // these a refunded sale keeps showing its full value here while the reports
+  // already net it out. A refund counts on the day it happened.
+  // Only refunds that reverse something these figures counted. The sales
+  // numbers here aggregate Sale rows; a cancelled order never produced a Sale,
+  // so its downpayment was never in this total and subtracting the refund would
+  // push the figure below zero. The Sales report, which reads the payment
+  // ledger, does count those payments and does subtract their refunds.
+  const refundScope: Prisma.RefundWhereInput = {
+    kind: "POSTED_SALE",
+    locationId: locationIdFilter(actor),
+  };
+  const filteredRefundScope: Prisma.RefundWhereInput = {
+    kind: "POSTED_SALE",
+    locationId: selectedSalesBranch?.id ?? locationIdFilter(actor),
+  };
+  const [todaySales, mtdSales, filteredSales, openOrders, readyOrders, flagged, unverified, verifiedToday, agedOrders, lowBalances, supplierReceiptsToday, transferDrafts, transfersForDispatch, inTransitTransfers, discrepanciesNeedingAction, incomingTransfers, chartSales, todayRefunds, mtdRefunds, filteredRefunds, chartRefunds] = await Promise.all([
     prisma.sale.aggregate({ where: { ...scopedSales, status: "POSTED", postedAt: { gte: today } }, _sum: { totalAmount: true }, _count: true }),
     prisma.sale.aggregate({ where: { ...scopedSales, status: "POSTED", postedAt: { gte: month } }, _sum: { totalAmount: true }, _count: true }),
     prisma.sale.aggregate({ where: { ...filteredSalesScope, status: "POSTED", postedAt: { gte: salesWindow.start, lte: now } }, _sum: { totalAmount: true }, _count: true }),
@@ -1860,6 +1972,10 @@ export async function getDashboardSummary(
     prisma.stockTransfer.count({ where: { ...transferScope, status: { in: ["DISCREPANCY_REPORTED", "UNDER_REVIEW"] } } }),
     prisma.stockTransfer.count({ where: { ...transferScope, status: "IN_TRANSIT" } }),
     prisma.sale.findMany({ where: { ...filteredSalesScope, status: "POSTED", postedAt: { gte: salesWindow.start, lte: now } }, select: { postedAt: true, totalAmount: true, location: { select: { name: true } } } }),
+    prisma.refund.aggregate({ where: { ...refundScope, refundedAt: { gte: today } }, _sum: { amount: true }, _count: true }),
+    prisma.refund.aggregate({ where: { ...refundScope, refundedAt: { gte: month } }, _sum: { amount: true }, _count: true }),
+    prisma.refund.aggregate({ where: { ...filteredRefundScope, refundedAt: { gte: salesWindow.start, lte: now } }, _sum: { amount: true }, _count: true }),
+    prisma.refund.findMany({ where: { ...filteredRefundScope, refundedAt: { gte: salesWindow.start, lte: now } }, select: { refundedAt: true, amount: true, location: { select: { name: true } } } }),
   ]);
   const lowStock = lowBalances
     .filter((balance) => availableStock(balance) <= balance.product.reorderLevel)
@@ -1898,6 +2014,16 @@ export async function getDashboardSummary(
     branch.transactions += 1;
     branchByName.set(sale.location.name, branch);
   }
+  // Subtract on the refund's own day, which is how the Sales report dates it.
+  // Transaction counts are left alone: a refund is not a sale that happened.
+  for (const refund of chartRefunds) {
+    const key = salesPeriod === "today" ? hourKey(refund.refundedAt) : dateKey(refund.refundedAt);
+    const daily = trendByDate.get(key);
+    if (daily) daily.sales -= refund.amount.toNumber();
+    const branch = branchByName.get(refund.location.name) ?? { branch: refund.location.name, sales: 0, transactions: 0 };
+    branch.sales -= refund.amount.toNumber();
+    branchByName.set(refund.location.name, branch);
+  }
 
   return {
     capabilities: actor.capabilities,
@@ -1909,12 +2035,15 @@ export async function getDashboardSummary(
       branchLabel: selectedSalesBranch?.name ?? "All Branches",
     },
     salesBranches,
-    filteredSales: filteredSales._sum.totalAmount?.toNumber() ?? 0,
+    filteredSales: (filteredSales._sum.totalAmount?.toNumber() ?? 0) - (filteredRefunds._sum.amount?.toNumber() ?? 0),
     filteredTransactions: filteredSales._count,
-    todaySales: todaySales._sum.totalAmount?.toNumber() ?? 0,
+    filteredRefunds: filteredRefunds._sum.amount?.toNumber() ?? 0,
+    todaySales: (todaySales._sum.totalAmount?.toNumber() ?? 0) - (todayRefunds._sum.amount?.toNumber() ?? 0),
     todayTransactions: todaySales._count,
-    monthSales: mtdSales._sum.totalAmount?.toNumber() ?? 0,
+    todayRefunds: todayRefunds._sum.amount?.toNumber() ?? 0,
+    monthSales: (mtdSales._sum.totalAmount?.toNumber() ?? 0) - (mtdRefunds._sum.amount?.toNumber() ?? 0),
     monthTransactions: mtdSales._count,
+    monthRefunds: mtdRefunds._sum.amount?.toNumber() ?? 0,
     openOrders,
     readyOrders,
     unverifiedSales: unverified,
@@ -2008,7 +2137,7 @@ function parseReportedComparison(comparisonJson: string | null | undefined, name
 
 function serializeSale(sale: Prisma.SaleGetPayload<{ include: typeof SALE_INCLUDE }>) {
   const namesByItemCode = new Map(sale.lines.map((line) => [line.productItemCode, line.productName]));
-  return { id: sale.id, reference: sale.reference, source: sale.orderId ? "Customer Order" : "Direct Sale", manualReceiptNumber: sale.manualReceiptNumber, receiptBooklet: (sale as unknown as { receiptBooklet: string }).receiptBooklet ?? "", version: (sale as unknown as { version: number }).version ?? 1, branch: sale.location.name, branchId: sale.locationId, customer: sale.customer?.name ?? "Guest", totalAmount: serializeMoney(sale.totalAmount), discountAmount: serializeMoney(sale.discountAmount), amountPaid: serializeMoney(sale.amountPaid), paymentMethod: sale.paymentMethod, status: sale.status, postedAt: sale.postedAt.toISOString(), soldAt: (sale as unknown as { soldAt?: Date }).soldAt?.toISOString() ?? sale.postedAt.toISOString(), postedBy: sale.postedBy.name, reviewStatus: sale.accountingReview?.status ?? "UNVERIFIED", mismatchCategory: sale.accountingReview?.mismatchCategory ?? null, reviewNotes: sale.accountingReview?.notes ?? null, reportedComparison: parseReportedComparison(sale.accountingReview?.comparisonJson, namesByItemCode), branchResponse: sale.accountingReview?.branchResponse ?? null, branchResponseNote: sale.accountingReview?.branchResponseNote ?? null, branchReplacementReceiptNumber: sale.accountingReview?.branchReplacementReceiptNumber ?? null, branchRespondedAt: sale.accountingReview?.branchRespondedAt?.toISOString() ?? null, receiptPhotoUrl: sale.accountingReview?.receiptPhotoKey ? `/api/accounting/receipts/${sale.id}/photo?v=${sale.accountingReview.evidenceUploadedAt?.getTime() ?? sale.accountingReview.receiptOcrAt?.getTime() ?? 0}` : null, receiptOcrStatus: sale.accountingReview?.receiptOcrStatus ?? null, receiptOcrDraft: parseReceiptOcrDraft(sale.accountingReview?.receiptOcrJson), receiptOcrError: sale.accountingReview?.receiptOcrError ?? null, receiptOcrAt: sale.accountingReview?.receiptOcrAt?.toISOString() ?? null, reviewedAt: sale.accountingReview?.reviewedAt?.toISOString() ?? null, resolutionAction: sale.accountingReview?.resolutionAction ?? null, resolutionNote: sale.accountingReview?.resolutionNote ?? null, resolvedAt: sale.accountingReview?.resolvedAt?.toISOString() ?? null, correctionOfId: sale.correctionOfId ?? null, lines: sale.lines.map((line) => ({ productId: line.productId, itemCode: line.productItemCode, name: line.productName, quantity: line.quantity, unitPrice: serializeMoney(line.unitPrice) })) };
+  return { id: sale.id, reference: sale.reference, source: sale.orderId ? "Customer Order" : "Direct Sale", manualReceiptNumber: sale.manualReceiptNumber, receiptBooklet: (sale as unknown as { receiptBooklet: string }).receiptBooklet ?? "", version: (sale as unknown as { version: number }).version ?? 1, branch: sale.location.name, branchId: sale.locationId, customer: sale.customer?.name ?? "Guest", totalAmount: serializeMoney(sale.totalAmount), discountAmount: serializeMoney(sale.discountAmount), amountPaid: serializeMoney(sale.amountPaid), paymentMethod: sale.paymentMethod, status: sale.status, postedAt: sale.postedAt.toISOString(), soldAt: (sale as unknown as { soldAt?: Date }).soldAt?.toISOString() ?? sale.postedAt.toISOString(), postedBy: sale.postedBy.name, reviewStatus: sale.accountingReview?.status ?? "UNVERIFIED", mismatchCategory: sale.accountingReview?.mismatchCategory ?? null, reviewNotes: sale.accountingReview?.notes ?? null, reportedComparison: parseReportedComparison(sale.accountingReview?.comparisonJson, namesByItemCode), branchResponse: sale.accountingReview?.branchResponse ?? null, branchResponseNote: sale.accountingReview?.branchResponseNote ?? null, branchReplacementReceiptNumber: sale.accountingReview?.branchReplacementReceiptNumber ?? null, branchRespondedAt: sale.accountingReview?.branchRespondedAt?.toISOString() ?? null, receiptPhotoUrl: sale.accountingReview?.receiptPhotoKey ? `/api/accounting/receipts/${sale.id}/photo?v=${sale.accountingReview.evidenceUploadedAt?.getTime() ?? sale.accountingReview.receiptOcrAt?.getTime() ?? 0}` : null, receiptOcrStatus: sale.accountingReview?.receiptOcrStatus ?? null, receiptOcrDraft: parseReceiptOcrDraft(sale.accountingReview?.receiptOcrJson), receiptOcrError: sale.accountingReview?.receiptOcrError ?? null, receiptOcrAt: sale.accountingReview?.receiptOcrAt?.toISOString() ?? null, reviewedAt: sale.accountingReview?.reviewedAt?.toISOString() ?? null, resolutionAction: sale.accountingReview?.resolutionAction ?? null, resolutionNote: sale.accountingReview?.resolutionNote ?? null, resolvedAt: sale.accountingReview?.resolvedAt?.toISOString() ?? null, correctionOfId: sale.correctionOfId ?? null, refundedAmount: sale.refunds.reduce((sum, refund) => sum + refund.amount.toNumber(), 0), refunds: sale.refunds.map((refund) => ({ id: refund.id, reference: refund.reference, amount: serializeMoney(refund.amount), acknowledgementNumber: refund.acknowledgementNumber, reason: refund.reason, refundedBy: refund.refundedBy.name, refundedAt: refund.refundedAt.toISOString(), stockBranch: refund.stockLocation ? `${refund.stockLocation.code} - ${refund.stockLocation.name}` : null, lines: refund.lines.map((line) => ({ itemCode: line.productItemCode, name: line.productName, quantity: line.quantity, disposition: line.disposition })) })), lines: sale.lines.map((line) => ({ productId: line.productId, itemCode: line.productItemCode, name: line.productName, quantity: line.quantity, unitPrice: serializeMoney(line.unitPrice) })) };
 }
 
 function serializeSaleCorrectionRequest(request: {

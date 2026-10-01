@@ -7,6 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Select from "react-select";
 import {
+  RotateCcw,
   FileText,
   Loader2,
   ShoppingBag,
@@ -37,10 +38,18 @@ import { useShellAccess } from "@/components/shell-access-context";
 import { getCustomerOrderActions, type CustomerOrderStatusCode } from "@/lib/customer-order-actions";
 import { hasCapability } from "@/lib/permissions";
 import type {
+  SaleRefundSummaryDto,
   SaleCorrectionRequestDto,
   SaleCorrectionRequestReasonDto,
 } from "@/lib/contracts/sales";
+import { cn } from "@/lib/utils";
 import { reactSelectStyles } from "@/lib/select-styles";
+import { SaleRefundDialog } from "@/components/sale-refund-dialog";
+import { StatusBanner } from "@/components/status-banner";
+import {
+  CANCELLATION_SETTLEMENT_OPTIONS,
+  type CancellationSettlementDto,
+} from "@/lib/contracts/refunds";
 
 type SelectOption = {
   value: string;
@@ -109,6 +118,8 @@ type DirectSaleRow = {
   postedBy: string;
   reviewStatus: string;
   correctionRequest: SaleCorrectionRequestDto | null;
+  refundedAmount: number;
+  refunds: SaleRefundSummaryDto[];
   lines: Array<{
     productId: string;
     itemCode: string;
@@ -282,6 +293,8 @@ type DirectSalesApiResponse = {
     totalAmount: number;
     totalDiscounts: number;
     totalAmountPaid: number;
+    /** Handed back on these sales; the two totals above are already net of it. */
+    totalRefunded: number;
   };
 };
 
@@ -301,6 +314,7 @@ export default function CustomerOrdersPage() {
   const canViewSales = hasCapability(capabilities, "sales:view");
   const canRequestSaleCorrection = hasCapability(capabilities, "sales:correction:request");
   const canCorrectSalesperson = hasCapability(capabilities, "sales:salesperson:update");
+  const canRefundSale = hasCapability(capabilities, "sales:refund");
   const activeView = searchParams.get("view") === "orders" && canViewOrders
     ? "orders"
     : canViewSales ? "sales" : canViewOrders ? "orders" : null;
@@ -325,8 +339,14 @@ export default function CustomerOrdersPage() {
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentReference, setPaymentReference] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<SelectOption>(PAYMENT_METHOD_OPTIONS[0]);
+  const [refundSaleId, setRefundSaleId] = useState<string | null>(null);
+  // What just happened, said once in the place the reader is already looking.
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [isCancelOpen, setIsCancelOpen] = useState(false);
   const [cancellationNote, setCancellationNote] = useState("");
+  const [settlement, setSettlement] = useState<CancellationSettlementDto>("FORFEITED");
+  const [refundAmount, setRefundAmount] = useState("");
+  const [refundAcknowledgement, setRefundAcknowledgement] = useState("");
 
   const [page, setPage] = useState(1);
   const pageSize = 10;
@@ -502,6 +522,36 @@ export default function CustomerOrdersPage() {
       ]);
     },
   });
+  // The money already collected, so whoever is handing it back can see every
+  // receipt before choosing an amount.
+  const cancelPaymentsQuery = useQuery({
+    queryKey: ["order-payment-history", selectedOrder?.id],
+    enabled: isCancelOpen && Boolean(selectedOrder?.id),
+    queryFn: async () => {
+      const response = await fetch(`/api/customer-orders/${selectedOrder!.id}/payments`, { credentials: "same-origin" });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error?.message ?? "Unable to load the payment history");
+      return json.data as {
+        collected: number;
+        refunded: number;
+        refundable: number;
+        payments: Array<{ id: string; kind: string; amount: number; method: string; receiptNumber: string; collectedAt: string; collectedBy: string; reviewStatus: string }>;
+      };
+    },
+  });
+
+  const collectedOnOrder = cancelPaymentsQuery.data?.collected ?? selectedOrder?.downpayment ?? 0;
+  // A refund always needs its reason; a forfeited downpayment already did.
+  const needsCancellationNote = settlement === "REFUNDED" || collectedOnOrder > 0;
+  const parsedRefund = Number(refundAmount);
+  const canSubmitCancellation =
+    (!needsCancellationNote || Boolean(cancellationNote.trim())) &&
+    (settlement !== "REFUNDED" ||
+      (Number.isFinite(parsedRefund) &&
+        parsedRefund > 0 &&
+        parsedRefund <= (cancelPaymentsQuery.data?.refundable ?? 0) &&
+        Boolean(refundAcknowledgement.trim())));
+
   const cancelMutation = useMutation({
     mutationFn: async () => {
       if (!selectedOrder) throw new Error("Select an order first.");
@@ -509,7 +559,17 @@ export default function CustomerOrdersPage() {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ note: cancellationNote.trim() || undefined }),
+        body: JSON.stringify(
+          settlement === "REFUNDED"
+            ? {
+                note: cancellationNote.trim() || undefined,
+                settlement,
+                refundAmount: Number(refundAmount),
+                refundMethod: "CASH",
+                acknowledgementNumber: refundAcknowledgement.trim(),
+              }
+            : { note: cancellationNote.trim() || undefined, settlement },
+        ),
       });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error?.message ?? "Unable to cancel order");
@@ -527,6 +587,11 @@ export default function CustomerOrdersPage() {
         queryClient.invalidateQueries({ queryKey: ["customer-history"] }),
       ]);
       setIsCancelOpen(false);
+      setActionNotice(
+        settlement === "REFUNDED"
+          ? `${order.orderNo} cancelled. ${Number(refundAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 })} handed back and deducted from sales, dated today.`
+          : `${order.orderNo} cancelled. The money already collected stays as sales.`,
+      );
       setSelectedOrder(null);
       setCancellationNote("");
     },
@@ -638,6 +703,14 @@ export default function CustomerOrdersPage() {
         </>
       }
     >
+      {actionNotice ? (
+        <div className="mb-6">
+          <StatusBanner tone="success" onDismiss={() => setActionNotice(null)}>
+            {actionNotice}
+          </StatusBanner>
+        </div>
+      ) : null}
+
       <div className="mb-6 flex flex-wrap gap-2 rounded-xl border bg-muted/50 p-2">
         {canViewSales ? <Link
           href="/customer-orders?view=sales"
@@ -1167,26 +1240,113 @@ export default function CustomerOrdersPage() {
           if (!open) {
             setSelectedOrder(null);
             setCancellationNote("");
+            setSettlement("FORFEITED");
+            setRefundAmount("");
+            setRefundAcknowledgement("");
           }
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Cancel customer order?</DialogTitle>
             <DialogDescription>
               This changes {selectedOrder?.orderNo ?? "the order"} to Cancelled and releases any reserved stock.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="list-cancellation-note">Cancellation note{selectedOrder && selectedOrder.downpayment > 0 ? " (required)" : ""}</Label>
-            <Textarea
-              id="list-cancellation-note"
-              value={cancellationNote}
-              onChange={(event) => setCancellationNote(event.target.value)}
-              maxLength={1_000}
-              placeholder="Reason for cancelling this order"
-              rows={4}
-            />
+          <div className="space-y-4">
+            {/* Only an order that actually took money has anything to settle. */}
+            {collectedOnOrder > 0 ? (
+              <div className="space-y-2">
+                <Label htmlFor="cancel-settlement">Money already collected</Label>
+                <Select
+                  inputId="cancel-settlement"
+                  instanceId="cancel-settlement"
+                  options={CANCELLATION_SETTLEMENT_OPTIONS}
+                  value={CANCELLATION_SETTLEMENT_OPTIONS.find((option) => option.value === settlement) ?? null}
+                  onChange={(option) => {
+                    const next = option?.value ?? "FORFEITED";
+                    setSettlement(next);
+                    if (next === "REFUNDED" && !refundAmount) {
+                      setRefundAmount(String(cancelPaymentsQuery.data?.refundable ?? ""));
+                    }
+                  }}
+                  isSearchable={false}
+                  styles={reactSelectStyles as never}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {CANCELLATION_SETTLEMENT_OPTIONS.find((option) => option.value === settlement)?.description}
+                </p>
+              </div>
+            ) : null}
+
+            {settlement === "REFUNDED" ? (
+              <div className="space-y-3 rounded-xl border border-border p-3">
+                <p className="text-sm font-semibold text-foreground">Payment history</p>
+                {cancelPaymentsQuery.isLoading ? (
+                  <p className="text-xs text-muted-foreground">Loading receipts...</p>
+                ) : cancelPaymentsQuery.data?.payments.length ? (
+                  <div className="space-y-1">
+                    {cancelPaymentsQuery.data.payments.map((payment) => (
+                      <div key={payment.id} className="flex items-baseline justify-between gap-3 text-xs">
+                        <span className="text-muted-foreground">
+                          {payment.collectedAt.slice(0, 10)} · {payment.receiptNumber} · {payment.method}
+                        </span>
+                        <span className="font-medium text-foreground">
+                          {payment.amount.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    ))}
+                    <div className="mt-2 flex items-baseline justify-between gap-3 border-t border-border pt-2 text-sm">
+                      <span className="text-muted-foreground">Can be handed back</span>
+                      <span className="font-semibold text-foreground">
+                        {(cancelPaymentsQuery.data.refundable ?? 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">No receipts recorded on this order.</p>
+                )}
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="cancel-refund-amount">Amount handed back</Label>
+                    <Input
+                      id="cancel-refund-amount"
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      max={cancelPaymentsQuery.data?.refundable}
+                      value={refundAmount}
+                      onChange={(event) => setRefundAmount(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="cancel-refund-ack">Acknowledgement slip no.</Label>
+                    <Input
+                      id="cancel-refund-ack"
+                      value={refundAcknowledgement}
+                      maxLength={100}
+                      onChange={(event) => setRefundAcknowledgement(event.target.value)}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Sales are reduced by this amount, dated today. Earlier periods are left as they were reported.
+                </p>
+              </div>
+            ) : null}
+
+            <div className="space-y-2">
+              <Label htmlFor="list-cancellation-note">Cancellation note{needsCancellationNote ? " (required)" : ""}</Label>
+              <Textarea
+                id="list-cancellation-note"
+                value={cancellationNote}
+                onChange={(event) => setCancellationNote(event.target.value)}
+                maxLength={1_000}
+                placeholder="Reason for cancelling this order"
+                rows={3}
+              />
+            </div>
             {cancelMutation.error ? <p className="text-sm text-red-600">{(cancelMutation.error as Error).message}</p> : null}
           </div>
           <DialogFooter>
@@ -1194,9 +1354,9 @@ export default function CustomerOrdersPage() {
             <Button
               variant="destructive"
               onClick={() => cancelMutation.mutate()}
-              disabled={cancelMutation.isPending || Boolean(selectedOrder && selectedOrder.downpayment > 0 && !cancellationNote.trim())}
+              disabled={cancelMutation.isPending || !canSubmitCancellation}
             >
-              {cancelMutation.isPending ? "Cancelling..." : "Cancel Order"}
+              {cancelMutation.isPending ? "Cancelling..." : settlement === "REFUNDED" ? "Cancel and Refund" : "Cancel Order"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1204,21 +1364,27 @@ export default function CustomerOrdersPage() {
         </>
       ) : activeView === "sales" ? (
         <>
-        <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4" aria-busy={directSalesQuery.isFetching}>
+        {/* Same shape and colours as the Customer Orders cards beside them, so
+            the two tabs of this screen do not read as two different products.
+            Five across on a wide screen, as there. */}
+        <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5" aria-busy={directSalesQuery.isFetching}>
           {[
-            { label: "Total Direct Sales", value: salesSummary?.totalSales.toLocaleString("en-PH"), hint: "Posted direct-sale records", icon: ShoppingBag },
-            { label: "Sales Total", value: salesSummary && formatPeso(salesSummary.totalAmount), hint: "After sale discounts", icon: Wallet },
-            { label: "Total Discounts", value: salesSummary && formatPeso(salesSummary.totalDiscounts), hint: "Discounts on posted direct sales", icon: CheckCircle2 },
-            { label: "Amount Paid", value: salesSummary && formatPeso(salesSummary.totalAmountPaid), hint: "Recorded direct-sale payments", icon: Wallet },
-          ].map(({ label, value, hint, icon: Icon }) => (
+            { label: "Total Direct Sales", value: salesSummary?.totalSales.toLocaleString("en-PH"), hint: "Posted direct-sale records", icon: ShoppingBag, text: "text-sky-600", bg: "bg-sky-50 dark:bg-sky-950/40" },
+            { label: "Sales Total", value: salesSummary && formatPeso(salesSummary.totalAmount), hint: salesSummary?.totalRefunded ? `After discounts, less ${formatPeso(salesSummary.totalRefunded)} refunded` : "After sale discounts", icon: Wallet, text: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/40" },
+            { label: "Total Discounts", value: salesSummary && formatPeso(salesSummary.totalDiscounts), hint: "Discounts on posted direct sales", icon: CheckCircle2, text: "text-sky-600", bg: "bg-sky-50 dark:bg-sky-950/40" },
+            { label: "Refunded", value: salesSummary && formatPeso(salesSummary.totalRefunded ?? 0), hint: "Handed back to customers", icon: RotateCcw, text: "text-amber-600", bg: "bg-amber-50 dark:bg-amber-950/40" },
+            { label: "Amount Paid", value: salesSummary && formatPeso(salesSummary.totalAmountPaid), hint: "Payments kept, after refunds", icon: Wallet, text: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/40" },
+          ].map(({ label, value, hint, icon: Icon, text, bg }) => (
             <Card key={label}>
               <CardContent className="flex items-start justify-between gap-3 p-5">
                 <div className="min-w-0">
                   <p className="text-sm text-muted-foreground">{label}</p>
                   <h3 className="mt-3 break-words text-3xl font-bold text-foreground">{value ?? (directSalesQuery.isError ? "Unavailable" : "Loading...")}</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">{hint}</p>
+                  <p className={cn("mt-2 text-sm", text)}>{hint}</p>
                 </div>
-                <div className="shrink-0 rounded-full bg-primary/10 p-2"><Icon className="h-5 w-5 text-primary" /></div>
+                <div className={cn("shrink-0 rounded-full p-2", bg)}>
+                  <Icon className={cn("h-5 w-5", text)} />
+                </div>
               </CardContent>
             </Card>
           ))}
@@ -1279,7 +1445,21 @@ export default function CustomerOrdersPage() {
                         <td className="px-5 py-4 text-sm text-muted-foreground">{sale.customer}</td>
                         <td className="px-5 py-4 text-sm text-muted-foreground">{sale.branch}</td>
                         <td className="px-5 py-4 text-sm text-muted-foreground">{sale.salesperson?.name ?? "Not recorded (legacy)"}</td>
-                        <td className="px-5 py-4 text-sm font-semibold text-emerald-700 dark:text-emerald-300">{formatPeso(sale.totalAmount)}</td>
+                        <td className="px-5 py-4 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                          {formatPeso(sale.totalAmount)}
+                          {/* A sale that gave money back no longer reads as its
+                              total alone; the net is what the branch kept. */}
+                          {sale.refundedAmount > 0 ? (
+                            <>
+                              <span className="block text-xs font-medium text-amber-700 dark:text-amber-300">
+                                -{formatPeso(sale.refundedAmount)} refunded
+                              </span>
+                              <span className="block text-xs font-normal text-muted-foreground">
+                                net {formatPeso(sale.totalAmount - sale.refundedAmount)}
+                              </span>
+                            </>
+                          ) : null}
+                        </td>
                         <td className="px-5 py-4 text-sm text-muted-foreground">{formatPeso(sale.discountAmount)}</td>
                         <td className="px-5 py-4 text-sm text-muted-foreground">{sale.paymentMethod}</td>
                         <td className="px-5 py-4 text-sm">
@@ -1294,9 +1474,23 @@ export default function CustomerOrdersPage() {
                         </td>
                         <td className="px-5 py-4 text-sm text-muted-foreground">{formatDate(sale.postedAt)}</td>
                         <td className="px-5 py-4">
-                          <Button size="sm" variant="view" onClick={() => setSelectedSale(sale)}>
-                            <Eye className="mr-2 h-4 w-4" /> View
-                          </Button>
+                          <div className="flex flex-wrap gap-2">
+                            <Button size="sm" variant="view" onClick={() => setSelectedSale(sale)}>
+                              <Eye className="mr-2 h-4 w-4" /> View
+                            </Button>
+                            {/* Only a live sale can give money back; a voided one
+                                already reversed itself, and a sale that has been
+                                refunded in full has nothing left to give, so the
+                                action is not offered rather than offered and
+                                refused. */}
+                            {canRefundSale && sale.status === "POSTED" && sale.refundedAmount < sale.amountPaid ? (
+                              <Button size="sm" variant="outline" onClick={() => setRefundSaleId(sale.id)}>
+                                Refund
+                              </Button>
+                            ) : canRefundSale && sale.status === "POSTED" ? (
+                              <span className="text-xs font-medium text-muted-foreground">Fully refunded</span>
+                            ) : null}
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -1310,6 +1504,13 @@ export default function CustomerOrdersPage() {
 
           </CardContent>
         </Card>
+        <SaleRefundDialog
+          saleId={refundSaleId}
+          open={Boolean(refundSaleId)}
+          onOpenChange={(open) => { if (!open) setRefundSaleId(null); }}
+          canChooseBranch={hasCapability(capabilities, "locations:all")}
+          onRefunded={(message) => setActionNotice(message)}
+        />
         <Dialog open={Boolean(selectedSale)} onOpenChange={(open) => !open && setSelectedSale(null)}>
           <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
             <DialogHeader>
@@ -1330,6 +1531,57 @@ export default function CustomerOrdersPage() {
                   <div><p className="text-muted-foreground">Sold on</p><p className="font-medium">{formatDate(selectedSale.soldAt)}</p></div>
                   <div><p className="text-muted-foreground">Encoded by</p><p className="font-medium">{formatDate(selectedSale.postedAt)} by {selectedSale.postedBy}</p></div>
                 </div>
+
+                {/* Money handed back on this sale. Without it the detail
+                    reads as though the customer paid and kept everything. */}
+                {selectedSale.refundedAmount > 0 ? (
+                  <div className="space-y-3 rounded-lg border border-amber-200 p-4 dark:border-amber-900">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <p className="text-sm font-semibold text-foreground">Refunds on this sale</p>
+                      <p className="text-sm">
+                        <span className="text-muted-foreground">Paid {formatPeso(selectedSale.amountPaid)} · </span>
+                        <span className="font-semibold text-amber-700 dark:text-amber-300">
+                          -{formatPeso(selectedSale.refundedAmount)} refunded
+                        </span>
+                        <span className="text-muted-foreground">
+                          {" "}· net {formatPeso(selectedSale.amountPaid - selectedSale.refundedAmount)}
+                        </span>
+                      </p>
+                    </div>
+                    <div className="space-y-3">
+                      {selectedSale.refunds.map((refund) => (
+                        <div key={refund.id} className="rounded-md border p-3 text-sm">
+                          <div className="flex flex-wrap items-baseline justify-between gap-2">
+                            <p className="font-medium text-foreground">
+                              {formatPeso(refund.amount)}
+                              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                                slip {refund.acknowledgementNumber}
+                              </span>
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {formatDate(refund.refundedAt)} by {refund.refundedBy}
+                            </p>
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">{refund.reason}</p>
+                          {refund.lines.length ? (
+                            <ul className="mt-2 space-y-0.5">
+                              {refund.lines.map((line) => (
+                                <li key={`${refund.id}-${line.itemCode}`} className="text-xs text-muted-foreground">
+                                  {line.quantity} x {line.itemCode} {line.name}
+                                  {" — "}
+                                  {line.disposition === "QUARANTINED" ? "quarantined for checking" : "back to sellable stock"}
+                                  {refund.stockBranch ? ` at ${refund.stockBranch}` : ""}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="mt-2 text-xs text-muted-foreground">No goods came back.</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
 
                 {canCorrectSalesperson && selectedSale.status === "POSTED" ? (
                   <div className="space-y-3 rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/60 p-4">

@@ -151,11 +151,24 @@ enum InventoryMovementType {
   SUPPLIER_CLAIM_REPLACEMENT_RECEIPT
   SUPPLIER_CLAIM_REPAIRED_RECEIPT
   SUPPLIER_CLAIM_WRITEOFF
+  SALE_REFUND_RETURN
+  SALE_REFUND_QUARANTINE
+  QUARANTINE_RELEASE
 }
 
 enum CustomerStatus {
   ACTIVE
   INACTIVE
+}
+
+/// The kind of party a customer is. Not every customer is a person: a
+/// company, a government office, and a parish each buy as one named body,
+/// which is why Customer carries a single name rather than a first and last.
+enum CustomerType {
+  INDIVIDUAL
+  COMPANY
+  GOVERNMENT
+  RELIGIOUS_ORGANIZATION
 }
 
 enum CustomerOrderStatus {
@@ -186,11 +199,98 @@ enum PaymentMethod {
   SPLIT
 }
 
+model Refund {
+  id                      String            @id @default(cuid())
+  reference               String            @unique
+  kind                    RefundKind
+  /// The branch whose sales this reduces: the one that recorded the money.
+  /// Deducting from a different branch would distort both branches' figures.
+  locationId              String
+  /// The branch the returned units land in. Normally the selling branch, but a
+  /// customer may hand goods back at whichever shop is nearest.
+  stockLocationId         String?
+  customerId              String?
+  orderId                 String?
+  saleId                  String?
+  /// Always positive: the amount handed back. Reports subtract it, so a
+  /// negative here would add revenue instead of removing it.
+  amount                  Decimal           @db.Decimal(12, 2)
+  method                  PaymentMethod
+  /// The slip the customer signs for the money, the way a Payment has a receipt.
+  acknowledgementNumber   String
+  reason                  String            @db.Text
+  salespersonId           String?
+  salespersonName         String?
+  salespersonLocationId   String?
+  salespersonLocationCode String?
+  salespersonLocationName String?
+  refundedById            String
+  /// The day the money went back. A refund is dated when it happened, so a
+  /// report already printed for an earlier period does not change underneath.
+  refundedAt              DateTime          @default(now())
+  location                Location          @relation("RefundSellingLocation", fields: [locationId], references: [id])
+  stockLocation           Location?         @relation("RefundStockLocation", fields: [stockLocationId], references: [id])
+  customer                Customer?         @relation(fields: [customerId], references: [id])
+  order                   CustomerOrder?    @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  sale                    Sale?             @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  salesperson             Personnel?        @relation(fields: [salespersonId], references: [id], onDelete: Restrict)
+  refundedBy              User              @relation("RefundRefundedBy", fields: [refundedById], references: [id], onDelete: Restrict)
+  lines                   RefundLine[]
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+
+  @@index([locationId, refundedAt])
+  @@index([stockLocationId])
+  @@index([orderId])
+  @@index([saleId])
+  @@index([customerId])
+  @@index([salespersonId, refundedAt])
+  @@index([refundedById])
+}
+
+/// One returned product on a direct-sale refund. A cancelled order has no
+/// lines, because nothing was ever released to the customer.
+model RefundLine {
+  id              String            @id @default(cuid())
+  refundId        String
+  productId       String
+  productItemCode String
+  productName     String
+  quantity        Int
+  unitPrice       Decimal           @db.Decimal(12, 2)
+  disposition     RefundDisposition
+  refund          Refund            @relation(fields: [refundId], references: [id], onDelete: Cascade)
+  product         Product           @relation(fields: [productId], references: [id])
+
+  @@index([refundId])
+  @@index([productId])
+}
+
 enum PaymentKind {
   ORDER_DOWNPAYMENT
   ORDER_PAYMENT
   ORDER_FINAL
   DIRECT_SALE
+}
+
+/// What a refund is paying back. Payment holds one row per receipt issued for
+/// money received, and `Payment.saleId` is unique, so money going back out is a
+/// ledger of its own rather than an edit of the receipt that brought it in.
+enum RefundKind {
+  /// A cancelled order: money only. Nothing was released to the customer, and
+  /// the reservation is returned by the cancellation itself.
+  CANCELLED_ORDER
+  /// A posted sale, whether a direct sale or a released customer order. This is
+  /// the only case where goods can come back, because it is the only case where
+  /// goods ever left.
+  POSTED_SALE
+}
+
+/// Where a returned unit goes. A customer returning an unopened box is stock
+/// again; a damaged one is not, and must be looked at before it is sold twice.
+enum RefundDisposition {
+  RESELLABLE
+  QUARANTINED
 }
 
 enum PaymentStatus {
@@ -298,6 +398,8 @@ model Location {
   customerWarranties   CustomerWarranty[]
   supplierClaims       SupplierClaim[]
   payments             Payment[]
+  refunds              Refund[]                @relation("RefundSellingLocation")
+  refundStockReturns   Refund[]                @relation("RefundStockLocation")
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
 }
@@ -332,6 +434,7 @@ model Product {
   inventoryMovements     InventoryMovement[]
   customerOrderLines     CustomerOrderLine[]
   saleLines              SaleLine[]
+  refundLines            RefundLine[]
   affectedBackjobs       Backjob[]                     @relation("BackjobAffectedProduct")
   backjobItems           BackjobItem[]
   backjobParts           BackjobPart[]
@@ -406,6 +509,7 @@ model Personnel {
   customerOrders  CustomerOrder[]
   sales           Sale[]
   payments        Payment[]
+  refunds         Refund[]
   backjobs        Backjob[]
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
@@ -779,6 +883,7 @@ model User {
   paymentBranchResponses         Payment[]                       @relation("PaymentBranchRespondedBy")
   resolvedPayments               Payment[]                       @relation("PaymentResolvedBy")
   voidedPayments                 Payment[]                       @relation("PaymentVoidedBy")
+  issuedRefunds                  Refund[]                        @relation("RefundRefundedBy")
   reviewedSales                  SaleAccountingReview[]          @relation("SaleReviewedBy")
   branchMismatchResponses        SaleAccountingReview[]          @relation("SaleBranchRespondedBy")
   requestedSaleCorrections       SaleCorrectionRequest[]         @relation("SaleCorrectionRequestedBy")
@@ -1146,6 +1251,7 @@ model InventoryMovement {
 model Customer {
   id          String             @id @default(cuid())
   name        String
+  type        CustomerType       @default(INDIVIDUAL)
   mobile      String?
   email       String?
   address     String?
@@ -1159,6 +1265,7 @@ model Customer {
   backjobs    Backjob[]
   warranties  CustomerWarranty[]
   payments    Payment[]
+  refunds     Refund[]
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
 
@@ -1223,6 +1330,7 @@ model CustomerOrder {
   lines                    CustomerOrderLine[]
   sale                     Sale?
   payments                 Payment[]
+  refunds                  Refund[]
   createdAt                DateTime                        @default(now())
   updatedAt                DateTime                        @updatedAt
 
@@ -1336,6 +1444,7 @@ model Sale {
   accountingReview        SaleAccountingReview?
   correctionRequests      SaleCorrectionRequest[]
   payment                 Payment?
+  refunds                 Refund[]
   salespersonEvents       SaleSalespersonEvent[]
   createdAt               DateTime                @default(now())
   updatedAt               DateTime                @updatedAt

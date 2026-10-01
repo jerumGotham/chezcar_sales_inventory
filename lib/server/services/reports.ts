@@ -340,13 +340,41 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
       _sum: { amount: true },
     });
     const pending = { count: pendingTotals._count._all, amount: pendingTotals._sum.amount?.toNumber() ?? 0 };
+    // Money handed back. A refund is not an edit of the receipt that brought the
+    // money in — that receipt really was collected, and a period already
+    // reported must not change underneath. It is a row of its own, carrying a
+    // negative amount on the day the money went back, so every total below
+    // subtracts it without any special case. The UNVERIFIED view is a queue of
+    // receipts awaiting Accounting, which a refund never joins.
+    const refundRecords = view === "UNVERIFIED" ? [] : await prisma.refund.findMany({
+      where: {
+        locationId: scopedLocation,
+        salespersonId: query.salespersonId,
+        method: query.paymentMethod,
+        refundedAt: range.where,
+        ...(query.source === "DIRECT_SALE"
+          ? { kind: "POSTED_SALE", orderId: null }
+          : query.source === "CUSTOMER_ORDER"
+            ? { OR: [{ kind: "CANCELLED_ORDER" }, { kind: "POSTED_SALE", orderId: { not: null } }] }
+            : {}),
+      },
+      select: {
+        id: true, reference: true, kind: true, amount: true, method: true, acknowledgementNumber: true,
+        orderId: true, refundedAt: true, salespersonId: true, salespersonName: true,
+        customer: { select: { name: true } }, location: { select: { code: true, name: true } },
+        refundedBy: { select: { name: true } },
+        lines: { select: { quantity: true } },
+      },
+      orderBy: [{ refundedAt: "desc" }, { id: "desc" }],
+    });
+
     const sourceLabels = {
       DIRECT_SALE: "Direct Sale",
       ORDER_DOWNPAYMENT: "Order Downpayment",
       ORDER_PAYMENT: "Order Payment",
       ORDER_FINAL: "Order Release",
     } as const;
-    const rows = records.map((row) => ({
+    const paymentRows = records.map((row) => ({
       id: row.id,
       soldAt: row.collectedAt.toISOString(),
       verifiedAt: row.verifiedAt?.toISOString() ?? null,
@@ -365,6 +393,38 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
       totalAmount: row.amount.toNumber(),
       verificationStatus: row.reviewStatus,
     }));
+
+    const refundRows = refundRecords.map((row) => ({
+      id: row.id,
+      soldAt: row.refundedAt.toISOString(),
+      verifiedAt: row.refundedAt.toISOString(),
+      manualReceiptNumber: row.acknowledgementNumber,
+      branch: `${row.location.code} - ${row.location.name}`,
+      customer: row.customer?.name ?? "Guest",
+      salespersonId: row.salespersonId,
+      salesperson: row.salespersonName ?? "Unassigned",
+      encoder: row.refundedBy.name,
+      source: row.kind === "CANCELLED_ORDER" ? ("Order Refund" as const) : ("Sale Refund" as const),
+      paymentMethod: row.method,
+      // Negative, so a returned unit cancels the unit the sale counted.
+      units: -row.lines.reduce((sum, line) => sum + line.quantity, 0),
+      discountAmount: 0,
+      totalAmount: -row.amount.toNumber(),
+      verificationStatus: "VERIFIED" as const,
+    }));
+
+    // With nothing refunded the list is exactly what the database ordered,
+    // ties included; re-sorting here would shuffle equal timestamps, because
+    // JavaScript does not break them the way the database collation does.
+    // Merging only happens when there is something to merge, and the sort is
+    // stable, so payment rows keep their relative order within a date.
+    const rows = refundRows.length === 0
+      ? paymentRows
+      : [...paymentRows, ...refundRows].sort((a, b) =>
+          view === "VERIFIED_DATE"
+            ? (b.verifiedAt ?? "").localeCompare(a.verifiedAt ?? "")
+            : b.soldAt.localeCompare(a.soldAt),
+        );
     const grandAmount = rows.reduce((sum, row) => sum + row.totalAmount, 0);
     const totals = new Map<string, { branch: string; transactionCount: number; units: number; totalAmount: number; percentage: number }>();
     for (const row of rows) {

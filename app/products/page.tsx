@@ -289,6 +289,10 @@ export default function ProductsPage() {
       const payload = {
         itemCode: form.itemCode,
         name: form.name,
+        // Carried through unedited: the field was taken off this form, but
+        // updateProduct writes category on every save, so sending the stored
+        // value is what stops an edit from blanking it. The products list
+        // still filters on category and the View dialog still shows it.
         category: form.category || undefined,
         supplierId: form.supplierId || undefined,
         description: form.description || undefined,
@@ -814,7 +818,7 @@ export default function ProductsPage() {
             </DialogTitle>
             <DialogDescription>
               {selectedProduct
-                ? "Update product master details such as item code, category, pricing, reorder level, and status."
+                ? "Update product master details such as item code, pricing, reorder level, and status."
                 : "Create a new product in the master list. Stock will be managed in the Inventory module."}
             </DialogDescription>
           </DialogHeader>
@@ -892,17 +896,6 @@ export default function ProductsPage() {
                   disabled={Boolean(selectedProduct && !canUpdate)}
                   onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
                   placeholder="Product name"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="category">Category</Label>
-                <Input
-                  id="category"
-                  value={form.category}
-                  disabled={Boolean(selectedProduct && !canUpdate)}
-                  onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}
-                  placeholder="Tint"
                 />
               </div>
 

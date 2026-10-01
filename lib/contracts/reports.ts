@@ -92,7 +92,14 @@ export type SalesReport = ReportMeta & {
     // One row per verified receipt: the money is counted on the day Accounting
     // verified that receipt, so a downpayment and its order's release are
     // separate rows and no peso is counted twice.
-    source: "Direct Sale" | "Order Downpayment" | "Order Payment" | "Order Release";
+    /** "Sale Refund" and "Order Refund" carry a negative amount: money handed back. */
+    source:
+      | "Direct Sale"
+      | "Order Downpayment"
+      | "Order Payment"
+      | "Order Release"
+      | "Sale Refund"
+      | "Order Refund";
     paymentMethod: string;
     units: number;
     discountAmount: number;

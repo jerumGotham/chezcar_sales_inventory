@@ -38,6 +38,13 @@ import { Separator } from "@/components/ui/separator";
 import { PageShell } from "@/components/page-shell";
 import { TablePagination } from "@/components/table-pagination";
 import { StatusBanner } from "@/components/status-banner";
+import {
+  CUSTOMER_TYPE_OPTIONS,
+  customerNameLabel,
+  customerOptionLabel,
+  DEFAULT_CUSTOMER_TYPE,
+  type CustomerTypeDto,
+} from "@/lib/contracts/customers";
 import { useCan, useShellAccess } from "@/components/shell-access-context";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -90,7 +97,7 @@ type SelectOption = {
   label: string;
 };
 
-type PosCustomer = { id: string; name: string };
+type PosCustomer = { id: string; name: string; type: CustomerTypeDto };
 
 type OrderItemRow = {
   item: SelectOption | null;
@@ -99,8 +106,8 @@ type OrderItemRow = {
 };
 
 type CustomerFormState = {
-  firstName: string;
-  lastName: string;
+  name: string;
+  type: CustomerTypeDto;
   mobile: string;
   email: string;
   address: string;
@@ -197,8 +204,8 @@ const selectStyles: StylesConfig<SelectOption, false> = {
 };
 
 const EMPTY_CUSTOMER_FORM: CustomerFormState = {
-  firstName: "",
-  lastName: "",
+  name: "",
+  type: DEFAULT_CUSTOMER_TYPE,
   mobile: "",
   email: "",
   address: "",
@@ -237,24 +244,36 @@ function AddCustomerDialog({
         <div className="grid gap-6 py-2">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="firstName">First Name</Label>
-              <Input
-                id="firstName"
-                value={customerForm.firstName}
-                onChange={(e) =>
-                  onCustomerFormChange("firstName", e.target.value)
+              <Label htmlFor="customerType">Type</Label>
+              <Select
+                inputId="customerType"
+                instanceId="order-customer-type"
+                options={CUSTOMER_TYPE_OPTIONS}
+                value={
+                  CUSTOMER_TYPE_OPTIONS.find(
+                    (option) => option.value === customerForm.type,
+                  ) ?? null
                 }
+                onChange={(option) =>
+                  onCustomerFormChange(
+                    "type",
+                    option?.value ?? DEFAULT_CUSTOMER_TYPE,
+                  )
+                }
+                isSearchable={false}
+                styles={selectStyles as never}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="lastName">Last Name</Label>
+              <Label htmlFor="customerName">
+                {customerNameLabel(customerForm.type)}
+              </Label>
               <Input
-                id="lastName"
-                value={customerForm.lastName}
-                onChange={(e) =>
-                  onCustomerFormChange("lastName", e.target.value)
-                }
+                id="customerName"
+                maxLength={200}
+                value={customerForm.name}
+                onChange={(e) => onCustomerFormChange("name", e.target.value)}
               />
             </div>
 
@@ -409,7 +428,7 @@ function PosTab() {
   const queryClient = useQueryClient();
   const canCreateCustomer = useCan("customers:create");
   const [isCustomerFormOpen, setIsCustomerFormOpen] = useState(false);
-  const [customerForm, setCustomerForm] = useState({ name: "", mobile: "", email: "", address: "" });
+  const [customerForm, setCustomerForm] = useState<{ name: string; type: CustomerTypeDto; mobile: string; email: string; address: string }>({ name: "", type: DEFAULT_CUSTOMER_TYPE, mobile: "", email: "", address: "" });
   const [customerFormError, setCustomerFormError] = useState("");
   const capabilities = access.authenticated ? access.capabilities : [];
   const canUploadReceiptEvidence = capabilities.includes("sales:evidence:upload");
@@ -504,7 +523,7 @@ function PosTab() {
 
   const customerOptions: SelectOption[] = [
     { value: "guest", label: "Guest" },
-    ...(posOptionsQuery.data?.customers.map((customer) => ({ value: customer.id, label: customer.name })) ?? []),
+    ...(posOptionsQuery.data?.customers.map((customer) => ({ value: customer.id, label: customerOptionLabel(customer.name, customer.type) })) ?? []),
   ];
 
   /*
@@ -521,6 +540,7 @@ function PosTab() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: customerForm.name.trim(),
+          type: customerForm.type,
           mobile: customerForm.mobile.trim() || undefined,
           email: customerForm.email.trim() || undefined,
           address: customerForm.address.trim() || undefined,
@@ -528,13 +548,13 @@ function PosTab() {
       });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error?.message ?? "Unable to add the customer");
-      return json.data as { id: string; name: string };
+      return json.data as { id: string; name: string; type: CustomerTypeDto };
     },
-    onSuccess: async (customer: { id: string; name: string }) => {
+    onSuccess: async (customer: { id: string; name: string; type: CustomerTypeDto }) => {
       await queryClient.invalidateQueries({ queryKey: ["pos-options"] });
-      setSelectedCustomer({ value: customer.id, label: customer.name });
+      setSelectedCustomer({ value: customer.id, label: customerOptionLabel(customer.name, customer.type) });
       setIsCustomerFormOpen(false);
-      setCustomerForm({ name: "", mobile: "", email: "", address: "" });
+      setCustomerForm({ name: "", type: DEFAULT_CUSTOMER_TYPE, mobile: "", email: "", address: "" });
       setCustomerFormError("");
     },
     onError: (error: Error) => setCustomerFormError(error.message),
@@ -1335,7 +1355,21 @@ function PosTab() {
 
           <div className="grid gap-4 py-2">
             <div className="space-y-2">
-              <Label htmlFor="pos-customer-name">Name</Label>
+              <Label htmlFor="pos-customer-type">Type</Label>
+              <Select
+                inputId="pos-customer-type"
+                instanceId="pos-customer-type"
+                options={CUSTOMER_TYPE_OPTIONS}
+                value={CUSTOMER_TYPE_OPTIONS.find((option) => option.value === customerForm.type) ?? null}
+                onChange={(option) => setCustomerForm((current) => ({ ...current, type: option?.value ?? DEFAULT_CUSTOMER_TYPE }))}
+                isSearchable={false}
+                styles={selectStyles as never}
+              />
+            </div>
+            {/* The label follows the type: a company has no surname, so the
+                sale records one party under one name. */}
+            <div className="space-y-2">
+              <Label htmlFor="pos-customer-name">{customerNameLabel(customerForm.type)}</Label>
               <Input
                 id="pos-customer-name"
                 value={customerForm.name}
@@ -1520,8 +1554,7 @@ function CustomerOrderTab() {
   };
 
   const handleCreateCustomer = () => {
-    const fullName =
-      `${customerForm.firstName} ${customerForm.lastName}`.trim();
+    const fullName = customerForm.name.trim();
 
     if (!fullName) return;
 
@@ -1959,8 +1992,7 @@ function JobOrderTab() {
   };
 
   const handleCreateCustomer = () => {
-    const fullName =
-      `${customerForm.firstName} ${customerForm.lastName}`.trim();
+    const fullName = customerForm.name.trim();
 
     if (!fullName) return;
 

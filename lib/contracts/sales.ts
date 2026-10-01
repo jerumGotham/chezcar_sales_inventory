@@ -204,6 +204,24 @@ export type SaleLineDto = {
   unitPrice: number;
 };
 
+/** One refund against a sale, summarised for the sale's own screens. */
+export type SaleRefundSummaryDto = {
+  id: string;
+  reference: string;
+  amount: number;
+  acknowledgementNumber: string;
+  reason: string;
+  refundedBy: string;
+  refundedAt: string;
+  stockBranch: string | null;
+  lines: Array<{
+    itemCode: string;
+    name: string;
+    quantity: number;
+    disposition: "RESELLABLE" | "QUARANTINED";
+  }>;
+};
+
 export type SaleDto = {
   id: string;
   reference: string;
@@ -237,6 +255,9 @@ export type SaleDto = {
   resolutionNote: string | null;
   resolvedAt: string | null;
   correctionRequest: SaleCorrectionRequestDto | null;
+  /** Total handed back against this sale. Zero when nothing was refunded. */
+  refundedAmount: number;
+  refunds: SaleRefundSummaryDto[];
   lines: SaleLineDto[];
 };
 

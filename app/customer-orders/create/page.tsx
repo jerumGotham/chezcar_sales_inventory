@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { customerOptionLabel, type CustomerTypeDto } from "@/lib/contracts/customers";
 import Link from "next/link";
 import { Route } from "next";
 import { useRouter } from "next/navigation";
@@ -49,7 +50,7 @@ function formatPeso(value: number) {
 }
 
 type OrderOptions = {
-  customers: Array<{ id: string; name: string }>;
+  customers: Array<{ id: string; name: string; type: CustomerTypeDto }>;
   products: Array<{ id: string; itemCode: string; name: string; price: number; availableQuantity: number }>;
   branches: Array<{ id: string; code: string; name: string }>;
   salespersons: Array<{ id: string; fullName: string; locationId: string }>;
@@ -97,7 +98,7 @@ export default function CreateCustomerOrderPage() {
   ]);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const customerOptions = optionsQuery.data?.customers.map((item) => ({ value: item.id, label: item.name })) ?? [];
+  const customerOptions = optionsQuery.data?.customers.map((item) => ({ value: item.id, label: customerOptionLabel(item.name, item.type) })) ?? [];
   const itemOptions = optionsQuery.data?.products.map((item) => ({ value: item.id, label: `${item.itemCode} - ${item.name} (${item.availableQuantity} available)` })) ?? [];
   const salespersonOptions = optionsQuery.data?.salespersons.map((item) => ({ value: item.id, label: item.fullName })) ?? [];
   const productById = new Map((optionsQuery.data?.products ?? []).map((item) => [item.id, item]));

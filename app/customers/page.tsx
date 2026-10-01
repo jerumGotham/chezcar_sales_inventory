@@ -33,10 +33,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2 } from "lucide-react";
 import CustomerHistoryTabs from "./CustomerHistoryTabs";
 import { reactSelectStyles } from "@/lib/select-styles";
+import {
+  CUSTOMER_TYPE_OPTIONS,
+  customerNameLabel,
+  customerTypeLabel,
+  DEFAULT_CUSTOMER_TYPE,
+  type CustomerTypeDto,
+} from "@/lib/contracts/customers";
 
 type CustomerRow = {
   id: string;
   name: string;
+  type?: CustomerTypeDto;
   mobile: string;
   city: string;
   status: string;
@@ -52,8 +60,8 @@ type CustomerRow = {
 };
 
 type CustomerFormState = {
-  firstName: string;
-  lastName: string;
+  name: string;
+  type: CustomerTypeDto;
   mobile: string;
   email: string;
   address: string;
@@ -62,8 +70,8 @@ type CustomerFormState = {
 };
 
 const EMPTY_CUSTOMER_FORM: CustomerFormState = {
-  firstName: "",
-  lastName: "",
+  name: "",
+  type: DEFAULT_CUSTOMER_TYPE,
   mobile: "",
   email: "",
   address: "",
@@ -173,8 +181,8 @@ export default function CustomersPage() {
   const openCustomerForm = (customer: CustomerRow | null) => {
     setSelectedCustomer(customer);
     setCustomerForm(customer ? {
-      firstName: customer.name.split(" ")[0] ?? "",
-      lastName: customer.name.split(" ").slice(1).join(" "),
+      name: customer.name,
+      type: customer.type ?? DEFAULT_CUSTOMER_TYPE,
       mobile: customer.mobile ?? "",
       email: customer.email ?? "",
       address: customer.city ?? "",
@@ -230,9 +238,9 @@ export default function CustomersPage() {
       if (selectedCustomer ? !canUpdateCustomer : !canCreateCustomer) {
         throw new Error("You do not have permission to save this customer.");
       }
-      const name = `${customerForm.firstName} ${customerForm.lastName}`.trim();
-      if (!name) throw new Error("Customer name is required.");
-      const body = { name, mobile: customerForm.mobile.trim(), email: customerForm.email.trim(), address: customerForm.address.trim(), source: customerForm.source.trim(), notes: customerForm.notes.trim() };
+      const name = customerForm.name.trim();
+      if (!name) throw new Error(`${customerNameLabel(customerForm.type)} is required.`);
+      const body = { name, type: customerForm.type, mobile: customerForm.mobile.trim(), email: customerForm.email.trim(), address: customerForm.address.trim(), source: customerForm.source.trim(), notes: customerForm.notes.trim() };
       const response = await fetch(selectedCustomer ? `/api/customers/${selectedCustomer.id}` : "/api/customers", {
         method: selectedCustomer ? "PATCH" : "POST",
         credentials: "same-origin",
@@ -478,6 +486,9 @@ export default function CustomersPage() {
                         </td>
                         <td className="px-5 py-4 text-sm text-foreground">
                           {customer.name}
+                          <span className="block text-xs text-muted-foreground">
+                            {customerTypeLabel(customer.type)}
+                          </span>
                         </td>
                         <td className="px-5 py-4 text-sm text-muted-foreground">
                           {customer.mobile}
@@ -590,12 +601,22 @@ export default function CustomersPage() {
           <div className="grid gap-6 py-2">
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="firstName">First Name</Label>
-                 <Input id="firstName" value={customerForm.firstName} onChange={(event) => setCustomerForm((current) => ({ ...current, firstName: event.target.value }))} />
+                <Label htmlFor="customerType">Type</Label>
+                <Select
+                  inputId="customerType"
+                  instanceId="customer-type"
+                  options={CUSTOMER_TYPE_OPTIONS}
+                  value={CUSTOMER_TYPE_OPTIONS.find((option) => option.value === customerForm.type) ?? null}
+                  onChange={(option) => setCustomerForm((current) => ({ ...current, type: option?.value ?? DEFAULT_CUSTOMER_TYPE }))}
+                  isSearchable={false}
+                  styles={reactSelectStyles as never}
+                />
               </div>
+              {/* One party, one name. The type decides what the field is
+                  called, because a company has no surname to split off. */}
               <div className="space-y-2">
-                <Label htmlFor="lastName">Last Name</Label>
-                 <Input id="lastName" value={customerForm.lastName} onChange={(event) => setCustomerForm((current) => ({ ...current, lastName: event.target.value }))} />
+                <Label htmlFor="customerName">{customerNameLabel(customerForm.type)}</Label>
+                 <Input id="customerName" maxLength={200} value={customerForm.name} onChange={(event) => setCustomerForm((current) => ({ ...current, name: event.target.value }))} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="mobile">Mobile Number</Label>

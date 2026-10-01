@@ -281,15 +281,18 @@ describe("customer orders, direct sales, accounting", () => {
       const salesOnlyResponse = await GET(new Request(baseUrl));
       const salesOnlyPayload = await salesOnlyResponse.json() as {
         data: {
-          customers: Array<{ id: string; name: string }>;
+          customers: Array<{ id: string; name: string; type: string }>;
           products: Array<{ id: string }>;
         };
       };
       expect(salesOnlyResponse.status).toBe(200);
       expect(salesOnlyPayload.data.products.map((product) => product.id)).toEqual([availableProduct.id]);
+      // The picker reads "name - type", so the options endpoint carries the
+      // kind of party alongside the name.
       expect(salesOnlyPayload.data.customers).toContainEqual({
         id: selectableCustomer.id,
         name: selectableCustomer.name,
+        type: "INDIVIDUAL",
       });
 
       const { GET: getCustomers } = await import("../../app/api/customers/route");

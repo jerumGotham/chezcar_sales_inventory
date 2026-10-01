@@ -194,6 +194,7 @@ export function InventoryClient({
   const canReceiveSupplierStock = useCan("inventory-receiving:create");
   const canAdjustStock = useCan("inventory:adjust");
   const canSetBranchPrice = useCan("inventory:price:update");
+  const canReleaseQuarantine = useCan("inventory:quarantine-release");
   const canViewMovements = useCan("inventory-movements:view");
   const canViewAvailability = useCan("inventory-availability:view");
   const canViewStockTransfers = useCan("stock-transfers:view");
@@ -267,6 +268,9 @@ export function InventoryClient({
 
   const [isAdjustOpen, setIsAdjustOpen] = useState(false);
   const [isQuickAdjustOpen, setIsQuickAdjustOpen] = useState(false);
+  const [releaseRow, setReleaseRow] = useState<InventoryRow | null>(null);
+  const [releaseQuantity, setReleaseQuantity] = useState("");
+  const [releaseReason, setReleaseReason] = useState("");
   const [priceRow, setPriceRow] = useState<InventoryRow | null>(null);
   const [priceDraft, setPriceDraft] = useState("");
   const [isStockCardOpen, setIsStockCardOpen] = useState(false);
@@ -439,6 +443,29 @@ export function InventoryClient({
       );
     },
     onError: (saveError) => { setMutationNotice(""); setMutationError(saveError.message); },
+  });
+
+  const quarantineReleaseMutation = useMutation({
+    mutationFn: async (payload: { balanceId: string; quantity: number; reason: string }) => {
+      const response = await fetch(`/api/inventory/${payload.balanceId}/quarantine-release`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quantity: payload.quantity, reason: payload.reason }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error?.message ?? "Unable to release the quarantined stock");
+      return json.data as { released: number; quarantinedRemaining: number };
+    },
+    onSuccess: (result) => {
+      refreshInventory();
+      const product = releaseRow ? `${releaseRow.itemCode} - ${releaseRow.name}` : "Stock";
+      setReleaseRow(null);
+      setMutationNotice(
+        `${product}: ${result.released} unit(s) are sellable again. ${result.quarantinedRemaining} still in quarantine.`,
+      );
+    },
+    onError: (saveError: Error) => { setMutationNotice(""); setMutationError(saveError.message); },
   });
 
   const flatRows = useMemo(() => data?.data ?? [], [data?.data]);
@@ -1094,9 +1121,9 @@ export function InventoryClient({
                                             </span>
                                           )}
                                         </td>
-                                        {(canAdjustStock || canSetBranchPrice) && (
+                                        {(canAdjustStock || canSetBranchPrice || canReleaseQuarantine) && (
                                           <td className="px-4 py-2 text-right">
-                                            <div className="flex justify-end gap-2">
+                                            <div className="flex flex-wrap justify-end gap-2">
                                               {canSetBranchPrice && (
                                                 <Button
                                                   variant="view"
@@ -1118,6 +1145,25 @@ export function InventoryClient({
                                                   onClick={() => openQuickAdjustModal(item)}
                                                 >
                                                   Quick Adjust
+                                                </Button>
+                                              )}
+                                              {/* The way back out of quarantine.
+                                                  Offered only where units are
+                                                  actually held, so the action
+                                                  never appears with nothing to do. */}
+                                              {canReleaseQuarantine && item.quarantined > 0 && (
+                                                <Button
+                                                  variant="outline"
+                                                  size="sm"
+                                                  onClick={() => {
+                                                    setMutationError("");
+                                                    setMutationNotice("");
+                                                    setReleaseRow(item);
+                                                    setReleaseQuantity(String(item.quarantined));
+                                                    setReleaseReason("");
+                                                  }}
+                                                >
+                                                  Release {item.quarantined}
                                                 </Button>
                                               )}
                                             </div>
@@ -1144,6 +1190,81 @@ export function InventoryClient({
           </CardContent>
         </Card>
       </PageShell>
+
+      <Dialog
+        open={releaseRow !== null}
+        onOpenChange={(open) => {
+          if (!open && !quarantineReleaseMutation.isPending) setReleaseRow(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Release from quarantine</DialogTitle>
+            <DialogDescription>
+              These units are already on the shelf but held back from sale.
+              Releasing them makes them sellable again; the on-hand count does
+              not change.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-2">
+            <div className="space-y-2">
+              <Label>Product</Label>
+              <Input value={releaseRow ? `${releaseRow.itemCode} - ${releaseRow.name}` : ""} disabled />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="release-quantity">Units to release</Label>
+              <Input
+                id="release-quantity"
+                type="number"
+                min="1"
+                step="1"
+                max={releaseRow?.quarantined ?? 0}
+                value={releaseQuantity}
+                onChange={(event) => setReleaseQuantity(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                {releaseRow?.quarantined ?? 0} unit(s) in quarantine at {releaseRow?.location ?? "this branch"}.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="release-reason">Reason</Label>
+              <Input
+                id="release-reason"
+                maxLength={500}
+                value={releaseReason}
+                onChange={(event) => setReleaseReason(event.target.value)}
+                placeholder="Checked and found good"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReleaseRow(null)} disabled={quarantineReleaseMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                quarantineReleaseMutation.isPending ||
+                !releaseReason.trim() ||
+                Number(releaseQuantity) <= 0 ||
+                Number(releaseQuantity) > (releaseRow?.quarantined ?? 0)
+              }
+              onClick={() => {
+                if (releaseRow) {
+                  quarantineReleaseMutation.mutate({
+                    balanceId: releaseRow.id,
+                    quantity: Number(releaseQuantity),
+                    reason: releaseReason.trim(),
+                  });
+                }
+              }}
+            >
+              {quarantineReleaseMutation.isPending ? "Releasing..." : "Release"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={priceRow !== null}

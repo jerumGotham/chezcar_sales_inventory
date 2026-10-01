@@ -5,6 +5,7 @@ const reportPrisma = vi.hoisted(() => ({
   backjob: { findMany: vi.fn() },
   sale: { findMany: vi.fn() },
   payment: { findMany: vi.fn(), aggregate: vi.fn() },
+  refund: { findMany: vi.fn() },
   product: { findMany: vi.fn() },
   inventoryBalance: { findMany: vi.fn() },
   saleLine: { findMany: vi.fn() },
@@ -126,6 +127,9 @@ describe("sales and salesperson sales reports", () => {
   beforeEach(() => {
     reportPrisma.location.findMany.mockReset().mockResolvedValue([{ id: "branch", code: "B", name: "Branch" }]);
     reportPrisma.payment.findMany.mockReset();
+    // No money handed back unless a test says so; these reports existed
+    // before refunds did and must still read the same without them.
+    reportPrisma.refund.findMany.mockReset().mockResolvedValue([]);
     // Nothing is waiting on Accounting unless a test says so.
     reportPrisma.payment.aggregate.mockReset().mockResolvedValue({ _count: { _all: 0 }, _sum: { amount: null } });
   });

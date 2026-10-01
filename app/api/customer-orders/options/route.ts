@@ -23,7 +23,7 @@ export async function GET(request: Request) {
       : null;
     if (locationId && (!location || !canAccessLocation(actor, location.id))) return NextResponse.json({ error: { code: "INVALID_LOCATION", message: "Select an assigned active branch" } }, { status: 400 });
     const [customers, products, branches, salespersons] = await Promise.all([
-      prisma.customer.findMany({ where: { status: "ACTIVE" }, orderBy: { name: "asc" }, take: 200, select: { id: true, name: true } }),
+      prisma.customer.findMany({ where: { status: "ACTIVE" }, orderBy: { name: "asc" }, take: 200, select: { id: true, name: true, type: true } }),
       locationId
         ? prisma.product.findMany({ where: { status: "ACTIVE" }, orderBy: { itemCode: "asc" }, take: 2_000, select: { id: true, itemCode: true, name: true, category: true, price: true, branchPrices: { where: { locationId }, select: { price: true } }, inventoryBalances: { where: { locationId }, select: { onHand: true, reserved: true, quarantined: true } } } })
         : Promise.resolve([]),
