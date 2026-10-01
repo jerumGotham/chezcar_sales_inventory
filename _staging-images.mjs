@@ -16,6 +16,8 @@
  * Options:
  *   --base=<url>   the site to upload to (default: the staging site)
  *   --file=<path>  a different workbook
+ *   --sheet=<name> the sheet to read the photos from; must be the one whose
+ *                  products were imported, or the photos will be last month's
  *   --limit=<n>    stop after n uploads, to try it on a few first
  *   --dry-run      match photos to products and report, uploading nothing
  */
@@ -27,15 +29,16 @@ import * as XLSX from "xlsx";
 
 const DEFAULT_BASE = "https://predatoroffroad.ph";
 const DEFAULT_WORKBOOK = "C:/Users/Jerum/Downloads/REALTIME INVENTORY- NEW 3 (3).xlsx";
-const SHEET = "REALTIME INVENTORY SEPTEMBER 20";
+const DEFAULT_SHEET = "REALTIME INVENTORY SEPTEMBER 20";
 const HEADER_MARKER = "ITEM CODE";
 
 function parseArgs(argv) {
-  const options = { base: DEFAULT_BASE, file: DEFAULT_WORKBOOK, limit: 0, dryRun: false };
+  const options = { base: DEFAULT_BASE, file: DEFAULT_WORKBOOK, sheet: DEFAULT_SHEET, limit: 0, dryRun: false };
   for (const arg of argv) {
     if (arg === "--dry-run") options.dryRun = true;
     else if (arg.startsWith("--base=")) options.base = arg.slice("--base=".length).replace(/\/$/, "");
     else if (arg.startsWith("--file=")) options.file = arg.slice("--file=".length);
+    else if (arg.startsWith("--sheet=")) options.sheet = arg.slice("--sheet=".length);
     else if (arg.startsWith("--limit=")) options.limit = Number(arg.slice("--limit=".length)) || 0;
     else throw new Error(`Unknown option: ${arg}`);
   }
@@ -61,10 +64,12 @@ function sniffImage(bytes) {
 }
 
 /** Reads the sheet's pictures and the item code of the row each one sits on. */
-function readPhotos(file) {
-  const workbook = XLSX.read(readFileSync(file), { type: "buffer", raw: true, bookFiles: true, sheets: [SHEET] });
-  const sheet = workbook.Sheets[SHEET];
-  if (!sheet) throw new Error(`Sheet "${SHEET}" not found in ${file}`);
+function readPhotos(file, sheetName) {
+  const workbook = XLSX.read(readFileSync(file), { type: "buffer", raw: true, bookFiles: true, sheets: [sheetName] });
+  const sheet = workbook.Sheets[sheetName];
+  if (!sheet) {
+    throw new Error(`Sheet "${sheetName}" not found in ${file}. Pass --sheet= with one of: ${workbook.SheetNames.join(", ")}`);
+  }
 
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: true, defval: "" });
   const headerIndex = rows.findIndex((row) =>
@@ -76,7 +81,7 @@ function readPhotos(file) {
   const workbookXml = xmlOf(files, "xl/workbook.xml");
   const workbookRels = xmlOf(files, "xl/_rels/workbook.xml.rels");
   const entry = [...workbookXml.matchAll(/<sheet[^>]*name="([^"]*)"[^>]*r:id="([^"]*)"/g)]
-    .find((m) => m[1] === SHEET);
+    .find((m) => m[1] === sheetName);
   const targets = new Map([...workbookRels.matchAll(/Id="([^"]+)"[^>]*Target="([^"]+)"/g)].map((m) => [m[1], m[2]]));
   const sheetFile = targets.get(entry[2]).replace(/^\/?(xl\/)?/, "").split("/").pop();
   const sheetRels = xmlOf(files, `xl/worksheets/_rels/${sheetFile}.rels`);
@@ -131,7 +136,7 @@ async function fetchProductIds(request, base) {
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   console.log(`Reading photos from ${options.file}`);
-  const photos = readPhotos(options.file);
+  const photos = readPhotos(options.file, options.sheet);
   console.log(`photos found: ${photos.size}\n`);
 
   const browser = await chromium.launch({ channel: "chrome", headless: false });

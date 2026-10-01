@@ -8,7 +8,11 @@
  * else — no --env-file, which would quietly point this at the local database:
  *
  *   export DATABASE_URL='postgresql://<user>:<password>@<host>:<port>/<database>'
- *   node _staging-load.mjs
+ *   node _staging-load.mjs --file="<path to the workbook>"
+ *
+ * --file defaults to the September workbook and --sheet to its September sheet.
+ * Give --file on its own for a new month and the importer picks the last sheet
+ * with an ITEM CODE header; name it with --sheet when that guess is wrong.
  *
  * Add --yes to skip the ten second pause before it deletes anything.
  */
@@ -17,8 +21,24 @@ import { spawn } from "node:child_process";
 
 import { PrismaClient } from "@prisma/client";
 
-const WORKBOOK = "C:/Users/Jerum/Downloads/REALTIME INVENTORY- NEW 3 (3).xlsx";
-const SHEET = "REALTIME INVENTORY SEPTEMBER 20";
+/*
+ * The workbook moves every month, so both are arguments. The defaults are the
+ * sheet this was first written against; passing --file without --sheet lets
+ * the importer pick the last sheet carrying an ITEM CODE header, which is what
+ * a new month's export normally is.
+ */
+const DEFAULT_WORKBOOK = "C:/Users/Jerum/Downloads/REALTIME INVENTORY- NEW 3 (3).xlsx";
+const DEFAULT_SHEET = "REALTIME INVENTORY SEPTEMBER 20";
+
+function flag(name) {
+  const prefix = `--${name}=`;
+  const found = process.argv.slice(2).find((argument) => argument.startsWith(prefix));
+  return found ? found.slice(prefix.length) : null;
+}
+
+const WORKBOOK = flag("file") ?? DEFAULT_WORKBOOK;
+// Only pinned when asked for, so a new workbook does not have to name its sheet.
+const SHEET = flag("sheet") ?? (flag("file") ? null : DEFAULT_SHEET);
 
 function refuseLocal(url) {
   const host = new URL(url).hostname;
@@ -82,7 +102,12 @@ async function main() {
   await new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
-      ["prisma/import-products.mjs", `--file=${WORKBOOK}`, `--sheet=${SHEET}`, "--skip-images"],
+      [
+        "prisma/import-products.mjs",
+        `--file=${WORKBOOK}`,
+        ...(SHEET ? [`--sheet=${SHEET}`] : []),
+        "--skip-images",
+      ],
       { stdio: "inherit", env: process.env },
     );
     child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`importer exited with ${code}`))));
