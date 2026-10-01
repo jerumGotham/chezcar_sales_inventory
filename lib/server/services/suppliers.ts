@@ -9,8 +9,10 @@ import type {
   SupplierOptionDto,
   SupplierStatusRequest,
   UpdateSupplierRequest,
+  SupplierListResponse,
 } from "@/lib/contracts/suppliers";
 import {
+  supplierListQuerySchema,
   createSupplierSchema,
   supplierStatusRequestSchema,
   updateSupplierSchema,
@@ -69,13 +71,43 @@ function mapUniqueConflict(error: unknown): never {
   throw error;
 }
 
-export async function listSuppliers(actor: AuthContext): Promise<SupplierDto[]> {
+export async function listSuppliers(
+  actor: AuthContext,
+  query: z.infer<typeof supplierListQuerySchema> = supplierListQuerySchema.parse({}),
+): Promise<SupplierListResponse> {
   assertCapability(actor, "suppliers:view");
+  /*
+   * One box over the three fields somebody would recognise a supplier by. A
+   * separate input per column would be three times the chrome for a list this
+   * size, and nobody searching for "RS" cares which of them it sits in.
+   */
+  const where: Prisma.SupplierWhereInput = {
+    status: query.status === "all" ? undefined : query.status === "active" ? "ACTIVE" : "INACTIVE",
+    ...(query.search
+      ? {
+          OR: [
+            { code: { contains: query.search, mode: "insensitive" } },
+            { name: { contains: query.search, mode: "insensitive" } },
+            { contactPerson: { contains: query.search, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
+
+  const total = await prisma.supplier.count({ where });
+  const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
+  // Clamped, so deactivating the last row of the last page does not strand the
+  // reader on a page that no longer exists.
+  const page = Math.min(query.page, totalPages);
   const suppliers = await prisma.supplier.findMany({
+    where,
     select: supplierSelect,
     orderBy: [{ status: "asc" }, { name: "asc" }],
+    skip: (page - 1) * query.pageSize,
+    take: query.pageSize,
   });
-  return suppliers.map(toDto);
+
+  return { data: suppliers.map(toDto), meta: { page, pageSize: query.pageSize, total, totalPages } };
 }
 
 export async function listActiveSupplierOptionsForReceiving(

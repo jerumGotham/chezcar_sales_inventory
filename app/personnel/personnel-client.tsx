@@ -7,6 +7,7 @@ import { Contact, Loader2, Pencil, Plus } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { StatusBanner } from "@/components/status-banner";
+import { TablePagination } from "@/components/table-pagination";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -78,13 +79,37 @@ export function PersonnelClient({
   const [formError, setFormError] = useState("");
   const [banner, setBanner] = useState<string | null>(null);
 
+  /*
+   * Typing is held separately from what the list is reading, so a keystroke
+   * does not refetch. Apply says when the reader has finished the thought.
+   */
+  const [draft, setDraft] = useState({ search: "", status: "all", type: "all" });
+  const [applied, setApplied] = useState({ search: "", status: "all", type: "all" });
+  const [page, setPage] = useState(1);
+
   const query = useQuery({
-    queryKey: ["personnel"],
+    queryKey: ["personnel", applied.search, applied.status, applied.type, page],
     queryFn: async () => {
-      const response = await personnelRequest("/api/personnel");
-      return (response?.data ?? []) as PersonnelDto[];
+      const params = new URLSearchParams({
+        page: String(page),
+        pageSize: "10",
+        status: applied.status,
+        type: applied.type,
+      });
+      if (applied.search) params.set("search", applied.search);
+      const response = await personnelRequest(`/api/personnel?${params.toString()}`);
+      return response as { data: PersonnelDto[]; meta: { page: number; totalPages: number; total: number } };
     },
+    placeholderData: (previous) => previous,
   });
+  const rows = query.data?.data ?? [];
+  const meta = query.data?.meta ?? { page: 1, totalPages: 1, total: 0 };
+
+  const applyFilters = () => {
+    setApplied(draft);
+    // A new filter starts at its own first page, never the old page number.
+    setPage(1);
+  };
 
   const saveMutation = useMutation({
     mutationFn: () => editing
@@ -144,18 +169,85 @@ export function PersonnelClient({
       ) : null}
       {statusMutation.error ? <StatusBanner tone="error" className="mb-4">{statusMutation.error.message}</StatusBanner> : null}
       {branches.length === 0 ? <p className="mb-4 rounded-md bg-amber-50 dark:bg-amber-950/40 p-3 text-sm text-amber-800 dark:text-amber-300">No active authorized branch is available for Personnel Maintenance.</p> : null}
+      <div className="mb-4 flex flex-wrap items-end gap-3">
+        <div className="min-w-56 flex-1 space-y-1">
+          <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground" htmlFor="personnel-search">
+            Search
+          </label>
+          <Input
+            id="personnel-search"
+            value={draft.search}
+            placeholder="Name or branch"
+            onChange={(event) => setDraft((current) => ({ ...current, search: event.target.value }))}
+            onKeyDown={(event) => { if (event.key === "Enter") applyFilters(); }}
+          />
+        </div>
+        <div className="w-44 space-y-1">
+          <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground" htmlFor="personnel-type">
+            Type
+          </label>
+          <select
+            id="personnel-type"
+            value={draft.type}
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            onChange={(event) => setDraft((current) => ({ ...current, type: event.target.value }))}
+          >
+            <option value="all">All types</option>
+            <option value="SALESPERSON">Salesperson</option>
+            <option value="INSTALLER">Installer</option>
+            <option value="BOTH">Salesperson &amp; Installer</option>
+          </select>
+        </div>
+        <div className="w-44 space-y-1">
+          <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground" htmlFor="personnel-status">
+            Status
+          </label>
+          <select
+            id="personnel-status"
+            value={draft.status}
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            onChange={(event) => setDraft((current) => ({ ...current, status: event.target.value }))}
+          >
+            <option value="all">All statuses</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </div>
+        <Button onClick={applyFilters}>Apply filters</Button>
+        <Button
+          variant="outline"
+          onClick={() => {
+            setDraft({ search: "", status: "all", type: "all" });
+            setApplied({ search: "", status: "all", type: "all" });
+            setPage(1);
+          }}
+        >
+          Reset
+        </Button>
+      </div>
+
       <Card className="min-w-0"><CardContent className="p-0">
         {query.isLoading ? (
           <div className="flex min-h-48 items-center justify-center text-muted-foreground"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Loading personnel</div>
         ) : query.error ? (
           <div className="p-8 text-center text-sm text-destructive">{query.error.message}</div>
-        ) : query.data?.length === 0 ? (
+        ) : rows.length === 0 ? (
           <div className="flex min-h-48 flex-col items-center justify-center gap-2 text-muted-foreground"><Contact className="h-8 w-8" /><p>No personnel yet.</p></div>
         ) : (
-          <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Home Branch</TableHead><TableHead>Type</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{query.data?.map((personnel) => (
+          <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Home Branch</TableHead><TableHead>Type</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{rows.map((personnel) => (
             <TableRow key={personnel.id}><TableCell className="font-medium">{personnel.fullName}</TableCell><TableCell>{personnel.location.name} ({personnel.location.code})</TableCell><TableCell>{TYPE_LABELS[personnel.type]}</TableCell><TableCell><span className={personnel.status === "ACTIVE" ? "text-emerald-700 dark:text-emerald-300" : "text-muted-foreground"}>{personnel.status === "ACTIVE" ? "Active" : "Inactive"}</span></TableCell><TableCell><div className="flex justify-end gap-2">{canUpdate ? <Button variant="edit" size="sm" onClick={() => openEdit(personnel)}><Pencil className="mr-2 h-4 w-4" />Edit</Button> : null}{canSetStatus ? <Button variant={personnel.status === "ACTIVE" ? "outline" : "workflow"} size="sm" disabled={statusMutation.isPending} onClick={() => personnel.status === "ACTIVE" ? setDeactivating(personnel) : statusMutation.mutate(personnel)}>{personnel.status === "ACTIVE" ? "Deactivate" : "Reactivate"}</Button> : null}{!canUpdate && !canSetStatus ? <span className="text-muted-foreground">-</span> : null}</div></TableCell></TableRow>
           ))}</TableBody></Table></div>
         )}
+        {rows.length > 0 ? (
+          <div className="flex justify-end border-t px-5 py-3">
+            <TablePagination
+              page={meta.page}
+              totalPages={meta.totalPages}
+              onPageChange={setPage}
+              busy={query.isFetching}
+            />
+          </div>
+        ) : null}
       </CardContent></Card>
 
       <ConfirmationDialog

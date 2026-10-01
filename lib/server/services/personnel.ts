@@ -12,6 +12,7 @@ import type {
   UpdatePersonnelRequest,
 } from "@/lib/contracts/personnel";
 import {
+  personnelListQuerySchema,
   createPersonnelSchema,
   personnelStatusRequestSchema,
   updatePersonnelSchema,
@@ -89,17 +90,45 @@ async function requireScopedPersonnel(actor: AuthContext, personnelId: string) {
   return personnel;
 }
 
-export async function listPersonnel(actor: AuthContext): Promise<PersonnelDto[]> {
+export async function listPersonnel(
+  actor: AuthContext,
+  query: z.infer<typeof personnelListQuerySchema> = personnelListQuerySchema.parse({}),
+) {
   assertCapability(actor, "personnel:view");
+  /*
+   * One box over the name and the branch. A reader looking for somebody knows
+   * one or the other, and rarely which column it will match.
+   */
+  const where: Prisma.PersonnelWhereInput = {
+    ...locationScope(actor),
+    location: { type: "BRANCH", isActive: true },
+    status: query.status === "all" ? undefined : query.status === "active" ? "ACTIVE" : "INACTIVE",
+    type: query.type === "all" ? undefined : query.type,
+    ...(query.search
+      ? {
+          OR: [
+            { fullName: { contains: query.search, mode: "insensitive" } },
+            { location: { name: { contains: query.search, mode: "insensitive" } } },
+            { location: { code: { contains: query.search, mode: "insensitive" } } },
+          ],
+        }
+      : {}),
+  };
+
+  const total = await prisma.personnel.count({ where });
+  const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
+  // Clamped, so deactivating the last row of the last page does not strand the
+  // reader on a page that no longer exists.
+  const page = Math.min(query.page, totalPages);
   const rows = await prisma.personnel.findMany({
-    where: {
-      ...locationScope(actor),
-      location: { type: "BRANCH", isActive: true },
-    },
+    where,
     select: personnelSelect,
     orderBy: [{ status: "asc" }, { fullName: "asc" }],
+    skip: (page - 1) * query.pageSize,
+    take: query.pageSize,
   });
-  return rows.map(toDto);
+
+  return { data: rows.map(toDto), meta: { page, pageSize: query.pageSize, total, totalPages } };
 }
 
 export async function listAssignablePersonnelBranches(

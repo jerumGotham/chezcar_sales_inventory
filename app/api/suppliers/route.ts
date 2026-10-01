@@ -1,4 +1,4 @@
-import { createSupplierSchema } from "@/lib/contracts/suppliers";
+import { createSupplierSchema, supplierListQuerySchema } from "@/lib/contracts/suppliers";
 import { requireCapability } from "@/lib/server/authorization";
 import {
   createSupplier,
@@ -9,7 +9,11 @@ import {
 export async function GET(request: Request) {
   try {
     const actor = await requireCapability(request.headers, "suppliers:view");
-    return Response.json({ data: await listSuppliers(actor) });
+    const query = supplierListQuerySchema.parse(
+      Object.fromEntries(new URL(request.url).searchParams),
+    );
+    // Already { data, meta }: the list screen reads both.
+    return Response.json(await listSuppliers(actor, query));
   } catch (error) {
     return suppliersErrorResponse(error, "Unable to list suppliers");
   }

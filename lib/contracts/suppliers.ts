@@ -18,6 +18,14 @@ export const updateSupplierSchema = z.object(supplierFields).partial().refine(
   (value) => Object.keys(value).length > 0,
   "At least one editable field is required",
 );
+export const supplierListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(10),
+  /** Matched against code, name and contact person together. */
+  search: z.string().trim().max(200).default(""),
+  status: z.enum(["all", "active", "inactive"]).default("all"),
+});
+
 export const supplierStatusRequestSchema = z.object({
   status: z.enum(["ACTIVE", "INACTIVE"]),
 });
@@ -41,3 +49,13 @@ export type SupplierDto = {
 };
 
 export type SupplierOptionDto = Pick<SupplierDto, "id" | "code" | "name">;
+
+/** The page the list screens read, in the shape TablePagination expects. */
+export type MaintenanceListMeta = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+export type SupplierListResponse = { data: SupplierDto[]; meta: MaintenanceListMeta };

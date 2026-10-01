@@ -13,6 +13,15 @@ export const updatePersonnelSchema = createPersonnelSchema.partial().refine(
   "At least one editable field is required",
 );
 
+export const personnelListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(10),
+  /** Matched against the name and the home branch together. */
+  search: z.string().trim().max(200).default(""),
+  status: z.enum(["all", "active", "inactive"]).default("all"),
+  type: z.enum(["all", "SALESPERSON", "INSTALLER", "BOTH"]).default("all"),
+});
+
 export const personnelStatusRequestSchema = z.object({
   status: z.enum(["ACTIVE", "INACTIVE"]),
 });
