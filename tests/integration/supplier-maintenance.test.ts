@@ -37,7 +37,10 @@ describe("supplier maintenance", () => {
 
       await setSupplierStatus(admin, created.id, { status: "INACTIVE" });
       await expect(listActiveSupplierOptionsForReceiving(actor(fixture.users.stockStaff, fixture.locations.stockRoom))).resolves.toEqual([]);
-      await expect(listSuppliers(admin)).resolves.toMatchObject([{ id: created.id, status: "INACTIVE" }]);
+      await expect(listSuppliers(admin)).resolves.toMatchObject({
+        data: [{ id: created.id, status: "INACTIVE" }],
+        meta: { page: 1, total: 1, totalPages: 1 },
+      });
 
       await setSupplierStatus(admin, created.id, { status: "ACTIVE" });
       await expect(listActiveSupplierOptionsForReceiving(actor(fixture.users.stockStaff, fixture.locations.stockRoom))).resolves.toMatchObject([{ id: created.id }]);

@@ -40,11 +40,15 @@ describe("personnel maintenance", () => {
       await expect(createPersonnel(actor, { fullName: "Outside", locationId: bl.id, type: "INSTALLER" })).rejects.toThrow("outside assigned locations");
 
       await prisma.personnel.create({ data: { fullName: "BL Salesperson", locationId: bl.id, type: "SALESPERSON" } });
-      await expect(listPersonnel(actor)).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ id: created.id })]));
+      await expect(listPersonnel(actor)).resolves.toMatchObject({
+        data: expect.arrayContaining([expect.objectContaining({ id: created.id })]),
+      });
       await expect(updatePersonnel(actor, created.id, { locationId: bl.id })).rejects.toThrow("outside assigned locations");
 
       await setPersonnelStatus(actor, created.id, { status: "INACTIVE" });
-      await expect(listPersonnel(actor)).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ id: created.id, status: "INACTIVE" })]));
+      await expect(listPersonnel(actor)).resolves.toMatchObject({
+        data: expect.arrayContaining([expect.objectContaining({ id: created.id, status: "INACTIVE" })]),
+      });
       await setPersonnelStatus(actor, created.id, { status: "ACTIVE" });
       expect(await prisma.personnel.findUniqueOrThrow({ where: { id: created.id } })).toMatchObject({
         createdById: actor.userId,
