@@ -172,7 +172,7 @@ function branchFindingSummary(sale: Sale) {
     case "WRONG_RECEIPT_PHOTO":
       return "Branch found that the wrong receipt photo was uploaded and submitted a replacement for Accounting re-review. Stock is unchanged.";
     case "SALE_ENCODED_INCORRECT":
-      return "Branch found that the sale was encoded incorrectly. It is waiting for Admin to void the sale and restore the original stock quantities.";
+      return "Branch found that the sale was encoded incorrectly. The branch corrects it from the comparison, and Accounting verifies the corrected receipt.";
     default:
       return "Waiting for the branch to double-check this mismatch.";
   }
@@ -553,6 +553,41 @@ function ReceiptVerificationContent() {
       queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] });
     },
     onError: (mutationError) => { setFormNotice(null); setFormError((mutationError as Error).message); },
+  });
+
+  /*
+   * The branch correcting the sale it admitted encoding wrongly. It posts the
+   * comparison it has just filled in, which is the corrected sale, and the
+   * server voids the wrong receipt and posts this one unverified for
+   * Accounting. No Admin stands between the mistake and the fix.
+   */
+  const branchCorrectionMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedId) throw new Error("Select a receipt first.");
+      if (!branchResponseNote.trim()) throw new Error("Say what was wrong before correcting it.");
+      if (comparison.receiptNumber.trim() === selectedSale?.manualReceiptNumber) {
+        throw new Error("Enter the new receipt number for the corrected sale.");
+      }
+      const response = await fetch(`/api/accounting/receipts/${selectedId}/correct`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "VOIDED_REPLACED",
+          note: branchResponseNote,
+          replacement: toComparison(comparison),
+        }),
+      });
+      const json = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+      if (!response.ok) throw new Error(json?.error?.message ?? "Unable to correct this sale");
+      return json;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["receipt-verifications"] });
+      setFormError("");
+      setFormNotice("Sale corrected. The new receipt is waiting for Accounting to verify it.");
+    },
+    onError: (error: Error) => { setFormNotice(""); setFormError(error.message); },
   });
 
   const resolveMutation = useMutation({
@@ -1609,6 +1644,22 @@ function ReceiptVerificationContent() {
                           ? "Update branch response"
                           : "Submit branch response"}
                       </Button>
+
+                      {/*
+                        Offered once the branch has said the encoding was
+                        wrong. Its own correction, from the comparison it has
+                        already filled in: there is no Admin step between
+                        admitting the mistake and fixing it.
+                      */}
+                      {selectedSale.branchResponse === "SALE_ENCODED_INCORRECT" ? (
+                        <Button
+                          variant="warning"
+                          disabled={branchCorrectionMutation.isPending}
+                          onClick={() => branchCorrectionMutation.mutate()}
+                        >
+                          {branchCorrectionMutation.isPending ? "Correcting..." : "Correct this sale"}
+                        </Button>
+                      ) : null}
                     </div>
                   )}
                 {selectedSale.status === "POSTED" && !selectedSale.receiptPhotoUrl && !photoPreview ? (
