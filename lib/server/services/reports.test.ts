@@ -141,7 +141,7 @@ describe("sales and salesperson sales reports", () => {
       id, salespersonId, salespersonName, kind: "DIRECT_SALE", receiptNumber: id, receiptBooklet: null, method: "CASH",
       amount: { toNumber: () => amount }, verifiedAt: new Date("2026-09-10T00:00:00Z"), collectedAt: new Date("2026-09-08T00:00:00Z"), reviewStatus: "VERIFIED",
       customer: null, location: { code: "B", name: "Branch" }, collectedBy: { name: "Encoder" },
-      sale: { discountAmount: { toNumber: () => amount / 10 }, lines: [{ quantity: units }] },
+      sale: { discountAmount: { toNumber: () => amount / 10 }, lines: [{ productItemCode: "ITEM-1", productName: "Fixture Item", quantity: units, unitPrice: { toNumber: () => amount / units || 0 } }] },
     };
   }
 
@@ -218,7 +218,7 @@ describe("sales and salesperson sales reports", () => {
         id, salespersonId: "person-1", salespersonName: "Same name", kind, receiptNumber: id, receiptBooklet: null, method: "CASH",
         amount: { toNumber: () => amount }, verifiedAt: new Date("2026-09-10T00:00:00Z"), collectedAt: new Date("2026-09-08T00:00:00Z"), reviewStatus: "VERIFIED",
         customer: { name: "Buyer" }, location: { code: "B", name: "Branch" }, collectedBy: { name: "Cashier" },
-        sale: units ? { discountAmount: { toNumber: () => 0 }, lines: [{ quantity: units }] } : null,
+        sale: units ? { discountAmount: { toNumber: () => 0 }, lines: [{ productItemCode: "ITEM-1", productName: "Fixture Item", quantity: units, unitPrice: { toNumber: () => 0 } }] } : null,
       };
     }
     // A 50,000 order paid 10,000 down, 5,000 later, 35,000 at release, plus a
@@ -277,7 +277,7 @@ describe("sales and salesperson sales reports", () => {
         amount: { toNumber: () => amount }, collectedAt: new Date("2026-09-08T00:00:00Z"), reviewStatus,
         verifiedAt: reviewStatus === "VERIFIED" ? new Date("2026-09-10T00:00:00Z") : null,
         customer: null, location: { code: "B", name: "Branch" }, collectedBy: { name: "Cashier" },
-        sale: { discountAmount: { toNumber: () => 0 }, lines: [{ quantity: 1 }] },
+        sale: { discountAmount: { toNumber: () => 0 }, lines: [{ productItemCode: "ITEM-1", productName: "Fixture Item", quantity: 1, unitPrice: { toNumber: () => 0 } }] },
       };
     }
     reportPrisma.payment.findMany.mockResolvedValueOnce(attribution).mockResolvedValueOnce([
