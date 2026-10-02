@@ -101,8 +101,13 @@ export async function createReportPdf(report: ReportResult, metadata: { generate
       row.branch,
       `Customer: ${row.customer}\nSalesperson: ${row.salesperson}\nEncoder: ${row.encoder}`,
       `${row.source}\n${humanize(row.paymentMethod)}`,
+      // Money-only rows say so rather than printing an empty cell: a
+      // downpayment has no goods, and a blank would read as missing data.
+      row.items.length === 0
+        ? "Money only"
+        : row.items.map((item) => `${item.quantity} x ${item.name} @ ${money(item.unitPrice)}`).join("\n"),
       String(row.units), money(row.discountAmount), money(row.totalAmount),
-    ]), ...(group.subtotal ? [["SALESPERSON TOTAL", "", "", "", String(group.subtotal.units), money(group.subtotal.totalDiscount), money(group.subtotal.totalAmount)]] : [])], group.subtotal !== null);
+    ]), ...(group.subtotal ? [["SALESPERSON TOTAL", "", "", "", "", String(group.subtotal.units), money(group.subtotal.totalDiscount), money(group.subtotal.totalAmount)]] : [])], group.subtotal !== null);
   } else if (report.type === "inventory-summary") {
     table("Inventory overview", [{ header: "Measure", width: 3 }, { header: "Total", width: 2, numeric: true }], [
       ["Products in filtered rows", String(report.totals.productCount)], ["Authorized branches in scope", String(report.totals.locationCount)],

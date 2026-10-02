@@ -320,7 +320,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
         salespersonId: true, salespersonName: true, verifiedAt: true, collectedAt: true, reviewStatus: true,
         customer: { select: { name: true } }, location: { select: { code: true, name: true } },
         collectedBy: { select: { name: true } },
-        sale: { select: { discountAmount: true, lines: { select: { quantity: true } } } },
+        sale: { select: { discountAmount: true, lines: { select: { productItemCode: true, productName: true, quantity: true, unitPrice: true } } } },
       },
       orderBy: view === "VERIFIED_DATE" ? [{ verifiedAt: "desc" }, { id: "desc" }] : [{ collectedAt: "desc" }, { id: "desc" }],
     });
@@ -355,7 +355,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
         ...(query.source === "DIRECT_SALE"
           ? { kind: "POSTED_SALE", orderId: null }
           : query.source === "CUSTOMER_ORDER"
-            ? { OR: [{ kind: "CANCELLED_ORDER" }, { kind: "POSTED_SALE", orderId: { not: null } }] }
+            ? { OR: [{ kind: "CANCELLED_ORDER" }, { kind: "AMENDED_ORDER" }, { kind: "POSTED_SALE", orderId: { not: null } }] }
             : {}),
       },
       select: {
@@ -363,7 +363,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
         orderId: true, refundedAt: true, salespersonId: true, salespersonName: true,
         customer: { select: { name: true } }, location: { select: { code: true, name: true } },
         refundedBy: { select: { name: true } },
-        lines: { select: { quantity: true } },
+        lines: { select: { productItemCode: true, productName: true, quantity: true, unitPrice: true } },
       },
       orderBy: [{ refundedAt: "desc" }, { id: "desc" }],
     });
@@ -392,6 +392,13 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
       discountAmount: row.sale?.discountAmount.toNumber() ?? 0,
       totalAmount: row.amount.toNumber(),
       verificationStatus: row.reviewStatus,
+      items: row.sale?.lines.map((line) => ({
+        itemCode: line.productItemCode,
+        name: line.productName,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice.toNumber(),
+        amount: line.quantity * line.unitPrice.toNumber(),
+      })) ?? [],
     }));
 
     const refundRows = refundRecords.map((row) => ({
@@ -404,13 +411,21 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
       salespersonId: row.salespersonId,
       salesperson: row.salespersonName ?? "Unassigned",
       encoder: row.refundedBy.name,
-      source: row.kind === "CANCELLED_ORDER" ? ("Order Refund" as const) : ("Sale Refund" as const),
+      source: row.kind === "POSTED_SALE" ? ("Sale Refund" as const) : ("Order Refund" as const),
       paymentMethod: row.method,
       // Negative, so a returned unit cancels the unit the sale counted.
       units: -row.lines.reduce((sum, line) => sum + line.quantity, 0),
       discountAmount: 0,
       totalAmount: -row.amount.toNumber(),
       verificationStatus: "VERIFIED" as const,
+      // Negative like the row itself: these units came back.
+      items: row.lines.map((line) => ({
+        itemCode: line.productItemCode,
+        name: line.productName,
+        quantity: -line.quantity,
+        unitPrice: line.unitPrice.toNumber(),
+        amount: -(line.quantity * line.unitPrice.toNumber()),
+      })),
     }));
 
     // With nothing refunded the list is exactly what the database ordered,

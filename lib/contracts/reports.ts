@@ -105,6 +105,12 @@ export type SalesReport = ReportMeta & {
     discountAmount: number;
     totalAmount: number;
     verificationStatus: "VERIFIED" | "UNVERIFIED" | "MISMATCH_REPORTED";
+    /*
+     * What changed hands on this row, so a reader looking at an amount can see
+     * what it was for. Empty where there is nothing to show: a downpayment and
+     * an order payment move money, not goods.
+     */
+    items: Array<{ itemCode: string; name: string; quantity: number; unitPrice: number; amount: number }>;
   }>;
   branchTotals: Array<{ branch: string; transactionCount: number; units: number; totalAmount: number; percentage: number }>;
   grandTotal: { transactionCount: number; units: number; totalDiscount: number; averageSale: number; totalAmount: number };
