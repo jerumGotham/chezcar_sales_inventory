@@ -101,11 +101,12 @@ export async function createReportPdf(report: ReportResult, metadata: { generate
       row.branch,
       `Customer: ${row.customer}\nSalesperson: ${row.salesperson}\nEncoder: ${row.encoder}`,
       `${row.source}\n${humanize(row.paymentMethod)}`,
-      // Money-only rows say so rather than printing an empty cell: a
-      // downpayment has no goods, and a blank would read as missing data.
+      // A payment towards an order carries what the order is for, flagged so
+      // it is never read as a second sale of the same goods.
       row.items.length === 0
-        ? "Money only"
-        : row.items.map((item) => `${item.quantity} x ${item.name} @ ${money(item.unitPrice)}`).join("\n"),
+        ? "Not recorded"
+        : (row.itemsPending ? "ON ORDER, NOT YET RELEASED\n" : "")
+          + row.items.map((item) => `${item.itemCode} - ${item.name} : ${item.quantity} * ${money(item.unitPrice)}`).join("\n"),
       String(row.units), money(row.discountAmount), money(row.totalAmount),
     ]), ...(group.subtotal ? [["SALESPERSON TOTAL", "", "", "", "", String(group.subtotal.units), money(group.subtotal.totalDiscount), money(group.subtotal.totalAmount)]] : [])], group.subtotal !== null);
   } else if (report.type === "inventory-summary") {

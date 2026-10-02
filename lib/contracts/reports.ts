@@ -106,11 +106,17 @@ export type SalesReport = ReportMeta & {
     totalAmount: number;
     verificationStatus: "VERIFIED" | "UNVERIFIED" | "MISMATCH_REPORTED";
     /*
-     * What changed hands on this row, so a reader looking at an amount can see
-     * what it was for. Empty where there is nothing to show: a downpayment and
-     * an order payment move money, not goods.
+     * What this row is for. A sale carries what changed hands; a downpayment or
+     * an order payment carries what the order is for, which has not been
+     * released yet.
      */
     items: Array<{ itemCode: string; name: string; quantity: number; unitPrice: number; amount: number }>;
+    /**
+     * True when the items above are still on order rather than released. The
+     * row's units stay zero either way: the goods are counted once, on the
+     * receipt that releases them, so a report can never add them twice.
+     */
+    itemsPending: boolean;
   }>;
   branchTotals: Array<{ branch: string; transactionCount: number; units: number; totalAmount: number; percentage: number }>;
   grandTotal: { transactionCount: number; units: number; totalDiscount: number; averageSale: number; totalAmount: number };

@@ -321,6 +321,9 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
         customer: { select: { name: true } }, location: { select: { code: true, name: true } },
         collectedBy: { select: { name: true } },
         sale: { select: { discountAmount: true, lines: { select: { productItemCode: true, productName: true, quantity: true, unitPrice: true } } } },
+        // For a downpayment or an instalment, which have no sale of their own:
+        // what the money is being put towards.
+        order: { select: { lines: { select: { productItemCode: true, productName: true, quantity: true, finalUnitPrice: true } } } },
       },
       orderBy: view === "VERIFIED_DATE" ? [{ verifiedAt: "desc" }, { id: "desc" }] : [{ collectedAt: "desc" }, { id: "desc" }],
     });
@@ -392,13 +395,17 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
       discountAmount: row.sale?.discountAmount.toNumber() ?? 0,
       totalAmount: row.amount.toNumber(),
       verificationStatus: row.reviewStatus,
-      items: row.sale?.lines.map((line) => ({
-        itemCode: line.productItemCode,
-        name: line.productName,
-        quantity: line.quantity,
-        unitPrice: line.unitPrice.toNumber(),
-        amount: line.quantity * line.unitPrice.toNumber(),
-      })) ?? [],
+      items: (row.sale?.lines ?? row.order?.lines ?? []).map((line) => {
+        const unitPrice = "unitPrice" in line ? line.unitPrice.toNumber() : line.finalUnitPrice.toNumber();
+        return {
+          itemCode: line.productItemCode,
+          name: line.productName,
+          quantity: line.quantity,
+          unitPrice,
+          amount: line.quantity * unitPrice,
+        };
+      }),
+      itemsPending: !row.sale && Boolean(row.order),
     }));
 
     const refundRows = refundRecords.map((row) => ({
@@ -426,6 +433,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
         unitPrice: line.unitPrice.toNumber(),
         amount: -(line.quantity * line.unitPrice.toNumber()),
       })),
+      itemsPending: false,
     }));
 
     // With nothing refunded the list is exactly what the database ordered,
