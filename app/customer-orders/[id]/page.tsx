@@ -20,8 +20,18 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useShellAccess } from "@/components/shell-access-context";
+import { useCan, useShellAccess } from "@/components/shell-access-context";
+import { StatusBanner } from "@/components/status-banner";
+import { Input } from "@/components/ui/input";
 import { getCustomerOrderActions, type CustomerOrderStatusCode } from "@/lib/customer-order-actions";
+
+type EditLine = {
+  productId: string;
+  itemCode: string;
+  name: string;
+  quantity: string;
+  unitPrice: string;
+};
 
 type OrderDetail = {
   id: string;
@@ -40,7 +50,8 @@ type OrderDetail = {
   downpaymentReceiptNumber: string | null;
   finalReceiptNumber: string | null;
   notes: string | null;
-  lines: Array<{ itemCode: string; name: string; quantity: number; unitPrice: number; amount: number }>;
+  locationId: string;
+  lines: Array<{ productId: string; itemCode: string; name: string; quantity: number; unitPrice: number; amount: number }>;
 };
 
 function formatPeso(value: number) {
@@ -57,12 +68,90 @@ async function fetchOrder(id: string) {
 export default function CustomerOrderDetailsPage() {
   const params = useParams<{ id: string }>();
   const queryClient = useQueryClient();
+  const canEditLines = useCan("customer-orders:update");
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editLines, setEditLines] = useState<EditLine[]>([]);
+  const [editAck, setEditAck] = useState("");
+  const [editNote, setEditNote] = useState("");
+  const [editError, setEditError] = useState("");
   const access = useShellAccess();
   const capabilities = access.authenticated ? access.capabilities : [];
   const orderId = params.id;
   const [isCancelOpen, setIsCancelOpen] = useState(false);
   const [cancellationNote, setCancellationNote] = useState("");
   const { data: order, isLoading, error } = useQuery({ queryKey: ["customer-order", orderId], queryFn: () => fetchOrder(orderId), enabled: Boolean(orderId) });
+
+  /* The branch's catalogue, for adding a product the order did not have. */
+  const productsQuery = useQuery({
+    queryKey: ["order-edit-products", order?.locationId],
+    enabled: isEditOpen && Boolean(order?.locationId),
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/customer-orders/options?locationId=${order!.locationId}&includeUnavailable=true`,
+        { credentials: "same-origin" },
+      );
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error?.message ?? "Unable to load products");
+      return json.data.products as Array<{ id: string; itemCode: string; name: string; price: number }>;
+    },
+  });
+
+  const editedTotal = editLines.reduce(
+    (sum, line) => sum + (Number(line.quantity) || 0) * (Number(line.unitPrice) || 0),
+    0,
+  );
+  /*
+   * What the customer has already handed over, less anything given back. The
+   * server works this out again; this only decides whether to ask for the
+   * refund paperwork before the save is attempted.
+   */
+  const paidOnOrder = (order?.totalAmount ?? 0) - (order?.balance ?? 0);
+  const handsMoneyBack = order ? editedTotal < paidOnOrder - 0.005 : false;
+
+  const editMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`/api/customer-orders/${orderId}/lines`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lines: editLines.map((line) => ({
+            productId: line.productId,
+            quantity: Number(line.quantity),
+            finalUnitPrice: Number(line.unitPrice),
+          })),
+          ...(handsMoneyBack
+            ? { acknowledgementNumber: editAck.trim(), note: editNote.trim() }
+            : {}),
+        }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error?.message ?? "Unable to save the changes");
+      return json.data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["customer-order", orderId] });
+      await queryClient.invalidateQueries({ queryKey: ["customer-orders"] });
+      setIsEditOpen(false);
+      setEditError("");
+    },
+    onError: (saveError: Error) => setEditError(saveError.message),
+  });
+
+  const openEdit = () => {
+    if (!order) return;
+    setEditLines(order.lines.map((line) => ({
+      productId: line.productId,
+      itemCode: line.itemCode,
+      name: line.name,
+      quantity: String(line.quantity),
+      unitPrice: String(line.unitPrice),
+    })));
+    setEditAck("");
+    setEditNote("");
+    setEditError("");
+    setIsEditOpen(true);
+  };
   const cancelMutation = useMutation({
     mutationFn: async () => {
       const response = await fetch(`/api/customer-orders/${orderId}/cancel`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ note: cancellationNote.trim() || undefined }) });
@@ -141,7 +230,15 @@ export default function CustomerOrderDetailsPage() {
                 <Info label="Final Receipt" value={order.finalReceiptNumber ?? "-"} />
               </div>
               {order.notes ? <p className="mt-5 rounded-xl bg-muted p-4 text-sm text-foreground">{order.notes}</p> : null}
-              <div className="mt-6 overflow-x-auto">
+              <div className="mt-6 flex items-center justify-between gap-3">
+                <h2 className="font-semibold text-foreground">Items</h2>
+                {canEditLines && ["RESERVED", "WAITING_STOCK", "READY_FOR_RELEASE"].includes(order.statusCode) ? (
+                  <Button variant="view" size="sm" onClick={openEdit}>
+                    Edit items
+                  </Button>
+                ) : null}
+              </div>
+              <div className="mt-3 overflow-x-auto">
                 <table className="w-full min-w-[640px]">
                   <thead className="bg-muted"><tr><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Item</th><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Qty</th><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Unit</th><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Amount</th></tr></thead>
                   <tbody>{order.lines.map((line) => <tr key={line.itemCode} className="border-b"><td className="px-4 py-3 text-sm">{line.itemCode} - {line.name}</td><td className="px-4 py-3 text-sm">{line.quantity}</td><td className="px-4 py-3 text-sm">{formatPeso(line.unitPrice)}</td><td className="px-4 py-3 text-sm font-medium">{formatPeso(line.amount)}</td></tr>)}</tbody>
@@ -159,6 +256,152 @@ export default function CustomerOrderDetailsPage() {
           </Card>
         </div>
       ) : null}
+      <Dialog open={isEditOpen} onOpenChange={(open) => { setIsEditOpen(open); if (!open) setEditError(""); }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Edit items</DialogTitle>
+            <DialogDescription>
+              Change what is on this order while it is still unreleased. Stock is
+              reserved or returned as you go.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="overflow-x-auto rounded-xl border">
+              <table className="w-full min-w-[620px] text-sm">
+                <thead className="bg-muted">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Product</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Qty</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Price</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Amount</th>
+                    <th className="px-3 py-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {editLines.map((line, index) => (
+                    <tr key={line.productId} className="border-t">
+                      <td className="px-3 py-2">
+                        <p className="font-medium text-foreground">{line.name}</p>
+                        <p className="text-xs text-muted-foreground">{line.itemCode}</p>
+                      </td>
+                      <td className="w-24 px-3 py-2">
+                        <Input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={line.quantity}
+                          onChange={(event) => setEditLines((current) => current.map((item, position) =>
+                            position === index ? { ...item, quantity: event.target.value } : item))}
+                        />
+                      </td>
+                      <td className="w-32 px-3 py-2">
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={line.unitPrice}
+                          onChange={(event) => setEditLines((current) => current.map((item, position) =>
+                            position === index ? { ...item, unitPrice: event.target.value } : item))}
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-right font-medium">
+                        {formatPeso((Number(line.quantity) || 0) * (Number(line.unitPrice) || 0))}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          disabled={editLines.length === 1}
+                          onClick={() => setEditLines((current) => current.filter((_, position) => position !== index))}
+                        >
+                          Remove
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="order-add-product">Add a product</Label>
+              <select
+                id="order-add-product"
+                value=""
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                onChange={(event) => {
+                  const product = productsQuery.data?.find((item) => item.id === event.target.value);
+                  if (!product) return;
+                  setEditLines((current) => current.some((line) => line.productId === product.id)
+                    ? current
+                    : [...current, {
+                        productId: product.id,
+                        itemCode: product.itemCode,
+                        name: product.name,
+                        quantity: "1",
+                        unitPrice: String(product.price),
+                      }]);
+                }}
+              >
+                <option value="">
+                  {productsQuery.isLoading ? "Loading products..." : "Choose a product to add"}
+                </option>
+                {(productsQuery.data ?? [])
+                  .filter((product) => !editLines.some((line) => line.productId === product.id))
+                  .map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.itemCode} - {product.name} ({formatPeso(product.price)})
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            <div className="rounded-xl border bg-muted p-4 text-sm">
+              <div className="flex justify-between"><span className="text-muted-foreground">New total</span><span className="font-semibold">{formatPeso(editedTotal)}</span></div>
+              <div className="mt-1 flex justify-between"><span className="text-muted-foreground">Already paid</span><span>{formatPeso(paidOnOrder)}</span></div>
+            </div>
+
+            {/*
+              Asked for only when the change hands money back, which is the one
+              case the branch owes the customer a slip rather than a balance.
+            */}
+            {handsMoneyBack ? (
+              <div className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/40">
+                <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+                  This returns {formatPeso(paidOnOrder - editedTotal)} to the customer.
+                </p>
+                <div className="space-y-1">
+                  <Label htmlFor="order-edit-ack">Acknowledgement number</Label>
+                  <Input id="order-edit-ack" value={editAck} onChange={(event) => setEditAck(event.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="order-edit-note">Reason</Label>
+                  <Textarea id="order-edit-note" value={editNote} onChange={(event) => setEditNote(event.target.value)} />
+                </div>
+              </div>
+            ) : null}
+
+            {editError ? <StatusBanner tone="error">{editError}</StatusBanner> : null}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditOpen(false)}>Cancel</Button>
+            <Button
+              disabled={
+                editMutation.isPending ||
+                editLines.length === 0 ||
+                editLines.some((line) => Number(line.quantity) <= 0 || Number(line.unitPrice) < 0) ||
+                (handsMoneyBack && (!editAck.trim() || !editNote.trim()))
+              }
+              onClick={() => editMutation.mutate()}
+            >
+              {editMutation.isPending ? "Saving..." : "Save changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={isCancelOpen} onOpenChange={(open) => {
         if (cancelMutation.isPending) return;
         setIsCancelOpen(open);

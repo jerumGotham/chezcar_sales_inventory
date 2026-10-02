@@ -17,7 +17,7 @@ import { z } from "zod";
  * underneath. This module must never import server-only Prisma.
  */
 
-export const REFUND_KINDS = ["CANCELLED_ORDER", "POSTED_SALE"] as const;
+export const REFUND_KINDS = ["CANCELLED_ORDER", "AMENDED_ORDER", "POSTED_SALE"] as const;
 export type RefundKindDto = (typeof REFUND_KINDS)[number];
 
 export const REFUND_DISPOSITIONS = ["RESELLABLE", "QUARANTINED"] as const;

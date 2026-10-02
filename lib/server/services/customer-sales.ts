@@ -93,6 +93,24 @@ export const customerOrderMutationSchema = z.object({
   lines: z.array(z.object({ productId: z.string().min(1), quantity: positiveInt, finalUnitPrice: money.optional() })).min(1),
 });
 
+/**
+ * What an order may be changed to before it is released. The customer is not
+ * editable here: changing who an order belongs to is a different act from
+ * changing what is on it.
+ */
+export const customerOrderLinesSchema = z.object({
+  lines: z.array(z.object({
+    productId: z.string().min(1),
+    quantity: positiveInt,
+    /** Left out, the line takes the branch's price. Below it, the gap is the discount. */
+    finalUnitPrice: money.optional(),
+  })).min(1, "An order needs at least one line"),
+  /** Required only when the change hands money back. */
+  acknowledgementNumber: z.string().trim().max(100).optional(),
+  refundMethod: z.enum(["CASH", "GCASH", "MAYA", "BANK_TRANSFER", "CREDIT_CARD", "SPLIT"]).optional(),
+  note: z.string().trim().max(1_000).optional(),
+});
+
 export const customerOrderSalespersonSchema = z.object({
   salespersonId: z.string().trim().min(1, "Select a salesperson"),
 });
@@ -547,6 +565,165 @@ export async function getCustomerHistory(actor: AuthContext, id: string) {
     sales: customer.sales.map((sale) => ({ reference: sale.reference, receiptNumber: sale.manualReceiptNumber, date: sale.postedAt.toISOString(), branch: sale.location.name, total: sale.totalAmount.toNumber(), paymentMethod: sale.paymentMethod, lines: sale.lines.map((line) => ({ name: line.productName, quantity: line.quantity, unitPrice: line.unitPrice.toNumber() })) })),
     orders: customer.orders.map((order) => ({ reference: order.reference, date: order.createdAt.toISOString(), branch: order.location.name, status: order.status, total: order.totalAmount.toNumber(), downpayment: order.downpaymentAmount.toNumber(), remaining: order.remainingBalance.toNumber(), releaseDate: order.expectedReleaseDate?.toISOString() ?? null, lines: order.lines.map((line) => ({ name: line.productName, quantity: line.quantity, unitPrice: line.finalUnitPrice.toNumber() })) })),
   };
+}
+
+/**
+ * Changes what is on an order that has not been released.
+ *
+ * A customer who comes back to add, drop or renegotiate an item is the ordinary
+ * case, and the only way to serve it used to be cancelling the order and taking
+ * it again, which lost the reference, the downpayment receipt and the place in
+ * the queue.
+ *
+ * Reservations are moved by the difference rather than released and retaken:
+ * dropping the lot and re-reserving would hand the stock to whoever asked in
+ * between, for an order that already held it.
+ *
+ * Money already collected is honoured. If the new total falls below it, the
+ * excess goes back through the refund ledger on today's date, so a period
+ * already reported does not change underneath.
+ */
+export async function updateCustomerOrderLines(
+  actor: AuthContext,
+  orderId: string,
+  input: z.infer<typeof customerOrderLinesSchema>,
+) {
+  assertCapability(actor, "customer-orders:update");
+  const productIds = input.lines.map((line) => line.productId);
+  if (new Set(productIds).size !== productIds.length) {
+    throw new CustomerSalesError("INVALID_LINES", "A product may appear only once", 400);
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "CustomerOrder" WHERE "id" = ${orderId} FOR UPDATE`;
+    const order = await tx.customerOrder.findUnique({ where: { id: orderId }, include: { lines: true } });
+    if (!order) throw new CustomerSalesError("NOT_FOUND", "Order not found", 404);
+    assertOperationalResource(actor, order.locationId);
+
+    if (!["RESERVED", "WAITING_STOCK", "READY_FOR_RELEASE"].includes(order.status)) {
+      throw new CustomerSalesError(
+        "ORDER_NOT_EDITABLE",
+        `A ${order.status.toLowerCase().replace("_", " ")} order can no longer be changed`,
+        409,
+      );
+    }
+
+    const products = await activeProducts(tx, productIds, order.locationId);
+
+    /*
+     * Only RESERVED and READY_FOR_RELEASE hold stock; a waiting-stock order
+     * holds none, which is what waiting means. Its lines move freely.
+     */
+    const holdsStock = order.status === "RESERVED" || order.status === "READY_FOR_RELEASE";
+    if (holdsStock) {
+      const before = new Map(order.lines.map((line) => [line.productId, line.quantity]));
+      const after = new Map(input.lines.map((line) => [line.productId, line.quantity]));
+
+      for (const [productId, quantity] of after) {
+        const delta = quantity - (before.get(productId) ?? 0);
+        if (delta > 0) await reserveLines(tx, order.locationId, [{ productId, quantity: delta }]);
+      }
+      for (const [productId, quantity] of before) {
+        const delta = (after.get(productId) ?? 0) - quantity;
+        if (delta < 0) {
+          // Reserved only: the goods never left, so on hand does not move.
+          await tx.inventoryBalance.update({
+            where: { locationId_productId: { locationId: order.locationId, productId } },
+            data: { reserved: { decrement: -delta }, version: { increment: 1 } },
+          });
+        }
+      }
+    }
+
+    const total = input.lines.reduce((sum, line) => {
+      const product = products.get(line.productId)!;
+      return sum + line.quantity * (line.finalUnitPrice ?? product.price?.toNumber() ?? 0);
+    }, 0);
+
+    const collected = (await tx.payment.aggregate({
+      where: { orderId: order.id },
+      _sum: { amount: true },
+    }))._sum.amount?.toNumber() ?? 0;
+    const refunded = (await tx.refund.aggregate({
+      where: { orderId: order.id },
+      _sum: { amount: true },
+    }))._sum.amount?.toNumber() ?? 0;
+    const paid = collected - refunded;
+
+    // Rounded to centavos before comparing: a total built from several lines
+    // can land a fraction of a centavo away from what was collected.
+    const excess = Math.round((paid - total) * 100) / 100;
+    // Only an overpayment is handed back. A total that went up is a balance to
+    // collect, not a negative refund.
+    const handedBack = excess > 0 ? excess : 0;
+    let refund = null;
+    if (excess > 0) {
+      if (!input.acknowledgementNumber || !input.note) {
+        throw new CustomerSalesError(
+          "REFUND_DETAILS_REQUIRED",
+          `This change hands back ${excess.toFixed(2)}. Enter the acknowledgement number and the reason.`,
+          400,
+        );
+      }
+      refund = await tx.refund.create({
+        data: {
+          reference: `REF-${randomUUID()}`,
+          kind: "AMENDED_ORDER",
+          locationId: order.locationId,
+          customerId: order.customerId,
+          orderId: order.id,
+          amount: decimal(excess),
+          method: (input.refundMethod ?? "CASH") as PaymentMethod,
+          acknowledgementNumber: input.acknowledgementNumber,
+          reason: input.note,
+          salespersonId: order.salespersonId,
+          salespersonName: order.salespersonName,
+          salespersonLocationId: order.salespersonLocationId,
+          salespersonLocationCode: order.salespersonLocationCode,
+          salespersonLocationName: order.salespersonLocationName,
+          refundedById: actor.userId,
+        },
+      });
+    }
+
+    await tx.customerOrderLine.deleteMany({ where: { orderId: order.id } });
+    await tx.customerOrderLine.createMany({
+      data: input.lines.map((line) => {
+        const product = products.get(line.productId)!;
+        const unit = line.finalUnitPrice ?? product.price?.toNumber() ?? 0;
+        return {
+          orderId: order.id,
+          productId: product.id,
+          productItemCode: product.itemCode,
+          productName: product.name,
+          quantity: line.quantity,
+          baseUnitPrice: product.price ?? decimal(0),
+          finalUnitPrice: decimal(unit),
+        };
+      }),
+    });
+
+    const updated = await tx.customerOrder.update({
+      where: { id: order.id },
+      data: {
+        totalAmount: decimal(total),
+        // What is still owed after whatever has just been handed back. Never
+        // negative: an overpayment is returned rather than carried.
+        remainingBalance: decimal(Math.max(Math.round((total - (paid - handedBack)) * 100) / 100, 0)),
+      },
+      include: ORDER_INCLUDE,
+    });
+
+    await recordAuditLog({
+      category: "Sales",
+      action: "Customer Order Amended",
+      actorId: actor.userId,
+      reference: order.reference,
+      details: `${order.lines.length} line(s) to ${input.lines.length}, total ${order.totalAmount.toNumber()} to ${total}${refund ? `, refunded ${excess}` : ""}`,
+    });
+
+    return serializeOrder(updated);
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
 export async function createCustomerOrder(actor: AuthContext, input: z.infer<typeof customerOrderMutationSchema>) {
@@ -1657,9 +1834,32 @@ export async function respondToSaleMismatch(actor: AuthContext, saleId: string, 
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
-export async function resolveSale(actor: AuthContext, saleId: string, input: z.infer<typeof accountingResolutionSchema>) {
-  assertCapability(actor, input.action === "CONFIRMED_CORRECT" ? "sales:resolve" : "sales:void-replace");
-  assertAccounting(actor);
+/**
+ * Settles a reported mismatch.
+ *
+ * `branchCorrection` is the branch putting right its own encoding, which it
+ * reaches straight from the response where it admitted the mistake. It is the
+ * same void and replace Accounting would perform, not a second mechanism: the
+ * wrong receipt is voided, its stock goes back, and the corrected one is posted
+ * unverified for Accounting to check. A branch may do nothing else here — not
+ * confirm its own encoding correct, not void without a replacement — and only
+ * after saying the sale was encoded incorrectly.
+ */
+export async function resolveSale(
+  actor: AuthContext,
+  saleId: string,
+  input: z.infer<typeof accountingResolutionSchema>,
+  options: { branchCorrection?: boolean } = {},
+) {
+  if (options.branchCorrection) {
+    if (input.action !== "VOIDED_REPLACED") {
+      throw new CustomerSalesError("INVALID_RESOLUTION", "A branch may only correct its own encoding", 403);
+    }
+    assertCapability(actor, "sales:mismatch:respond");
+  } else {
+    assertCapability(actor, input.action === "CONFIRMED_CORRECT" ? "sales:resolve" : "sales:void-replace");
+    assertAccounting(actor);
+  }
   try {
     return await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "Sale" WHERE id = ${saleId} FOR UPDATE`;
@@ -1673,7 +1873,10 @@ export async function resolveSale(actor: AuthContext, saleId: string, input: z.i
     if (sale.status !== "POSTED" || review.status !== "MISMATCH_REPORTED" || review.resolvedAt) throw new CustomerSalesError("INVALID_STATE", "Only reported mismatches can be resolved", 409);
     if (!review.branchResponse) throw new CustomerSalesError("BRANCH_RESPONSE_REQUIRED", "Wait for the branch to review the mismatch", 409);
     if (input.action === "CONFIRMED_CORRECT" && review.branchResponse !== "ORIGINAL_ENCODING_CORRECT") throw new CustomerSalesError("INVALID_RESOLUTION", "Branch did not confirm the original encoding", 409);
-    if (input.action === "VOIDED_REPLACED" && review.branchResponse !== "RECEIPT_CORRECTION_NEEDED") throw new CustomerSalesError("INVALID_RESOLUTION", "Branch did not confirm that receipt correction is needed", 409);
+    const replaceable: NonNullable<typeof review.branchResponse>[] = options.branchCorrection
+      ? ["SALE_ENCODED_INCORRECT"]
+      : ["RECEIPT_CORRECTION_NEEDED"];
+    if (input.action === "VOIDED_REPLACED" && !replaceable.includes(review.branchResponse)) throw new CustomerSalesError("INVALID_RESOLUTION", "Branch did not confirm that receipt correction is needed", 409);
     if (input.action === "VOIDED" && review.branchResponse !== "SALE_ENCODED_INCORRECT") throw new CustomerSalesError("INVALID_RESOLUTION", "Only an incorrectly encoded sale can be voided without a replacement", 409);
     const now = new Date();
     if (input.action === "CONFIRMED_CORRECT") {
@@ -1719,7 +1922,13 @@ export async function resolveSale(actor: AuthContext, saleId: string, input: z.i
     const replacement = input.replacement;
     if (!replacement) throw new CustomerSalesError("INVALID_INPUT", "Replacement sale details are required", 400);
     assertUniqueComparisonLines(replacement);
-    if (!review.branchReplacementReceiptNumber || replacement.receiptNumber !== review.branchReplacementReceiptNumber) throw new CustomerSalesError("INVALID_REPLACEMENT_RECEIPT", "Use the replacement receipt number confirmed by the branch", 409);
+    /*
+     * Accounting replaces against a number the branch named earlier, so the two
+     * have to agree. A branch correcting its own encoding writes the new
+     * receipt as it corrects, and names it here: there is no earlier number to
+     * agree with.
+     */
+    if (!options.branchCorrection && (!review.branchReplacementReceiptNumber || replacement.receiptNumber !== review.branchReplacementReceiptNumber)) throw new CustomerSalesError("INVALID_REPLACEMENT_RECEIPT", "Use the replacement receipt number confirmed by the branch", 409);
     const productIds = replacement.lines.map((line) => line.itemCode);
     if (new Set(productIds).size !== productIds.length) throw new CustomerSalesError("INVALID_LINES", "A replacement product may appear only once", 400);
     const products = await tx.product.findMany({ where: { itemCode: { in: productIds }, status: "ACTIVE" }, select: { id: true, itemCode: true, name: true, warrantyDurationMonths: true } });

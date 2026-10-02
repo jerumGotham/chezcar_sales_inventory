@@ -40,7 +40,7 @@ const BRANCH_MANAGER = [
   "dashboard:view",
   "notifications:mark-read",
   "customers:create", "customers:update",
-  "customer-orders:create", "customer-orders:reserve", "customer-orders:record-payment",
+  "customer-orders:create", "customer-orders:update", "customer-orders:reserve", "customer-orders:record-payment",
   "customer-orders:release", "customer-orders:cancel",
   "sales:post", "sales:correction:request",
   "sales:verify", "sales:mismatch:respond", "sales:evidence:upload",

@@ -2,7 +2,7 @@ import { ZodError } from "zod";
 
 import type { CapabilityId } from "@/lib/contracts/roles";
 import { authorizationErrorResponse, requireCapability } from "@/lib/server/authorization";
-import { cancelCustomerOrder, cancelOrderSchema, CustomerSalesError, orderPaymentSchema, recordCustomerOrderPayment, releaseCustomerOrder, releaseOrderSchema, reserveCustomerOrder } from "../../../../../lib/server/services/customer-sales";
+import { cancelCustomerOrder, cancelOrderSchema, CustomerSalesError, customerOrderLinesSchema, orderPaymentSchema, recordCustomerOrderPayment, releaseCustomerOrder, releaseOrderSchema, reserveCustomerOrder, updateCustomerOrderLines } from "../../../../../lib/server/services/customer-sales";
 
 type Context = { params: Promise<{ orderId: string; action: string }> };
 
@@ -11,6 +11,7 @@ const ACTION_CAPABILITIES = {
   cancel: "customer-orders:cancel",
   payment: "customer-orders:record-payment",
   reserve: "customer-orders:reserve",
+  lines: "customer-orders:update",
 } as const satisfies Record<string, CapabilityId>;
 
 function isOrderAction(action: string): action is keyof typeof ACTION_CAPABILITIES {
@@ -33,6 +34,7 @@ export async function POST(request: Request, context: Context) {
     if (action === "release") return Response.json({ data: await releaseCustomerOrder(actor, orderId, releaseOrderSchema.parse(await request.json())) });
     if (action === "cancel") return Response.json({ data: await cancelCustomerOrder(actor, orderId, cancelOrderSchema.parse(await request.json())) });
     if (action === "payment") return Response.json({ data: await recordCustomerOrderPayment(actor, orderId, orderPaymentSchema.parse(await request.json())) });
+    if (action === "lines") return Response.json({ data: await updateCustomerOrderLines(actor, orderId, customerOrderLinesSchema.parse(await request.json())) });
     return Response.json({ data: await reserveCustomerOrder(actor, orderId) });
   } catch (error) {
     return errorResponse(error);

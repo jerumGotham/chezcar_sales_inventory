@@ -9,6 +9,7 @@ const IMPLIED_CAPABILITIES: Partial<Record<CapabilityId, readonly CapabilityId[]
   "customer-orders:reserve": ["customer-orders:view"],
   "customer-orders:record-payment": ["customer-orders:view"],
   "customer-orders:release": ["customer-orders:view"],
+  "customer-orders:update": ["customer-orders:view"],
   "customer-orders:cancel": ["customer-orders:view"],
   "customer-orders:cancel-paid": ["customer-orders:view"],
   // Handing money back happens inside cancelling a paid order, so the one is

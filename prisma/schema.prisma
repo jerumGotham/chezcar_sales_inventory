@@ -200,8 +200,8 @@ enum PaymentMethod {
 }
 
 model Refund {
-  id                      String            @id @default(cuid())
-  reference               String            @unique
+  id                      String         @id @default(cuid())
+  reference               String         @unique
   kind                    RefundKind
   /// The branch whose sales this reduces: the one that recorded the money.
   /// Deducting from a different branch would distort both branches' figures.
@@ -214,11 +214,11 @@ model Refund {
   saleId                  String?
   /// Always positive: the amount handed back. Reports subtract it, so a
   /// negative here would add revenue instead of removing it.
-  amount                  Decimal           @db.Decimal(12, 2)
+  amount                  Decimal        @db.Decimal(12, 2)
   method                  PaymentMethod
   /// The slip the customer signs for the money, the way a Payment has a receipt.
   acknowledgementNumber   String
-  reason                  String            @db.Text
+  reason                  String         @db.Text
   salespersonId           String?
   salespersonName         String?
   salespersonLocationId   String?
@@ -227,17 +227,17 @@ model Refund {
   refundedById            String
   /// The day the money went back. A refund is dated when it happened, so a
   /// report already printed for an earlier period does not change underneath.
-  refundedAt              DateTime          @default(now())
-  location                Location          @relation("RefundSellingLocation", fields: [locationId], references: [id])
-  stockLocation           Location?         @relation("RefundStockLocation", fields: [stockLocationId], references: [id])
-  customer                Customer?         @relation(fields: [customerId], references: [id])
-  order                   CustomerOrder?    @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  sale                    Sale?             @relation(fields: [saleId], references: [id], onDelete: Restrict)
-  salesperson             Personnel?        @relation(fields: [salespersonId], references: [id], onDelete: Restrict)
-  refundedBy              User              @relation("RefundRefundedBy", fields: [refundedById], references: [id], onDelete: Restrict)
+  refundedAt              DateTime       @default(now())
+  location                Location       @relation("RefundSellingLocation", fields: [locationId], references: [id])
+  stockLocation           Location?      @relation("RefundStockLocation", fields: [stockLocationId], references: [id])
+  customer                Customer?      @relation(fields: [customerId], references: [id])
+  order                   CustomerOrder? @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  sale                    Sale?          @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  salesperson             Personnel?     @relation(fields: [salespersonId], references: [id], onDelete: Restrict)
+  refundedBy              User           @relation("RefundRefundedBy", fields: [refundedById], references: [id], onDelete: Restrict)
   lines                   RefundLine[]
-  createdAt               DateTime          @default(now())
-  updatedAt               DateTime          @updatedAt
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
 
   @@index([locationId, refundedAt])
   @@index([stockLocationId])
@@ -277,6 +277,10 @@ enum PaymentKind {
 /// money received, and `Payment.saleId` is unique, so money going back out is a
 /// ledger of its own rather than an edit of the receipt that brought it in.
 enum RefundKind {
+  /// An order amended before release, where the new total fell below what the
+  /// customer had already paid. Money only: the reservation is corrected by the
+  /// amendment itself, and nothing was ever released to come back.
+  AMENDED_ORDER
   /// A cancelled order: money only. Nothing was released to the customer, and
   /// the reservation is returned by the cancellation itself.
   CANCELLED_ORDER
@@ -398,8 +402,8 @@ model Location {
   customerWarranties   CustomerWarranty[]
   supplierClaims       SupplierClaim[]
   payments             Payment[]
-  refunds              Refund[]                @relation("RefundSellingLocation")
-  refundStockReturns   Refund[]                @relation("RefundStockLocation")
+  refunds              Refund[]             @relation("RefundSellingLocation")
+  refundStockReturns   Refund[]             @relation("RefundStockLocation")
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
 }
