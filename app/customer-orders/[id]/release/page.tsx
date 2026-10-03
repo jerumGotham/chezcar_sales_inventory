@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle2, Loader2, PackageCheck } from "lucide-react";
 
+import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -34,6 +35,9 @@ type OrderDetail = {
   lines: Array<{ itemCode: string; name: string; quantity: number; amount: number }>;
 };
 
+/** The release form's typed values, copied out before React resets the form. */
+type ReleaseInput = { finalReceiptNumber: string; paymentMethod: string; notes: string };
+
 function formatPeso(value: number) {
   return new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 }
@@ -54,6 +58,15 @@ export default function ReleaseCustomerOrderPage() {
   const orderId = params.id;
   const { data: order, isLoading, error } = useQuery({ queryKey: ["customer-order", orderId], queryFn: () => fetchOrder(orderId), enabled: Boolean(orderId) });
   const [salespersonId, setSalespersonId] = useState("");
+  /*
+   * Release moves stock out and posts a sale, and neither is undone by going
+   * back a page, so the form is held until it is confirmed.
+   *
+   * The typed values are copied out rather than the FormData kept: React resets
+   * the form once the action returns, and a retained FormData can come back
+   * empty by the time the dialog is answered, which silently released nothing.
+   */
+  const [pendingRelease, setPendingRelease] = useState<ReleaseInput | null>(null);
   const salespersonQuery = useQuery({
     queryKey: ["customer-order-salespersons", order?.locationId],
     queryFn: async () => {
@@ -71,8 +84,7 @@ export default function ReleaseCustomerOrderPage() {
     setSalespersonId(currentIsValid ? order.salesperson!.personnelId : "");
   }, [order, salespersonQuery.data]);
   const releaseMutation = useMutation({
-    mutationFn: async (formData: FormData) => {
-      const finalReceiptNumber = String(formData.get("finalReceiptNumber") ?? "").trim();
+    mutationFn: async ({ finalReceiptNumber, paymentMethod, notes }: ReleaseInput) => {
       // A receipt records money received. Releasing an order that is already
       // paid in full takes none, so there is nothing to write a number on.
       const collectsMoney = (order?.balance ?? 0) > 0;
@@ -93,9 +105,9 @@ export default function ReleaseCustomerOrderPage() {
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...(collectsMoney ? { finalReceiptNumber, paymentMethod: String(formData.get("paymentMethod") ?? "CASH") } : {}),
+          ...(collectsMoney ? { finalReceiptNumber, paymentMethod } : {}),
           amountPaid: order?.balance ?? 0,
-          notes: String(formData.get("notes") ?? "").trim() || undefined,
+          notes: notes || undefined,
         }),
       });
       const json = await response.json();
@@ -167,7 +179,11 @@ export default function ReleaseCustomerOrderPage() {
                 <Summary label="Downpayment" value={formatPeso(order.downpayment)} />
                 <Summary label="Remaining Balance" value={formatPeso(order.balance)} strong />
               </div>
-              {actions?.canRelease ? <form className="mt-6 space-y-4" action={(formData) => releaseMutation.mutate(formData)}>
+              {actions?.canRelease ? <form className="mt-6 space-y-4" action={(formData) => setPendingRelease({
+                finalReceiptNumber: String(formData.get("finalReceiptNumber") ?? "").trim(),
+                paymentMethod: String(formData.get("paymentMethod") ?? "CASH"),
+                notes: String(formData.get("notes") ?? "").trim(),
+              })}>
                 <div className="space-y-2"><Label htmlFor="salespersonId">Salesperson</Label><select id="salespersonId" value={salespersonId} onChange={(event) => setSalespersonId(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" required><option value="">Select salesperson</option>{salespersonQuery.data?.map((personnel) => <option key={personnel.id} value={personnel.id}>{personnel.fullName}</option>)}</select>{salespersonQuery.data?.length === 0 ? <p className="text-xs text-amber-700 dark:text-amber-300">No eligible Salesperson is available in your authorized locations.</p> : null}</div>
                 {order.balance > 0 ? (
                   <div className="space-y-2"><Label htmlFor="finalReceiptNumber">Final Receipt Number</Label><Input id="finalReceiptNumber" name="finalReceiptNumber" placeholder="Handwritten receipt number" /></div>
@@ -186,6 +202,25 @@ export default function ReleaseCustomerOrderPage() {
           </Card>
         </div>
       ) : null}
+
+      <ConfirmationDialog
+        open={pendingRelease !== null}
+        title="Release this order?"
+        description={order
+          ? `${order.lines.reduce((sum, line) => sum + line.quantity, 0)} unit(s) will leave ${order.branch} and a sale will be posted against ${order.customer}. ` +
+            (order.balance > 0
+              ? `${formatPeso(order.balance)} is collected now against the receipt you entered.`
+              : "The order is paid in full, so nothing is collected and no receipt is issued.") +
+            " Stock and the posted sale cannot be undone from here."
+          : ""}
+        confirmLabel="Release order"
+        onConfirm={() => {
+          const input = pendingRelease;
+          setPendingRelease(null);
+          if (input) releaseMutation.mutate(input);
+        }}
+        onOpenChange={(next) => { if (!next) setPendingRelease(null); }}
+      />
     </PageShell>
   );
 }
