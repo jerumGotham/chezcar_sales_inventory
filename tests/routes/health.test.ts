@@ -50,13 +50,18 @@ describe("health route", () => {
    * migration this build depends on was never applied, so the release will
    * throw on whatever the missing column feeds.
    */
-  it("refuses a build whose migrations the database has not run", async () => {
+  /*
+   * Reported in the body, never in the status code: this endpoint is also the
+   * container's liveness probe, and a non-2xx takes the process off the proxy.
+   * A build on an old schema is degraded, not dead.
+   */
+  it("reports a schema the database has not caught up with, without failing liveness", async () => {
     database(["20260101000000_first"]);
     mocks.readdir.mockResolvedValue(folders("20260101000000_first", "20260202000000_second"));
 
     const result = await GET();
 
-    expect(result.status).toBe(503);
+    expect(result.status).toBe(200);
     await expect(result.json()).resolves.toEqual({
       status: "schema-behind",
       migrations: { checked: true, shipped: 2, pending: 1 },

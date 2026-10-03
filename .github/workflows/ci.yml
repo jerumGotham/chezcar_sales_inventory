@@ -196,12 +196,15 @@ jobs:
           fi
           for attempt in $(seq 1 12); do
             body="$(curl --silent --max-time 10 "${HEALTH_URL}" || true)"
-            status="$(printf '%s' "${body}" | jq --raw-output '.status // "unreachable"')"
+            # A starting container answers with the proxy's HTML, which is not
+            # JSON. Under pipefail that killed the step outright instead of
+            # waiting, so a parse failure is just another reason to retry.
+            status="$(printf '%s' "${body}" | jq --raw-output '.status // "unreachable"' 2>/dev/null || echo "unreachable")"
             case "${status}" in
               ok)
                 # An image without its migration folder cannot be checked, and
                 # an unverifiable release is the state that caused the outage.
-                if [ "$(printf '%s' "${body}" | jq --raw-output '.migrations.checked // false')" != "true" ]; then
+                if [ "$(printf '%s' "${body}" | jq --raw-output '.migrations.checked // false' 2>/dev/null || echo false)" != "true" ]; then
                   echo "The application cannot see its own migrations, so the schema is unverified:"
                   echo "${body}"
                   exit 1

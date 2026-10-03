@@ -33,6 +33,13 @@ function response(
  * have. A health check that only proves the database answers cannot see this,
  * so it compares the two lists and says how many migrations are outstanding.
  *
+ * It is reported in the body and never in the status code. This endpoint is
+ * also the container's liveness probe in the Dockerfile, which kills the
+ * container on any non-2xx; answering 503 here took the whole site off the
+ * proxy for a schema that was merely behind, which is far worse than the
+ * broken screen it was meant to catch. A build running against an old schema
+ * is degraded, not dead. Deployment verification reads `status`.
+ *
  * Only counts are returned. The names would tell an unauthenticated caller what
  * the schema is being changed into.
  */
@@ -61,10 +68,10 @@ export async function GET() {
   try {
     await prisma.$queryRaw`SELECT 1`;
     const migrations = await migrationState();
-    // A build whose migrations have not run is not healthy: it will answer some
-    // routes and throw on whatever the missing columns feed.
+    // Degraded, not dead: the process serves, so it stays in the proxy, and the
+    // deploy fails on this status instead.
     if (migrations.checked && migrations.pending > 0) {
-      return response("schema-behind", 503, migrations);
+      return response("schema-behind", 200, migrations);
     }
     return response("ok", 200, migrations);
   } catch {
