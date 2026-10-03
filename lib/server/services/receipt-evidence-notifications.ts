@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { assertCapability, AuthorizationError, type AuthContext } from "@/lib/server/authorization";
 import { prisma } from "@/lib/server/prisma";
 import { canAccessLocation } from "@/lib/server/policy/access";
+import { recordAuditLog } from "./audit-log";
 import { createNotifications } from "./notifications";
 import { CustomerSalesError } from "./customer-sales";
 
@@ -161,6 +162,18 @@ export async function notifyPaymentEvidencePending(actor: AuthContext, paymentId
       relatedId: payment.id,
       relatedReference: payment.reference,
     })));
+    await recordAuditLog({
+      category: "Receipt Verification",
+      action: "Payment Receipt Photo Requested",
+      actorId: actor.userId,
+      reference: payment.receiptNumber,
+      details: `Asked the branch and the administrators for the missing receipt photo`,
+      facts: [
+        { label: "Payment", value: payment.reference },
+        { label: "Amount", value: String(payment.amount.toNumber()) },
+        { label: "People notified", value: String(recipients.length) },
+      ],
+    }, tx);
     return { notified: true, notifiedAt: now.toISOString(), recipients: recipients.length };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }

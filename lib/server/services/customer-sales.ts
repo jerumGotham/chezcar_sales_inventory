@@ -948,7 +948,7 @@ export async function updateCustomerOrderSalesperson(
         occurredAt: changedAt,
       },
     });
-    return serializeOrder(await tx.customerOrder.update({
+    const reassigned = await tx.customerOrder.update({
       where: { id },
       data: {
         salespersonId: salesperson.id,
@@ -960,7 +960,20 @@ export async function updateCustomerOrderSalesperson(
         salespersonUpdatedAt: changedAt,
       },
       include: ORDER_INCLUDE,
-    }));
+    });
+    await recordAuditLog({
+      category: "Customer Orders",
+      action: "Customer Order Salesperson Changed",
+      actorId: actor.userId,
+      reference: reassigned.reference,
+      locationLabel: reassigned.location.name,
+      details: `${order.salespersonName ?? "Not recorded"} to ${salesperson.fullName}`,
+      facts: [
+        { label: "Previous branch", value: order.salespersonLocationName ?? "-" },
+        { label: "New branch", value: salesperson.location.name },
+      ],
+    }, tx);
+    return serializeOrder(reassigned);
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
@@ -1146,6 +1159,24 @@ export async function releaseCustomerOrder(actor: AuthContext, id: string, input
     }
     for (const line of order.lines) await tx.inventoryMovement.create({ data: { productId: line.productId, locationId: order.locationId, quantity: -line.quantity, type: "CUSTOMER_ORDER_RELEASE", actorId: actor.userId, reference: saleReceiptNumber, remarks: `Released order ${order.reference}` } });
     const updated = await tx.customerOrder.update({ where: { id: order.id }, data: { status: "COMPLETED", finalReceiptNumber: input.finalReceiptNumber ?? null, remainingBalance: decimal(0), releasedById: actor.userId, releasedAt }, include: ORDER_INCLUDE });
+    await recordAuditLog({
+      category: "Customer Orders",
+      action: "Customer Order Released",
+      actorId: actor.userId,
+      reference: order.reference,
+      locationLabel: updated.location.name,
+      details: collectsMoney
+        ? `Released against receipt ${saleReceiptNumber}, collecting ${input.amountPaid}`
+        : "Released with no receipt: the order was paid in full before release",
+      items: order.lines.map((line) => ({ name: `${line.productItemCode} ${line.productName}`, quantity: line.quantity })),
+      facts: [
+        { label: "Sale", value: sale.reference },
+        { label: "Customer", value: updated.customer.name },
+        { label: "Salesperson", value: order.salespersonName ?? "-" },
+        { label: "Order total", value: String(order.totalAmount.toNumber()) },
+        { label: "Collected at release", value: String(input.amountPaid) },
+      ],
+    }, tx);
     return serializeOrder(updated);
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
@@ -1399,6 +1430,22 @@ async function createDirectSaleForActor(actor: AuthContext, rawInput: z.input<ty
       mirrorsSaleReview: true,
     });
     for (const line of input.lines) await tx.inventoryMovement.create({ data: { productId: line.productId, locationId, quantity: -line.quantity, type: "DIRECT_SALE", actorId: actor.userId, reference: input.receiptBooklet ? `${input.receiptBooklet}-${input.manualReceiptNumber}` : input.manualReceiptNumber, remarks: `Direct sale ${sale.reference}` } });
+    await recordAuditLog({
+      category: "Sales",
+      action: "Direct Sale Posted",
+      actorId: actor.userId,
+      reference: sale.manualReceiptNumber,
+      locationLabel: sale.location.name,
+      details: `${input.lines.length} line(s), total ${total}, paid ${input.amountPaid} by ${input.paymentMethod}`,
+      items: sale.lines.map((line) => ({ name: `${line.productItemCode} ${line.productName}`, quantity: line.quantity, amount: String(line.unitPrice.toNumber()) })),
+      facts: [
+        { label: "Sale", value: sale.reference },
+        { label: "Customer", value: sale.customer?.name ?? "Guest" },
+        { label: "Salesperson", value: salesperson.fullName },
+        { label: "Discount", value: String(input.discountAmount) },
+        { label: "Sold on", value: soldAt.toISOString().slice(0, 10) },
+      ],
+    }, tx);
     return serializeSaleWithCorrection(sale);
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
@@ -1774,6 +1821,21 @@ export async function reviewSale(actor: AuthContext, saleId: string, input: z.in
     if (input.status === "MISMATCH_REPORTED") {
       await notifySaleParties(tx, sale, "Receipt mismatch reported", `${sale.manualReceiptNumber} was flagged for ${input.mismatchCategory}.`);
     }
+    await recordAuditLog({
+      category: "Receipt Verification",
+      action: input.status === "VERIFIED" ? "Sale Receipt Verified" : "Sale Receipt Mismatch Reported",
+      actorId: actor.userId,
+      reference: sale.manualReceiptNumber,
+      details: input.status === "VERIFIED"
+        ? "Confirmed against the handwritten receipt"
+        : `${input.mismatchCategory}: ${input.notes ?? ""}`.trim(),
+      facts: [
+        { label: "Sale", value: sale.reference },
+        { label: "Encoded total", value: String(sale.totalAmount.toNumber()) },
+        { label: "Receipt total", value: String(input.comparison.totalAmount) },
+        ...(differences.length ? [{ label: "Differences", value: differences.join("; ") }] : []),
+      ],
+    }, tx);
     return updated;
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
@@ -1881,6 +1943,20 @@ export async function respondToSaleMismatch(actor: AuthContext, saleId: string, 
       relatedId: sale.id,
       relatedReference: sale.reference,
     })));
+    await recordAuditLog({
+      category: "Receipt Verification",
+      action: "Branch Answered Receipt Mismatch",
+      actorId: actor.userId,
+      reference: sale.manualReceiptNumber,
+      details: `Branch ${responseLabel}${input.note ? `: ${input.note}` : ""}`,
+      facts: [
+        { label: "Sale", value: sale.reference },
+        { label: "Response", value: input.response },
+        ...(input.response === "RECEIPT_CORRECTION_NEEDED" && input.replacementReceiptNumber
+          ? [{ label: "Replacement receipt", value: input.replacementReceiptNumber }]
+          : []),
+      ],
+    }, tx);
     return {
       branchResponse: review.branchResponse,
       branchResponseNote: review.branchResponseNote,
