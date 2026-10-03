@@ -1303,6 +1303,9 @@ model CustomerOrder {
   status                   CustomerOrderStatus             @default(RESERVED)
   type                     CustomerOrderType
   downpaymentAmount        Decimal                         @default(0) @db.Decimal(12, 2)
+  /// Taken off the whole order, not off a line, the way a POS sale is
+  /// discounted. totalAmount is already net of it.
+  discountAmount           Decimal                         @default(0) @db.Decimal(12, 2)
   downpaymentReceiptNumber String?                         @unique
   finalReceiptNumber       String?                         @unique
   totalAmount              Decimal                         @db.Decimal(12, 2)

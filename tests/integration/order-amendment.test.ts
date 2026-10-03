@@ -118,6 +118,58 @@ describe("amending a customer order before release", () => {
       await expect(
         updateCustomerOrderLines(owner, order.id, { lines: [{ productId: bumper.id, quantity: 1 }] }),
       ).rejects.toMatchObject({ code: "ORDER_NOT_EDITABLE" });
+
+      /*
+       * A discount is one figure off the whole order, not a price typed over
+       * line by line. A fresh order, because the one above is released.
+       */
+      const discounted = await createCustomerOrder(owner, {
+        customer: { name: "Discount Customer" },
+        type: "RESERVATION_WITH_DP",
+        locationId: branch.id,
+        salespersonId: fixture.salespersons.QC.id,
+        downpaymentAmount: 500,
+        downpaymentReceiptNumber: "AMEND-DP-2",
+        lines: [{ productId: bumper.id, quantity: 3 }],
+      });
+      expect((await prisma.customerOrder.findUniqueOrThrow({ where: { id: discounted.id } })).totalAmount.toNumber()).toBe(3_000);
+
+      await updateCustomerOrderLines(owner, discounted.id, {
+        lines: [{ productId: bumper.id, quantity: 3 }],
+        discountAmount: 400,
+      });
+      const afterDiscount = await prisma.customerOrder.findUniqueOrThrow({
+        where: { id: discounted.id },
+        include: { lines: true },
+      });
+      expect(afterDiscount.discountAmount.toNumber()).toBe(400);
+      expect(afterDiscount.totalAmount.toNumber()).toBe(2_600);
+      // The line keeps the branch price; only the order total moves.
+      expect(afterDiscount.lines[0].finalUnitPrice.toNumber()).toBe(1_000);
+      expect(afterDiscount.lines[0].baseUnitPrice.toNumber()).toBe(1_000);
+      expect(afterDiscount.remainingBalance.toNumber()).toBe(2_100);
+
+      // More than the goods come to is not a discount.
+      await expect(
+        updateCustomerOrderLines(owner, discounted.id, {
+          lines: [{ productId: bumper.id, quantity: 3 }],
+          discountAmount: 3_500,
+        }),
+      ).rejects.toMatchObject({ code: "INVALID_DISCOUNT" });
+
+      // Leaving it out keeps what the order had rather than quietly clearing it.
+      await updateCustomerOrderLines(owner, discounted.id, { lines: [{ productId: bumper.id, quantity: 3 }] });
+      expect((await prisma.customerOrder.findUniqueOrThrow({ where: { id: discounted.id } })).discountAmount.toNumber()).toBe(400);
+
+      // Released, the receipt says what was taken off, the way a POS sale does.
+      await releaseCustomerOrder(owner, discounted.id, {
+        finalReceiptNumber: "AMEND-FINAL-2",
+        paymentMethod: "CASH",
+        amountPaid: 2_100,
+      });
+      const discountedSale = await prisma.sale.findFirstOrThrow({ where: { orderId: discounted.id } });
+      expect(discountedSale.discountAmount.toNumber()).toBe(400);
+      expect(discountedSale.totalAmount.toNumber()).toBe(2_600);
     });
   }, 120_000);
 });

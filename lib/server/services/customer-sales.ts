@@ -105,6 +105,11 @@ export const customerOrderLinesSchema = z.object({
     /** Left out, the line takes the branch's price. Below it, the gap is the discount. */
     finalUnitPrice: money.optional(),
   })).min(1, "An order needs at least one line"),
+  /**
+   * Taken off the whole order rather than off a line, the way a POS sale is
+   * discounted. Left out, the order keeps whatever discount it already had.
+   */
+  discountAmount: money.optional(),
   /** Required only when the change hands money back. */
   acknowledgementNumber: z.string().trim().max(100).optional(),
   refundMethod: z.enum(["CASH", "GCASH", "MAYA", "BANK_TRANSFER", "CREDIT_CARD", "SPLIT"]).optional(),
@@ -635,10 +640,17 @@ export async function updateCustomerOrderLines(
       }
     }
 
-    const total = input.lines.reduce((sum, line) => {
+    const subtotal = input.lines.reduce((sum, line) => {
       const product = products.get(line.productId)!;
       return sum + line.quantity * (line.finalUnitPrice ?? product.price?.toNumber() ?? 0);
     }, 0);
+    // One figure off the whole order, which is how the branch gives a discount
+    // and how a POS sale already records one.
+    const discountAmount = input.discountAmount ?? order.discountAmount.toNumber();
+    if (discountAmount > subtotal) {
+      throw new CustomerSalesError("INVALID_DISCOUNT", "Discount cannot exceed the order subtotal", 400);
+    }
+    const total = Math.round((subtotal - discountAmount) * 100) / 100;
 
     const collected = (await tx.payment.aggregate({
       where: { orderId: order.id },
@@ -707,6 +719,7 @@ export async function updateCustomerOrderLines(
       where: { id: order.id },
       data: {
         totalAmount: decimal(total),
+        discountAmount: decimal(discountAmount),
         // What is still owed after whatever has just been handed back. Never
         // negative: an overpayment is returned rather than carried.
         remainingBalance: decimal(Math.max(Math.round((total - (paid - handedBack)) * 100) / 100, 0)),
@@ -719,7 +732,7 @@ export async function updateCustomerOrderLines(
       action: "Customer Order Amended",
       actorId: actor.userId,
       reference: order.reference,
-      details: `${order.lines.length} line(s) to ${input.lines.length}, total ${order.totalAmount.toNumber()} to ${total}${refund ? `, refunded ${excess}` : ""}`,
+      details: `${order.lines.length} line(s) to ${input.lines.length}, total ${order.totalAmount.toNumber()} to ${total}, discount ${order.discountAmount.toNumber()} to ${discountAmount}${refund ? `, refunded ${excess}` : ""}`,
     });
 
     return serializeOrder(updated);
@@ -1059,7 +1072,7 @@ export async function releaseCustomerOrder(actor: AuthContext, id: string, input
     if (!salesperson) throw new CustomerSalesError("INVALID_SALESPERSON", "Assign an active salesperson within your authorized locations before release", 409);
     if (input.amountPaid !== order.remainingBalance.toNumber()) throw new CustomerSalesError("INVALID_BALANCE", "Amount paid must match remaining balance", 400);
     await releaseReservedLines(tx, order.locationId, order.lines);
-    const sale = await tx.sale.create({ data: { reference: `SALE-${randomUUID()}`, manualReceiptNumber: input.finalReceiptNumber, receiptBooklet: "", locationId: order.locationId, customerId: order.customerId, orderId: order.id, salespersonId: order.salespersonId, salespersonName: order.salespersonName, salespersonLocationId: order.salespersonLocationId, salespersonLocationCode: order.salespersonLocationCode, salespersonLocationName: order.salespersonLocationName, paymentMethod: input.paymentMethod as PaymentMethod, totalAmount: order.totalAmount, amountPaid: decimal(input.amountPaid), notes: input.notes || null, postedById: actor.userId, lines: { create: order.lines.map((line) => ({ productId: line.productId, productItemCode: line.productItemCode, productName: line.productName, quantity: line.quantity, unitPrice: line.finalUnitPrice })) }, accountingReview: { create: {} } } });
+    const sale = await tx.sale.create({ data: { reference: `SALE-${randomUUID()}`, manualReceiptNumber: input.finalReceiptNumber, receiptBooklet: "", locationId: order.locationId, customerId: order.customerId, orderId: order.id, salespersonId: order.salespersonId, salespersonName: order.salespersonName, salespersonLocationId: order.salespersonLocationId, salespersonLocationCode: order.salespersonLocationCode, salespersonLocationName: order.salespersonLocationName, paymentMethod: input.paymentMethod as PaymentMethod, totalAmount: order.totalAmount, discountAmount: order.discountAmount, amountPaid: decimal(input.amountPaid), notes: input.notes || null, postedById: actor.userId, lines: { create: order.lines.map((line) => ({ productId: line.productId, productItemCode: line.productItemCode, productName: line.productName, quantity: line.quantity, unitPrice: line.finalUnitPrice })) }, accountingReview: { create: {} } } });
     const warrantyProducts = await tx.product.findMany({ where: { id: { in: order.lines.map((line) => line.productId) } }, select: { id: true, warrantyDurationMonths: true } });
     for (const product of warrantyProducts) await tx.saleLine.updateMany({ where: { saleId: sale.id, productId: product.id }, data: { warrantyDurationMonths: product.warrantyDurationMonths } });
     await registerReceipt(tx, input.finalReceiptNumber, "CUSTOMER_ORDER_FINAL", { orderId: order.id, saleId: sale.id, locationId: order.locationId, receiptBooklet: "" });
@@ -2312,7 +2325,7 @@ function serializeOrder(order: Prisma.CustomerOrderGetPayload<{ include: typeof 
     COMPLETED: "Released",
     CANCELLED: "Cancelled",
   };
-  return { id: order.id, orderNo: order.reference, customer: order.customer.name, branch: order.location.name, locationId: order.locationId, salesperson: serializeSalespersonSnapshot(order), itemSummary: order.lines.map((line) => line.productName).join(", "), totalItems: order.lines.reduce((sum, line) => sum + line.quantity, 0), status: statusLabels[order.status], statusCode: order.status, type: order.type, paymentStatus: order.remainingBalance.toNumber() === 0 ? "Paid" : order.downpaymentAmount.toNumber() > 0 ? "Partial" : "Unpaid", downpayment: serializeMoney(order.downpaymentAmount), totalAmount: serializeMoney(order.totalAmount), balance: serializeMoney(order.remainingBalance), orderDate: order.createdAt.toISOString(), releaseDate: order.expectedReleaseDate?.toISOString() ?? "", finalReceiptNumber: order.finalReceiptNumber, downpaymentReceiptNumber: order.downpaymentReceiptNumber, notes: order.notes, cancelledAt: order.cancelledAt?.toISOString() ?? null, releasedAt: order.releasedAt?.toISOString() ?? null, lines: order.lines.map((line) => ({ productId: line.productId, itemCode: line.productItemCode, name: line.productName, quantity: line.quantity, listPrice: serializeMoney(line.baseUnitPrice), unitPrice: serializeMoney(line.finalUnitPrice), discount: serializeMoney(line.baseUnitPrice.sub(line.finalUnitPrice)), amount: line.quantity * line.finalUnitPrice.toNumber() })) };
+  return { id: order.id, orderNo: order.reference, customer: order.customer.name, branch: order.location.name, locationId: order.locationId, salesperson: serializeSalespersonSnapshot(order), itemSummary: order.lines.map((line) => line.productName).join(", "), totalItems: order.lines.reduce((sum, line) => sum + line.quantity, 0), status: statusLabels[order.status], statusCode: order.status, type: order.type, paymentStatus: order.remainingBalance.toNumber() === 0 ? "Paid" : order.downpaymentAmount.toNumber() > 0 ? "Partial" : "Unpaid", downpayment: serializeMoney(order.downpaymentAmount), subtotal: order.lines.reduce((sum, line) => sum + line.quantity * line.finalUnitPrice.toNumber(), 0), discountAmount: serializeMoney(order.discountAmount), totalAmount: serializeMoney(order.totalAmount), balance: serializeMoney(order.remainingBalance), orderDate: order.createdAt.toISOString(), releaseDate: order.expectedReleaseDate?.toISOString() ?? "", finalReceiptNumber: order.finalReceiptNumber, downpaymentReceiptNumber: order.downpaymentReceiptNumber, notes: order.notes, cancelledAt: order.cancelledAt?.toISOString() ?? null, releasedAt: order.releasedAt?.toISOString() ?? null, lines: order.lines.map((line) => ({ productId: line.productId, itemCode: line.productItemCode, name: line.productName, quantity: line.quantity, listPrice: serializeMoney(line.baseUnitPrice), unitPrice: serializeMoney(line.finalUnitPrice), discount: serializeMoney(line.baseUnitPrice.sub(line.finalUnitPrice)), amount: line.quantity * line.finalUnitPrice.toNumber() })) };
 }
 
 function serializeSalespersonSnapshot(record: {

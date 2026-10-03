@@ -32,8 +32,6 @@ type EditLine = {
   quantity: string;
   /** The branch's price, shown but not typed over. */
   unitPrice: number;
-  /** Taken off each unit. What the customer pays is the price less this. */
-  discount: string;
 };
 
 type OrderDetail = {
@@ -54,6 +52,10 @@ type OrderDetail = {
   finalReceiptNumber: string | null;
   notes: string | null;
   locationId: string;
+  /** What the lines come to before the order discount. */
+  subtotal: number;
+  /** Taken off the whole order. totalAmount is already net of it. */
+  discountAmount: number;
   lines: Array<{
     productId: string;
     itemCode: string;
@@ -85,6 +87,7 @@ export default function CustomerOrderDetailsPage() {
   const canEditLines = useCan("customer-orders:update");
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editLines, setEditLines] = useState<EditLine[]>([]);
+  const [editDiscount, setEditDiscount] = useState("0");
   const [editAck, setEditAck] = useState("");
   const [editNote, setEditNote] = useState("");
   const [editError, setEditError] = useState("");
@@ -110,12 +113,16 @@ export default function CustomerOrderDetailsPage() {
     },
   });
 
-  /** What a unit actually costs after the discount, never below zero. */
-  const nettPrice = (line: EditLine) => Math.max(line.unitPrice - (Number(line.discount) || 0), 0);
-  const editedTotal = editLines.reduce(
-    (sum, line) => sum + (Number(line.quantity) || 0) * nettPrice(line),
+  const editedSubtotal = editLines.reduce(
+    (sum, line) => sum + (Number(line.quantity) || 0) * line.unitPrice,
     0,
   );
+  /*
+   * One discount off the whole order, the way the branch actually gives one and
+   * the way a POS sale already records it. Never more than the goods come to.
+   */
+  const editedDiscount = Math.min(Math.max(Number(editDiscount) || 0, 0), editedSubtotal);
+  const editedTotal = Math.round((editedSubtotal - editedDiscount) * 100) / 100;
   /*
    * What the customer has already handed over, less anything given back. The
    * server works this out again; this only decides whether to ask for the
@@ -134,8 +141,9 @@ export default function CustomerOrderDetailsPage() {
           lines: editLines.map((line) => ({
             productId: line.productId,
             quantity: Number(line.quantity),
-            finalUnitPrice: nettPrice(line),
+            finalUnitPrice: line.unitPrice,
           })),
+          discountAmount: editedDiscount,
           ...(handsMoneyBack
             ? { acknowledgementNumber: editAck.trim(), note: editNote.trim() }
             : {}),
@@ -164,12 +172,21 @@ export default function CustomerOrderDetailsPage() {
       /*
        * Take the price from the line, not from the product today, so reopening
        * the dialog never silently reprices what was agreed. On the rare line
-       * charged above its list price, the higher figure is the price and the
-       * discount is nil, which reproduces the same amount either way.
+       * charged above its list price, the higher figure is the one to show.
        */
       unitPrice: Math.max(line.listPrice, line.unitPrice),
-      discount: String(Math.max(line.listPrice, line.unitPrice) - line.unitPrice),
     })));
+    /*
+     * An order discounted line by line before this screen took one figure is
+     * read back as that one figure: what each line was marked down, plus the
+     * order discount already recorded. The total it produces is identical, so
+     * opening the dialog never changes what the customer owes.
+     */
+    const perLine = order.lines.reduce(
+      (sum, line) => sum + line.quantity * (Math.max(line.listPrice, line.unitPrice) - line.unitPrice),
+      0,
+    );
+    setEditDiscount(String(Math.round((perLine + order.discountAmount) * 100) / 100));
     setEditAck("");
     setEditNote("");
     setEditError("");
@@ -263,15 +280,17 @@ export default function CustomerOrderDetailsPage() {
               </div>
               <div className="mt-3 overflow-x-auto">
                 <table className="w-full min-w-[640px]">
-                  <thead className="bg-muted"><tr><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Item</th><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Qty</th><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Unit</th><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Discount</th><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Amount</th></tr></thead>
-                  <tbody>{order.lines.map((line) => <tr key={line.itemCode} className="border-b"><td className="px-4 py-3 text-sm">{line.itemCode} - {line.name}</td><td className="px-4 py-3 text-sm">{line.quantity}</td><td className="px-4 py-3 text-sm">{formatPeso(line.unitPrice)}</td><td className="px-4 py-3 text-sm text-muted-foreground">{line.discount > 0 ? `-${formatPeso(line.discount)}` : "-"}</td><td className="px-4 py-3 text-sm font-medium">{formatPeso(line.amount)}</td></tr>)}</tbody>
+                  <thead className="bg-muted"><tr><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Item</th><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Qty</th><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Unit</th><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Amount</th></tr></thead>
+                  <tbody>{order.lines.map((line) => <tr key={line.itemCode} className="border-b"><td className="px-4 py-3 text-sm">{line.itemCode} - {line.name}</td><td className="px-4 py-3 text-sm">{line.quantity}</td><td className="px-4 py-3 text-sm">{formatPeso(line.unitPrice)}</td><td className="px-4 py-3 text-sm font-medium">{formatPeso(line.amount)}</td></tr>)}</tbody>
                 </table>
               </div>
             </CardContent>
           </Card>
           <Card className="h-fit">
             <CardContent className="space-y-4 p-5">
-              <Summary label="Subtotal" value={formatPeso(order.totalAmount)} />
+              <Summary label="Subtotal" value={formatPeso(order.subtotal)} />
+              {order.discountAmount > 0 ? <Summary label="Discount" value={`-${formatPeso(order.discountAmount)}`} /> : null}
+              <Summary label="Order total" value={formatPeso(order.totalAmount)} />
               <Summary label="Downpayment" value={formatPeso(order.downpayment)} />
               <Summary label="Remaining Balance" value={formatPeso(order.balance)} strong />
               <Summary label="Payment" value={order.paymentStatus} />
@@ -297,7 +316,6 @@ export default function CustomerOrderDetailsPage() {
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Product</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Qty</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Price</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Discount</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Amount</th>
                     <th className="px-3 py-2" />
                   </tr>
@@ -322,19 +340,8 @@ export default function CustomerOrderDetailsPage() {
                       <td className="w-28 px-3 py-2 text-right text-muted-foreground">
                         {formatPeso(line.unitPrice)}
                       </td>
-                      <td className="w-28 px-3 py-2">
-                        <Input
-                          type="number"
-                          min="0"
-                          max={line.unitPrice}
-                          step="0.01"
-                          value={line.discount}
-                          onChange={(event) => setEditLines((current) => current.map((item, position) =>
-                            position === index ? { ...item, discount: event.target.value } : item))}
-                        />
-                      </td>
                       <td className="px-3 py-2 text-right font-medium">
-                        {formatPeso((Number(line.quantity) || 0) * nettPrice(line))}
+                        {formatPeso((Number(line.quantity) || 0) * line.unitPrice)}
                       </td>
                       <td className="px-3 py-2 text-right">
                         <Button
@@ -369,7 +376,6 @@ export default function CustomerOrderDetailsPage() {
                         name: product.name,
                         quantity: "1",
                         unitPrice: product.price,
-                        discount: "0",
                       }]);
                 }}
               >
@@ -386,9 +392,29 @@ export default function CustomerOrderDetailsPage() {
               </select>
             </div>
 
-            <div className="rounded-xl border bg-muted p-4 text-sm">
-              <div className="flex justify-between"><span className="text-muted-foreground">New total</span><span className="font-semibold">{formatPeso(editedTotal)}</span></div>
-              <div className="mt-1 flex justify-between"><span className="text-muted-foreground">Already paid</span><span>{formatPeso(paidOnOrder)}</span></div>
+            <div className="space-y-2 rounded-xl border bg-muted p-4 text-sm">
+              <div className="flex justify-between gap-4">
+                <span className="text-muted-foreground">Subtotal</span>
+                <span>{formatPeso(editedSubtotal)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <Label htmlFor="order-discount" className="text-muted-foreground">Discount</Label>
+                <Input
+                  id="order-discount"
+                  type="number"
+                  min="0"
+                  max={editedSubtotal}
+                  step="0.01"
+                  className="w-40 text-right"
+                  value={editDiscount}
+                  onChange={(event) => setEditDiscount(event.target.value)}
+                />
+              </div>
+              <div className="flex justify-between gap-4 border-t pt-2">
+                <span className="text-muted-foreground">New total</span>
+                <span className="font-semibold">{formatPeso(editedTotal)}</span>
+              </div>
+              <div className="flex justify-between gap-4"><span className="text-muted-foreground">Already paid</span><span>{formatPeso(paidOnOrder)}</span></div>
             </div>
 
             {/*
@@ -422,8 +448,9 @@ export default function CustomerOrderDetailsPage() {
                 editLines.length === 0 ||
                 editLines.some((line) =>
                   Number(line.quantity) <= 0 ||
-                  Number(line.discount) < 0 ||
-                  Number(line.discount) > line.unitPrice) ||
+                  Number.isNaN(Number(line.quantity))) ||
+                Number(editDiscount) < 0 ||
+                Number(editDiscount) > editedSubtotal ||
                 (handsMoneyBack && (!editAck.trim() || !editNote.trim()))
               }
               onClick={() => editMutation.mutate()}
