@@ -45,7 +45,7 @@ The complete list and Role Maintenance labels are generated from `CAPABILITY_CAT
 | Method | Path | Data source | Authorization |
 | --- | --- | --- | --- |
 | `GET`, `POST` | `/api/auth/[...all]` | Better Auth + PostgreSQL | Endpoint-specific; public sign-up disabled; generic admin operations unroutable |
-| `GET` | `/api/health` | PostgreSQL readiness query | Public, data-free `200`/`503`; used by the container and manual readiness checks |
+| `GET` | `/api/health` | PostgreSQL readiness query + applied-migration comparison | Public; `200 {"status":"ok"}` when the database answers and every migration in the image has been applied, `503 {"status":"schema-behind"}` when any is outstanding, `503 {"status":"unavailable"}` when the database does not answer. Only counts are returned, never migration names. `migrations.checked` is false when the image has no readable migration folder |
 | `GET` | `/api/dashboard?salesPeriod=today&salesBranchId=<branchId>` | Prisma sales/orders/inventory/accounting plus persisted notifications | `dashboard:view`; sales filters are Owner Admin-only |
 | `GET`, `PATCH` | `/api/notifications` | Prisma Notification inbox | `notifications:view` / `notifications:mark-read` |
 | `GET` | `/api/notifications/stream` | Prisma Notification catch-up + PostgreSQL `LISTEN/NOTIFY` wake-ups | `notifications:view`; authenticated server-sent events |

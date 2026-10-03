@@ -178,17 +178,45 @@ jobs:
           echo "Deployment did not settle within 20 minutes"
           exit 1
 
+      # A deployment that reports success is not proof the release works. On
+      # 2026-10-03 Coolify finished a deployment whose pre-deployment migration
+      # never ran, and the old health check passed because the database
+      # answered SELECT 1 while the schema was a migration behind. Health now
+      # compares the migrations in the image against the ones the database has
+      # run, and this step reads that answer rather than the status code alone.
       - name: Check the application answers
-        if: vars.APP_HEALTH_URL != ''
         env:
           HEALTH_URL: ${{ vars.APP_HEALTH_URL }}
         run: |
           set -euo pipefail
+          if [ -z "${HEALTH_URL}" ]; then
+            echo "APP_HEALTH_URL is not set, so this deployment cannot be verified."
+            echo "Set it to the deployed /api/health URL, or turn COOLIFY_ENABLED off."
+            exit 1
+          fi
           for attempt in $(seq 1 12); do
-            code="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 10 "${HEALTH_URL}" || true)"
-            if [ "${code}" = "200" ]; then echo "Health check passed"; exit 0; fi
-            echo "attempt ${attempt}: ${code}"
-            sleep 10
+            body="$(curl --silent --max-time 10 "${HEALTH_URL}" || true)"
+            status="$(printf '%s' "${body}" | jq --raw-output '.status // "unreachable"')"
+            case "${status}" in
+              ok)
+                # An image without its migration folder cannot be checked, and
+                # an unverifiable release is the state that caused the outage.
+                if [ "$(printf '%s' "${body}" | jq --raw-output '.migrations.checked // false')" != "true" ]; then
+                  echo "The application cannot see its own migrations, so the schema is unverified:"
+                  echo "${body}"
+                  exit 1
+                fi
+                echo "Health check passed: ${body}"
+                exit 0
+                ;;
+              schema-behind)
+                echo "The release is running against a database that is missing migrations:"
+                echo "${body}"
+                echo "Coolify's pre-deployment command did not apply them. Run 'npm run db:migrate:deploy' against the target, then redeploy."
+                exit 1
+                ;;
+              *) echo "attempt ${attempt}: ${status}"; sleep 10 ;;
+            esac
           done
-          echo "Health check never returned 200"
+          echo "Health check never reported a usable status"
           exit 1
