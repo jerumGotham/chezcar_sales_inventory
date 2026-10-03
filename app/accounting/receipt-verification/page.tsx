@@ -2,7 +2,6 @@
 
 import { Suspense, useEffect, useEffectEvent, useMemo, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import Image from "next/image";
 import Link from "next/link";
 import type { Route } from "next";
 import { useSearchParams } from "next/navigation";
@@ -18,6 +17,7 @@ import {
 
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { PageShell } from "@/components/page-shell";
+import { ReceiptPhoto } from "@/components/receipt-photo";
 import { TablePagination } from "@/components/table-pagination";
 import { PaymentReceiptsClient } from "./payment-receipts-client";
 import { useCan } from "@/components/shell-access-context";
@@ -1404,13 +1404,11 @@ function ReceiptVerificationContent() {
                       <p className="mt-1 text-xs text-muted-foreground">This is the receipt Accounting must verify.</p>
                     </div>
                     {canViewEvidence && selectedSale.receiptPhotoUrl ? (
-                      <Image
+                      <ReceiptPhoto
                         src={selectedSale.receiptPhotoUrl}
-                        alt="Uploaded handwritten receipt"
-                        width={800}
-                        height={1000}
-                        unoptimized
-                        className="max-h-[32rem] w-full rounded-xl border bg-muted object-contain"
+                        alt={`Receipt ${selectedSale.manualReceiptNumber}`}
+                        caption={`${selectedSale.branch} · ${selectedSale.customer} · ${formatPeso(selectedSale.totalAmount)}`}
+                        className="max-h-[32rem]"
                       />
                     ) : !canViewEvidence && selectedSale.receiptPhotoUrl ? (
                       <p className="rounded-lg bg-muted p-3 text-sm text-foreground">You do not have permission to view receipt evidence.</p>
@@ -1580,13 +1578,11 @@ function ReceiptVerificationContent() {
                             onChange={(event) => handleBranchReplacementPhoto(event.target.files?.[0])}
                           />
                           {branchReplacementPhotoPreview ? (
-                            <Image
+                            <ReceiptPhoto
                               src={branchReplacementPhotoPreview}
                               alt="Replacement receipt preview"
-                              width={800}
-                              height={600}
-                              unoptimized
-                              className="max-h-48 w-full rounded-xl border object-contain"
+                              caption="Check every figure is readable before sending this."
+                              className="max-h-48"
                             />
                           ) : null}
                           {branchReplacementPhotoFile && !branchReplacementEvidenceKey ? (
@@ -1689,13 +1685,11 @@ function ReceiptVerificationContent() {
                       onChange={(event) => handlePhoto(event.target.files?.[0])}
                     />
                     {photoPreview ? (
-                      <Image
+                      <ReceiptPhoto
                         src={photoPreview}
                         alt="Receipt preview"
-                        width={800}
-                        height={600}
-                        unoptimized
-                        className="max-h-40 w-full rounded-xl border object-contain"
+                        caption="Check every figure is readable before sending this."
+                        className="max-h-40"
                       />
                     ) : null}
                     <div className="flex flex-wrap gap-2">

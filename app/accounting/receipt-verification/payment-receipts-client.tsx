@@ -2,11 +2,13 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { BellRing, ImageOff } from "lucide-react";
 import Select from "react-select";
 import type { StylesConfig } from "react-select";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ReceiptPhoto } from "@/components/receipt-photo";
 import { TablePagination } from "@/components/table-pagination";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -43,6 +45,7 @@ type PaymentRow = {
   reviewedAt: string | null;
   receiptPhotoUrl: string | null;
   receiptPhotoVersion: string | null;
+  evidencePendingNotifiedAt: string | null;
   branchResponse: string | null;
   branchResponseNote: string | null;
   branchReplacementReceiptNumber: string | null;
@@ -169,6 +172,7 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
   const canResolve = useCan("sales:resolve");
   const canVoid = useCan("sales:void-replace");
   const canUpload = useCan("sales:evidence:upload");
+  const canNotifyEvidence = useCan("sales:verify");
   const canDelete = useCan("sales:evidence:delete");
 
   const queryClient = useQueryClient();
@@ -266,6 +270,17 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
     onError: (mutationError: Error) => { setFormNotice(null); setFormError(mutationError.message); },
   });
 
+  const notifyEvidenceMutation = useMutation({
+    mutationFn: () => post(`/api/accounting/payments/${selected!.id}/notify-evidence`, {}),
+    onSuccess: async (result: { notified: boolean }) => {
+      setFormNotice(result.notified
+        ? "The branch and the administrators have been asked for the receipt photo."
+        : "The branch was already asked for this photo.");
+      await refresh();
+    },
+    onError: (mutationError: Error) => { setFormNotice(null); setFormError(mutationError.message); },
+  });
+
   const reviewMutation = useMutation({
     mutationFn: (status: "VERIFIED" | "MISMATCH_REPORTED") =>
       post(`/api/accounting/payments/${selected!.id}/review`, {
@@ -325,7 +340,7 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
   }
 
   const meta = data?.meta;
-  const busy = reviewMutation.isPending || branchResponseMutation.isPending || resolveMutation.isPending || uploadMutation.isPending || deletePhotoMutation.isPending;
+  const busy = reviewMutation.isPending || branchResponseMutation.isPending || resolveMutation.isPending || uploadMutation.isPending || deletePhotoMutation.isPending || notifyEvidenceMutation.isPending;
 
   return (
     <div className="space-y-6">
@@ -488,12 +503,39 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
                 <div className="space-y-2">
                   <Label>Receipt photo</Label>
                   {selected.receiptPhotoUrl && canViewEvidence ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={selected.receiptPhotoUrl} alt={`Receipt ${selected.receiptNumber}`} className="max-h-72 w-full rounded-xl border object-contain" />
+                    <ReceiptPhoto
+                      src={selected.receiptPhotoUrl}
+                      alt={`Receipt ${selected.receiptNumber}`}
+                      caption={`${selected.kindLabel} · ${selected.branch} · ${peso.format(selected.amount)}`}
+                    />
+                  ) : selected.receiptPhotoUrl ? (
+                    <p className="text-sm text-muted-foreground">You do not have permission to view receipt photos.</p>
                   ) : (
-                    <p className="text-sm text-muted-foreground">
-                      {selected.receiptPhotoUrl ? "You do not have permission to view receipt photos." : "No receipt photo attached yet."}
-                    </p>
+                    <div className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100" role="status">
+                      <div className="flex items-start gap-2">
+                        <ImageOff aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
+                        <div className="space-y-1">
+                          <p className="text-sm font-semibold">No receipt photo attached yet</p>
+                          <p className="text-sm">
+                            This receipt cannot be verified until the branch attaches a photo of the paper receipt.
+                            {selected.evidencePendingNotifiedAt
+                              ? ` The branch was asked on ${dateTime.format(new Date(selected.evidencePendingNotifiedAt))}.`
+                              : ""}
+                          </p>
+                        </div>
+                      </div>
+                      {canNotifyEvidence && selected.status === "ACTIVE" ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy || Boolean(selected.evidencePendingNotifiedAt)}
+                          onClick={() => notifyEvidenceMutation.mutate()}
+                        >
+                          <BellRing aria-hidden="true" />
+                          {selected.evidencePendingNotifiedAt ? "Branch already notified" : "Notify the branch"}
+                        </Button>
+                      ) : null}
+                    </div>
                   )}
                   {canUpload && selected.reviewStatus !== "VERIFIED" && selected.status === "ACTIVE" ? (
                     <input

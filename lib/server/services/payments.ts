@@ -145,6 +145,9 @@ export function serializePayment(payment: PaymentRow) {
       ? `/api/accounting/payments/${payment.id}/photo?v=${payment.evidenceUploadedAt?.getTime() ?? 0}`
       : null,
     receiptPhotoVersion: payment.receiptPhotoKey ? receiptEvidenceVersion(payment.receiptPhotoKey) : null,
+    // When the branch was last asked for the missing photo, so the screen can
+    // say it has been chased instead of offering to chase it again.
+    evidencePendingNotifiedAt: payment.evidencePendingNotifiedAt?.toISOString() ?? null,
     branchResponse: payment.branchResponse,
     branchResponseNote: payment.branchResponseNote,
     branchReplacementReceiptNumber: payment.branchReplacementReceiptNumber,

@@ -85,6 +85,86 @@ export async function notifyReceiptEvidencePending(actor: AuthContext, saleId: s
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
+/*
+ * Who is told that a payment receipt has no photo: the person who took the
+ * money, anyone at that branch who can attach one, and the owners and
+ * all-branch administrators, so a branch that has nobody on shift is not the
+ * end of the line.
+ */
+async function paymentEvidenceRecipients(
+  tx: Prisma.TransactionClient,
+  payment: { collectedById: string; locationId: string },
+) {
+  const branch = await tx.user.findMany({
+    where: {
+      status: "ACTIVE",
+      /*
+       * Either grant marks somebody as the branch side of a receipt problem.
+       * Attaching the photo is the obvious one, but a branch whose role only
+       * answers mismatches still needs to hear that a receipt is holding up
+       * verification.
+       */
+      accessRole: {
+        OR: [
+          { permissions: { has: "sales:evidence:upload" } },
+          { permissions: { has: "sales:mismatch:respond" } },
+        ],
+      },
+      locationAssignments: { some: { locationId: payment.locationId } },
+    },
+    select: { id: true },
+  });
+  const administrators = await tx.user.findMany({
+    where: {
+      status: "ACTIVE",
+      accessRole: { OR: [{ isOwner: true }, { permissions: { has: "locations:all" } }] },
+    },
+    select: { id: true },
+  });
+  return Array.from(new Set([
+    payment.collectedById,
+    ...branch.map((user) => user.id),
+    ...administrators.map((user) => user.id),
+  ]));
+}
+
+/**
+ * Asks the branch for the photo of a payment receipt that has none. Sent by
+ * whoever verifies receipts, and only once: a second press reports that the
+ * branch has already been asked rather than sending the nudge again.
+ */
+export async function notifyPaymentEvidencePending(actor: AuthContext, paymentId: string) {
+  assertCapability(actor, "sales:verify");
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Payment" WHERE id = ${paymentId} FOR UPDATE`;
+    const payment = await tx.payment.findUnique({ where: { id: paymentId } });
+    if (!payment) throw new CustomerSalesError("NOT_FOUND", "Payment receipt not found", 404);
+    if (!canAccessLocation(actor, payment.locationId)) throw new AuthorizationError("Insufficient permissions");
+    if (payment.status !== "ACTIVE") {
+      throw new CustomerSalesError("INVALID_STATE", "This payment was voided, so there is nothing to attach", 409);
+    }
+    if (payment.receiptPhotoKey) {
+      throw new CustomerSalesError("EVIDENCE_PRESENT", "This receipt already has a photo attached", 409);
+    }
+    if (payment.evidencePendingNotifiedAt) {
+      return { notified: false, notifiedAt: payment.evidencePendingNotifiedAt.toISOString() };
+    }
+    const now = new Date();
+    await tx.payment.update({ where: { id: paymentId }, data: { evidencePendingNotifiedAt: now } });
+    const recipients = await paymentEvidenceRecipients(tx, payment);
+    await createNotifications(tx, recipients.map((userId) => ({
+      userId,
+      title: "Payment receipt photo needed",
+      description: `Attach the photo of receipt ${payment.receiptNumber} so Accounting can verify it.`,
+      type: "WARNING" as const,
+      relatedType: "PAYMENT" as const,
+      relatedId: payment.id,
+      relatedReference: payment.reference,
+    })));
+    return { notified: true, notifiedAt: now.toISOString(), recipients: recipients.length };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
 export async function notifyReceiptEvidenceUploaded(saleId: string, expectedKey?: string) {
   await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "Sale" WHERE id = ${saleId} FOR UPDATE`;

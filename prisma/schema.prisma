@@ -1511,6 +1511,9 @@ model Payment {
   receiptPhotoKey                String?
   receiptPhotoType               String?
   evidenceUploadedAt             DateTime?
+  /// When the branch was last asked to attach the missing receipt photo, so the
+  /// nudge is sent once rather than on every visit to the row.
+  evidencePendingNotifiedAt      DateTime?
   reviewedById                   String?
   reviewedAt                     DateTime?
   branchResponse                 String?
