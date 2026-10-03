@@ -110,7 +110,20 @@ export type SalesReport = ReportMeta & {
      * an order payment carries what the order is for, which has not been
      * released yet.
      */
-    items: Array<{ itemCode: string; name: string; quantity: number; unitPrice: number; amount: number }>;
+    items: Array<{
+      itemCode: string;
+      name: string;
+      quantity: number;
+      /**
+       * The branch price the line was written against, and what was taken off
+       * it. Both are zero on a line with no recorded list price, which is every
+       * direct sale: there, the discount is the row's own discountAmount.
+       */
+      listPrice: number;
+      discount: number;
+      unitPrice: number;
+      amount: number;
+    }>;
     /**
      * True when the items above are still on order rather than released. The
      * row's units stay zero either way: the goods are counted once, on the

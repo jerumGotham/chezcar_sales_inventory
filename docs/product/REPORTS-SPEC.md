@@ -91,8 +91,19 @@ The Sales Report is the monthly sales report by default; there is no separate Mo
 - Authenticated encoder.
 - Source.
 - Payment method.
+- Items: what the receipt was for. On screen this is a link, because several
+  items in one table cell made every row a different height; it opens a panel
+  listing each item on its own line with quantity, list price, the discount
+  taken off, the unit price charged, and the line amount. The PDF prints the
+  same items in an Items column, one line per item, with
+  `(list X less Y)` appended to a discounted line.
+  A receipt that settles an order shows the goods the order is for and says they
+  are still on order; its Units stay zero, so goods are counted once, on the
+  receipt that releases them.
 - Units/items.
-- Discount.
+- Discount: the receipt-level figure. A per-line discount given on a customer
+  order lives in the item panel above, not here, because it is already inside
+  the unit price the line was charged at.
 - Final amount.
 - Verification status.
 

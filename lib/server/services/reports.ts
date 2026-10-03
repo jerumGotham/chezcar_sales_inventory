@@ -323,7 +323,9 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
         sale: { select: { discountAmount: true, lines: { select: { productItemCode: true, productName: true, quantity: true, unitPrice: true } } } },
         // For a downpayment or an instalment, which have no sale of their own:
         // what the money is being put towards.
-        order: { select: { lines: { select: { productItemCode: true, productName: true, quantity: true, finalUnitPrice: true } } } },
+        // baseUnitPrice comes along so a discounted line can say what the
+        // branch price was before the discount was given.
+        order: { select: { lines: { select: { productItemCode: true, productName: true, quantity: true, baseUnitPrice: true, finalUnitPrice: true } } } },
       },
       orderBy: view === "VERIFIED_DATE" ? [{ verifiedAt: "desc" }, { id: "desc" }] : [{ collectedAt: "desc" }, { id: "desc" }],
     });
@@ -371,6 +373,34 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
       orderBy: [{ refundedAt: "desc" }, { id: "desc" }],
     });
 
+    /*
+     * What the row is for. A released order is read through its sale lines,
+     * which are what actually changed hands; the order's own lines are still
+     * consulted for the branch price each line was discounted from, because a
+     * sale line records only what was charged.
+     */
+    function buildItems(row: {
+      sale: { lines: Array<{ productItemCode: string; productName: string; quantity: number; unitPrice: Prisma.Decimal }> } | null;
+      order: { lines: Array<{ productItemCode: string; productName: string; quantity: number; baseUnitPrice: Prisma.Decimal; finalUnitPrice: Prisma.Decimal }> } | null;
+    }) {
+      const listPrices = new Map((row.order?.lines ?? []).map((line) => [line.productItemCode, line.baseUnitPrice.toNumber()]));
+      const lines = row.sale?.lines ?? row.order?.lines ?? [];
+      return lines.map((line) => {
+        const unitPrice = "unitPrice" in line ? line.unitPrice.toNumber() : line.finalUnitPrice.toNumber();
+        const listPrice = listPrices.get(line.productItemCode) ?? 0;
+        return {
+          itemCode: line.productItemCode,
+          name: line.productName,
+          quantity: line.quantity,
+          listPrice,
+          // A line charged at or above its list price was not discounted.
+          discount: Math.max(Math.round((listPrice - unitPrice) * 100) / 100, 0),
+          unitPrice,
+          amount: line.quantity * unitPrice,
+        };
+      });
+    }
+
     const sourceLabels = {
       DIRECT_SALE: "Direct Sale",
       ORDER_DOWNPAYMENT: "Order Downpayment",
@@ -395,16 +425,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
       discountAmount: row.sale?.discountAmount.toNumber() ?? 0,
       totalAmount: row.amount.toNumber(),
       verificationStatus: row.reviewStatus,
-      items: (row.sale?.lines ?? row.order?.lines ?? []).map((line) => {
-        const unitPrice = "unitPrice" in line ? line.unitPrice.toNumber() : line.finalUnitPrice.toNumber();
-        return {
-          itemCode: line.productItemCode,
-          name: line.productName,
-          quantity: line.quantity,
-          unitPrice,
-          amount: line.quantity * unitPrice,
-        };
-      }),
+      items: buildItems(row),
       itemsPending: !row.sale && Boolean(row.order),
     }));
 
@@ -430,6 +451,8 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
         itemCode: line.productItemCode,
         name: line.productName,
         quantity: -line.quantity,
+        listPrice: 0,
+        discount: 0,
         unitPrice: line.unitPrice.toNumber(),
         amount: -(line.quantity * line.unitPrice.toNumber()),
       })),

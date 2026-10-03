@@ -89,10 +89,13 @@ export async function createReportPdf(report: ReportResult, metadata: { generate
       ? report.salespersonTotals.map((group) => ({ heading: `Salesperson: ${group.salesperson} - ${group.transactionCount} receipt(s)`, rows: salesByPerson.get(group.salespersonId) ?? [], subtotal: group }))
       : [{ heading: report.view === "VERIFIED_DATE" ? "Verified sales detail" : report.view === "UNVERIFIED" ? "Not yet verified detail" : "Sales detail", rows: report.rows, subtotal: null }];
     for (const group of detailGroups) table(group.heading, [
-      { header: "Receipt / sold / verified", width: 1.8 }, { header: "Branch", width: 1.35 },
-      { header: "Customer / personnel", width: 2.3 }, { header: "Source / payment", width: 1.45 },
-      { header: "Units", width: 0.6, numeric: true }, { header: "Discount", width: 1.25, numeric: true },
-      { header: "Final amount", width: 1.4, numeric: true },
+      { header: "Receipt / sold / verified", width: 1.7 }, { header: "Branch", width: 1.1 },
+      { header: "Customer / personnel", width: 1.9 }, { header: "Source / payment", width: 1.2 },
+      // The goods each receipt was for. Widest column: a row carries one line
+      // per item, and wrapping an item code mid-word makes it unreadable.
+      { header: "Items", width: 2.6 },
+      { header: "Units", width: 0.55, numeric: true }, { header: "Discount", width: 1.05, numeric: true },
+      { header: "Final amount", width: 1.3, numeric: true },
     ], [...group.rows.map((row) => [
       // An unconfirmed receipt prints in red, the same signal the screen gives.
       row.verifiedAt
@@ -106,7 +109,14 @@ export async function createReportPdf(report: ReportResult, metadata: { generate
       row.items.length === 0
         ? "Not recorded"
         : (row.itemsPending ? "ON ORDER, NOT YET RELEASED\n" : "")
-          + row.items.map((item) => `${item.itemCode} - ${item.name} : ${item.quantity} * ${money(item.unitPrice)}`).join("\n"),
+          + row.items
+            .map((item) => {
+              const line = `${item.itemCode} - ${item.name} : ${item.quantity} * ${money(item.unitPrice)}`;
+              // A discounted line says what it was taken off, so the printed
+              // page explains the price rather than just stating it.
+              return item.discount > 0 ? `${line}  (list ${money(item.listPrice)} less ${money(item.discount)})` : line;
+            })
+            .join("\n"),
       String(row.units), money(row.discountAmount), money(row.totalAmount),
     ]), ...(group.subtotal ? [["SALESPERSON TOTAL", "", "", "", "", String(group.subtotal.units), money(group.subtotal.totalDiscount), money(group.subtotal.totalAmount)]] : [])], group.subtotal !== null);
   } else if (report.type === "inventory-summary") {

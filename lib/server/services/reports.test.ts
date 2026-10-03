@@ -241,6 +241,56 @@ describe("sales and salesperson sales reports", () => {
     expect(report.grandTotal.units).toBe(3);
   });
 
+  it("says what each receipt was for, and what was taken off a discounted line", async () => {
+    const decimal = (value: number) => ({ toNumber: () => value });
+    function receipt(id: string, kind: string, amount: number, extra: Record<string, unknown>) {
+      return {
+        id, salespersonId: "person-1", salespersonName: "Seller", kind, receiptNumber: id, receiptBooklet: null, method: "CASH",
+        amount: decimal(amount), verifiedAt: new Date("2026-09-10T00:00:00Z"), collectedAt: new Date("2026-09-08T00:00:00Z"),
+        reviewStatus: "VERIFIED", customer: { name: "Buyer" }, location: { code: "B", name: "Branch" },
+        collectedBy: { name: "Cashier" }, sale: null, order: null, ...extra,
+      };
+    }
+    reportPrisma.payment.findMany.mockResolvedValueOnce(attribution).mockResolvedValueOnce([
+      // A released order: the sale lines are what changed hands, and the order
+      // still knows the branch price each line was discounted from.
+      receipt("OR-9001", "ORDER_FINAL", 1_800, {
+        sale: { discountAmount: decimal(0), lines: [{ productItemCode: "BUMPER", productName: "Bumper", quantity: 2, unitPrice: decimal(900) }] },
+        order: { lines: [{ productItemCode: "BUMPER", productName: "Bumper", quantity: 2, baseUnitPrice: decimal(1_000), finalUnitPrice: decimal(900) }] },
+      }),
+      // A downpayment has no sale of its own, so it names what the order is for.
+      receipt("OR-9002", "ORDER_DOWNPAYMENT", 500, {
+        order: { lines: [{ productItemCode: "LIGHT", productName: "Light Bar", quantity: 1, baseUnitPrice: decimal(600), finalUnitPrice: decimal(600) }] },
+      }),
+      // A direct sale has no list price to compare against; its discount is the
+      // receipt-level figure the report already prints in its own column.
+      receipt("DS-9003", "DIRECT_SALE", 400, {
+        sale: { discountAmount: decimal(50), lines: [{ productItemCode: "MAT", productName: "Floor Mat", quantity: 1, unitPrice: decimal(400) }] },
+      }),
+    ]);
+
+    const report = await reports.getReport(actor, { type: "sales", ...query });
+    if (report.type !== "sales") throw new Error("Expected sales report");
+
+    expect(report.rows[0].items).toEqual([
+      { itemCode: "BUMPER", name: "Bumper", quantity: 2, listPrice: 1_000, discount: 100, unitPrice: 900, amount: 1_800 },
+    ]);
+    expect(report.rows[0].itemsPending).toBe(false);
+
+    // Charged at list: nothing was taken off, and the goods stay uncounted
+    // because a downpayment moves money rather than stock.
+    expect(report.rows[1].items).toEqual([
+      { itemCode: "LIGHT", name: "Light Bar", quantity: 1, listPrice: 600, discount: 0, unitPrice: 600, amount: 600 },
+    ]);
+    expect(report.rows[1].itemsPending).toBe(true);
+    expect(report.rows[1].units).toBe(0);
+
+    expect(report.rows[2].items).toEqual([
+      { itemCode: "MAT", name: "Floor Mat", quantity: 1, listPrice: 0, discount: 0, unitPrice: 400, amount: 400 },
+    ]);
+    expect(report.rows[2].discountAmount).toBe(50);
+  });
+
   it("dates by the sale day by default and by verification only when that view is chosen", async () => {
     // The first query of each report builds the salesperson filter; the second
     // fetches the receipts themselves, and this test only cares about the where.
