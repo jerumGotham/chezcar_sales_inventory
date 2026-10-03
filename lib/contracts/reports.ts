@@ -84,6 +84,12 @@ export type SalesReport = ReportMeta & {
     /** Null until Accounting confirms the receipt. */
     verifiedAt: string | null;
     manualReceiptNumber: string;
+    /**
+     * False when no receipt was written, which happens when an order already
+     * paid in full is released: no money changes hands, so manualReceiptNumber
+     * holds the order reference instead of a handwritten number.
+     */
+    receiptIssued: boolean;
     branch: string;
     customer: string;
     salespersonId: string | null;

@@ -99,7 +99,9 @@ export async function createReportPdf(report: ReportResult, metadata: { generate
     ], [...group.rows.map((row) => [
       // An unconfirmed receipt prints in red, the same signal the screen gives.
       row.verifiedAt
-        ? `${row.manualReceiptNumber}\nSold ${dateTime(row.soldAt)}\nVerified ${dateTime(row.verifiedAt)}`
+        // A release against an order paid in full writes no receipt, so the
+        // number here is the order reference and says so.
+        ? `${row.manualReceiptNumber}${row.receiptIssued ? "" : " (no receipt)"}\nSold ${dateTime(row.soldAt)}\nVerified ${dateTime(row.verifiedAt)}`
         : { text: `${row.manualReceiptNumber}\nSold ${dateTime(row.soldAt)}\nNot verified`, tone: "danger" as const },
       row.branch,
       `Customer: ${row.customer}\nSalesperson: ${row.salesperson}\nEncoder: ${row.encoder}`,

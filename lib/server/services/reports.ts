@@ -320,7 +320,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
         salespersonId: true, salespersonName: true, verifiedAt: true, collectedAt: true, reviewStatus: true,
         customer: { select: { name: true } }, location: { select: { code: true, name: true } },
         collectedBy: { select: { name: true } },
-        sale: { select: { discountAmount: true, lines: { select: { productItemCode: true, productName: true, quantity: true, unitPrice: true } } } },
+        sale: { select: { receiptIssued: true, discountAmount: true, lines: { select: { productItemCode: true, productName: true, quantity: true, unitPrice: true } } } },
         // For a downpayment or an instalment, which have no sale of their own:
         // what the money is being put towards.
         // baseUnitPrice comes along so a discounted line can say what the
@@ -412,6 +412,9 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
       soldAt: row.collectedAt.toISOString(),
       verifiedAt: row.verifiedAt?.toISOString() ?? null,
       manualReceiptNumber: row.receiptBooklet ? `${row.receiptBooklet}-${row.receiptNumber}` : row.receiptNumber,
+      // A release against an order already paid in full writes no receipt, so
+      // the number above is the order's reference and must not read as one.
+      receiptIssued: row.sale?.receiptIssued ?? true,
       branch: `${row.location.code} - ${row.location.name}`,
       customer: row.customer?.name ?? "Guest",
       salespersonId: row.salespersonId,
@@ -434,6 +437,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
       soldAt: row.refundedAt.toISOString(),
       verifiedAt: row.refundedAt.toISOString(),
       manualReceiptNumber: row.acknowledgementNumber,
+      receiptIssued: true,
       branch: `${row.location.code} - ${row.location.name}`,
       customer: row.customer?.name ?? "Guest",
       salespersonId: row.salespersonId,

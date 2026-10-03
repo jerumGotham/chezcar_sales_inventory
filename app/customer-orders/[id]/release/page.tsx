@@ -26,6 +26,8 @@ type OrderDetail = {
   totalAmount: number;
   downpayment: number;
   balance: number;
+  subtotal: number;
+  discountAmount: number;
   releaseDate: string;
   locationId: string;
   salesperson: { personnelId: string; name: string; branch: { id: string; code: string; name: string } } | null;
@@ -71,7 +73,10 @@ export default function ReleaseCustomerOrderPage() {
   const releaseMutation = useMutation({
     mutationFn: async (formData: FormData) => {
       const finalReceiptNumber = String(formData.get("finalReceiptNumber") ?? "").trim();
-      if (!finalReceiptNumber) throw new Error("Final receipt number is required.");
+      // A receipt records money received. Releasing an order that is already
+      // paid in full takes none, so there is nothing to write a number on.
+      const collectsMoney = (order?.balance ?? 0) > 0;
+      if (collectsMoney && !finalReceiptNumber) throw new Error("Final receipt number is required.");
       if (!salespersonId) throw new Error("Select an active salesperson.");
       if (salespersonId !== order?.salesperson?.personnelId) {
         const attributionResponse = await fetch(`/api/customer-orders/${orderId}`, {
@@ -87,7 +92,11 @@ export default function ReleaseCustomerOrderPage() {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ finalReceiptNumber, amountPaid: order?.balance ?? 0, paymentMethod: String(formData.get("paymentMethod") ?? "CASH"), notes: String(formData.get("notes") ?? "").trim() || undefined }),
+        body: JSON.stringify({
+          ...(collectsMoney ? { finalReceiptNumber, paymentMethod: String(formData.get("paymentMethod") ?? "CASH") } : {}),
+          amountPaid: order?.balance ?? 0,
+          notes: String(formData.get("notes") ?? "").trim() || undefined,
+        }),
       });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error?.message ?? "Unable to release order");
@@ -152,14 +161,24 @@ export default function ReleaseCustomerOrderPage() {
             <CardContent className="p-5">
               <div className="mb-4 flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-emerald-600" /><h3 className="font-semibold">Release Summary</h3></div>
               <div className="space-y-4">
-                <Summary label="Subtotal" value={formatPeso(order.totalAmount)} />
+                <Summary label="Subtotal" value={formatPeso(order.subtotal)} />
+                {order.discountAmount > 0 ? <Summary label="Discount" value={`-${formatPeso(order.discountAmount)}`} /> : null}
+                <Summary label="Order total" value={formatPeso(order.totalAmount)} />
                 <Summary label="Downpayment" value={formatPeso(order.downpayment)} />
                 <Summary label="Remaining Balance" value={formatPeso(order.balance)} strong />
               </div>
               {actions?.canRelease ? <form className="mt-6 space-y-4" action={(formData) => releaseMutation.mutate(formData)}>
                 <div className="space-y-2"><Label htmlFor="salespersonId">Salesperson</Label><select id="salespersonId" value={salespersonId} onChange={(event) => setSalespersonId(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" required><option value="">Select salesperson</option>{salespersonQuery.data?.map((personnel) => <option key={personnel.id} value={personnel.id}>{personnel.fullName}</option>)}</select>{salespersonQuery.data?.length === 0 ? <p className="text-xs text-amber-700 dark:text-amber-300">No eligible Salesperson is available in your authorized locations.</p> : null}</div>
-                <div className="space-y-2"><Label htmlFor="finalReceiptNumber">Final Receipt Number</Label><Input id="finalReceiptNumber" name="finalReceiptNumber" placeholder="Handwritten receipt number" /></div>
-                <div className="space-y-2"><Label htmlFor="paymentMethod">Payment Method</Label><select id="paymentMethod" name="paymentMethod" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="CASH">Cash</option><option value="GCASH">GCash</option><option value="MAYA">Maya</option><option value="BANK_TRANSFER">Bank Transfer</option><option value="CREDIT_CARD">Credit Card</option><option value="SPLIT">Split</option></select></div>
+                {order.balance > 0 ? (
+                  <div className="space-y-2"><Label htmlFor="finalReceiptNumber">Final Receipt Number</Label><Input id="finalReceiptNumber" name="finalReceiptNumber" placeholder="Handwritten receipt number" /></div>
+                ) : (
+                  <div className="rounded-xl border border-dashed p-3 text-sm text-muted-foreground" role="status">
+                    This order is paid in full, so releasing it collects nothing and issues no receipt. The goods still leave the branch and the sale is recorded against {order.orderNo}.
+                  </div>
+                )}
+                {order.balance > 0 ? (
+                  <div className="space-y-2"><Label htmlFor="paymentMethod">Payment Method</Label><select id="paymentMethod" name="paymentMethod" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="CASH">Cash</option><option value="GCASH">GCash</option><option value="MAYA">Maya</option><option value="BANK_TRANSFER">Bank Transfer</option><option value="CREDIT_CARD">Credit Card</option><option value="SPLIT">Split</option></select></div>
+                ) : null}
                 <div className="space-y-2"><Label htmlFor="notes">Release Notes</Label><Input id="notes" name="notes" placeholder="Released by, remarks, etc." /></div>
                 <Button type="submit" variant="workflow" className="w-full" disabled={releaseMutation.isPending || salespersonQuery.isLoading || !salespersonId}>{releaseMutation.isPending ? "Releasing..." : "Confirm Release"}</Button>
               </form> : <p className="mt-6 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-4 text-sm text-amber-800 dark:text-amber-300">This order cannot be released in its current state or with your capabilities.</p>}

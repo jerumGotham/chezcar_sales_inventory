@@ -21,6 +21,7 @@ const row: SalesReport["rows"][number] = {
   soldAt: "2026-10-03T02:00:00.000Z",
   verifiedAt: "2026-10-03T04:00:00.000Z",
   manualReceiptNumber: "OR-TEST-001",
+  receiptIssued: true,
   branch: "BL - Binan Laguna",
   customer: "Buyer",
   salespersonId: "person-1",

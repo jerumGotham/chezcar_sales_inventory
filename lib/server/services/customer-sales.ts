@@ -121,7 +121,12 @@ export const customerOrderSalespersonSchema = z.object({
 });
 
 export const releaseOrderSchema = z.object({
-  finalReceiptNumber: z.string().trim().min(1).max(100),
+  /**
+   * Left out when the order is already paid in full. A receipt is the record of
+   * money received, and releasing goods that were paid for earlier takes none,
+   * so there is nothing to write a number on.
+   */
+  finalReceiptNumber: z.string().trim().min(1).max(100).optional(),
   amountPaid: money,
   paymentMethod: z.enum(["CASH", "GCASH", "MAYA", "BANK_TRANSFER", "CREDIT_CARD", "SPLIT"]).default("CASH"),
   notes: z.string().trim().max(1_000).optional(),
@@ -1071,11 +1076,44 @@ export async function releaseCustomerOrder(actor: AuthContext, id: string, input
     const salesperson = await resolveActiveSalespersonForTransaction(tx, actor, order.salespersonId, order.locationId);
     if (!salesperson) throw new CustomerSalesError("INVALID_SALESPERSON", "Assign an active salesperson within your authorized locations before release", 409);
     if (input.amountPaid !== order.remainingBalance.toNumber()) throw new CustomerSalesError("INVALID_BALANCE", "Amount paid must match remaining balance", 400);
+    /*
+     * Money decides whether there is a receipt. A balance settled at release is
+     * collected now and needs one; an order already paid in full takes nothing,
+     * and its money was receipted and verified when it came in.
+     */
+    const collectsMoney = order.remainingBalance.toNumber() > 0;
+    if (collectsMoney && !input.finalReceiptNumber) {
+      throw new CustomerSalesError("RECEIPT_REQUIRED", "This release collects the remaining balance, so it needs a receipt number", 400);
+    }
+    if (!collectsMoney && input.finalReceiptNumber) {
+      throw new CustomerSalesError("RECEIPT_NOT_EXPECTED", "This order is already paid in full, so releasing it issues no receipt", 400);
+    }
+    /*
+     * With no receipt the sale still needs an identity of its own, and the order
+     * reference is unique, so it stands in without pretending to be a receipt
+     * number. receiptIssued is what says which it is.
+     */
+    const saleReceiptNumber = input.finalReceiptNumber ?? order.reference;
+    const releasedAt = new Date();
     await releaseReservedLines(tx, order.locationId, order.lines);
-    const sale = await tx.sale.create({ data: { reference: `SALE-${randomUUID()}`, manualReceiptNumber: input.finalReceiptNumber, receiptBooklet: "", locationId: order.locationId, customerId: order.customerId, orderId: order.id, salespersonId: order.salespersonId, salespersonName: order.salespersonName, salespersonLocationId: order.salespersonLocationId, salespersonLocationCode: order.salespersonLocationCode, salespersonLocationName: order.salespersonLocationName, paymentMethod: input.paymentMethod as PaymentMethod, totalAmount: order.totalAmount, discountAmount: order.discountAmount, amountPaid: decimal(input.amountPaid), notes: input.notes || null, postedById: actor.userId, lines: { create: order.lines.map((line) => ({ productId: line.productId, productItemCode: line.productItemCode, productName: line.productName, quantity: line.quantity, unitPrice: line.finalUnitPrice })) }, accountingReview: { create: {} } } });
+    const sale = await tx.sale.create({ data: { reference: `SALE-${randomUUID()}`, manualReceiptNumber: saleReceiptNumber, receiptIssued: collectsMoney, receiptBooklet: "", locationId: order.locationId, customerId: order.customerId, orderId: order.id, salespersonId: order.salespersonId, salespersonName: order.salespersonName, salespersonLocationId: order.salespersonLocationId, salespersonLocationCode: order.salespersonLocationCode, salespersonLocationName: order.salespersonLocationName, paymentMethod: input.paymentMethod as PaymentMethod, totalAmount: order.totalAmount, discountAmount: order.discountAmount, amountPaid: decimal(input.amountPaid), notes: input.notes || null, postedById: actor.userId, lines: { create: order.lines.map((line) => ({ productId: line.productId, productItemCode: line.productItemCode, productName: line.productName, quantity: line.quantity, unitPrice: line.finalUnitPrice })) }, accountingReview: { create: collectsMoney ? {} : {
+      /*
+       * Nothing to verify: no receipt was written, and the money this order
+       * collected was verified on the receipts that brought it in. Leaving it
+       * unverified would park a sale in Accounting's queue that no one can ever
+       * compare against anything.
+       */
+      status: "VERIFIED",
+      verifiedAt: releasedAt,
+      reviewedById: actor.userId,
+      reviewedAt: releasedAt,
+      notes: "No receipt issued: the order was paid in full before release.",
+    } } } });
     const warrantyProducts = await tx.product.findMany({ where: { id: { in: order.lines.map((line) => line.productId) } }, select: { id: true, warrantyDurationMonths: true } });
     for (const product of warrantyProducts) await tx.saleLine.updateMany({ where: { saleId: sale.id, productId: product.id }, data: { warrantyDurationMonths: product.warrantyDurationMonths } });
-    await registerReceipt(tx, input.finalReceiptNumber, "CUSTOMER_ORDER_FINAL", { orderId: order.id, saleId: sale.id, locationId: order.locationId, receiptBooklet: "" });
+    if (collectsMoney) {
+      await registerReceipt(tx, saleReceiptNumber, "CUSTOMER_ORDER_FINAL", { orderId: order.id, saleId: sale.id, locationId: order.locationId, receiptBooklet: "" });
+    }
     // Only the balance settled at release goes on this row. The downpayment and
     // any later payment already have their own rows, so the order's ledger adds
     // up to its total exactly once. The row is written even when the customer
@@ -1090,7 +1128,7 @@ export async function releaseCustomerOrder(actor: AuthContext, id: string, input
       saleId: sale.id,
       amount: input.amountPaid,
       method: input.paymentMethod as PaymentMethod,
-      receiptNumber: input.finalReceiptNumber,
+      receiptNumber: saleReceiptNumber,
       salesperson: {
         id: order.salespersonId,
         name: order.salespersonName,
@@ -1101,8 +1139,13 @@ export async function releaseCustomerOrder(actor: AuthContext, id: string, input
       collectedById: actor.userId,
       mirrorsSaleReview: true,
     });
-    for (const line of order.lines) await tx.inventoryMovement.create({ data: { productId: line.productId, locationId: order.locationId, quantity: -line.quantity, type: "CUSTOMER_ORDER_RELEASE", actorId: actor.userId, reference: input.finalReceiptNumber, remarks: `Released order ${order.reference}` } });
-    const updated = await tx.customerOrder.update({ where: { id: order.id }, data: { status: "COMPLETED", finalReceiptNumber: input.finalReceiptNumber, remainingBalance: decimal(0), releasedById: actor.userId, releasedAt: new Date() }, include: ORDER_INCLUDE });
+    // The ledger row mirrors the sale's review, so a settled review has to be
+    // carried onto it or the report would hold the release back as unverified.
+    if (!collectsMoney) {
+      await syncSalePaymentReview(tx, sale.id, { status: "VERIFIED", verifiedAt: releasedAt, reviewedById: actor.userId, reviewedAt: releasedAt });
+    }
+    for (const line of order.lines) await tx.inventoryMovement.create({ data: { productId: line.productId, locationId: order.locationId, quantity: -line.quantity, type: "CUSTOMER_ORDER_RELEASE", actorId: actor.userId, reference: saleReceiptNumber, remarks: `Released order ${order.reference}` } });
+    const updated = await tx.customerOrder.update({ where: { id: order.id }, data: { status: "COMPLETED", finalReceiptNumber: input.finalReceiptNumber ?? null, remainingBalance: decimal(0), releasedById: actor.userId, releasedAt }, include: ORDER_INCLUDE });
     return serializeOrder(updated);
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {

@@ -141,6 +141,8 @@ Quarantine previously had no exit outside a warranty or supplier-claim case, so 
 
 The additive `20261003140000_customer_order_discount` migration adds `CustomerOrder.discountAmount`. A customer order takes one discount on the whole order, the way a POS sale already does, instead of a price typed over line by line; `totalAmount` is stored net of it and release copies it to `Sale.discountAmount`. Existing orders default to zero and keep whatever their lines already recorded, so no stored total moves.
 
+The additive `20261003170000_sale_without_receipt` migration adds `Sale.receiptIssued`, defaulting to true. It is false only for a release against an order already paid in full, which writes no receipt because no money changes hands; that sale's `manualReceiptNumber` holds the order reference instead of a handwritten number. Every existing sale came from a receipt, so the default is correct for all of them and nothing is backfilled.
+
 ### Payment ledger
 
 The additive `20260921090000_payment_ledger` migration adds `Payment`, one row per receipt issued for money received: `ORDER_DOWNPAYMENT` and `ORDER_PAYMENT` before any sale exists, `ORDER_FINAL` for the balance settled at release, and `DIRECT_SALE` for a POS sale. Each row carries the amount, the mandatory receipt number, the payment method, the historical salesperson snapshot, who collected it, and its own review state with optional receipt-photo evidence. Receipt numbers stay registered in `ManualReceipt`, so the existing per-branch uniqueness rule is unchanged.
