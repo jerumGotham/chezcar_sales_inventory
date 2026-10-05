@@ -129,6 +129,12 @@ export type SalesReport = ReportMeta & {
       discount: number;
       unitPrice: number;
       amount: number;
+      /**
+       * What the product fits, as the catalogue records it: "Toyota Hilux
+       * 2016-2020". Empty when the product has no fitment on file, which is
+       * ordinary for a universal part.
+       */
+      fitment: string[];
     }>;
     /**
      * True when the items above are still on order rather than released. The

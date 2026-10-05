@@ -34,7 +34,7 @@ const row: SalesReport["rows"][number] = {
   totalAmount: 20_000,
   verificationStatus: "VERIFIED",
   items: [
-    { itemCode: "1014", name: "Rollerlid", quantity: 1, listPrice: 25_000, discount: 5_000, unitPrice: 20_000, amount: 20_000 },
+    { itemCode: "1014", name: "Rollerlid", quantity: 1, listPrice: 25_000, discount: 5_000, unitPrice: 20_000, amount: 20_000, fitment: ["Toyota Hilux 2016-2020"] },
   ],
   itemsPending: false,
 };

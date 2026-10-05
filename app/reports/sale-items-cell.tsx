@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { PackageOpen } from "lucide-react";
+import { Car, PackageOpen } from "lucide-react";
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { SalesReport } from "@/lib/contracts/reports";
@@ -84,6 +84,18 @@ function ItemTable({ items, total, discountAmount, pending }: { items: Item[]; t
                 <td className="px-3 py-2">
                   <p className="font-medium">{item.name}</p>
                   <p className="text-xs text-muted-foreground">{item.itemCode}</p>
+                  {/* What the part fits, so a receipt can be matched to a
+                      vehicle without opening the product. */}
+                  {item.fitment.length > 0 ? (
+                    <ul className="mt-1 space-y-0.5">
+                      {item.fitment.map((vehicle) => (
+                        <li key={vehicle} className="text-xs text-muted-foreground">
+                          <Car aria-hidden="true" className="mr-1 inline size-3 align-[-2px]" />
+                          {vehicle}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">{item.quantity}</td>
                 {anyDiscount ? (

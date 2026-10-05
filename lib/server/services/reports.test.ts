@@ -9,6 +9,7 @@ const reportPrisma = vi.hoisted(() => ({
   product: { findMany: vi.fn() },
   inventoryBalance: { findMany: vi.fn() },
   saleLine: { findMany: vi.fn() },
+  productVehicleCompatibility: { findMany: vi.fn() },
 }));
 
 vi.mock("server-only", () => ({}));
@@ -132,6 +133,8 @@ describe("sales and salesperson sales reports", () => {
     reportPrisma.refund.findMany.mockReset().mockResolvedValue([]);
     // Nothing is waiting on Accounting unless a test says so.
     reportPrisma.payment.aggregate.mockReset().mockResolvedValue({ _count: { _all: 0 }, _sum: { amount: null } });
+    // No product fits anything unless a test says so.
+    reportPrisma.productVehicleCompatibility.findMany.mockReset().mockResolvedValue([]);
   });
 
   // One verified receipt in the payment ledger: a direct sale carries the goods,
@@ -255,38 +258,49 @@ describe("sales and salesperson sales reports", () => {
       // A released order: the sale lines are what changed hands, and the order
       // still knows the branch price each line was discounted from.
       receipt("OR-9001", "ORDER_FINAL", 1_800, {
-        sale: { discountAmount: decimal(0), lines: [{ productItemCode: "BUMPER", productName: "Bumper", quantity: 2, unitPrice: decimal(900) }] },
-        order: { lines: [{ productItemCode: "BUMPER", productName: "Bumper", quantity: 2, baseUnitPrice: decimal(1_000), finalUnitPrice: decimal(900) }] },
+        sale: { discountAmount: decimal(0), lines: [{ productId: "p-bumper", productItemCode: "BUMPER", productName: "Bumper", quantity: 2, unitPrice: decimal(900) }] },
+        order: { lines: [{ productId: "p-bumper", productItemCode: "BUMPER", productName: "Bumper", quantity: 2, baseUnitPrice: decimal(1_000), finalUnitPrice: decimal(900) }] },
       }),
       // A downpayment has no sale of its own, so it names what the order is for.
       receipt("OR-9002", "ORDER_DOWNPAYMENT", 500, {
-        order: { lines: [{ productItemCode: "LIGHT", productName: "Light Bar", quantity: 1, baseUnitPrice: decimal(600), finalUnitPrice: decimal(600) }] },
+        order: { lines: [{ productId: "p-light", productItemCode: "LIGHT", productName: "Light Bar", quantity: 1, baseUnitPrice: decimal(600), finalUnitPrice: decimal(600) }] },
       }),
       // A direct sale has no list price to compare against; its discount is the
       // receipt-level figure the report already prints in its own column.
       receipt("DS-9003", "DIRECT_SALE", 400, {
-        sale: { discountAmount: decimal(50), lines: [{ productItemCode: "MAT", productName: "Floor Mat", quantity: 1, unitPrice: decimal(400) }] },
+        sale: { discountAmount: decimal(50), lines: [{ productId: "p-mat", productItemCode: "MAT", productName: "Floor Mat", quantity: 1, unitPrice: decimal(400) }] },
       }),
+    ]);
+
+    /*
+     * Fitment is read once for every product on the page, not joined per line,
+     * so it is asserted here as the labels the product screen would show: a
+     * typed label is kept verbatim, and a product with none is simply empty.
+     */
+    reportPrisma.productVehicleCompatibility.findMany.mockResolvedValueOnce([
+      { productId: "p-bumper", make: "Toyota", model: "Hilux", yearsLabel: "2016-2020", startYear: 2016, endYear: 2020 },
+      { productId: "p-light", make: "Ford", model: "Ranger", yearsLabel: "2019 up", startYear: 2019, endYear: null },
+      { productId: "p-light", make: "Ford", model: "Ranger", yearsLabel: null, startYear: null, endYear: null },
     ]);
 
     const report = await reports.getReport(actor, { type: "sales", ...query });
     if (report.type !== "sales") throw new Error("Expected sales report");
 
     expect(report.rows[0].items).toEqual([
-      { itemCode: "BUMPER", name: "Bumper", quantity: 2, listPrice: 1_000, discount: 100, unitPrice: 900, amount: 1_800 },
+      { itemCode: "BUMPER", name: "Bumper", quantity: 2, listPrice: 1_000, discount: 100, unitPrice: 900, amount: 1_800, fitment: ["Toyota Hilux 2016-2020"] },
     ]);
     expect(report.rows[0].itemsPending).toBe(false);
 
     // Charged at list: nothing was taken off, and the goods stay uncounted
     // because a downpayment moves money rather than stock.
     expect(report.rows[1].items).toEqual([
-      { itemCode: "LIGHT", name: "Light Bar", quantity: 1, listPrice: 600, discount: 0, unitPrice: 600, amount: 600 },
+      { itemCode: "LIGHT", name: "Light Bar", quantity: 1, listPrice: 600, discount: 0, unitPrice: 600, amount: 600, fitment: ["Ford Ranger 2019 up", "Ford Ranger all years"] },
     ]);
     expect(report.rows[1].itemsPending).toBe(true);
     expect(report.rows[1].units).toBe(0);
 
     expect(report.rows[2].items).toEqual([
-      { itemCode: "MAT", name: "Floor Mat", quantity: 1, listPrice: 0, discount: 0, unitPrice: 400, amount: 400 },
+      { itemCode: "MAT", name: "Floor Mat", quantity: 1, listPrice: 0, discount: 0, unitPrice: 400, amount: 400, fitment: [] },
     ]);
     expect(report.rows[2].discountAmount).toBe(50);
   });

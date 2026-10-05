@@ -320,12 +320,12 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
         salespersonId: true, salespersonName: true, verifiedAt: true, collectedAt: true, reviewStatus: true,
         customer: { select: { name: true } }, location: { select: { code: true, name: true } },
         collectedBy: { select: { name: true } },
-        sale: { select: { receiptIssued: true, discountAmount: true, lines: { select: { productItemCode: true, productName: true, quantity: true, unitPrice: true } } } },
+        sale: { select: { receiptIssued: true, discountAmount: true, lines: { select: { productId: true, productItemCode: true, productName: true, quantity: true, unitPrice: true } } } },
         // For a downpayment or an instalment, which have no sale of their own:
         // what the money is being put towards.
         // baseUnitPrice comes along so a discounted line can say what the
         // branch price was before the discount was given.
-        order: { select: { lines: { select: { productItemCode: true, productName: true, quantity: true, baseUnitPrice: true, finalUnitPrice: true } } } },
+        order: { select: { lines: { select: { productId: true, productItemCode: true, productName: true, quantity: true, baseUnitPrice: true, finalUnitPrice: true } } } },
       },
       orderBy: view === "VERIFIED_DATE" ? [{ verifiedAt: "desc" }, { id: "desc" }] : [{ collectedAt: "desc" }, { id: "desc" }],
     });
@@ -368,10 +368,42 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
         orderId: true, refundedAt: true, salespersonId: true, salespersonName: true,
         customer: { select: { name: true } }, location: { select: { code: true, name: true } },
         refundedBy: { select: { name: true } },
-        lines: { select: { productItemCode: true, productName: true, quantity: true, unitPrice: true } },
+        lines: { select: { productId: true, productItemCode: true, productName: true, quantity: true, unitPrice: true } },
       },
       orderBy: [{ refundedAt: "desc" }, { id: "desc" }],
     });
+
+    /*
+     * What each product fits, fetched once for every product on the page
+     * rather than joined onto each line: this query has no row limit, so a
+     * nested include would repeat a product's whole fitment list for every
+     * line that sold it.
+     */
+    const productIds = Array.from(new Set([
+      ...records.flatMap((row) => [...(row.sale?.lines ?? []), ...(row.order?.lines ?? [])].map((line) => line.productId)),
+      ...refundRecords.flatMap((row) => row.lines.map((line) => line.productId)),
+    ]));
+    const fitmentRows = productIds.length === 0 ? [] : await prisma.productVehicleCompatibility.findMany({
+      where: { productId: { in: productIds } },
+      select: { productId: true, make: true, model: true, yearsLabel: true, startYear: true, endYear: true },
+      orderBy: [{ make: "asc" }, { model: "asc" }, { startYear: "asc" }],
+    });
+    const fitmentByProduct = new Map<string, string[]>();
+    for (const row of fitmentRows) {
+      // The same reading the product screen shows, so one part is described
+      // identically wherever it appears.
+      const years = row.yearsLabel
+        ? row.yearsLabel
+        : !row.startYear
+          ? "all years"
+          : row.startYear === row.endYear
+            ? String(row.startYear)
+            : `${row.startYear}-${row.endYear ?? "present"}`;
+      const label = [row.make, row.model].filter(Boolean).join(" ");
+      const existing = fitmentByProduct.get(row.productId) ?? [];
+      existing.push(`${label} ${years}`.trim());
+      fitmentByProduct.set(row.productId, existing);
+    }
 
     /*
      * What the row is for. A released order is read through its sale lines,
@@ -380,8 +412,8 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
      * sale line records only what was charged.
      */
     function buildItems(row: {
-      sale: { lines: Array<{ productItemCode: string; productName: string; quantity: number; unitPrice: Prisma.Decimal }> } | null;
-      order: { lines: Array<{ productItemCode: string; productName: string; quantity: number; baseUnitPrice: Prisma.Decimal; finalUnitPrice: Prisma.Decimal }> } | null;
+      sale: { lines: Array<{ productId: string; productItemCode: string; productName: string; quantity: number; unitPrice: Prisma.Decimal }> } | null;
+      order: { lines: Array<{ productId: string; productItemCode: string; productName: string; quantity: number; baseUnitPrice: Prisma.Decimal; finalUnitPrice: Prisma.Decimal }> } | null;
     }) {
       const listPrices = new Map((row.order?.lines ?? []).map((line) => [line.productItemCode, line.baseUnitPrice.toNumber()]));
       const lines = row.sale?.lines ?? row.order?.lines ?? [];
@@ -397,6 +429,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
           discount: Math.max(Math.round((listPrice - unitPrice) * 100) / 100, 0),
           unitPrice,
           amount: line.quantity * unitPrice,
+          fitment: fitmentByProduct.get(line.productId) ?? [],
         };
       });
     }
@@ -459,6 +492,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
         discount: 0,
         unitPrice: line.unitPrice.toNumber(),
         amount: -(line.quantity * line.unitPrice.toNumber()),
+        fitment: fitmentByProduct.get(line.productId) ?? [],
       })),
       itemsPending: false,
     }));

@@ -94,7 +94,11 @@ The Sales Report is the monthly sales report by default; there is no separate Mo
 - Items: what the receipt was for. On screen this is a link, because several
   items in one table cell made every row a different height; it opens a panel
   listing each item on its own line with quantity, list price, the discount
-  taken off, the unit price charged, and the line amount. The PDF prints the
+  taken off, the unit price charged, and the line amount. Each item also lists
+  what it fits, read from the product's vehicle compatibility and shown exactly
+  as the Products screen reads it; a product with no fitment on file, which is
+  ordinary for a universal part, shows none. Fitment is on screen only, not in
+  the PDF, whose Items column is already the widest on the page. The PDF prints the
   same items in an Items column, one line per item, with
   `(list X less Y)` appended to a discounted line.
   A receipt that settles an order shows the goods the order is for and says they
