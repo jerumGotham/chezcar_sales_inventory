@@ -63,7 +63,7 @@ Notification realtime delivery reuses `DATABASE_URL` for one dedicated PostgreSQ
 
 Browser push notifications are enabled only when both VAPID keys are present. Without them, durable in-app notifications and SSE still work, but the browser push opt-in button remains unavailable. Push provider acceptance never marks a notification read.
 
-`RECEIPT_STORAGE_PATH` and `PRODUCT_IMAGE_STORAGE_PATH` control private image volumes. For Coolify, mount a persistent volume or bind mount at `/app/storage`, then use paths such as `/app/storage/receipts` and `/app/storage/products`; Coolify documents `/app` as the container base directory for persistent storage. Do not expose either directory as a public static folder. Seed variables are needed only for `npm run db:seed`; keep production provisioning in a controlled operational workflow.
+`BACKUP_STORAGE_PATH` is where the system console writes database backups; point it at the same persistent volume, such as `/app/storage/backups`, or they vanish with the container. The five most recent are kept. `RECEIPT_STORAGE_PATH` and `PRODUCT_IMAGE_STORAGE_PATH` control private image volumes. For Coolify, mount a persistent volume or bind mount at `/app/storage`, then use paths such as `/app/storage/receipts` and `/app/storage/products`; Coolify documents `/app` as the container base directory for persistent storage. Do not expose either directory as a public static folder. Seed variables are needed only for `npm run db:seed`; keep production provisioning in a controlled operational workflow.
 
 ## Config file format
 

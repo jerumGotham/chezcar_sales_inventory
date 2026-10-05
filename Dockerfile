@@ -2,8 +2,18 @@
 
 FROM node:20.20.2-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS base
 WORKDIR /app
+# postgresql-client supplies pg_dump for the backup the system console offers.
+# The server is PostgreSQL 17 and pg_dump refuses a server newer than itself,
+# so the client comes from PGDG rather than Debian's older default.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssl \
+  && apt-get install -y --no-install-recommends openssl ca-certificates curl gnupg \
+  && install -d /usr/share/postgresql-common/pgdg \
+  && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+  && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends postgresql-client-17 \
+  && apt-get purge -y curl gnupg \
+  && apt-get autoremove -y \
   && rm -rf /var/lib/apt/lists/*
 
 FROM base AS dependencies

@@ -30,6 +30,7 @@ import { recordAuditLog } from "./audit-log";
 import { findActiveOperationalLocation, listActiveOperationalLocations } from "@/lib/server/locations";
 import { canAccessLocation, hasAllLocationAccess } from "@/lib/server/policy/access";
 
+import { describeError, recordSystemLog } from "./system-log";
 /**
  * Delegated user lifecycle application service.
  *
@@ -127,6 +128,10 @@ export function usersErrorResponse(
     return response;
   } catch (unexpectedError) {
     console.error(options.context, unexpectedError);
+    // Kept where it can be read back: the container log is gone on the
+    // next restart, and this is the only answer to "it said internal
+    // server error".
+    void recordSystemLog({ level: "ERROR", source: options.context, ...describeError(unexpectedError) });
     return Response.json(
       { error: { code: "INTERNAL_ERROR", message: options.context } },
       { status: 500 },

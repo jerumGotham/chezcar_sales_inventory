@@ -15,6 +15,7 @@ import { recordAuditLog } from "./audit-log";
 import { createNotifications } from "./notifications";
 import { receiptEvidenceVersion } from "./receipt-evidence";
 
+import { describeError, recordSystemLog } from "./system-log";
 export class PaymentError extends Error {
   constructor(readonly code: string, message: string, readonly status = 400) {
     super(message);
@@ -547,5 +548,9 @@ export function paymentsErrorResponse(error: unknown, context: string) {
     return Response.json({ error: { code: "CONFLICT", message: "This payment changed; reload and try again" } }, { status: 409 });
   }
   console.error(context, error);
+  // Kept where it can be read back: the container log is gone on the
+  // next restart, and this is the only answer to "it said internal
+  // server error".
+  void recordSystemLog({ level: "ERROR", source: context, ...describeError(error) });
   return null;
 }

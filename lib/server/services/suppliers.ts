@@ -25,6 +25,7 @@ import {
 import { prisma } from "@/lib/server/prisma";
 import { recordAuditLog } from "./audit-log";
 
+import { describeError, recordSystemLog } from "./system-log";
 const supplierSelect = {
   id: true,
   code: true,
@@ -204,6 +205,10 @@ export function suppliersErrorResponse(error: unknown, context: string): Respons
     return authorizationErrorResponse(error);
   } catch (unexpectedError) {
     console.error(context, unexpectedError);
+    // Kept where it can be read back: the container log is gone on the
+    // next restart, and this is the only answer to "it said internal
+    // server error".
+    void recordSystemLog({ level: "ERROR", source: context, ...describeError(unexpectedError) });
     return Response.json(
       { error: { code: "INTERNAL_ERROR", message: context } },
       { status: 500 },

@@ -21,6 +21,7 @@ import type { PersistedAccessContext } from "@/lib/server/policy/access";
 import { prisma } from "@/lib/server/prisma";
 import { recordAuditLog } from "./audit-log";
 
+import { describeError, recordSystemLog } from "./system-log";
 export class RoleMaintenanceError extends Error {
   constructor(
     readonly status: number,
@@ -346,6 +347,10 @@ export function rolesErrorResponse(error: unknown, context: string): Response {
     return authorizationErrorResponse(error);
   } catch (unexpectedError) {
     console.error(context, unexpectedError);
+    // Kept where it can be read back: the container log is gone on the
+    // next restart, and this is the only answer to "it said internal
+    // server error".
+    void recordSystemLog({ level: "ERROR", source: context, ...describeError(unexpectedError) });
     return Response.json(
       { error: { code: "INTERNAL_ERROR", message: context } },
       { status: 500 },

@@ -1626,6 +1626,31 @@ model SaleCorrectionRequest {
   @@index([resolvedById])
 }
 
+/// What the application itself recorded going wrong. Container logs live in
+/// Docker and the application cannot reach them, so anything worth reading
+/// after a restart is written here when it happens.
+model SystemLog {
+  id         String         @id @default(cuid())
+  occurredAt DateTime       @default(now())
+  level      SystemLogLevel
+  /// The route, job or script that raised it.
+  source     String
+  message    String         @db.Text
+  detail     String?        @db.Text
+  actorId    String?
+  actorLabel String         @default("-")
+
+  @@index([occurredAt])
+  @@index([level, occurredAt])
+  @@index([source])
+}
+
+enum SystemLogLevel {
+  ERROR
+  WARN
+  INFO
+}
+
 model AuditLog {
   id            String   @id @default(cuid())
   occurredAt    DateTime @default(now())

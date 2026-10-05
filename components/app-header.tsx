@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, ChevronDown, KeyRound, LogOut, MapPin, Moon, ScrollText, Sun, X } from "lucide-react";
+import { Bell, ChevronDown, KeyRound, LogOut, MapPin, Moon, ScrollText, ServerCog, Sun, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChangePasswordDialog } from "@/components/change-password-dialog";
 import { useCan, useShellAccess } from "@/components/shell-access-context";
@@ -57,6 +57,7 @@ export function AppHeader({
   const access = useShellAccess();
   const canViewNotifications = useCan("notifications:view");
   const canViewAudit = useCan("audit:view");
+  const canViewSystem = useCan("system:monitor");
   const canMarkNotificationsRead = useCan("notifications:mark-read");
   const queryClient = useQueryClient();
   const identityEmail = access.authenticated ? access.identity.email : null;
@@ -259,6 +260,18 @@ export function AppHeader({
                 title="Audit trail"
               >
                 <ScrollText className="h-5 w-5" />
+              </Link>
+            ) : null}
+
+            {/* Beside the audit trail for the same reason: only support holds it. */}
+            {canViewSystem ? (
+              <Link
+                href="/system"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-border bg-muted text-foreground hover:bg-accent"
+                aria-label="System console"
+                title="System console"
+              >
+                <ServerCog className="h-5 w-5" />
               </Link>
             ) : null}
 
