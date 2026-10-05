@@ -15,13 +15,13 @@ import { z } from "zod";
 
 export const receiptBookletSchema = z.string().trim().max(50).default("");
 export const receiptBookletInputSchema = z.string().trim().max(50).optional().default("");
-export const manualReceiptNumberSchema = z.string().trim().min(1).max(100);
+export const manualReceiptNumberSchema = z.string().trim().min(1, "Enter the receipt number").max(100, "A receipt number is at most 100 characters");
 export const paymentMethodSchema = z.enum(["CASH", "GCASH", "MAYA", "BANK_TRANSFER", "CREDIT_CARD", "SPLIT"]);
 
 const receiptMoneySchema = z.number().finite().min(0).max(9_999_999_999.99).multipleOf(0.01, "Money values may have at most two decimal places");
 
 export const receiptComparisonLineSchema = z.object({
-  itemCode: z.string().trim().min(1).max(100),
+  itemCode: z.string().trim().min(1, "Enter the item code for every line, or remove the empty line").max(100, "An item code is at most 100 characters"),
   /**
    * Filled in when the sale is read, not when the comparison is stored: what
    * Accounting types off the photo is the item code, and the name is only the
@@ -29,7 +29,7 @@ export const receiptComparisonLineSchema = z.object({
    * were saved before this.
    */
   name: z.string().trim().max(200).optional(),
-  quantity: z.number().int().positive(),
+  quantity: z.number().int("Quantity must be a whole number").positive("Quantity must be at least 1"),
   unitPrice: receiptMoneySchema,
 });
 
@@ -40,7 +40,7 @@ export const receiptComparisonSchema = z.object({
   discountAmount: receiptMoneySchema,
   amountPaid: receiptMoneySchema,
   totalAmount: receiptMoneySchema,
-  lines: z.array(receiptComparisonLineSchema).min(1),
+  lines: z.array(receiptComparisonLineSchema).min(1, "A receipt needs at least one item"),
 }).superRefine((comparison, context) => {
   const seen = new Set<string>();
   comparison.lines.forEach((line, index) => {
@@ -89,7 +89,7 @@ export type MismatchCategoryDto = (typeof MISMATCH_CATEGORIES)[number];
 
 export const directSaleLineSchema = z.object({
   productId: z.string().min(1),
-  quantity: z.number().int().positive(),
+  quantity: z.number().int("Quantity must be a whole number").positive("Quantity must be at least 1"),
   unitPrice: z.number().min(0).optional(),
 });
 
