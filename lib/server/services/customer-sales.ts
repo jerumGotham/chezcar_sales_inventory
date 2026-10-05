@@ -1374,6 +1374,94 @@ export async function recordCustomerOrderPayment(
   }
 }
 
+/**
+ * Removes a voided sale so the branch can encode it again.
+ *
+ * Voiding already undid the money and put the stock back; what is left is a
+ * record of a receipt that should not have been entered, and a receipt number
+ * the branch cannot reuse while it is still registered. This clears both.
+ *
+ * It refuses a sale that another record of its own stands on -- a refund, a
+ * customer warranty, a backjob, or the replacement sale that records this one
+ * as what it replaced -- because deleting the row would leave that record
+ * describing nothing.
+ */
+export async function deleteVoidedSale(actor: AuthContext, saleId: string) {
+  assertCapability(actor, "sales:delete-voided");
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Sale" WHERE id = ${saleId} FOR UPDATE`;
+    const sale = await tx.sale.findUnique({
+      where: { id: saleId },
+      select: {
+        id: true, reference: true, manualReceiptNumber: true, status: true, locationId: true,
+        totalAmount: true,
+        location: { select: { name: true } },
+        corrections: { select: { manualReceiptNumber: true } },
+        _count: { select: { lines: true, refunds: true, warranties: true, originalBackjobs: true, chargeBackjobs: true } },
+      },
+    });
+    if (!sale) throw new CustomerSalesError("NOT_FOUND", "Sale not found", 404);
+    assertOperationalResource(actor, sale.locationId);
+    if (sale.status !== "VOIDED") {
+      throw new CustomerSalesError("INVALID_STATUS", "Only a voided sale can be deleted. Void it first.", 409);
+    }
+
+    const standingOn: Array<[number, string]> = [
+      [sale._count.refunds, "refund(s) recording money handed back against it"],
+      [sale._count.warranties, "customer warranty case(s) raised against it"],
+      [sale._count.originalBackjobs, "backjob(s) naming it as the original sale"],
+      [sale._count.chargeBackjobs, "backjob(s) charged to it"],
+    ];
+    for (const [count, description] of standingOn) {
+      if (count > 0) {
+        throw new CustomerSalesError(
+          "SALE_IN_USE",
+          `${count} ${description} still point at this sale, so it cannot be deleted.`,
+          409,
+        );
+      }
+    }
+    if (sale.corrections.length > 0) {
+      throw new CustomerSalesError(
+        "SALE_IN_USE",
+        `The replacement receipt ${sale.corrections.map((other) => other.manualReceiptNumber).join(", ")} records this sale as what it replaced, so it cannot be deleted.`,
+        409,
+      );
+    }
+
+    /*
+     * SaleSalespersonEvent refuses its own deletion through a trigger. The
+     * trigger steps aside for this setting rather than being disabled, so it
+     * stays armed against every other connection meanwhile.
+     */
+    await tx.$executeRaw`SELECT set_config('chezcar.operational_data_reset', 'true', true)`;
+    await tx.saleCorrectionRequest.deleteMany({ where: { saleId: sale.id } });
+    await tx.saleSalespersonEvent.deleteMany({ where: { saleId: sale.id } });
+    await tx.saleAccountingReview.deleteMany({ where: { saleId: sale.id } });
+    await tx.saleLine.deleteMany({ where: { saleId: sale.id } });
+    await tx.payment.deleteMany({ where: { saleId: sale.id } });
+    // The registry holds the number itself; left behind, it stays taken and the
+    // branch cannot write that receipt again.
+    await tx.manualReceipt.deleteMany({ where: { saleId: sale.id } });
+    await tx.sale.delete({ where: { id: sale.id } });
+
+    await recordAuditLog({
+      category: "Receipt Verification",
+      action: "Voided Sale Deleted",
+      actorId: actor.userId,
+      reference: sale.manualReceiptNumber,
+      locationLabel: sale.location.name,
+      details: `Deleted the voided sale ${sale.reference} so the receipt number can be used again`,
+      facts: [
+        { label: "Lines removed", value: String(sale._count.lines) },
+        { label: "Recorded total", value: String(sale.totalAmount.toNumber()) },
+      ],
+    }, tx);
+
+    return { deleted: true, manualReceiptNumber: sale.manualReceiptNumber };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
 export async function createDirectSale(actor: AuthContext, rawInput: z.input<typeof directSaleSchema>) {
   assertCapability(actor, "sales:post");
   return createDirectSaleForActor(actor, rawInput);
@@ -1528,6 +1616,15 @@ function receiptVerificationWhere(
   const parsed = receiptVerificationListQuerySchema.parse(input);
   const where: Prisma.SaleWhereInput = {
     location: { type: "BRANCH" },
+    /*
+     * Releasing an order that was already paid in full writes no receipt,
+     * because no money changes hands. There is no paper for Accounting to
+     * compare, so such a sale has no business in this queue: it would sit here
+     * forever showing evidence pending against a photo that will never exist,
+     * and it would be counted as work nobody can finish. The money it settled
+     * was verified on the receipts that collected it.
+     */
+    receiptIssued: true,
   };
 
   if (parsed.search) {

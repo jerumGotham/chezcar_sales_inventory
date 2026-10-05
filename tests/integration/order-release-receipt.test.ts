@@ -107,6 +107,20 @@ describe("releasing a customer order", () => {
         where: { type: "CUSTOMER_ORDER_RELEASE", reference: settled.orderNo },
       })).toBe(1);
 
+
+      /*
+       * It must also stay out of Receipt Verification. There is no paper to
+       * compare, so listing it would show evidence pending against a photo
+       * that can never exist, and count it as work nobody can finish.
+       */
+      const { listReceiptVerifications } = await import("../../lib/server/services/customer-sales");
+      const queue = await listReceiptVerifications(owner, {});
+      expect(queue.data.some((row) => row.id === sale.id)).toBe(false);
+      // The one that did collect money is still there to be checked.
+      expect(queue.data.some((row) => row.id === owingSale.id)).toBe(true);
+      expect(queue.meta.missingEvidence).toBe(
+        queue.data.filter((row) => !row.receiptPhotoUrl).length,
+      );
       const completed = await prisma.customerOrder.findUniqueOrThrow({ where: { id: settled.id } });
       expect(completed.status).toBe("COMPLETED");
       // No receipt was issued, so the order records none.

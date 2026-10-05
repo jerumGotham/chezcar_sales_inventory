@@ -154,6 +154,66 @@ describe("removing a voided sale from a deployed database", () => {
       expect(refusedReplaced).toMatchObject({ found: true, deleted: false });
       expect(refusedReplaced.refused).toContain("2740");
       expect(await prisma.sale.count({ where: { id: replaced.id } })).toBe(1);
+
+      /*
+       * The same removal offered in Receipt Verification, which is the path a
+       * branch actually uses after a sale was voided and has to be encoded
+       * again. It carries the authorisation the script does not.
+       */
+      const { deleteVoidedSale: deleteThroughTheApp } =
+        await import("../../lib/server/services/customer-sales");
+
+      const encoded = await createDirectSale(owner, {
+        locationId: branch.id,
+        salespersonId: fixture.salespersons.QC.id,
+        manualReceiptNumber: "2750",
+        paymentMethod: "CASH",
+        amountPaid: 1_000,
+        lines: [{ productId: product.id, quantity: 1 }],
+      });
+
+      // A posted sale is live money: void it first.
+      await expect(deleteThroughTheApp(owner, encoded.id))
+        .rejects.toMatchObject({ code: "INVALID_STATUS" });
+
+      await prisma.saleAccountingReview.update({
+        where: { saleId: encoded.id },
+        data: { receiptPhotoKey: `${crypto.randomUUID()}.jpg`, receiptPhotoType: "image/jpeg" },
+      });
+      await reviewSale(owner, encoded.id, {
+        status: "MISMATCH_REPORTED",
+        mismatchCategory: "RECEIPT_NOT_FOUND",
+        notes: "Encoded in error",
+        comparison: {
+          receiptNumber: "2750",
+          receiptBooklet: "",
+          paymentMethod: "CASH",
+          discountAmount: 0,
+          totalAmount: 1_000,
+          amountPaid: 1_000,
+          lines: [{ itemCode: "VOIDME-1", quantity: 1, unitPrice: 1_000 }],
+        },
+      });
+      await respondToSaleMismatch(owner, encoded.id, {
+        response: "SALE_ENCODED_INCORRECT",
+        note: "Should never have been encoded",
+      });
+      await resolveSale(owner, encoded.id, { action: "VOIDED", note: "Encoded in error" });
+
+      const removedThroughTheApp = await deleteThroughTheApp(owner, encoded.id);
+      expect(removedThroughTheApp).toMatchObject({ deleted: true, manualReceiptNumber: "2750" });
+      expect(await prisma.sale.count({ where: { id: encoded.id } })).toBe(0);
+      // The number is free again, which is the point of removing the record.
+      expect(await prisma.manualReceipt.count({ where: { number: "2750" } })).toBe(0);
+      // Deleting a sale is itself a business action and is recorded.
+      expect(await prisma.auditLog.count({
+        where: { action: "Voided Sale Deleted", reference: "2750" },
+      })).toBe(1);
+
+      // A stock clerk cannot remove a sale.
+      await expect(
+        deleteThroughTheApp(actor(fixture.users.stockStaff, branch), replaced.id),
+      ).rejects.toThrow(/permission/i);
     });
   }, 120_000);
 });

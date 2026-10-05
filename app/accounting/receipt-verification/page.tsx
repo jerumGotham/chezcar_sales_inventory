@@ -66,6 +66,12 @@ const RECEIPT_CONFIRMATIONS = {
       "This voids the incorrectly encoded sale and restores every original line quantity to Branch inventory without creating a replacement sale. This action cannot be undone.",
     confirmLabel: "Void sale and restore inventory",
   },
+  DELETE_VOIDED_SALE: {
+    title: "Delete this voided sale?",
+    description:
+      "Voiding already returned the stock and the money; this removes the record and frees the receipt number so the branch can encode it again. It cannot be undone, and it is refused if a refund, warranty, backjob or replacement receipt still points at this sale.",
+    confirmLabel: "Delete the voided sale",
+  },
 } as const;
 
 type ReceiptConfirmationAction = keyof typeof RECEIPT_CONFIRMATIONS;
@@ -401,6 +407,7 @@ function ReceiptVerificationContent() {
   const canResolve = useCan("sales:resolve");
   const canVoidReplace = useCan("sales:void-replace");
   const canRespond = useCan("sales:mismatch:respond");
+  const canDeleteVoided = useCan("sales:delete-voided");
   const canUploadEvidence = useCan("sales:evidence:upload");
   const canDeleteEvidence = useCan("sales:evidence:delete");
   const searchParams = useSearchParams();
@@ -561,6 +568,32 @@ function ReceiptVerificationContent() {
    * server voids the wrong receipt and posts this one unverified for
    * Accounting. No Admin stands between the mistake and the fix.
    */
+  const deleteVoidedMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedId) throw new Error("Select a sale first.");
+      const response = await fetch(`/api/accounting/receipts/${selectedId}`, {
+        method: "DELETE",
+        credentials: "same-origin",
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error?.message ?? "Unable to delete the sale");
+      return json.data as { manualReceiptNumber: string };
+    },
+    onSuccess: async (result) => {
+      setConfirmationAction(null);
+      // The record is gone, so nothing is left to keep selected.
+      setSelectedId(null);
+      setFormError(null);
+      setFormNotice(`Receipt ${result.manualReceiptNumber} was deleted and can be encoded again.`);
+      await queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] });
+    },
+    onError: (error: Error) => {
+      setConfirmationAction(null);
+      setFormNotice(null);
+      setFormError(error.message);
+    },
+  });
+
   const branchCorrectionMutation = useMutation({
     mutationFn: async () => {
       if (!selectedId) throw new Error("Select a receipt first.");
@@ -1006,7 +1039,16 @@ function ReceiptVerificationContent() {
     ((canReview && selectedSale.reviewStatus === "UNVERIFIED") ||
       (canVoidReplace &&
         selectedSale.reviewStatus === "MISMATCH_REPORTED" &&
-        selectedSale.branchResponse === "RECEIPT_CORRECTION_NEEDED")),
+        selectedSale.branchResponse === "RECEIPT_CORRECTION_NEEDED") ||
+      /*
+       * The branch has said the sale itself was keyed wrongly, so the lines are
+       * what has to change. Without this the correction button had nothing to
+       * correct with: the editor stayed hidden and only the receipt number and
+       * totals could move.
+       */
+      ((canRespond || canVoidReplace) &&
+        selectedSale.reviewStatus === "MISMATCH_REPORTED" &&
+        selectedSale.branchResponse === "SALE_ENCODED_INCORRECT")),
   );
   const updateComparison = (changes: Partial<ComparisonDraft>) =>
     setComparison((current) => ({ ...current, ...changes }));
@@ -1449,10 +1491,32 @@ function ReceiptVerificationContent() {
                   />
                 )}
                 {selectedSale.status === "VOIDED" && (
-                  <div className="rounded-xl bg-muted p-3 text-sm text-foreground">
-                    <p className="font-medium">This sale is voided and excluded from active sales.</p>
-                    {selectedSale.resolutionNote ? (
-                      <p className="mt-1">Resolution note: {selectedSale.resolutionNote}</p>
+                  <div className="space-y-3 rounded-xl bg-muted p-3 text-sm text-foreground">
+                    <div>
+                      <p className="font-medium">This sale is voided and excluded from active sales.</p>
+                      {selectedSale.resolutionNote ? (
+                        <p className="mt-1">Resolution note: {selectedSale.resolutionNote}</p>
+                      ) : null}
+                    </div>
+                    {/* The receipt number stays registered while this record
+                        exists, so the branch cannot write it again until the
+                        record is cleared. */}
+                    {canDeleteVoided ? (
+                      <div className="space-y-2 border-t pt-3">
+                        <p className="text-xs text-muted-foreground">
+                          Deleting this record frees receipt {selectedSale.manualReceiptNumber} so the branch can encode the sale again.
+                        </p>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          disabled={deleteVoidedMutation.isPending}
+                          onClick={() => setConfirmationAction("DELETE_VOIDED_SALE")}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          {deleteVoidedMutation.isPending ? "Deleting..." : "Delete this voided sale"}
+                        </Button>
+                      </div>
                     ) : null}
                   </div>
                 )}
@@ -1719,9 +1783,18 @@ function ReceiptVerificationContent() {
                 selectedSale.reviewStatus !== "VERIFIED" ? (
                   <div className="space-y-4 rounded-xl border p-4">
                     <div>
-                        <p className="font-semibold">Accounting verification details</p>
+                      {/* The same fields serve two different jobs, so they say
+                          which one is being done rather than always reading as
+                          Accounting's. */}
+                      <p className="font-semibold">
+                        {selectedSale.branchResponse === "SALE_ENCODED_INCORRECT"
+                          ? "What the sale should have been"
+                          : "Accounting verification details"}
+                      </p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        These editable fields start with the system sale values. Compare them with the uploaded receipt photo, then correct only the values that differ.
+                        {selectedSale.branchResponse === "SALE_ENCODED_INCORRECT"
+                          ? "Correct the items, quantities and prices to what was actually sold. Saving voids the original sale, returns its stock, and posts this as the replacement for Accounting to verify again."
+                          : "These editable fields start with the system sale values. Compare them with the uploaded receipt photo, then correct only the values that differ."}
                       </p>
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">
@@ -2128,6 +2201,8 @@ function ReceiptVerificationContent() {
             resolveMutation.mutate("VOIDED_REPLACED");
           } else if (confirmationAction === "VOID_INCORRECT_SALE") {
             resolveMutation.mutate("VOIDED");
+          } else if (confirmationAction === "DELETE_VOIDED_SALE") {
+            deleteVoidedMutation.mutate();
           }
         }}
       />
