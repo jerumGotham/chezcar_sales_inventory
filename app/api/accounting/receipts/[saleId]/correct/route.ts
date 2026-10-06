@@ -4,7 +4,7 @@ import {
   authorizationErrorResponse,
   requireCapability,
 } from "@/lib/server/authorization";
-import { accountingResolutionSchema, CustomerSalesError, resolveSale } from "@/lib/server/services/customer-sales";
+import { accountingResolutionSchema, correctEncodedSale, CustomerSalesError } from "@/lib/server/services/customer-sales";
 
 type Context = { params: Promise<{ saleId: string }> };
 
@@ -19,8 +19,11 @@ function errorResponse(error: unknown) {
  *
  * Separate from /resolve because the two are different acts by different
  * people: that one is Accounting or an Admin settling a dispute, this one is
- * the branch correcting itself. The service performs the same void and replace
- * either way, and leaves the corrected receipt unverified for Accounting.
+ * the branch correcting itself. The paper is right and only the keying was
+ * wrong, so the sale is rewritten in place and keeps its receipt number --
+ * asking the branch for a new one made it invent a number the receipt does not
+ * carry. It goes back to Accounting unverified: a branch does not sign off its
+ * own correction.
  */
 export async function POST(request: Request, context: Context) {
   try {
@@ -28,7 +31,7 @@ export async function POST(request: Request, context: Context) {
     const input = accountingResolutionSchema.parse(await request.json());
     const { saleId } = await context.params;
     return Response.json({
-      data: await resolveSale(actor, saleId, input, { branchCorrection: true }),
+      data: await correctEncodedSale(actor, saleId, input, { byBranch: true }),
     });
   } catch (error) {
     return errorResponse(error);

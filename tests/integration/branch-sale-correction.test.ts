@@ -35,7 +35,7 @@ describe("a branch correcting the sale it encoded", () => {
         data: { locationId: branch.id, productId: product.id, onHand: 10, unitCost: 100 },
       });
 
-      const { createDirectSale, reviewSale, respondToSaleMismatch, resolveSale } =
+      const { createDirectSale, reviewSale, respondToSaleMismatch, resolveSale, correctEncodedSale } =
         await import("../../lib/server/services/customer-sales");
 
       const onHand = async () =>
@@ -86,11 +86,11 @@ describe("a branch correcting the sale it encoded", () => {
         note: "The receipt is wrong, not the system",
       });
       await expect(
-        resolveSale(
+        correctEncodedSale(
           owner,
           sale.id,
-          { action: "VOIDED_REPLACED", note: "Sneaking a change through", replacement: comparison("CORRECT-009", 1, 500) },
-          { branchCorrection: true },
+          { action: "VOIDED_REPLACED", note: "Sneaking a change through", replacement: comparison("CORRECT-001", 1, 500) },
+          { byBranch: true },
         ),
       ).rejects.toMatchObject({ code: "INVALID_RESOLUTION" });
       expect(await onHand()).toBe(7);
@@ -100,26 +100,34 @@ describe("a branch correcting the sale it encoded", () => {
         response: "SALE_ENCODED_INCORRECT",
         note: "I keyed three by mistake",
       });
-      await resolveSale(
+      // The paper is right and only the keying was wrong, so the receipt
+      // number stays: asking for a new one made the branch invent a number
+      // the receipt does not carry.
+      await correctEncodedSale(
         owner,
         sale.id,
-        { action: "VOIDED_REPLACED", note: "Corrected to the two actually sold", replacement: comparison("CORRECT-002", 2, 1000) },
-        { branchCorrection: true },
+        { action: "VOIDED_REPLACED", note: "Corrected to the two actually sold", replacement: comparison("CORRECT-001", 2, 1000) },
+        { byBranch: true },
       );
 
       // Three went out, three came back, two went out again.
       expect(await onHand()).toBe(8);
-      expect((await prisma.sale.findUniqueOrThrow({ where: { id: sale.id } })).status).toBe("VOIDED");
 
-      const replacement = await prisma.sale.findFirstOrThrow({
-        where: { manualReceiptNumber: "CORRECT-002" },
+      // One sale throughout, under the number printed on the paper.
+      expect(await prisma.sale.count({ where: { correctionOfId: sale.id } })).toBe(0);
+      const corrected = await prisma.sale.findUniqueOrThrow({
+        where: { id: sale.id },
         include: { lines: true, accountingReview: true },
       });
-      expect(replacement.status).toBe("POSTED");
-      expect(replacement.totalAmount.toNumber()).toBe(2000);
-      expect(replacement.lines[0].quantity).toBe(2);
+      expect(corrected.status).toBe("POSTED");
+      expect(corrected.manualReceiptNumber).toBe("CORRECT-001");
+      expect(corrected.totalAmount.toNumber()).toBe(2000);
+      expect(corrected.lines).toHaveLength(1);
+      expect(corrected.lines[0].quantity).toBe(2);
       // Back to Accounting: a branch does not verify its own correction.
-      expect(replacement.accountingReview?.status).toBe("UNVERIFIED");
+      expect(corrected.accountingReview?.status).toBe("UNVERIFIED");
+      expect(corrected.accountingReview?.verifiedAt).toBeNull();
+      expect(corrected.accountingReview?.branchResponse).toBe("SALE_ENCODED_INCORRECT");
     });
   }, 120_000);
 });

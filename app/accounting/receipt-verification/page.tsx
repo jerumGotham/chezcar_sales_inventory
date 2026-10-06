@@ -738,12 +738,6 @@ function ReceiptVerificationContent() {
     mutationFn: async () => {
       if (!selectedId) throw new Error("Select a receipt first.");
       if (!branchResponseNote.trim()) throw new Error("Say what was wrong before correcting it.");
-      if (
-        correctionMode === "BRANCH" &&
-        comparison.receiptNumber.trim() === selectedSale?.manualReceiptNumber
-      ) {
-        throw new Error("Enter the new receipt number for the corrected sale.");
-      }
       /*
        * The server will only accept a correction once the branch has recorded
        * that the sale was keyed wrongly. Recording it here keeps that a detail
@@ -1903,7 +1897,7 @@ function ReceiptVerificationContent() {
                       )}
                       {branchResponse === "SALE_ENCODED_INCORRECT" && (
                         <p className="rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-3 text-xs text-amber-900 dark:text-amber-300 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-                          Submit this response first. The sale then opens for correction below: fix what was keyed wrongly and save, and it is posted as the replacement for Accounting to verify again. Nothing moves until you save that correction.
+                          Submit this response first. The sale then opens for correction: fix what was keyed wrongly and save, and it keeps its receipt number and goes back to Accounting to verify again. Nothing moves until you save that correction.
                         </p>
                       )}
                       <div className="grid gap-2">
@@ -2033,7 +2027,7 @@ function ReceiptVerificationContent() {
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {selectedSale.branchResponse === "SALE_ENCODED_INCORRECT"
-                          ? "Correct the items, quantities and prices to what was actually sold. Saving voids the original sale, returns its stock, and posts this as the replacement for Accounting to verify again."
+                          ? "Correct the items, quantities and prices to what was actually sold. The receipt number stays as it is; saving corrects the sale and sends it back to Accounting to verify again."
                           : "These editable fields start with the system sale values. Compare them with the uploaded receipt photo, then correct only the values that differ."}
                       </p>
                     </div>
@@ -2450,7 +2444,7 @@ function ReceiptVerificationContent() {
             <DialogDescription>
               {correctionMode === "ACCOUNTING"
                 ? "Change the items, quantities and prices to what the receipt in front of you says. Saving puts the sale right, keeps the receipt number, carries its photo over and marks it verified. Nothing goes back to the branch."
-                : "Change the items, quantities and prices to what was actually sold. Saving voids the original receipt, returns its stock, and posts this as a new receipt for Accounting to verify again."}
+                : "Change the items, quantities and prices to what was actually sold. The receipt number stays as it is; saving corrects the sale and sends it back to Accounting to verify again."}
             </DialogDescription>
           </DialogHeader>
 
@@ -2461,14 +2455,12 @@ function ReceiptVerificationContent() {
                 <Input
                   id="correction-receipt"
                   value={comparison.receiptNumber}
-                  readOnly={correctionMode === "ACCOUNTING"}
-                  className={correctionMode === "ACCOUNTING" ? "bg-muted" : undefined}
+                  readOnly
+                  className="bg-muted"
                   onChange={(event) => updateComparison({ receiptNumber: event.target.value })}
                 />
                 <p className="text-xs text-muted-foreground">
-                  {correctionMode === "ACCOUNTING"
-                    ? "Stays as it is: the sale is being put right, not renumbered."
-                    : "Must differ from the receipt being voided."}
+                  Stays as it is: the sale is being put right, not renumbered.
                 </p>
               </div>
               <div className="space-y-1">

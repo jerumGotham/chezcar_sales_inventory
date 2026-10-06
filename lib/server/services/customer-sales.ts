@@ -2115,13 +2115,21 @@ export async function correctEncodedSale(
   actor: AuthContext,
   saleId: string,
   rawInput: z.input<typeof accountingResolutionSchema>,
+  options: { byBranch?: boolean } = {},
 ) {
-  // Two things at once -- rewriting a posted sale and verifying it -- so it
-  // takes the grant for each rather than just the first.
-  assertCapability(actor, "sales:void-replace");
-  assertCapability(actor, "sales:verify");
-  assertCapability(actor, "sales:evidence:view");
-  assertAccounting(actor);
+  if (options.byBranch) {
+    // The branch rewrites, but does not sign off: the correction goes back to
+    // Accounting unverified, so this is the answering grant, not the verifying
+    // one.
+    assertCapability(actor, "sales:mismatch:respond");
+  } else {
+    // Two things at once -- rewriting a posted sale and verifying it -- so it
+    // takes the grant for each rather than just the first.
+    assertCapability(actor, "sales:void-replace");
+    assertCapability(actor, "sales:verify");
+    assertCapability(actor, "sales:evidence:view");
+    assertAccounting(actor);
+  }
   const input = accountingResolutionSchema.parse(rawInput);
   const corrected = input.replacement;
   if (!corrected) throw new CustomerSalesError("INVALID_INPUT", "Corrected sale details are required", 400);
@@ -2151,9 +2159,17 @@ export async function correctEncodedSale(
     if (review.status !== "MISMATCH_REPORTED" || review.resolvedAt) {
       throw new CustomerSalesError("INVALID_STATE", "Report the mismatch first, so the record says why the sale changed", 409);
     }
-    // The rule the branch already lives by, kept for everyone: nothing is
-    // verified on no evidence, and this step verifies.
-    if (!review.receiptPhotoKey) {
+    /*
+     * A branch that has told Accounting its encoding was right does not get to
+     * rewrite the sale anyway. It has to change that answer first, which is
+     * recorded, rather than contradicting it silently here.
+     */
+    if (options.byBranch && review.branchResponse && review.branchResponse !== "SALE_ENCODED_INCORRECT") {
+      throw new CustomerSalesError("INVALID_RESOLUTION", "Change the branch finding to \"Sale was encoded incorrectly\" before correcting it", 409);
+    }
+    // Nothing is verified on no evidence. Only the Accounting path verifies,
+    // so only it has to insist on a photo.
+    if (!options.byBranch && !review.receiptPhotoKey) {
       throw new CustomerSalesError("EVIDENCE_REQUIRED", "Attach the receipt photo before correcting and verifying this sale", 409);
     }
     /*
@@ -2243,15 +2259,26 @@ export async function correctEncodedSale(
 
     const updatedReview = await tx.saleAccountingReview.update({
       where: { id: review.id },
-      data: {
-        status: "VERIFIED",
-        verifiedAt: now,
-        reviewedById: actor.userId,
-        reviewedAt: now,
-        resolutionNote: input.note,
-        resolvedById: actor.userId,
-        resolvedAt: now,
-      },
+      data: options.byBranch
+        ? {
+            // Back to Accounting to look at again, with the branch's answer on
+            // record. Nothing here is resolved or verified by the branch.
+            status: "UNVERIFIED",
+            verifiedAt: null,
+            branchResponse: "SALE_ENCODED_INCORRECT",
+            branchResponseNote: input.note,
+            branchRespondedById: actor.userId,
+            branchRespondedAt: now,
+          }
+        : {
+            status: "VERIFIED",
+            verifiedAt: now,
+            reviewedById: actor.userId,
+            reviewedAt: now,
+            resolutionNote: input.note,
+            resolvedById: actor.userId,
+            resolvedAt: now,
+          },
     });
     await syncSalePaymentReview(tx, sale.id, updatedReview);
 
@@ -2262,7 +2289,9 @@ export async function correctEncodedSale(
       actorId: actor.userId,
       reference: sale.manualReceiptNumber,
       locationLabel: sale.location.name,
-      details: `Accounting corrected what was keyed against receipt ${sale.manualReceiptNumber} and verified it. ${input.note}`,
+      details: options.byBranch
+        ? `The branch corrected what it keyed against receipt ${sale.manualReceiptNumber}, for Accounting to review again. ${input.note}`
+        : `Accounting corrected what was keyed against receipt ${sale.manualReceiptNumber} and verified it. ${input.note}`,
       facts: [
         { label: "Was", value: before },
         { label: "Now", value: after },
