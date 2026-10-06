@@ -288,12 +288,12 @@ async function fetchCustomerOrders(params: {
 
 type SalesFilterBranch = { id: string; code: string; name: string };
 
-const SALES_PERIOD_OPTIONS = [
+const SALES_PERIOD_OPTIONS: SelectOption[] = [
   { value: "", label: "All time" },
   { value: "today", label: "Today" },
   { value: "last7Days", label: "Last 7 Days" },
   { value: "monthToDate", label: "Month to Date" },
-] as const;
+];
 
 type DirectSalesApiResponse = {
   data: DirectSaleRow[];
@@ -681,19 +681,43 @@ export default function CustomerOrdersPage() {
   }, [directSalesQuery.data, saleSearch]);
   const salesSummary = directSalesQuery.isError ? undefined : directSalesQuery.data?.summary;
   /*
-   * Written to the URL rather than to state, so the filter survives a reload
-   * and a shared link, and so the dashboard's own link is just this page with
-   * the parameters already set.
+   * Held as a draft until Apply, the way the Customer Orders filter beside it
+   * works, then written to the URL rather than to state: a reload keeps the
+   * filter, a link carries it, and the dashboard's link is just this page with
+   * the parameters already set rather than a second mechanism.
    */
-  const applySalesFilter = (changes: { salesPeriod?: string; salesBranchId?: string }) => {
+  const [salesPeriodDraft, setSalesPeriodDraft] = useState(salesPeriodFilter);
+  const [salesBranchDraft, setSalesBranchDraft] = useState(salesBranchFilter || "all");
+  /*
+   * Arriving from a dashboard card changes the URL under the draft, so the
+   * controls follow it rather than showing the previous choice. Adjusted during
+   * render, not in an effect: an effect would paint the stale draft once and
+   * then correct it.
+   */
+  const urlFilterKey = `${salesPeriodFilter}|${salesBranchFilter}`;
+  const [lastUrlFilterKey, setLastUrlFilterKey] = useState(urlFilterKey);
+  if (lastUrlFilterKey !== urlFilterKey) {
+    setLastUrlFilterKey(urlFilterKey);
+    setSalesPeriodDraft(salesPeriodFilter);
+    setSalesBranchDraft(salesBranchFilter || "all");
+  }
+
+  const writeSalesFilter = (period: string, branchId: string) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", "sales");
-    for (const [key, value] of Object.entries(changes)) {
+    for (const [key, value] of [["salesPeriod", period], ["salesBranchId", branchId]] as const) {
       if (value) params.set(key, value);
       else params.delete(key);
     }
     setSalePage(1);
     router.replace(`/customer-orders?${params}` as Route);
+  };
+  const applySalesFilter = () =>
+    writeSalesFilter(salesPeriodDraft, salesBranchDraft === "all" ? "" : salesBranchDraft);
+  const resetSalesFilter = () => {
+    setSalesPeriodDraft("");
+    setSalesBranchDraft("all");
+    writeSalesFilter("", "");
   };
   const salesBranchOptions: SelectOption[] = [
     { value: "all", label: "All Branches" },
@@ -1468,49 +1492,6 @@ export default function CustomerOrdersPage() {
         </>
       ) : activeView === "sales" ? (
         <>
-{/* The dashboard's own filter, offered here too, so a list reached from
-            a card can be re-aimed without going back to change it there. Shown
-            only where it can be used: the service refuses these parameters from
-            anyone else, and filterBranches is empty for them. */}
-        {(directSalesQuery.data?.filterBranches.length ?? 0) > 0 ? (
-          <div className="mb-4 grid gap-4 rounded-xl border bg-muted/50 p-4 sm:grid-cols-[auto_minmax(14rem,1fr)]">
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">Period</p>
-              <div className="flex flex-wrap gap-1 rounded-lg border bg-background p-1">
-                {SALES_PERIOD_OPTIONS.map((option) => (
-                  <Button
-                    key={option.value || "all"}
-                    type="button"
-                    size="sm"
-                    variant={salesPeriodFilter === option.value ? "default" : "ghost"}
-                    aria-pressed={salesPeriodFilter === option.value}
-                    onClick={() => applySalesFilter({ salesPeriod: option.value })}
-                  >
-                    {option.label}
-                  </Button>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">Branch</p>
-              <Select
-                inputId="sales-branch-filter"
-                instanceId="sales-branch-filter"
-                options={salesBranchOptions}
-                value={salesBranchOptions.find((option) => option.value === (salesBranchFilter || "all")) ?? salesBranchOptions[0]}
-                onChange={(option) => applySalesFilter({ salesBranchId: option?.value === "all" ? "" : option?.value ?? "" })}
-                styles={reactSelectStyles}
-                isSearchable
-              />
-            </div>
-            {directSalesQuery.data?.appliedFilter ? (
-              <p className="text-xs text-muted-foreground sm:col-span-2">
-                Showing {directSalesQuery.data.appliedFilter.periodLabel.toLowerCase()} in{" "}
-                {directSalesQuery.data.appliedFilter.branchLabel}. The dashboard&rsquo;s Sales card links here with its own filter.
-              </p>
-            ) : null}
-          </div>
-        ) : null}
         {/* Same shape and colours as the Customer Orders cards beside them, so
             the two tabs of this screen do not read as two different products.
             Five across on a wide screen, as there. */}
@@ -1536,6 +1517,58 @@ export default function CustomerOrdersPage() {
             </Card>
           ))}
         </div>
+        {/* The same card, grid, selects and Apply/Reset pair the Customer Orders
+            tab uses, in the same place below the figures, so the three tabs of
+            one screen do not each filter differently. Shown only where it can
+            be used: the service refuses these parameters from anyone else, and
+            filterBranches comes back empty for them. */}
+        {(directSalesQuery.data?.filterBranches.length ?? 0) > 0 ? (
+          <Card className="mb-6">
+            <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
+              <div className="w-full">
+                <Select
+                  inputId="sales-period-filter"
+                  instanceId="sales-period-filter"
+                  options={SALES_PERIOD_OPTIONS}
+                  value={SALES_PERIOD_OPTIONS.find((option) => option.value === salesPeriodDraft) ?? SALES_PERIOD_OPTIONS[0]}
+                  onChange={(option) => setSalesPeriodDraft(option?.value ?? "")}
+                  isSearchable
+                  placeholder="Select period"
+                  styles={reactSelectStyles}
+                />
+              </div>
+
+              <div className="w-full">
+                <Select
+                  inputId="sales-branch-filter"
+                  instanceId="sales-branch-filter"
+                  options={salesBranchOptions}
+                  value={salesBranchOptions.find((option) => option.value === salesBranchDraft) ?? salesBranchOptions[0]}
+                  onChange={(option) => setSalesBranchDraft(option?.value ?? "all")}
+                  isSearchable
+                  placeholder="Select branch"
+                  styles={reactSelectStyles}
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <Button className="flex-1" onClick={applySalesFilter}>
+                  Apply Filters
+                </Button>
+                <Button variant="outline" className="flex-1" onClick={resetSalesFilter}>
+                  Reset
+                </Button>
+              </div>
+
+              {directSalesQuery.data?.appliedFilter ? (
+                <p className="text-xs text-muted-foreground md:col-span-2 xl:col-span-3">
+                  Showing {directSalesQuery.data.appliedFilter.periodLabel.toLowerCase()} in{" "}
+                  {directSalesQuery.data.appliedFilter.branchLabel}. The dashboard&rsquo;s Sales card links here with its own filter.
+                </p>
+              ) : null}
+            </CardContent>
+          </Card>
+        ) : null}
         <p className="mb-4 text-sm text-muted-foreground">
           {salesSource === "all"
             ? "Posted sales in your authorized locations, including the sales written when a Customer Order is released, and excluding voided sales. This is what the dashboard's Sales card totals. Summary totals are independent of the list search."
