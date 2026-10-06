@@ -1605,13 +1605,15 @@ export async function getDirectSalesOverview(actor: AuthContext, rawFilters: unk
    * filtered total uses.
    */
   const filters = dashboardSalesFiltersSchema.parse(rawFilters);
-  if (!actor.isOwner && (filters.salesPeriod || filters.salesBranchId)) {
+  if (!actor.isOwner && (filters.salesPeriod || (filters.salesBranchId && filters.salesBranchId !== "all"))) {
     throw new AuthorizationError("Sales filters are Admin-only");
   }
   let branchLabel = "All branches";
   let locationId: Prisma.SaleWhereInput["locationId"] = locationIdFilter(actor);
-  if (filters.salesBranchId) {
-    const branch = (await listActiveBranches()).find((row) => row.id === filters.salesBranchId);
+  // "all" is how every branch is spelled across these filters, not a branch id.
+  const branchFilter = filters.salesBranchId === "all" ? undefined : filters.salesBranchId;
+  if (branchFilter) {
+    const branch = (await listActiveBranches()).find((row) => row.id === branchFilter);
     if (!branch) throw new CustomerSalesError("INVALID_BRANCH", "Select an active sales branch", 400);
     locationId = branch.id;
     branchLabel = branch.name;
@@ -1651,7 +1653,7 @@ export async function getDirectSalesOverview(actor: AuthContext, rawFilters: unk
     },
     // Said back so the page can state what it is showing rather than leaving a
     // short list looking like the whole of it.
-    appliedFilter: window || filters.salesBranchId
+    appliedFilter: window || branchFilter
       ? { periodLabel: window?.label ?? "All time", branchLabel }
       : null,
   };

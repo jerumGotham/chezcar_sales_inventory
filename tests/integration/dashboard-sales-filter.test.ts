@@ -86,6 +86,11 @@ describe("the Direct Sales list taking the dashboard's own filter", () => {
       expect(narrowed.appliedFilter).toMatchObject({ periodLabel: "Today", branchLabel: quezon.name });
       expect((await getDirectSalesOverview(owner, {})).appliedFilter).toBeNull();
 
+      // "all" is how every branch is spelled in these filters, not a branch id.
+      // Reading it as one answered the dashboard's own link with a 400.
+      expect(await references({ salesBranchId: "all" })).toEqual(["DASHF-BL-TODAY", "DASHF-QC-OLD", "DASHF-QC-TODAY"]);
+      expect((await getDirectSalesOverview(owner, { salesBranchId: "all" })).appliedFilter).toBeNull();
+
       // A branch that is not an active one is refused rather than ignored.
       await expect(getDirectSalesOverview(owner, { salesBranchId: "not-a-branch" })).rejects.toMatchObject({
         code: "INVALID_BRANCH",

@@ -130,7 +130,7 @@ export default function DashboardPage() {
     const params = new URLSearchParams({ view: "sales" });
     if (summary && summary.salesBranches.length > 0) {
       if (summary.salesFilter.period !== "last30Days") params.set("salesPeriod", summary.salesFilter.period);
-      if (summary.salesFilter.branchId) params.set("salesBranchId", summary.salesFilter.branchId);
+      if (summary.salesFilter.branchId && summary.salesFilter.branchId !== "all") params.set("salesBranchId", summary.salesFilter.branchId);
     }
     return `/customer-orders?${params}` as Route;
   })();
