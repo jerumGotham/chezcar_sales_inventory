@@ -1596,7 +1596,19 @@ export async function listSales(actor: AuthContext) {
   return sales.map(serializeSaleWithCorrection);
 }
 
-export async function getDirectSalesOverview(actor: AuthContext, rawFilters: unknown = {}) {
+/**
+ * The posted sales list behind the dashboard's Sales card.
+ *
+ * `includeOrderReleases` is what separates the two tabs. The card totals every
+ * posted sale, so the tab it opens has to as well, or a branch that releases
+ * customer orders sees a smaller figure than the one it clicked. The Direct
+ * Sales tab keeps its narrower view for the people who only encode there.
+ */
+export async function getDirectSalesOverview(
+  actor: AuthContext,
+  rawFilters: unknown = {},
+  options: { includeOrderReleases?: boolean } = {},
+) {
   assertCapability(actor, "sales:view");
   /*
    * The same filters the dashboard carries, so the list opened from a metric
@@ -1623,7 +1635,7 @@ export async function getDirectSalesOverview(actor: AuthContext, rawFilters: unk
   const where = {
     locationId,
     status: "POSTED" as const,
-    orderId: null,
+    ...(options.includeOrderReleases ? {} : { orderId: null }),
     ...(window ? { postedAt: { gte: window.start, lte: now } } : {}),
   };
   const [sales, totals, refunds] = await prisma.$transaction([
@@ -1653,6 +1665,7 @@ export async function getDirectSalesOverview(actor: AuthContext, rawFilters: unk
     },
     // Said back so the page can state what it is showing rather than leaving a
     // short list looking like the whole of it.
+    includesOrderReleases: Boolean(options.includeOrderReleases),
     appliedFilter: window || branchFilter
       ? { periodLabel: window?.label ?? "All time", branchLabel }
       : null,

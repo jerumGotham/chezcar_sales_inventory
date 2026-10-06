@@ -35,7 +35,7 @@ describe("the Direct Sales list taking the dashboard's own filter", () => {
         });
       }
 
-      const { createDirectSale, getDirectSalesOverview } =
+      const { createDirectSale, getDirectSalesOverview, createCustomerOrder, releaseCustomerOrder } =
         await import("../../lib/server/services/customer-sales");
 
       const post = async (branch: typeof quezon, receipt: string, salespersonId: string) =>
@@ -101,6 +101,36 @@ describe("the Direct Sales list taking the dashboard's own filter", () => {
       await expect(
         getDirectSalesOverview(actor(fixture.users.branchStaff, quezon), { salesBranchId: binan.id }),
       ).rejects.toThrow(/Admin-only/);
+
+      /*
+       * The dashboard's Sales card totals every posted sale, so the All Sales
+       * tab it opens has to as well. A release writes a Sale against the order,
+       * and leaving those out is what made the card and the list it opened
+       * disagree.
+       */
+      const order = await createCustomerOrder(owner, {
+        customer: { name: "Dash Filter Customer" },
+        type: "RESERVATION_WITH_DP",
+        locationId: quezon.id,
+        salespersonId: fixture.salespersons.QC.id,
+        downpaymentAmount: 400,
+        downpaymentReceiptNumber: "DASHF-DP-1",
+        lines: [{ productId: product.id, quantity: 1 }],
+      });
+      await releaseCustomerOrder(owner, order.id, {
+        finalReceiptNumber: "DASHF-REL-1",
+        paymentMethod: "CASH",
+        amountPaid: 600,
+      });
+
+      const directOnly = await getDirectSalesOverview(owner, {});
+      const everything = await getDirectSalesOverview(owner, {}, { includeOrderReleases: true });
+      expect(directOnly.data.map((sale) => sale.manualReceiptNumber)).not.toContain("DASHF-REL-1");
+      expect(everything.data.map((sale) => sale.manualReceiptNumber)).toContain("DASHF-REL-1");
+      expect(everything.summary.totalSales).toBe(directOnly.summary.totalSales + 1);
+      expect(everything.summary.totalAmount).toBe(directOnly.summary.totalAmount + 1000);
+      expect(everything.includesOrderReleases).toBe(true);
+      expect(directOnly.includesOrderReleases).toBe(false);
 
       void todayQc;
       void todayBl;

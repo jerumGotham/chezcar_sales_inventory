@@ -49,12 +49,19 @@ export async function GET(request: Request) {
       return pdfResponse(body, "predator-direct-sales.pdf");
     }
 
-    if (url.searchParams.get("source") === "direct") {
+    const source = url.searchParams.get("source");
+    if (source === "direct" || source === "all") {
       return Response.json(
-        await getDirectSalesOverview(actor, {
-          salesPeriod: url.searchParams.get("salesPeriod") ?? undefined,
-          salesBranchId: url.searchParams.get("salesBranchId") ?? undefined,
-        }),
+        await getDirectSalesOverview(
+          actor,
+          {
+            salesPeriod: url.searchParams.get("salesPeriod") ?? undefined,
+            salesBranchId: url.searchParams.get("salesBranchId") ?? undefined,
+          },
+          // "all" is what the dashboard's Sales card totals, so it is what the
+          // tab the card opens has to list.
+          { includeOrderReleases: source === "all" },
+        ),
       );
     }
     return Response.json({ data: await listSales(actor) });

@@ -300,14 +300,12 @@ type DirectSalesApiResponse = {
   appliedFilter: { periodLabel: string; branchLabel: string } | null;
 };
 
-const SALES_PERIOD_LABELS: Record<string, string> = {
-  today: "Today",
-  last7Days: "Last 7 Days",
-  monthToDate: "Month to Date",
-};
-
-async function fetchDirectSales(salesPeriod: string, salesBranchId: string): Promise<DirectSalesApiResponse> {
-  const params = new URLSearchParams({ source: "direct" });
+async function fetchDirectSales(
+  source: "direct" | "all",
+  salesPeriod: string,
+  salesBranchId: string,
+): Promise<DirectSalesApiResponse> {
+  const params = new URLSearchParams({ source });
   if (salesPeriod) params.set("salesPeriod", salesPeriod);
   if (salesBranchId) params.set("salesBranchId", salesBranchId);
   const response = await fetch(`/api/sales?${params}`, { credentials: "same-origin" });
@@ -334,6 +332,12 @@ export default function CustomerOrdersPage() {
   // behind it rather than everything.
   const salesPeriodFilter = searchParams.get("salesPeriod") ?? "";
   const salesBranchFilter = searchParams.get("salesBranchId") ?? "";
+  /*
+   * Which sales the tab lists. "all" includes the sales written when a customer
+   * order is released, which is what the dashboard's Sales card totals; the
+   * Direct Sales tab leaves them out, as it always has.
+   */
+  const salesSource = searchParams.get("source") === "all" ? "all" : "direct";
   const activeView = searchParams.get("view") === "orders" && canViewOrders
     ? "orders"
     : canViewSales ? "sales" : canViewOrders ? "orders" : null;
@@ -408,8 +412,8 @@ export default function CustomerOrdersPage() {
   });
 
   const directSalesQuery = useQuery({
-    queryKey: ["customer-direct-sales-list", "overview", salesPeriodFilter, salesBranchFilter],
-    queryFn: () => fetchDirectSales(salesPeriodFilter, salesBranchFilter),
+    queryKey: ["customer-direct-sales-list", "overview", salesSource, salesPeriodFilter, salesBranchFilter],
+    queryFn: () => fetchDirectSales(salesSource, salesPeriodFilter, salesBranchFilter),
     enabled: activeView === "sales" && canViewSales,
   });
   const saleCorrectionMutation = useMutation({
@@ -754,11 +758,19 @@ export default function CustomerOrdersPage() {
       <div className="mb-6 flex flex-wrap gap-2 rounded-xl border bg-muted/50 p-2">
         {canViewSales ? <Link
           href="/customer-orders?view=sales"
-          className={buttonVariants({ variant: activeView === "sales" ? "default" : "ghost" })}
-          aria-current={activeView === "sales" ? "page" : undefined}
+          className={buttonVariants({ variant: activeView === "sales" && salesSource === "direct" ? "default" : "ghost" })}
+          aria-current={activeView === "sales" && salesSource === "direct" ? "page" : undefined}
           onClick={() => setSalePage(1)}
         >
           Direct Sales
+        </Link> : null}
+        {canViewSales ? <Link
+          href="/customer-orders?view=sales&source=all"
+          className={buttonVariants({ variant: activeView === "sales" && salesSource === "all" ? "default" : "ghost" })}
+          aria-current={activeView === "sales" && salesSource === "all" ? "page" : undefined}
+          onClick={() => setSalePage(1)}
+        >
+          All Sales
         </Link> : null}
         {canViewOrders ? <Link
           href="/customer-orders?view=orders"
@@ -1426,8 +1438,11 @@ export default function CustomerOrdersPage() {
               Showing {directSalesQuery.data.appliedFilter.periodLabel.toLowerCase()} in{" "}
               {directSalesQuery.data.appliedFilter.branchLabel}, carried from the dashboard.
             </p>
-            <Link href="/customer-orders?view=sales" className={buttonVariants({ variant: "outline", size: "sm" })}>
-              Show all sales
+            <Link
+              href={salesSource === "all" ? "/customer-orders?view=sales&source=all" : "/customer-orders?view=sales"}
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
+              Clear filter
             </Link>
           </div>
         ) : null}
@@ -1436,7 +1451,7 @@ export default function CustomerOrdersPage() {
             Five across on a wide screen, as there. */}
         <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5" aria-busy={directSalesQuery.isFetching}>
           {[
-            { label: "Total Direct Sales", value: salesSummary?.totalSales.toLocaleString("en-PH"), hint: "Posted direct-sale records", icon: ShoppingBag, text: "text-sky-600", bg: "bg-sky-50 dark:bg-sky-950/40" },
+            { label: salesSource === "all" ? "Total Sales" : "Total Direct Sales", value: salesSummary?.totalSales.toLocaleString("en-PH"), hint: salesSource === "all" ? "Posted sales, including order releases" : "Posted direct-sale records", icon: ShoppingBag, text: "text-sky-600", bg: "bg-sky-50 dark:bg-sky-950/40" },
             { label: "Sales Total", value: salesSummary && formatPeso(salesSummary.totalAmount), hint: salesSummary?.totalRefunded ? `After discounts, less ${formatPeso(salesSummary.totalRefunded)} refunded` : "After sale discounts", icon: Wallet, text: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/40" },
             { label: "Total Discounts", value: salesSummary && formatPeso(salesSummary.totalDiscounts), hint: "Discounts on posted direct sales", icon: CheckCircle2, text: "text-sky-600", bg: "bg-sky-50 dark:bg-sky-950/40" },
             { label: "Refunded", value: salesSummary && formatPeso(salesSummary.totalRefunded ?? 0), hint: "Handed back to customers", icon: RotateCcw, text: "text-amber-600", bg: "bg-amber-50 dark:bg-amber-950/40" },
@@ -1456,12 +1471,16 @@ export default function CustomerOrdersPage() {
             </Card>
           ))}
         </div>
-        <p className="mb-4 text-sm text-muted-foreground">All-time posted direct sales in your authorized locations, excluding Customer Order releases and voided sales. Summary totals are independent of the list search.</p>
+        <p className="mb-4 text-sm text-muted-foreground">
+          {salesSource === "all"
+            ? "Posted sales in your authorized locations, including the sales written when a Customer Order is released, and excluding voided sales. This is what the dashboard's Sales card totals. Summary totals are independent of the list search."
+            : "Posted direct sales in your authorized locations, excluding Customer Order releases and voided sales. Summary totals are independent of the list search."}
+        </p>
         <Card>
           <CardContent className="p-0">
             <div className="flex flex-col gap-4 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-base font-semibold text-foreground">Direct Sales List</h3>
+                <h3 className="text-base font-semibold text-foreground">{salesSource === "all" ? "All Sales List" : "Direct Sales List"}</h3>
                 <p className="text-sm text-muted-foreground">Latest 200 posted direct sales. Search and pagination apply to this recent list only; Export PDF covers every sale matching the search.</p>
               </div>
               <Input
@@ -1508,6 +1527,10 @@ export default function CustomerOrdersPage() {
                         <td className="px-5 py-4 text-sm font-medium text-foreground">
                           <p>{sale.manualReceiptNumber}</p>
                           <p className="text-xs text-muted-foreground">{sale.reference}</p>
+                          {/* Only where both kinds are listed, or it is noise. */}
+                          {salesSource === "all" && sale.source === "Customer Order" ? (
+                            <Badge variant="outline" className="mt-1">Order release</Badge>
+                          ) : null}
                         </td>
                         <td className="px-5 py-4 text-sm text-muted-foreground">{sale.customer}</td>
                         <td className="px-5 py-4 text-sm text-muted-foreground">{sale.branch}</td>

@@ -127,7 +127,10 @@ export default function DashboardPage() {
    * cannot filter, and the server refuses these parameters from them.
    */
   const salesHref = (() => {
-    const params = new URLSearchParams({ view: "sales" });
+    // All Sales, not Direct Sales: this card totals every posted sale, and a
+    // branch that releases customer orders would otherwise open a list adding
+    // up to less than the figure it clicked.
+    const params = new URLSearchParams({ view: "sales", source: "all" });
     if (summary && summary.salesBranches.length > 0) {
       if (summary.salesFilter.period !== "last30Days") params.set("salesPeriod", summary.salesFilter.period);
       if (summary.salesFilter.branchId && summary.salesFilter.branchId !== "all") params.set("salesBranchId", summary.salesFilter.branchId);
