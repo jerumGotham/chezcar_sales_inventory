@@ -296,11 +296,25 @@ type DirectSalesApiResponse = {
     /** Handed back on these sales; the two totals above are already net of it. */
     totalRefunded: number;
   };
+  /** What the list was narrowed to, when it came from the dashboard. */
+  appliedFilter: { periodLabel: string; branchLabel: string } | null;
 };
 
-async function fetchDirectSales(): Promise<DirectSalesApiResponse> {
-  const response = await fetch("/api/sales?source=direct", { credentials: "same-origin" });
-  if (!response.ok) throw new Error("Unable to load direct sales");
+const SALES_PERIOD_LABELS: Record<string, string> = {
+  today: "Today",
+  last7Days: "Last 7 Days",
+  monthToDate: "Month to Date",
+};
+
+async function fetchDirectSales(salesPeriod: string, salesBranchId: string): Promise<DirectSalesApiResponse> {
+  const params = new URLSearchParams({ source: "direct" });
+  if (salesPeriod) params.set("salesPeriod", salesPeriod);
+  if (salesBranchId) params.set("salesBranchId", salesBranchId);
+  const response = await fetch(`/api/sales?${params}`, { credentials: "same-origin" });
+  if (!response.ok) {
+    const json = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+    throw new Error(json?.error?.message ?? "Unable to load direct sales");
+  }
   return (await response.json()) as DirectSalesApiResponse;
 }
 
@@ -316,6 +330,10 @@ export default function CustomerOrdersPage() {
   const canCorrectSalesperson = hasCapability(capabilities, "sales:salesperson:update");
   const canRefundSale = hasCapability(capabilities, "sales:refund");
   const canAttachReceipt = hasCapability(capabilities, "sales:evidence:upload");
+  // Carried from the dashboard, so a figure clicked there opens the sales
+  // behind it rather than everything.
+  const salesPeriodFilter = searchParams.get("salesPeriod") ?? "";
+  const salesBranchFilter = searchParams.get("salesBranchId") ?? "";
   const activeView = searchParams.get("view") === "orders" && canViewOrders
     ? "orders"
     : canViewSales ? "sales" : canViewOrders ? "orders" : null;
@@ -390,8 +408,8 @@ export default function CustomerOrdersPage() {
   });
 
   const directSalesQuery = useQuery({
-    queryKey: ["customer-direct-sales-list", "overview"],
-    queryFn: fetchDirectSales,
+    queryKey: ["customer-direct-sales-list", "overview", salesPeriodFilter, salesBranchFilter],
+    queryFn: () => fetchDirectSales(salesPeriodFilter, salesBranchFilter),
     enabled: activeView === "sales" && canViewSales,
   });
   const saleCorrectionMutation = useMutation({
@@ -1401,6 +1419,18 @@ export default function CustomerOrdersPage() {
         </>
       ) : activeView === "sales" ? (
         <>
+        {/* A short list is otherwise indistinguishable from a quiet week. */}
+        {directSalesQuery.data?.appliedFilter ? (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/40 p-3">
+            <p className="text-sm text-sky-900 dark:text-sky-200">
+              Showing {directSalesQuery.data.appliedFilter.periodLabel.toLowerCase()} in{" "}
+              {directSalesQuery.data.appliedFilter.branchLabel}, carried from the dashboard.
+            </p>
+            <Link href="/customer-orders?view=sales" className={buttonVariants({ variant: "outline", size: "sm" })}>
+              Show all sales
+            </Link>
+          </div>
+        ) : null}
         {/* Same shape and colours as the Customer Orders cards beside them, so
             the two tabs of this screen do not read as two different products.
             Five across on a wide screen, as there. */}

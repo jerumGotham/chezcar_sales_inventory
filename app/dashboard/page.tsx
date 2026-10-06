@@ -120,6 +120,20 @@ export default function DashboardPage() {
   });
 
   const summary = data?.summary;
+  /*
+   * The filter travels with the link, so the list opened from a card answers
+   * for the figure on it rather than for every branch and the last 200 sales.
+   * Only where the filter exists: salesBranches is empty for anyone who
+   * cannot filter, and the server refuses these parameters from them.
+   */
+  const salesHref = (() => {
+    const params = new URLSearchParams({ view: "sales" });
+    if (summary && summary.salesBranches.length > 0) {
+      if (summary.salesFilter.period !== "last30Days") params.set("salesPeriod", summary.salesFilter.period);
+      if (summary.salesFilter.branchId) params.set("salesBranchId", summary.salesFilter.branchId);
+    }
+    return `/customer-orders?${params}` as Route;
+  })();
 
   return (
     <PageShell title="Dashboard" subtitle="Live operational summary from persisted sales, orders, inventory, accounting, and notifications.">
@@ -143,8 +157,8 @@ export default function DashboardPage() {
            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
              {summary.canFilterSales ? (
                <>
-                  <MetricCard href="/customer-orders?view=sales" icon={<TrendingUp className="h-5 w-5 text-emerald-600" />} label="Sales" value={formatPeso(summary.filteredSales)} hint={`${summary.salesFilter.periodLabel} - ${summary.salesFilter.branchLabel}`} />
-                  <MetricCard href="/customer-orders?view=sales" icon={<ReceiptText className="h-5 w-5 text-sky-600" />} label="Transactions" value={String(summary.filteredTransactions)} hint={`${summary.filteredTransactions} posted sale(s) in scope`} />
+                  <MetricCard href={salesHref} icon={<TrendingUp className="h-5 w-5 text-emerald-600" />} label="Sales" value={formatPeso(summary.filteredSales)} hint={`${summary.salesFilter.periodLabel} - ${summary.salesFilter.branchLabel}`} />
+                  <MetricCard href={salesHref} icon={<ReceiptText className="h-5 w-5 text-sky-600" />} label="Transactions" value={String(summary.filteredTransactions)} hint={`${summary.filteredTransactions} posted sale(s) in scope`} />
                   <MetricCard href="/reports" icon={<TrendingUp className="h-5 w-5 text-indigo-600" />} label="Average per Transaction" value={formatPeso(summary.filteredTransactions > 0 ? summary.filteredSales / summary.filteredTransactions : 0)} hint={`${summary.salesFilter.periodLabel} - ${summary.salesFilter.branchLabel}`} />
                   <MetricCard href="/inventory" icon={<AlertTriangle className="h-5 w-5 text-amber-600" />} label="Low-Stock Branches" value={String(summary.lowStockBranchCount)} hint={`${summary.lowStockCount} live low-stock row(s), not sales-filtered`} />
                </>

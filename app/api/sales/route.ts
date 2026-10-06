@@ -50,7 +50,12 @@ export async function GET(request: Request) {
     }
 
     if (url.searchParams.get("source") === "direct") {
-      return Response.json(await getDirectSalesOverview(actor));
+      return Response.json(
+        await getDirectSalesOverview(actor, {
+          salesPeriod: url.searchParams.get("salesPeriod") ?? undefined,
+          salesBranchId: url.searchParams.get("salesBranchId") ?? undefined,
+        }),
+      );
     }
     return Response.json({ data: await listSales(actor) });
   } catch (error) {

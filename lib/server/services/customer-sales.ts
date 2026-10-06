@@ -1596,9 +1596,34 @@ export async function listSales(actor: AuthContext) {
   return sales.map(serializeSaleWithCorrection);
 }
 
-export async function getDirectSalesOverview(actor: AuthContext) {
+export async function getDirectSalesOverview(actor: AuthContext, rawFilters: unknown = {}) {
   assertCapability(actor, "sales:view");
-  const where = { locationId: locationIdFilter(actor), status: "POSTED" as const, orderId: null };
+  /*
+   * The same filters the dashboard carries, so the list opened from a metric
+   * card answers for the figure that was clicked. Measured the same way too:
+   * the dashboard's own window helper, and postedAt, which is the basis its
+   * filtered total uses.
+   */
+  const filters = dashboardSalesFiltersSchema.parse(rawFilters);
+  if (!actor.isOwner && (filters.salesPeriod || filters.salesBranchId)) {
+    throw new AuthorizationError("Sales filters are Admin-only");
+  }
+  let branchLabel = "All branches";
+  let locationId: Prisma.SaleWhereInput["locationId"] = locationIdFilter(actor);
+  if (filters.salesBranchId) {
+    const branch = (await listActiveBranches()).find((row) => row.id === filters.salesBranchId);
+    if (!branch) throw new CustomerSalesError("INVALID_BRANCH", "Select an active sales branch", 400);
+    locationId = branch.id;
+    branchLabel = branch.name;
+  }
+  const now = new Date();
+  const window = filters.salesPeriod ? dashboardSalesWindow(filters.salesPeriod, now) : null;
+  const where = {
+    locationId,
+    status: "POSTED" as const,
+    orderId: null,
+    ...(window ? { postedAt: { gte: window.start, lte: now } } : {}),
+  };
   const [sales, totals, refunds] = await prisma.$transaction([
     prisma.sale.findMany({ where, orderBy: { postedAt: "desc" }, include: SALE_INCLUDE, take: 200 }),
     prisma.sale.aggregate({
@@ -1624,6 +1649,11 @@ export async function getDirectSalesOverview(actor: AuthContext) {
       totalAmountPaid: (totals._sum.amountPaid?.toNumber() ?? 0) - refundedAmount,
       totalRefunded: refundedAmount,
     },
+    // Said back so the page can state what it is showing rather than leaving a
+    // short list looking like the whole of it.
+    appliedFilter: window || filters.salesBranchId
+      ? { periodLabel: window?.label ?? "All time", branchLabel }
+      : null,
   };
 }
 
