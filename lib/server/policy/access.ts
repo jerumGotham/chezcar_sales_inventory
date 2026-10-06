@@ -11,7 +11,18 @@ export type PersistedAccessContext = {
   capabilities: readonly string[];
   isOwner: boolean;
   locationIds: readonly string[];
+  /** A developer account (developer-accounts.ts); only these reach the System console. */
+  isDeveloper?: boolean;
 };
+
+/*
+ * The System console reads the server itself and can delete files on it, so it
+ * belongs to the developer alone -- not to the owner, and not to any role that
+ * was granted it. Checked before the owner's blanket access.
+ */
+function isDeveloperOnly(capability: Capability) {
+  return capability.startsWith("system:");
+}
 
 export const CAPABILITIES = {
   dashboardView: "dashboard:view",
@@ -76,6 +87,7 @@ export function evaluateAccess(
   capability: Capability,
 ): boolean {
   if (!validatePersistedAssignment(context)) return false;
+  if (isDeveloperOnly(capability) && !context.isDeveloper) return false;
   const granted = context.capabilities.filter((item): item is CapabilityId =>
     CAPABILITY_IDS.includes(item as CapabilityId),
   );
@@ -86,10 +98,11 @@ export function capabilitiesFor(
   context: PersistedAccessContext,
 ): readonly Capability[] {
   if (!validatePersistedAssignment(context)) return [];
-  if (context.isOwner) return CAPABILITY_IDS;
+  const allowed = (capability: Capability) => context.isDeveloper || !isDeveloperOnly(capability);
+  if (context.isOwner) return CAPABILITY_IDS.filter(allowed);
   const granted = context.capabilities.filter((item): item is CapabilityId =>
     CAPABILITY_IDS.includes(item as CapabilityId),
   );
   const effective = new Set(effectiveCapabilities(granted));
-  return CAPABILITY_IDS.filter((capability) => effective.has(capability));
+  return CAPABILITY_IDS.filter((capability) => effective.has(capability) && allowed(capability));
 }

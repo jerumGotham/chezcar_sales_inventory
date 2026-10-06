@@ -128,6 +128,12 @@ describe("a branch correcting the sale it encoded", () => {
       expect(corrected.accountingReview?.status).toBe("UNVERIFIED");
       expect(corrected.accountingReview?.verifiedAt).toBeNull();
       expect(corrected.accountingReview?.branchResponse).toBe("SALE_ENCODED_INCORRECT");
+
+      // Accounting hears that the branch has corrected it, once, with the change.
+      const told = await prisma.notification.findMany({ where: { title: "Branch corrected the sale", relatedId: sale.id } });
+      expect(told.length).toBeGreaterThan(0);
+      expect(told[0].description).toContain("CORRECT-001");
+      expect(await prisma.notification.count({ where: { title: "Incorrect sale encoding needs Admin action", relatedId: sale.id } })).toBe(0);
     });
   }, 120_000);
 });

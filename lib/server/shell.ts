@@ -16,6 +16,7 @@ import {
   validatePersistedAssignment,
 } from "./policy/access";
 import { prisma } from "./prisma";
+import { isDeveloperEmail } from "@/lib/server/developer-accounts";
 
 const LOCATION_SCOPE_COOKIE = "chezcar-admin-location-scope";
 
@@ -101,6 +102,7 @@ export async function loadShellAccess(headers: Headers): Promise<ShellAccessDto>
     capabilities: user.accessRole.permissions,
     isOwner: user.accessRole.isOwner,
     locationIds: user.locationAssignments.map(({ locationId }) => locationId),
+    isDeveloper: isDeveloperEmail(user.email),
   };
   if (!validatePersistedAssignment(context)) return ANONYMOUS_SHELL_ACCESS;
 

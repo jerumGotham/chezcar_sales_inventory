@@ -22,6 +22,7 @@ import { prisma } from "@/lib/server/prisma";
 import { recordAuditLog } from "./audit-log";
 
 import { describeError, recordSystemLog } from "./system-log";
+import { DEVELOPER_ROLE_IDS, isHiddenRole } from "@/lib/server/developer-accounts";
 export class RoleMaintenanceError extends Error {
   constructor(
     readonly status: number,
@@ -106,6 +107,7 @@ export async function requireRoleManager(
 
 export async function listRoleDefinitions(): Promise<RoleDefinitionDto[]> {
   const roles = await prisma.roleDefinition.findMany({
+    where: { id: { notIn: [...DEVELOPER_ROLE_IDS] } },
     select: roleSelect,
     orderBy: [{ isOwner: "desc" }, { name: "asc" }],
   });
@@ -114,7 +116,7 @@ export async function listRoleDefinitions(): Promise<RoleDefinitionDto[]> {
 
 export async function listAssignableRoleDefinitions(actor: PersistedAccessContext) {
   const roles = await prisma.roleDefinition.findMany({
-    where: { isOwner: false },
+    where: { isOwner: false, id: { notIn: [...DEVELOPER_ROLE_IDS] } },
     select: { id: true, name: true, description: true, permissions: true },
     orderBy: { name: "asc" },
   });
@@ -132,10 +134,12 @@ export async function listAssignableRoleDefinitions(actor: PersistedAccessContex
 }
 
 export async function getRoleDefinition(roleId: string): Promise<RoleDefinitionDto> {
-  const role = await prisma.roleDefinition.findUnique({
-    where: { id: roleId },
-    select: roleSelect,
-  });
+  const role = isHiddenRole(roleId)
+    ? null
+    : await prisma.roleDefinition.findUnique({
+      where: { id: roleId },
+      select: roleSelect,
+    });
   if (!role) throw roleFailure(404, "ROLE_NOT_FOUND", "Role not found");
   return toRoleDto(role);
 }
@@ -181,7 +185,7 @@ export async function updateRoleDefinition(
         where: { id: roleId },
         select: roleSelect,
       });
-      if (!current) throw roleFailure(404, "ROLE_NOT_FOUND", "Role not found");
+      if (!current || isHiddenRole(roleId)) throw roleFailure(404, "ROLE_NOT_FOUND", "Role not found");
       if (current.isOwner) {
         throw roleFailure(403, "OWNER_ROLE_IMMUTABLE", "The owner Admin role cannot be changed");
       }
@@ -286,7 +290,7 @@ export async function deleteRoleDefinition(
       where: { id: roleId },
       select: { id: true, name: true, isOwner: true, version: true, permissions: true },
     });
-    if (!current) throw roleFailure(404, "ROLE_NOT_FOUND", "Role not found");
+    if (!current || isHiddenRole(roleId)) throw roleFailure(404, "ROLE_NOT_FOUND", "Role not found");
     if (current.isOwner) {
       throw roleFailure(403, "OWNER_ROLE_IMMUTABLE", "The owner Admin role cannot be deleted");
     }

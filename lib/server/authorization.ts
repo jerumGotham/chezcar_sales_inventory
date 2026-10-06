@@ -7,6 +7,7 @@ import {
   type PersistedAccessContext,
   validatePersistedAssignment,
 } from "./policy/access";
+import { isDeveloperEmail } from "@/lib/server/developer-accounts";
 
 export type AuthContext = PersistedAccessContext;
 
@@ -50,6 +51,7 @@ async function loadPersistedAccessContext(
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
     select: {
+      email: true,
       id: true,
       status: true,
       roleDefinitionId: true,
@@ -78,6 +80,7 @@ async function loadPersistedAccessContext(
     capabilities: user.accessRole.permissions,
     isOwner: user.accessRole.isOwner,
     locationIds: user.locationAssignments.map((assignment) => assignment.locationId),
+    isDeveloper: isDeveloperEmail(user.email),
   };
 
   if (!validatePersistedAssignment(context)) {

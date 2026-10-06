@@ -1,5 +1,6 @@
 import "server-only";
 
+import { DEVELOPER_EMAILS } from "@/lib/server/developer-accounts";
 import { prisma } from "@/lib/server/prisma";
 
 /**
@@ -8,7 +9,7 @@ import { prisma } from "@/lib/server/prisma";
  * events /api/audit merges in from business tables are hidden from it too.
  * The business rows themselves (sales, movements, payments) are untouched.
  */
-export const AUDIT_EXEMPT_EMAILS: ReadonlySet<string> = new Set(["jerum@gmail.com"]);
+export const AUDIT_EXEMPT_EMAILS: ReadonlySet<string> = DEVELOPER_EMAILS;
 
 export type AuditExemptUsers = { ids: Set<string>; labels: Set<string> };
 

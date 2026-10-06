@@ -138,6 +138,12 @@ describe("Accounting correcting a wrongly encoded sale itself", () => {
       expect(lightBar.onHand).toBe(10);
       expect(snorkel.onHand).toBe(8);
 
+      // The branch hears about it: Accounting changed its sale without asking.
+      const told = await prisma.notification.findMany({ where: { title: "Sale corrected by Accounting", relatedId: sale.id } });
+      expect(told.length).toBeGreaterThan(0);
+      expect(told.some((notification) => notification.userId === fixture.users.admin.id)).toBe(true);
+      expect(told[0].description).toContain("ACORR-OR-1");
+
       // The receipt really did collect the money and its number never moved,
       // so the ledger row is restated rather than voided and rewritten.
       const payments = await prisma.payment.findMany({ where: { saleId: sale.id } });

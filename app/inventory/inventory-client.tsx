@@ -544,6 +544,7 @@ export function InventoryClient({
     branch: (item) => item.location,
     status: (item) => item.status,
     onHand: (item) => item.onHand,
+    reserved: (item) => item.reserved,
     quarantined: (item) => item.quarantined,
     available: (item) => getAvailableStock(item),
     price: (item) => item.price ?? null,
@@ -1072,12 +1073,14 @@ export function InventoryClient({
                                 and the numbers are what the reader came for: a
                                 row apiece puts them in columns that line up.
                               */}
-                              <table className="w-full min-w-[640px] text-sm">
+                              <table className="w-full min-w-[720px] text-sm">
                                 <thead className="bg-muted">
                                   <tr className="border-b">
                                     <SortableHeader className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="Branch" sortKey="branch" sort={branchSort.sort} onSort={branchSort.toggle} />
                                     <SortableHeader className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="Status" sortKey="status" sort={branchSort.sort} onSort={branchSort.toggle} />
                                     <SortableHeader className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="On hand" sortKey="onHand" sort={branchSort.sort} onSort={branchSort.toggle} align="right" />
+                                    {/* Shown so the row tallies: on hand less reserved and quarantined is ready to sell. */}
+                                    <SortableHeader className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="Reserved" sortKey="reserved" sort={branchSort.sort} onSort={branchSort.toggle} align="right" />
                                     <SortableHeader className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="Quarantined" sortKey="quarantined" sort={branchSort.sort} onSort={branchSort.toggle} align="right" />
                                     <SortableHeader className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="Ready to sell" sortKey="available" sort={branchSort.sort} onSort={branchSort.toggle} align="right" />
                                     <SortableHeader className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="Price" sortKey="price" sort={branchSort.sort} onSort={branchSort.toggle} align="right" />
@@ -1116,6 +1119,9 @@ export function InventoryClient({
                                         </td>
                                         <td className="px-4 py-2 text-right font-semibold text-foreground">
                                           {item.onHand}
+                                        </td>
+                                        <td className="px-4 py-2 text-right font-semibold text-sky-700 dark:text-sky-300">
+                                          {item.reserved}
                                         </td>
                                         <td className="px-4 py-2 text-right font-semibold text-amber-700 dark:text-amber-300">
                                           {item.quarantined}

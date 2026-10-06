@@ -674,6 +674,7 @@ export default function CustomerOrdersPage() {
   // The whole filtered list is held here, so a sort reorders every page.
   const saleSort = useTableSort(filteredSales, {
     receipt: (sale) => sale.manualReceiptNumber,
+    type: (sale) => sale.source,
     customer: (sale) => sale.customer,
     branch: (sale) => sale.branch,
     salesperson: (sale) => sale.salesperson?.name,
@@ -1386,10 +1387,14 @@ export default function CustomerOrdersPage() {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1150px]">
+              <table className="w-full min-w-[1280px]">
                 <thead className="bg-muted">
                   <tr className="border-b">
                     <SortableHeader label="Receipt" sortKey="receipt" sort={saleSort.sort} onSort={(key) => { saleSort.toggle(key); setSalePage(1); }} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    {/* Only where both kinds are listed; on Direct Sales every row is one. */}
+                    {salesSource === "all" ? (
+                      <SortableHeader label="Type" sortKey="type" sort={saleSort.sort} onSort={(key) => { saleSort.toggle(key); setSalePage(1); }} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    ) : null}
                     <SortableHeader label="Customer" sortKey="customer" sort={saleSort.sort} onSort={(key) => { saleSort.toggle(key); setSalePage(1); }} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
                     <SortableHeader label="Branch" sortKey="branch" sort={saleSort.sort} onSort={(key) => { saleSort.toggle(key); setSalePage(1); }} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
                     <SortableHeader label="Salesperson" sortKey="salesperson" sort={saleSort.sort} onSort={(key) => { saleSort.toggle(key); setSalePage(1); }} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
@@ -1404,22 +1409,25 @@ export default function CustomerOrdersPage() {
                 </thead>
                 <tbody>
                   {directSalesQuery.isLoading ? (
-                    <tr><td colSpan={11} className="px-5 py-16 text-center text-muted-foreground">Loading direct sales...</td></tr>
+                    <tr><td colSpan={salesSource === "all" ? 12 : 11} className="px-5 py-16 text-center text-muted-foreground">Loading direct sales...</td></tr>
                   ) : directSalesQuery.isError ? (
-                    <tr><td colSpan={11} className="px-5 py-16 text-center text-rose-600">Unable to load direct sales.</td></tr>
+                    <tr><td colSpan={salesSource === "all" ? 12 : 11} className="px-5 py-16 text-center text-rose-600">Unable to load direct sales.</td></tr>
                   ) : paginatedSales.length === 0 ? (
-                    <tr><td colSpan={11} className="px-5 py-16 text-center text-muted-foreground">{salesSource === "all" ? "No sales found." : "No direct sales found."}</td></tr>
+                    <tr><td colSpan={salesSource === "all" ? 12 : 11} className="px-5 py-16 text-center text-muted-foreground">{salesSource === "all" ? "No sales found." : "No direct sales found."}</td></tr>
                   ) : (
                     paginatedSales.map((sale) => (
                       <tr key={sale.id} className="border-b transition-colors hover:bg-muted">
                         <td className="px-5 py-4 text-sm font-medium text-foreground">
                           <p>{sale.manualReceiptNumber}</p>
                           <p className="text-xs text-muted-foreground">{sale.reference}</p>
-                          {/* Only where both kinds are listed, or it is noise. */}
-                          {salesSource === "all" && sale.source === "Customer Order" ? (
-                            <Badge variant="outline" className="mt-1">Order release</Badge>
-                          ) : null}
                         </td>
+                        {salesSource === "all" ? (
+                          <td className="px-5 py-4 text-sm">
+                            <Badge variant={sale.source === "Customer Order" ? "outline" : "secondary"}>
+                              {sale.source === "Customer Order" ? "Customer Order" : "Direct Sale"}
+                            </Badge>
+                          </td>
+                        ) : null}
                         <td className="px-5 py-4 text-sm text-muted-foreground">{sale.customer}</td>
                         <td className="px-5 py-4 text-sm text-muted-foreground">{sale.branch}</td>
                         <td className="px-5 py-4 text-sm text-muted-foreground">{sale.salesperson?.name ?? "Not recorded (legacy)"}</td>

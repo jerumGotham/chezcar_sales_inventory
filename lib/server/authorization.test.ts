@@ -111,6 +111,7 @@ describe("central authorization loader", () => {
       capabilities: ["inventory:view"],
       isOwner: false,
       locationIds: ["location-qc"],
+      isDeveloper: false,
     });
   });
 
@@ -142,10 +143,34 @@ describe("central authorization loader", () => {
         locationAssignments: [],
       }),
     );
+    // Everything except the System console, which is the developer's alone.
     await expect(requireActiveUser(new Headers())).resolves.toMatchObject({
       isOwner: true,
-      capabilities: CAPABILITY_IDS,
+      capabilities: CAPABILITY_IDS.filter((capability) => !capability.startsWith("system:")),
     });
+    await expect(requireCapability(new Headers(), "system:monitor")).rejects.toThrow(AuthorizationError);
+  });
+
+  it("opens the System console to the developer account only", async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: "persisted-user" } });
+    mocks.findUnique.mockResolvedValue(
+      persistedUser({
+        email: "Jerum@gmail.com",
+        accessRole: { isOwner: false, permissions: ["system:monitor", "locations:all"] },
+        locationAssignments: [],
+      }),
+    );
+    await expect(requireCapability(new Headers(), "system:monitor")).resolves.toMatchObject({ isDeveloper: true });
+
+    // The same grant on anyone else does nothing.
+    mocks.findUnique.mockResolvedValue(
+      persistedUser({
+        email: "staff@example.com",
+        accessRole: { isOwner: false, permissions: ["system:monitor", "locations:all"] },
+        locationAssignments: [],
+      }),
+    );
+    await expect(requireCapability(new Headers(), "system:monitor")).rejects.toThrow(AuthorizationError);
   });
 
   it("fails closed when a restricted persisted user has no active assignment", async () => {

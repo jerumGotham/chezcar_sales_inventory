@@ -13,6 +13,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
+import { CleanupCard } from "./cleanup-card";
+
 type SystemHealth = {
   readAt: string;
   database: { name: string; bytes: number; tables: Array<{ name: string; bytes: number; rows: number }> };
@@ -180,6 +182,7 @@ export default function SystemPage() {
             value={data?.storage ? `${data.storage.usedPercent}% used` : "Not measurable"}
             hint={data?.storage ? `${bytes(data.storage.freeBytes)} free of ${bytes(data.storage.totalBytes)}` : "This platform does not report it"}
             tone={data?.storage ? pressure(data.storage.usedPercent) : undefined}
+            action="Free up space"
           />
           <HealthCard
             icon={<MemoryStick aria-hidden="true" className="size-4" />}
@@ -187,6 +190,7 @@ export default function SystemPage() {
             value={data ? `${data.memory.usedPercent}% used` : "-"}
             hint={data ? `${bytes(data.memory.freeBytes)} free · this app holds ${bytes(data.memory.processBytes)}` : ""}
             tone={data ? pressure(data.memory.usedPercent) : undefined}
+            action="How to lower it"
           />
           <HealthCard
             icon={<Gauge aria-hidden="true" className="size-4" />}
@@ -194,8 +198,11 @@ export default function SystemPage() {
             value={data ? String(data.cpu.loadPerCore) : "-"}
             hint={data ? `${data.cpu.cores} core(s) · up ${duration(data.cpu.processUptimeSeconds)}` : ""}
             tone={data ? pressure(data.cpu.loadPerCore * 100) : undefined}
+            action="How to lower it"
           />
         </div>
+
+        <CleanupCard />
 
         <Card>
           <CardContent className="p-0">
@@ -369,13 +376,19 @@ function BiggestTables({ tables }: { tables: SystemHealth["database"]["tables"] 
   );
 }
 
-function HealthCard({ icon, label, value, hint, tone }: { icon: React.ReactNode; label: string; value: string; hint: string; tone?: string }) {
+function HealthCard({ icon, label, value, hint, tone, action }: { icon: React.ReactNode; label: string; value: string; hint: string; tone?: string; action?: string }) {
   return (
     <Card>
       <CardContent className="p-4">
         <p className="flex items-center gap-2 text-xs text-muted-foreground">{icon}{label}</p>
         <p className={cn("mt-1 text-2xl font-semibold", tone)}>{value}</p>
         {hint ? <p className="mt-1 text-xs text-muted-foreground">{hint}</p> : null}
+        {/* Every figure that can run out leads straight to what frees it. */}
+        {action ? (
+          <a href="#cleanup" className="mt-2 inline-flex text-xs font-medium text-primary underline-offset-2 hover:underline">
+            {action}
+          </a>
+        ) : null}
       </CardContent>
     </Card>
   );

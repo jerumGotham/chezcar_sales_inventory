@@ -70,6 +70,7 @@ export const CAPABILITY_CATALOG = [
   { id: "audit:view", module: "Audit Trail", label: "View the audit trail" },
   { id: "system:monitor", module: "System", label: "View the system console: health, logs and database size" },
   { id: "system:backup", module: "System", label: "Download a database backup" },
+  { id: "system:cleanup", module: "System", label: "Clear unused files, old backups and old logs" },
   { id: "users:view", module: "User Management", label: "View users" },
   { id: "users:create", module: "User Management", label: "Add users" },
   { id: "users:update", module: "User Management", label: "Edit users" },

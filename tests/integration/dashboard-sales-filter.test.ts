@@ -96,11 +96,11 @@ describe("the Direct Sales list taking the dashboard's own filter", () => {
         code: "INVALID_BRANCH",
       });
 
-      // The dashboard's filters are Admin-only, and so are these: letting a
-      // branch user pass them would read another branch's sales.
+      // Only whoever already sees every branch may filter: letting a branch
+      // user pass them would read another branch's sales.
       await expect(
         getDirectSalesOverview(actor(fixture.users.branchStaff, quezon), { salesBranchId: binan.id }),
-      ).rejects.toThrow(/Admin-only/);
+      ).rejects.toThrow(/access to every branch/);
 
       /*
        * The dashboard's Sales card totals every posted sale, so the All Sales

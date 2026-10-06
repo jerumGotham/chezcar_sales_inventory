@@ -87,7 +87,8 @@ const expectedMenu = {
 } as const satisfies Record<UserRole, readonly string[]>;
 
 const expectedCapabilities = {
-  ADMIN: CAPABILITY_IDS,
+  // The owner gets the whole catalog except the developer-only System console.
+  ADMIN: CAPABILITY_IDS.filter((capability) => !capability.startsWith("system:")),
   STOCK_STAFF: [
     "dashboard:view",
     "notifications:view",

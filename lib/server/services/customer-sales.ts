@@ -252,6 +252,16 @@ export class CustomerSalesError extends Error {
   constructor(public readonly code: string, message: string, public readonly status = 400) { super(message); }
 }
 
+/*
+ * The sales period and branch filters on the dashboard and the sales lists.
+ * Whoever already sees every branch may narrow to one -- the Admin, or a role
+ * granted locations:all. A branch user may not: naming another branch would
+ * read its sales.
+ */
+function canFilterSalesByBranch(actor: AuthContext) {
+  return hasAllLocationAccess(actor);
+}
+
 function assertOperationalActor(actor: AuthContext) {
   if (!hasAllLocationAccess(actor) && actor.locationIds.length === 0) throw new CustomerSalesError("FORBIDDEN", "A location assignment is required", 403);
 }
@@ -1707,8 +1717,8 @@ export async function getDirectSalesOverview(
    * filtered total uses.
    */
   const filters = dashboardSalesFiltersSchema.parse(rawFilters);
-  if (!actor.isOwner && (filters.salesPeriod || (filters.salesBranchId && filters.salesBranchId !== "all"))) {
-    throw new AuthorizationError("Sales filters are Admin-only");
+  if (!canFilterSalesByBranch(actor) && (filters.salesPeriod || (filters.salesBranchId && filters.salesBranchId !== "all"))) {
+    throw new AuthorizationError("Sales filters need access to every branch");
   }
   let branchLabel = "All branches";
   let locationId: Prisma.SaleWhereInput["locationId"] = locationIdFilter(actor);
@@ -1762,7 +1772,7 @@ export async function getDirectSalesOverview(
      * offer the controls at all -- the service refuses the parameters from
      * them, so offering the controls would only produce an error.
      */
-    filterBranches: actor.isOwner
+    filterBranches: canFilterSalesByBranch(actor)
       ? (await listActiveBranches()).map((branch) => ({ id: branch.id, code: branch.code, name: branch.name }))
       : [],
     appliedFilter: window || branchFilter
@@ -2194,7 +2204,10 @@ export async function respondToSaleMismatch(actor: AuthContext, saleId: string, 
         : input.response === "WRONG_RECEIPT_PHOTO"
           ? "uploaded the replacement receipt photo for Accounting re-review"
           : "reported that the sale was encoded incorrectly";
-    await createNotifications(tx, reviewers.map((reviewer) => ({
+    // "Encoded incorrectly" is recorded on the way to the branch's own
+    // correction, which tells Accounting itself with the lines it changed;
+    // announcing the finding as well would send two notes for one action.
+    if (input.response !== "SALE_ENCODED_INCORRECT") await createNotifications(tx, reviewers.map((reviewer) => ({
       userId: reviewer.id,
       title: input.response === "WRONG_RECEIPT_PHOTO"
         ? "Replacement receipt ready for re-review"
@@ -2443,6 +2456,41 @@ export async function correctEncodedSale(
         { label: "Receipt number", value: sale.manualReceiptNumber },
       ],
     }, tx);
+    /*
+     * The branch keyed it and is the one to learn the sale changed under it:
+     * Accounting fixed it without asking, so this is how they hear. The branch
+     * correcting its own sale needs no such word; it did it.
+     */
+    if (options.byBranch) {
+      const verifiers = await tx.user.findMany({
+        where: {
+          status: "ACTIVE",
+          accessRole: { OR: [{ isOwner: true }, { permissions: { has: "sales:verify" } }] },
+          OR: [
+            { accessRole: { isOwner: true } },
+            { accessRole: { permissions: { has: "locations:all" } } },
+            { locationAssignments: { some: { locationId: sale.locationId } } },
+          ],
+        },
+        select: { id: true },
+      });
+      await createNotifications(tx, verifiers.map((verifier) => ({
+        userId: verifier.id,
+        title: "Branch corrected the sale",
+        description: `Receipt ${sale.manualReceiptNumber} was corrected by the branch and is waiting to be verified again. Was: ${before}. Now: ${after}. Note: ${input.note}`,
+        type: "INFO" as const,
+        relatedType: "SALE" as const,
+        relatedId: sale.id,
+        relatedReference: sale.reference,
+      })));
+    } else {
+      await notifySaleParties(
+        tx,
+        sale,
+        "Sale corrected by Accounting",
+        `Receipt ${sale.manualReceiptNumber} was encoded differently from the paper, so Accounting corrected and verified it. Was: ${before}. Now: ${after}. Note: ${input.note}`,
+      );
+    }
 
     const refreshed = await tx.sale.findUniqueOrThrow({ where: { id: sale.id }, include: SALE_INCLUDE });
     return { action: "ENCODING_CORRECTED" as const, sale: serializeSaleWithCorrection(refreshed) };
@@ -2713,15 +2761,15 @@ export async function getDashboardSummary(
   assertCapability(actor, "dashboard:view");
   const filters = dashboardSalesFiltersSchema.parse(requestedFilters);
   const salesPeriod =
-    filters.salesPeriod ?? (actor.isOwner ? "today" : "last30Days");
+    filters.salesPeriod ?? (canFilterSalesByBranch(actor) ? "today" : "last30Days");
   if (
-    !actor.isOwner &&
+    !canFilterSalesByBranch(actor) &&
     (filters.salesPeriod || filters.salesBranchId)
   ) {
-    throw new AuthorizationError("Sales dashboard filters are Admin-only");
+    throw new AuthorizationError("Sales dashboard filters need access to every branch");
   }
 
-  const salesBranches = actor.isOwner ? await listActiveBranches() : [];
+  const salesBranches = canFilterSalesByBranch(actor) ? await listActiveBranches() : [];
   const selectedSalesBranch = filters.salesBranchId
     ? salesBranches.find((branch) => branch.id === filters.salesBranchId)
     : null;
@@ -2840,7 +2888,7 @@ export async function getDashboardSummary(
 
   return {
     capabilities: actor.capabilities,
-    canFilterSales: actor.isOwner,
+    canFilterSales: canFilterSalesByBranch(actor),
     salesFilter: {
       period: salesPeriod,
       periodLabel: salesWindow.label,

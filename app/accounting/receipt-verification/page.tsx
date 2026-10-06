@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PageShell } from "@/components/page-shell";
 import { ReceiptPhoto } from "@/components/receipt-photo";
 import { SortableHeader, useTableSort } from "@/components/sortable-header";
@@ -46,43 +45,49 @@ const RECEIPT_CONFIRMATIONS = {
   VOID_CORRECTION_REQUEST: {
     title: "Approve and void sale?",
     description:
-      "This approves the Branch correction request, voids the sale, and restores every original inventory deduction. This action cannot be undone.",
+      "The branch's request will be approved and the sale cancelled. The items go back to the branch's stock. This cannot be undone.",
     confirmLabel: "Approve and void sale",
   },
   DELETE_EVIDENCE: {
     title: "Delete receipt photo?",
     description:
-      "This permanently deletes the uploaded receipt photo. A new photo must be attached before Accounting can review the sale.",
+      "The receipt photo will be deleted. A new photo must be attached before the sale can be reviewed.",
     confirmLabel: "Delete receipt photo",
   },
   VOID_AND_REPLACE: {
     title: "Void and replace sale?",
     description:
-      "This voids the original sale, restores its inventory, and posts the replacement details currently entered. Review all replacement values before continuing.",
+      "The current sale will be cancelled and replaced with the details you entered. Its items go back to stock first. Check the details before you continue.",
     confirmLabel: "Void and replace",
   },
   VOID_INCORRECT_SALE: {
     title: "Void sale and restore inventory?",
     description:
-      "This voids the incorrectly encoded sale and restores every original line quantity to Branch inventory without creating a replacement sale. This action cannot be undone.",
+      "The sale will be cancelled and its items go back to the branch's stock. No new sale is created. This cannot be undone.",
     confirmLabel: "Void sale and restore inventory",
   },
   CORRECT_AND_VERIFY: {
     title: "Correct the sale and verify?",
     description:
-      "This writes what you have entered onto the sale, moves stock by the difference, restates its payment, and marks the receipt verified. The receipt number stays as it is and nothing goes back to the branch. What the sale said before is kept only in the audit trail.",
+      "The sale will be changed to match what you entered from the receipt, including the items, prices, discount and total, and marked as verified. Stock and the sales reports are updated to the new amounts, and the receipt number stays the same. The branch is notified of the change but does not need to do anything. The old details are saved in the audit log.",
     confirmLabel: "Correct the sale and verify",
+  },
+  BRANCH_CORRECT: {
+    title: "Correct the sale and send it to Accounting?",
+    description:
+      "The sale will be changed to the items, prices and total you entered, and stock is adjusted to match. The receipt number stays the same. Accounting is asked to verify the corrected sale again. The old details are saved in the audit log.",
+    confirmLabel: "Correct and send",
   },
   VOID_VERIFIED_SALE: {
     title: "Void this verified sale?",
     description:
-      "This voids a sale Accounting already verified. Every line goes back into the branch's stock, its payment is voided, and the sales reports stop counting it on the day it was sold, so a period already reported will change. The note is kept on the review and in the audit trail. It cannot be undone.",
+      "This sale was already verified. It will be cancelled, its items go back to the branch's stock, and it will no longer count in the sales reports, including reports for past dates. Your note is saved in the audit log. This cannot be undone.",
     confirmLabel: "Void the verified sale",
   },
   DELETE_VOIDED_SALE: {
     title: "Delete this voided sale?",
     description:
-      "Voiding already returned the stock and the money; this removes the record and frees the receipt number so the branch can encode it again. It cannot be undone, and it is refused if a refund, warranty, backjob or replacement receipt still points at this sale.",
+      "The cancelled sale will be removed so the branch can use this receipt number again. Its stock and money were already returned when it was cancelled. This cannot be undone. It is not allowed if a refund, warranty, or backjob is linked to this sale.",
     confirmLabel: "Delete the voided sale",
   },
 } as const;
@@ -602,14 +607,12 @@ function ReceiptVerificationContent() {
   const [branchResponse, setBranchResponse] = useState<NewBranchFinding | null>(null);
   const [branchResponseNote, setBranchResponseNote] = useState("");
   /** The branch corrects its own sale in a dialog, not in Accounting's form. */
-  const [isCorrectionOpen, setIsCorrectionOpen] = useState(false);
   /*
    * The same form serves two different acts. The branch answers for its own
    * keying, so its correction takes a fresh receipt number and goes back to
    * Accounting. Accounting correcting the encoding against the paper keeps the
    * number the paper carries and is finished when it saves.
    */
-  const [correctionMode, setCorrectionMode] = useState<"BRANCH" | "ACCOUNTING">("BRANCH");
   const [branchReplacementPhotoFile, setBranchReplacementPhotoFile] =
     useState<File | null>(null);
   const [branchReplacementPhotoPreview, setBranchReplacementPhotoPreview] =
@@ -623,6 +626,13 @@ function ReceiptVerificationContent() {
   const [photoDeletionTarget, setPhotoDeletionTarget] = useState<{ saleId: string; version: string } | null>(null);
   const [confirmationAction, setConfirmationAction] =
     useState<ReceiptConfirmationAction | null>(null);
+  /*
+   * The dialog animates closed after confirmationAction is cleared. Reading the
+   * texts from the cleared value showed a generic "Confirm action" dialog for a
+   * moment after Cancel; the last action shown is what it keeps displaying.
+   */
+  const [shownConfirmation, setShownConfirmation] = useState<ReceiptConfirmationAction | null>(null);
+  if (confirmationAction && confirmationAction !== shownConfirmation) setShownConfirmation(confirmationAction);
 
   function clearSelectedPhoto() {
     setPhotoFile(null);
@@ -799,7 +809,7 @@ function ReceiptVerificationContent() {
        * that the sale was keyed wrongly. Recording it here keeps that a detail
        * of the server rather than a second button the branch has to find.
        */
-      if (correctionMode === "BRANCH" && selectedSale?.branchResponse !== "SALE_ENCODED_INCORRECT") {
+      if (selectedSale?.branchResponse !== "SALE_ENCODED_INCORRECT") {
         const finding = await fetch(`/api/accounting/receipts/${selectedId}/branch-response`, {
           method: "POST",
           credentials: "same-origin",
@@ -810,7 +820,7 @@ function ReceiptVerificationContent() {
         if (!finding.ok) throw new Error(findingJson?.error?.message ?? "Unable to record the branch finding");
       }
       const response = await fetch(
-        `/api/accounting/receipts/${selectedId}/${correctionMode === "ACCOUNTING" ? "correct-verify" : "correct"}`,
+        `/api/accounting/receipts/${selectedId}/correct`,
         {
         method: "POST",
         credentials: "same-origin",
@@ -827,16 +837,12 @@ function ReceiptVerificationContent() {
       return json;
     },
     onSuccess: async () => {
-      setIsCorrectionOpen(false);
+      setConfirmationAction(null);
       await queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] });
       setFormError("");
-      setFormNotice(
-        correctionMode === "ACCOUNTING"
-          ? "Sale corrected and verified. Nothing goes back to the branch."
-          : "Sale corrected. The new receipt is waiting for Accounting to verify it.",
-      );
+      setFormNotice("Sale corrected and sent back to Accounting to verify.");
     },
-    onError: (error: Error) => { setFormNotice(""); setFormError(error.message); },
+    onError: (error: Error) => { setConfirmationAction(null); setFormNotice(""); setFormError(error.message); },
   });
 
   /*
@@ -860,7 +866,9 @@ function ReceiptVerificationContent() {
         body: JSON.stringify({
           action: "VOIDED_REPLACED",
           note: notes,
-          replacement: toComparison(comparison),
+          // Worked out from the lines, as the branch's correction is: the server
+          // refuses a total that does not match them.
+          replacement: toComparison(correctionDraft),
         }),
       });
       const json = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
@@ -1027,7 +1035,7 @@ function ReceiptVerificationContent() {
     onSuccess: () => {
       clearBranchReplacementPhoto();
       setFormError(null);
-      setFormNotice("Response sent to Accounting.");
+      setFormNotice("The correct photo was sent to Accounting to review again.");
       queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["accounting-receipt-linked"] });
     },
@@ -1199,7 +1207,15 @@ function ReceiptVerificationContent() {
   };
 
   const selectSale = (sale: Sale) => {
-    const reported = sale.reportedComparison;
+    /*
+     * The reported comparison is what Accounting wrote down when it raised the
+     * mismatch, and it is the branch's to answer while the mismatch is open.
+     * Once the branch has answered -- corrected the sale, or sent the right
+     * photo -- the review is back to unverified and the sale itself is what to
+     * check, so the form starts from the sale. The correct-and-verify button
+     * then appears only if the reviewer changes something themselves.
+     */
+    const reported = sale.reviewStatus === "MISMATCH_REPORTED" ? sale.reportedComparison : null;
     setSelectedId(sale.id);
     setVoidVerifiedNote("");
     setFormError(null);
@@ -1298,19 +1314,24 @@ function ReceiptVerificationContent() {
     ((canReview && selectedSale.reviewStatus === "UNVERIFIED") ||
       (canVoidReplace &&
         selectedSale.reviewStatus === "MISMATCH_REPORTED" &&
-        selectedSale.branchResponse === "RECEIPT_CORRECTION_NEEDED") ||
-      /*
-       * The branch has said the sale itself was keyed wrongly, so the lines are
-       * what has to change. Without this the correction button had nothing to
-       * correct with: the editor stayed hidden and only the receipt number and
-       * totals could move.
-       */
-      (canVoidReplace &&
-        selectedSale.reviewStatus === "MISMATCH_REPORTED" &&
-        selectedSale.branchResponse === "SALE_ENCODED_INCORRECT")),
+        selectedSale.branchResponse === "RECEIPT_CORRECTION_NEEDED")),
   );
   const updateComparison = (changes: Partial<ComparisonDraft>) =>
     setComparison((current) => ({ ...current, ...changes }));
+  /*
+   * Changing a line or the discount changes what the receipt comes to, so the
+   * total and the amount paid follow. Both stay editable, for a paper whose
+   * written total really does differ -- that is a mismatch worth reporting.
+   */
+  const setComparisonWithTotals = (update: (current: ComparisonDraft) => ComparisonDraft) =>
+    setComparison((current) => {
+      const next = update(current);
+      const subtotalCents = Math.round(
+        next.lines.reduce((sum, line) => sum + (Number(line.quantity) || 0) * (Number(line.unitPrice) || 0), 0) * 100,
+      );
+      const total = String((subtotalCents - Math.round((Number(next.discountAmount) || 0) * 100)) / 100);
+      return { ...next, totalAmount: total, amountPaid: total };
+    });
   /** Names for picked products, so a line reads as more than a code. */
   const [correctionNames, setCorrectionNames] = useState<Record<string, string>>({});
   const correctionSubtotalCents = Math.round(
@@ -1865,42 +1886,6 @@ function ReceiptVerificationContent() {
                     {reportedDifferences.length > 0 && (
                       <MismatchDetails differences={reportedDifferences} />
                     )}
-                    {/*
-                      The sale is open to correction once Accounting has put on
-                      record that it does not match the paper. Beyond that there
-                      is nothing to ask the branch: the receipt is right, the
-                      keying is wrong, and Accounting is holding the receipt.
-                    */}
-                    {canVoidReplace && canReview && !selectedSale.resolvedAt && (
-                      <div className="rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-3">
-                        <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
-                          Is the receipt right and the encoding wrong?
-                        </p>
-                        <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
-                          Correct the sale yourself against the receipt. It keeps the same receipt
-                          number and comes out verified, so nothing goes back to the branch.
-                        </p>
-                        <Button
-                          type="button"
-                          variant="warning"
-                          size="sm"
-                          className="mt-2"
-                          disabled={!selectedSale.receiptPhotoUrl}
-                          onClick={() => {
-                            branchCorrectionMutation.reset();
-                            setCorrectionMode("ACCOUNTING");
-                            setIsCorrectionOpen(true);
-                          }}
-                        >
-                          Correct and verify
-                        </Button>
-                        {!selectedSale.receiptPhotoUrl ? (
-                          <p className="mt-2 text-xs text-amber-800 dark:text-amber-300">
-                            Attach the receipt photo first: a sale is never verified without one.
-                          </p>
-                        ) : null}
-                      </div>
-                    )}
                   </div>
                 )}
                 {selectedSale.branchResponse === "WRONG_RECEIPT_PHOTO" &&
@@ -1971,10 +1956,136 @@ function ReceiptVerificationContent() {
                           <span>
                             <span className="block font-medium">Sale was encoded incorrectly.</span>
                             <span className="mt-1 block text-xs text-muted-foreground">
-                              Submit this, then correct the items, quantities and prices yourself below. Admin is only needed if you and Accounting disagree.
+                              Correct the items, quantities and prices below, then send it back to Accounting.
                             </span>
                           </span>
                         </label>
+                        {branchResponse === "SALE_ENCODED_INCORRECT" ? (
+                          <div className="space-y-4 rounded-xl border border-amber-200 bg-background p-4 dark:border-amber-900">
+                            <div>
+                              <p className="font-semibold">What the sale should have been</p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                Fix the items, quantities and prices to what was actually sold. The receipt number stays the same. Saving sends the sale back to Accounting to verify again.
+                              </p>
+                            </div>
+                              <div className="max-w-xs space-y-1">
+                                <Label htmlFor="correction-discount">Discount</Label>
+                                <Input
+                                  id="correction-discount"
+                                  inputMode="decimal"
+                                  value={comparison.discountAmount}
+                                  onChange={(event) => setComparisonWithTotals((current) => ({ ...current, discountAmount: event.target.value }))}
+                                />
+                              </div>
+                            <div>
+                              <p className="text-sm font-medium">Items</p>
+                              <div className="mt-2 hidden grid-cols-[minmax(0,1fr)_90px_120px_110px_40px] gap-2 px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground sm:grid">
+                                <span>Item</span>
+                                <span>Quantity</span>
+                                <span>Unit price</span>
+                                <span className="text-right">Amount</span>
+                                <span />
+                              </div>
+                              <div className="mt-2 space-y-3">
+                                {comparison.lines.map((line, index) => {
+                                  const known = selectedSale?.lines.find((item) => item.itemCode === line.itemCode);
+                                  const named = correctionNames[line.itemCode] ?? known?.name ?? null;
+                                  const amount = (Number(line.quantity) || 0) * (Number(line.unitPrice) || 0);
+                                  return (
+                                    <div
+                                      key={index}
+                                      className="grid gap-2 rounded-lg bg-muted p-3 sm:grid-cols-[minmax(0,1fr)_90px_120px_110px_40px] sm:items-center sm:bg-transparent sm:p-0"
+                                    >
+                                      <div className="min-w-0">
+                                        <p className="truncate text-sm font-medium">{named ?? "Unknown item"}</p>
+                                        <p className="text-xs text-muted-foreground">{line.itemCode || "no item code"}</p>
+                                      </div>
+                                      <Input
+                                        aria-label={`Corrected quantity ${index + 1}`}
+                                        inputMode="numeric"
+                                        value={line.quantity}
+                                        onChange={(event) =>
+                                          setComparisonWithTotals((current) => ({
+                                            ...current,
+                                            lines: current.lines.map((item, position) =>
+                                              position === index ? { ...item, quantity: event.target.value } : item),
+                                          }))
+                                        }
+                                      />
+                                      <Input
+                                        aria-label={`Corrected unit price ${index + 1}`}
+                                        inputMode="decimal"
+                                        value={line.unitPrice}
+                                        onChange={(event) =>
+                                          setComparisonWithTotals((current) => ({
+                                            ...current,
+                                            lines: current.lines.map((item, position) =>
+                                              position === index ? { ...item, unitPrice: event.target.value } : item),
+                                          }))
+                                        }
+                                      />
+                                      <p className="text-sm tabular-nums sm:text-right">{formatPeso(amount)}</p>
+                                      <Button
+                                        type="button"
+                                        variant="destructive"
+                                        size="icon"
+                                        aria-label={`Remove corrected line ${index + 1}`}
+                                        disabled={comparison.lines.length === 1}
+                                        onClick={() =>
+                                          setComparisonWithTotals((current) => ({
+                                            ...current,
+                                            lines: current.lines.filter((_, position) => position !== index),
+                                          }))
+                                        }
+                                      >
+                                        <Trash2 className="size-4" />
+                                      </Button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+
+                              <ProductPicker
+                                id="correction-add"
+                                label="Add a product"
+                                locationId={selectedSale?.branchId ?? ""}
+                                exclude={comparison.lines.map((line) => line.itemCode)}
+                                onPick={(product) => {
+                                  setComparisonWithTotals((current) => ({
+                                    ...current,
+                                    lines: [
+                                      ...current.lines.filter((line) => line.itemCode.trim() !== ""),
+                                      { itemCode: product.itemCode, quantity: "1", unitPrice: String(product.price ?? 0) },
+                                    ],
+                                  }));
+                                  setCorrectionNames((current) => ({ ...current, [product.itemCode]: product.name }));
+                                }}
+                              />
+                            </div>
+
+                            {/* Computed, not typed: the total of a corrected sale is whatever its
+                                lines come to, and asking for it again only invites a mismatch. */}
+                            <dl className="space-y-1 rounded-xl border bg-muted/40 p-3 text-sm">
+                              <div className="flex justify-between gap-4">
+                                <dt className="text-muted-foreground">Subtotal</dt>
+                                <dd className="tabular-nums">{formatPeso(correctionSubtotal)}</dd>
+                              </div>
+                              <div className="flex justify-between gap-4">
+                                <dt className="text-muted-foreground">Discount</dt>
+                                <dd className="tabular-nums">-{formatPeso(correctionDiscount)}</dd>
+                              </div>
+                              <div className="flex justify-between gap-4 border-t pt-1 font-medium">
+                                <dt>Corrected total</dt>
+                                <dd className="tabular-nums">{formatPeso(correctionTotal)}</dd>
+                              </div>
+                            </dl>
+                            {correctionError ?? branchCorrectionMutation.error?.message ? (
+                              <p className="text-sm text-destructive" role="alert">
+                                {correctionError ?? branchCorrectionMutation.error?.message}
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </fieldset>
                       {branchResponse === "WRONG_RECEIPT_PHOTO" && (
                         <div className="space-y-3 rounded-xl border border-sky-200 dark:border-sky-900 bg-background p-4 dark:border-sky-800">
@@ -2022,11 +2133,6 @@ function ReceiptVerificationContent() {
                           ) : null}
                         </div>
                       )}
-                      {branchResponse === "SALE_ENCODED_INCORRECT" && (
-                        <p className="rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-3 text-xs text-amber-900 dark:text-amber-300 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-                          Submit this response first. The sale then opens for correction: fix what was keyed wrongly and save, and it keeps its receipt number and goes back to Accounting to verify again. Nothing moves until you save that correction.
-                        </p>
-                      )}
                       <div className="grid gap-2">
                         <Label htmlFor="branch-response-note">
                           Branch explanation
@@ -2040,50 +2146,47 @@ function ReceiptVerificationContent() {
                           placeholder="Explain what you checked and why this response is correct"
                         />
                       </div>
-                      <Button
-                        variant="workflow"
-                        onClick={() => branchResponseMutation.mutate()}
-                        disabled={
-                          branchResponseMutation.isPending ||
-                          !branchResponse ||
-                          !branchResponseNote.trim() ||
-                          (branchResponse === "WRONG_RECEIPT_PHOTO" &&
-                            (!canUploadEvidence ||
-                              (!branchReplacementPhotoFile && !branchReplacementEvidenceKey)))
-                        }
-                      >
-                        {selectedSale.branchResponse
-                          ? "Update branch response"
-                          : "Submit branch response"}
-                      </Button>
-
                       {/*
-                        Offered on the branch's choice, so the finding and the
-                        correction are one action rather than two: there is no
-                        Admin step between admitting the mistake and fixing it.
-                        Withheld from anyone who can correct and verify
-                        outright, because two buttons that both read as
-                        correcting the sale but end in different places -- one
-                        verified, one back in the queue -- is a choice that gets
-                        made wrong in a hurry. They have the one that finishes.
+                        Each finding ends in the one button that does it -- send
+                        the right photo, or correct the sale -- so the branch
+                        never answers in one step and acts in another.
                       */}
-                      {!(canVoidReplace && canReview) &&
-                      (selectedSale.branchResponse === "SALE_ENCODED_INCORRECT" ||
-                        branchResponse === "SALE_ENCODED_INCORRECT") ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        {!branchResponse ? (
+                          <p className="text-xs text-muted-foreground">Choose what you found above.</p>
+                        ) : null}
+                        {branchResponse === "WRONG_RECEIPT_PHOTO" ? (
                         <Button
-                          variant="warning"
-                          disabled={branchCorrectionMutation.isPending}
-                          onClick={() => {
-                              branchCorrectionMutation.reset();
-                              setCorrectionMode("BRANCH");
-                              setIsCorrectionOpen(true);
-                            }}
+                          variant="workflow"
+                          onClick={() => branchResponseMutation.mutate()}
+                          disabled={
+                            branchResponseMutation.isPending ||
+                            !branchResponseNote.trim() ||
+                            !canUploadEvidence ||
+                            (!branchReplacementPhotoFile && !branchReplacementEvidenceKey)
+                          }
                         >
-                          {branchCorrectionMutation.isPending
-                            ? "Correcting..."
-                            : "Correct and send to Accounting"}
+                          {branchResponseMutation.isPending ? "Sending..." : "Send the correct photo to Accounting"}
                         </Button>
-                      ) : null}
+                        ) : null}
+                        {/*
+                          Choosing "encoded incorrectly" is admitting the mistake;
+                          fixing it is the same step, so the correction sits
+                          beside the answer instead of behind another dialog.
+                        */}
+                        {branchResponse === "SALE_ENCODED_INCORRECT" ? (
+                          <Button
+                            variant="warning"
+                            disabled={branchCorrectionMutation.isPending || !branchResponseNote.trim() || Boolean(correctionError)}
+                            onClick={() => {
+                              branchCorrectionMutation.reset();
+                              setConfirmationAction("BRANCH_CORRECT");
+                            }}
+                          >
+                            {branchCorrectionMutation.isPending ? "Correcting..." : "Correct the sale and send to Accounting"}
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
                   )}
                 {selectedSale.status === "POSTED" && !selectedSale.receiptPhotoUrl && !photoPreview ? (
@@ -2214,7 +2317,11 @@ function ReceiptVerificationContent() {
                             id={id}
                             inputMode="decimal"
                             value={comparison[field]}
-                            onChange={(event) => updateComparison({ [field]: event.target.value })}
+                            onChange={(event) =>
+                              field === "discountAmount"
+                                ? setComparisonWithTotals((current) => ({ ...current, discountAmount: event.target.value }))
+                                : updateComparison({ [field]: event.target.value })
+                            }
                           />
                         </div>
                       ))}
@@ -2262,7 +2369,7 @@ function ReceiptVerificationContent() {
                                 step="1"
                                 value={line.quantity}
                                 onChange={(event) =>
-                                  setComparison((current) => ({
+                                  setComparisonWithTotals((current) => ({
                                     ...current,
                                     lines: current.lines.map(
                                       (item, itemIndex) =>
@@ -2282,7 +2389,7 @@ function ReceiptVerificationContent() {
                                 inputMode="decimal"
                                 value={line.unitPrice}
                                 onChange={(event) =>
-                                  setComparison((current) => ({
+                                  setComparisonWithTotals((current) => ({
                                     ...current,
                                     lines: current.lines.map(
                                       (item, itemIndex) =>
@@ -2302,7 +2409,7 @@ function ReceiptVerificationContent() {
                                 size="icon"
                                 aria-label={`Remove line ${index + 1}`}
                                 onClick={() =>
-                                  setComparison((current) => ({
+                                  setComparisonWithTotals((current) => ({
                                     ...current,
                                     lines: current.lines.filter((_, itemIndex) => itemIndex !== index),
                                   }))
@@ -2320,7 +2427,7 @@ function ReceiptVerificationContent() {
                         locationId={selectedSale.branchId}
                         exclude={comparison.lines.map((line) => line.itemCode)}
                         onPick={(product) => {
-                          setComparison((current) => ({
+                          setComparisonWithTotals((current) => ({
                             ...current,
                             lines: [
                               ...current.lines.filter((line) => line.itemCode.trim() !== ""),
@@ -2377,16 +2484,36 @@ function ReceiptVerificationContent() {
                           />
                         </div>
                         <div className="flex flex-wrap gap-2">
+                        {/*
+                          The button names what the reviewer did. Nothing
+                          changed: Confirm correct. A photo picked or replaced
+                          and nothing else: the receipt is what was corrected,
+                          so it is attached and verified, and the sale is left
+                          alone. Lines, prices or discount changed: the sale
+                          itself is corrected and verified, below.
+                        */}
+                        {!photoFile && differences.length === 0 ? (
                         <Button
                           variant="workflow"
                           onClick={() => reviewMutation.mutate("VERIFIED")}
                           disabled={
-                            reviewMutation.isPending || evidenceMutation.isPending || deleteEvidenceMutation.isPending || Boolean(comparisonError) || differences.length > 0 || (!selectedSale.receiptPhotoUrl && !photoFile)
+                            reviewMutation.isPending || evidenceMutation.isPending || deleteEvidenceMutation.isPending || Boolean(comparisonError) || !selectedSale.receiptPhotoUrl
                           }
                         >
                           <CheckCircle2 className="mr-2 h-4 w-4" />
                           Confirm correct
                         </Button>
+                        ) : null}
+                        {photoFile && differences.length === 0 ? (
+                        <Button
+                          variant="workflow"
+                          onClick={() => reviewMutation.mutate("VERIFIED")}
+                          disabled={reviewMutation.isPending || evidenceMutation.isPending || deleteEvidenceMutation.isPending || Boolean(comparisonError) || !canUploadEvidence}
+                        >
+                          <CheckCircle2 className="mr-2 h-4 w-4" />
+                          {reviewMutation.isPending ? "Saving..." : "Correct the receipt and verify"}
+                        </Button>
+                        ) : null}
                         {/*
                           Confirm correct asserts the encoding matches the
                           paper, so it cannot be the button for a reader who has
@@ -2397,7 +2524,7 @@ function ReceiptVerificationContent() {
                         {canVoidReplace && differences.length > 0 && (selectedSale.receiptPhotoUrl || (canUploadEvidence && photoFile)) ? (
                           <Button
                             type="button"
-                            variant="warning"
+                            variant="workflow"
                             disabled={correctAndVerifyMutation.isPending || Boolean(comparisonError) || !notes.trim()}
                             onClick={() => setConfirmationAction("CORRECT_AND_VERIFY")}
                           >
@@ -2429,14 +2556,16 @@ function ReceiptVerificationContent() {
                         </div>
                         <p className="text-xs text-muted-foreground">
                           {!selectedSale.receiptPhotoUrl && !photoFile
-                            ? "Attach the receipt photo first: a sale is never verified without one."
+                            ? "Attach a photo of the receipt first. A sale cannot be verified without it."
                             : differences.length === 0
-                              ? "Confirming says the encoding matches the paper."
+                              ? photoFile
+                                ? "The new photo will be attached and the sale verified. Nothing on the sale changes."
+                                : "The sale matches the receipt. Click Confirm correct to verify it."
                               : canVoidReplace
                                 ? notes.trim()
-                                  ? "Correcting writes what you have written onto the sale and verifies it. Report mismatch instead to let the branch answer."
-                                  : "Say what was keyed wrongly in Notes, then correct the sale yourself or report the mismatch."
-                                : "Confirming says the encoding matches the paper, and what you have written does not. Report the mismatch instead."}
+                                  ? "Correct the sale to fix it yourself and verify it now, or Report mismatch to send it back to the branch."
+                                  : "The sale does not match the receipt. Write what is wrong in Notes first."
+                                : "The sale does not match the receipt. Write what is wrong in Notes, then click Report mismatch."}
                         </p>
                       </>
                     )}
@@ -2551,16 +2680,16 @@ function ReceiptVerificationContent() {
       <ConfirmationDialog
         open={Boolean(confirmationAction)}
         title={
-          confirmationAction ? RECEIPT_CONFIRMATIONS[confirmationAction].title : "Confirm action"
+          shownConfirmation ? RECEIPT_CONFIRMATIONS[shownConfirmation].title : "Confirm action"
         }
         description={
-          confirmationAction
-            ? RECEIPT_CONFIRMATIONS[confirmationAction].description
+          shownConfirmation
+            ? RECEIPT_CONFIRMATIONS[shownConfirmation].description
             : "Review this action before continuing."
         }
         confirmLabel={
-          confirmationAction
-            ? RECEIPT_CONFIRMATIONS[confirmationAction].confirmLabel
+          shownConfirmation
+            ? RECEIPT_CONFIRMATIONS[shownConfirmation].confirmLabel
             : "Confirm"
         }
         onOpenChange={(open) => {
@@ -2580,6 +2709,8 @@ function ReceiptVerificationContent() {
             resolveMutation.mutate("VOIDED");
           } else if (confirmationAction === "CORRECT_AND_VERIFY") {
             correctAndVerifyMutation.mutate();
+          } else if (confirmationAction === "BRANCH_CORRECT") {
+            branchCorrectionMutation.mutate();
           } else if (confirmationAction === "VOID_VERIFIED_SALE") {
             voidVerifiedMutation.mutate();
           } else if (confirmationAction === "DELETE_VOIDED_SALE") {
@@ -2594,188 +2725,6 @@ function ReceiptVerificationContent() {
         should have been. Saving records the finding and posts the replacement
         together, so the branch answers once and it goes back to Accounting.
       */}
-      <Dialog open={isCorrectionOpen} onOpenChange={setIsCorrectionOpen}>
-        <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Correct this sale</DialogTitle>
-            <DialogDescription>
-              {correctionMode === "ACCOUNTING"
-                ? "Change the items, quantities and prices to what the receipt in front of you says. Saving puts the sale right, keeps the receipt number, carries its photo over and marks it verified. Nothing goes back to the branch."
-                : "Change the items, quantities and prices to what was actually sold. The receipt number stays as it is; saving corrects the sale and sends it back to Accounting to verify again."}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label htmlFor="correction-receipt">New receipt number</Label>
-                <Input
-                  id="correction-receipt"
-                  value={comparison.receiptNumber}
-                  readOnly
-                  className="bg-muted"
-                  onChange={(event) => updateComparison({ receiptNumber: event.target.value })}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Stays as it is: the sale is being put right, not renumbered.
-                </p>
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="correction-discount">Discount</Label>
-                <Input
-                  id="correction-discount"
-                  inputMode="decimal"
-                  value={comparison.discountAmount}
-                  onChange={(event) => updateComparison({ discountAmount: event.target.value })}
-                />
-              </div>
-            </div>
-
-            <div>
-              <p className="text-sm font-medium">Items</p>
-              <div className="mt-2 hidden grid-cols-[minmax(0,1fr)_90px_120px_110px_40px] gap-2 px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground sm:grid">
-                <span>Item</span>
-                <span>Quantity</span>
-                <span>Unit price</span>
-                <span className="text-right">Amount</span>
-                <span />
-              </div>
-              <div className="mt-2 space-y-3">
-                {comparison.lines.map((line, index) => {
-                  const known = selectedSale?.lines.find((item) => item.itemCode === line.itemCode);
-                  const named = correctionNames[line.itemCode] ?? known?.name ?? null;
-                  const amount = (Number(line.quantity) || 0) * (Number(line.unitPrice) || 0);
-                  return (
-                    <div
-                      key={index}
-                      className="grid gap-2 rounded-lg bg-muted p-3 sm:grid-cols-[minmax(0,1fr)_90px_120px_110px_40px] sm:items-center sm:bg-transparent sm:p-0"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{named ?? "Unknown item"}</p>
-                        <p className="text-xs text-muted-foreground">{line.itemCode || "no item code"}</p>
-                      </div>
-                      <Input
-                        aria-label={`Corrected quantity ${index + 1}`}
-                        inputMode="numeric"
-                        value={line.quantity}
-                        onChange={(event) =>
-                          setComparison((current) => ({
-                            ...current,
-                            lines: current.lines.map((item, position) =>
-                              position === index ? { ...item, quantity: event.target.value } : item),
-                          }))
-                        }
-                      />
-                      <Input
-                        aria-label={`Corrected unit price ${index + 1}`}
-                        inputMode="decimal"
-                        value={line.unitPrice}
-                        onChange={(event) =>
-                          setComparison((current) => ({
-                            ...current,
-                            lines: current.lines.map((item, position) =>
-                              position === index ? { ...item, unitPrice: event.target.value } : item),
-                          }))
-                        }
-                      />
-                      <p className="text-sm tabular-nums sm:text-right">{formatPeso(amount)}</p>
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="icon"
-                        aria-label={`Remove corrected line ${index + 1}`}
-                        disabled={comparison.lines.length === 1}
-                        onClick={() =>
-                          setComparison((current) => ({
-                            ...current,
-                            lines: current.lines.filter((_, position) => position !== index),
-                          }))
-                        }
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <ProductPicker
-                id="correction-add"
-                label="Add a product"
-                locationId={selectedSale?.branchId ?? ""}
-                exclude={comparison.lines.map((line) => line.itemCode)}
-                onPick={(product) => {
-                  setComparison((current) => ({
-                    ...current,
-                    lines: [
-                      ...current.lines.filter((line) => line.itemCode.trim() !== ""),
-                      { itemCode: product.itemCode, quantity: "1", unitPrice: String(product.price ?? 0) },
-                    ],
-                  }));
-                  setCorrectionNames((current) => ({ ...current, [product.itemCode]: product.name }));
-                }}
-              />
-            </div>
-
-            {/* Computed, not typed: the total of a corrected sale is whatever its
-                lines come to, and asking for it again only invites a mismatch. */}
-            <dl className="space-y-1 rounded-xl border bg-muted/40 p-3 text-sm">
-              <div className="flex justify-between gap-4">
-                <dt className="text-muted-foreground">Subtotal</dt>
-                <dd className="tabular-nums">{formatPeso(correctionSubtotal)}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-muted-foreground">Discount</dt>
-                <dd className="tabular-nums">-{formatPeso(correctionDiscount)}</dd>
-              </div>
-              <div className="flex justify-between gap-4 border-t pt-1 font-medium">
-                <dt>Corrected total</dt>
-                <dd className="tabular-nums">{formatPeso(correctionTotal)}</dd>
-              </div>
-            </dl>
-
-            <div className="space-y-1">
-              <Label htmlFor="correction-note">What was wrong</Label>
-              <Textarea
-                id="correction-note"
-                value={branchResponseNote}
-                onChange={(event) => setBranchResponseNote(event.target.value)}
-                placeholder="Say what was keyed wrongly, so Accounting can follow the change"
-              />
-            </div>
-
-            {/* The page's own error line sits behind this dialog, so a refusal
-                from the server has to be repeated here or it is never seen. */}
-            {correctionError ?? branchCorrectionMutation.error?.message ? (
-              <p className="text-sm text-destructive" role="alert">
-                {correctionError ?? branchCorrectionMutation.error?.message}
-              </p>
-            ) : null}
-          </div>
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setIsCorrectionOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="warning"
-              disabled={branchCorrectionMutation.isPending || !branchResponseNote.trim() || Boolean(correctionError)}
-              onClick={() => branchCorrectionMutation.mutate()}
-            >
-              {branchCorrectionMutation.isPending
-                ? "Saving..."
-                : correctionMode === "ACCOUNTING"
-                  ? "Correct and verify"
-                  : "Save and send back to Accounting"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </PageShell>
   );
 }
