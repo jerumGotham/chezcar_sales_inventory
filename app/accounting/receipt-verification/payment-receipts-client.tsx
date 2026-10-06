@@ -14,6 +14,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { useCan } from "@/components/shell-access-context";
 import { cn } from "@/lib/utils";
 
@@ -174,6 +175,7 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
   const canUpload = useCan("sales:evidence:upload");
   const canNotifyEvidence = useCan("sales:verify");
   const canDelete = useCan("sales:evidence:delete");
+  const canDeleteVoided = useCan("payments:delete-voided");
 
   const queryClient = useQueryClient();
   const [searchDraft, setSearchDraft] = useState("");
@@ -204,6 +206,7 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
   // looked the same as one that never fired.
   const [formNotice, setFormNotice] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 
   const { data, isLoading, isFetching, error } = useQuery({
     queryKey: ["accounting-payments", filters],
@@ -309,6 +312,37 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
       post(`/api/accounting/payments/${selected!.id}/resolve`, { action, note: resolutionNote }),
     onSuccess: async (_, action) => { setFormNotice(action === "CONFIRMED_CORRECT" ? "Original encoding confirmed. The payment is now verified." : "Payment voided."); await refresh(); },
     onError: (mutationError: Error) => { setFormNotice(null); setFormError(mutationError.message); },
+  });
+
+  /*
+   * Voiding gives the money back to the order balance but leaves the receipt
+   * number registered, so a branch holding a perfectly good paper receipt
+   * could not record it again under the number printed on it. Deleting the
+   * voided row frees that number.
+   */
+  const deleteVoidedMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`/api/accounting/payments/${selected!.id}`, {
+        method: "DELETE",
+        credentials: "same-origin",
+      });
+      const json = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(json?.error?.message ?? "Unable to delete the payment");
+      return json.data as { receiptNumber: string; receiptFreed: boolean };
+    },
+    onSuccess: async (result) => {
+      setIsDeleteOpen(false);
+      // The row is gone, so nothing is left to keep selected.
+      setSelectedId(null);
+      setFormError(null);
+      setFormNotice(
+        result.receiptFreed
+          ? `Deleted. Receipt ${result.receiptNumber} can be recorded again.`
+          : `Deleted. No registration was found for receipt ${result.receiptNumber}.`,
+      );
+      await refresh();
+    },
+    onError: (mutationError: Error) => { setIsDeleteOpen(false); setFormNotice(null); setFormError(mutationError.message); },
   });
 
   const branchOptions = useMemo<Option[]>(
@@ -485,7 +519,26 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
                     {selected.kindLabel} · {selected.branch} · collected by {selected.collectedBy}
                   </p>
                   {selected.status === "VOIDED" ? (
-                    <p className="text-sm text-rose-600">This payment was voided. {selected.voidReason}</p>
+                    <div className="mt-2 space-y-2 rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/50 p-3">
+                      <p className="text-sm text-rose-700 dark:text-rose-300">This payment was voided. {selected.voidReason}</p>
+                      {canDeleteVoided ? (
+                        <>
+                          <p className="text-xs text-rose-800 dark:text-rose-300">
+                            The money is already back on the order balance. Deleting this record frees
+                            receipt {selected.receiptNumber} so the branch can record it again under the
+                            number printed on the paper.
+                          </p>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            disabled={deleteVoidedMutation.isPending}
+                            onClick={() => setIsDeleteOpen(true)}
+                          >
+                            {deleteVoidedMutation.isPending ? "Deleting..." : "Delete this record"}
+                          </Button>
+                        </>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
 
@@ -673,6 +726,19 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
           </CardContent>
         </Card>
       </div>
+
+      <ConfirmationDialog
+        open={isDeleteOpen}
+        title="Delete this voided payment?"
+        description={
+          selected
+            ? `Receipt ${selected.receiptNumber} will be removed and its number freed, so the branch can record it again. The money is already back on the order balance and does not move. This cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete record"
+        onConfirm={() => deleteVoidedMutation.mutate()}
+        onOpenChange={setIsDeleteOpen}
+      />
     </div>
   );
 }

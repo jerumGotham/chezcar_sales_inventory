@@ -315,6 +315,7 @@ export default function CustomerOrdersPage() {
   const canRequestSaleCorrection = hasCapability(capabilities, "sales:correction:request");
   const canCorrectSalesperson = hasCapability(capabilities, "sales:salesperson:update");
   const canRefundSale = hasCapability(capabilities, "sales:refund");
+  const canAttachReceipt = hasCapability(capabilities, "sales:evidence:upload");
   const activeView = searchParams.get("view") === "orders" && canViewOrders
     ? "orders"
     : canViewSales ? "sales" : canViewOrders ? "orders" : null;
@@ -338,6 +339,12 @@ export default function CustomerOrdersPage() {
   );
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentReference, setPaymentReference] = useState("");
+  /*
+   * Optional. The branch usually has the paper in hand while recording the
+   * money; attaching it here saves the trip to Accounting's queue, and leaving
+   * it empty is still a perfectly good payment.
+   */
+  const [paymentPhoto, setPaymentPhoto] = useState<File | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<SelectOption>(PAYMENT_METHOD_OPTIONS[0]);
   const [refundSaleId, setRefundSaleId] = useState<string | null>(null);
   // What just happened, said once in the place the reader is already looking.
@@ -437,7 +444,21 @@ export default function CustomerOrdersPage() {
       if (!response.ok) {
         throw new Error(json.error?.message ?? "Unable to save payment");
       }
-      return json.data as CustomerOrderRow;
+      const saved = json.data as CustomerOrderRow & { paymentId: string | null };
+      if (paymentPhoto && canAttachReceipt && saved.paymentId) {
+        const body = new FormData();
+        body.set("photo", paymentPhoto);
+        // The money is already recorded, so a failed upload is a warning, not
+        // a reason to report the payment as not saved.
+        const attached = await fetch(
+          `/api/accounting/payments/${encodeURIComponent(saved.paymentId)}/photo`,
+          { method: "POST", credentials: "same-origin", body },
+        ).catch(() => null);
+        if (!attached?.ok) {
+          throw new Error("Payment saved, but the receipt photo did not attach. Attach it from Receipt Verification.");
+        }
+      }
+      return saved;
     },
     onSuccess: async () => {
       await Promise.all([
@@ -451,6 +472,7 @@ export default function CustomerOrdersPage() {
       setSelectedOrder(null);
       setPaymentAmount("");
       setPaymentReference("");
+      setPaymentPhoto(null);
       setPaymentMethod(PAYMENT_METHOD_OPTIONS[0]);
     },
   });
@@ -1188,6 +1210,21 @@ export default function CustomerOrdersPage() {
                 Accounting verifies this receipt against its photo, so every payment needs its own number.
               </p>
             </div>
+
+            {canAttachReceipt ? (
+              <div className="space-y-2">
+                <Label htmlFor="order-payment-photo">Receipt Photo (optional)</Label>
+                <Input
+                  id="order-payment-photo"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={(event) => setPaymentPhoto(event.target.files?.[0] ?? null)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Attach it now if you have the receipt, or leave it and attach it later in Receipt Verification.
+                </p>
+              </div>
+            ) : null}
 
             <div className="space-y-2">
               <Label htmlFor="order-payment-method">Payment Method</Label>

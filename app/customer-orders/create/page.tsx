@@ -71,6 +71,14 @@ export default function CreateCustomerOrderPage() {
   const access = useShellAccess();
   const capabilities = access.authenticated ? access.capabilities : [];
   const canCreate = hasCapability(capabilities, "customer-orders:create");
+  const canAttachReceipt = hasCapability(capabilities, "sales:evidence:upload");
+  /*
+   * Optional on purpose. The branch often has the paper in hand while keying
+   * the order, and attaching it here saves a trip to Accounting's queue; an
+   * order with no photo yet is still a perfectly good order, and the queue
+   * still chases it.
+   */
+  const [downpaymentPhoto, setDownpaymentPhoto] = useState<File | null>(null);
   const [location, setLocation] = useState<SelectOption | null>(null);
   const [status, setStatus] = useState<SelectOption>(STATUS_OPTIONS[1]);
   const assignedLocationId = access.authenticated ? access.scope.locationId : null;
@@ -143,7 +151,21 @@ export default function CreateCustomerOrderPage() {
       });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error?.message ?? "Unable to save customer order");
-      return json.data as { orderNo: string };
+      const order = json.data as { orderNo: string; downpaymentPaymentId: string | null };
+      if (downpaymentPhoto && canAttachReceipt && order.downpaymentPaymentId) {
+        const body = new FormData();
+        body.set("photo", downpaymentPhoto);
+        // The order is already saved, so a failed photo is a warning, not a
+        // reason to tell the branch the order did not go through.
+        const attached = await fetch(
+          `/api/accounting/payments/${encodeURIComponent(order.downpaymentPaymentId)}/photo`,
+          { method: "POST", credentials: "same-origin", body },
+        ).catch(() => null);
+        if (!attached?.ok) {
+          setErrorMessage("Order saved, but the receipt photo did not attach. Attach it from Receipt Verification.");
+        }
+      }
+      return order;
     },
     onSuccess: async () => {
       await Promise.all([
@@ -322,6 +344,20 @@ export default function CreateCustomerOrderPage() {
                       <Label>Downpayment Receipt No.</Label>
                       <Input value={downpaymentReceiptNumber} onChange={(e) => setDownpaymentReceiptNumber(e.target.value)} placeholder="OR-000123" />
                     </div>
+                    {canAttachReceipt ? (
+                      <div className="space-y-2">
+                        <Label htmlFor="downpayment-photo">Receipt Photo (optional)</Label>
+                        <Input
+                          id="downpayment-photo"
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          onChange={(e) => setDownpaymentPhoto(e.target.files?.[0] ?? null)}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Attach it now if you have the receipt, or leave it and attach it later in Receipt Verification.
+                        </p>
+                      </div>
+                    ) : null}
                     <div className="space-y-2">
                       <Label>Downpayment Method</Label>
                       <Select

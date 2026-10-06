@@ -537,6 +537,102 @@ export async function resolvePaymentMismatch(actor: AuthContext, paymentId: stri
   return serializePayment(result);
 }
 
+/**
+ * Deletes a voided payment so its receipt number can be written again.
+ *
+ * Voiding hands the money back to the order balance but leaves the number
+ * registered in ManualReceipt. A branch whose paper receipt is perfectly good
+ * -- whose only mistake was what was keyed against it -- could then not record
+ * it again under the number printed on it, because registering that number a
+ * second time is refused as a duplicate. This clears the record and frees the
+ * number, the way deleting a voided sale does on the sale side.
+ *
+ * It moves no money. Voiding already returned the amount to the balance, so
+ * the balance is deliberately left exactly as the void set it.
+ */
+export async function deleteVoidedPayment(actor: AuthContext, paymentId: string) {
+  assertCapability(actor, "payments:delete-voided");
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Payment" WHERE id = ${paymentId} FOR UPDATE`;
+    const payment = await tx.payment.findUnique({
+      where: { id: paymentId },
+      select: {
+        id: true,
+        reference: true,
+        receiptNumber: true,
+        status: true,
+        kind: true,
+        amount: true,
+        locationId: true,
+        orderId: true,
+        saleId: true,
+        location: { select: { name: true } },
+        order: { select: { reference: true } },
+      },
+    });
+    if (!payment) throw new PaymentError("NOT_FOUND", "Payment not found", 404);
+    if (!canAccessLocation(actor, payment.locationId)) throw new AuthorizationError("Insufficient permissions");
+    if (payment.status !== "VOIDED") {
+      throw new PaymentError("INVALID_STATUS", "Only a voided payment can be deleted. Void it first.", 409);
+    }
+    /*
+     * A receipt that settles a sale is reviewed on the sale, not here, and the
+     * sale's own deletion removes it. Dropping this row by itself would leave
+     * a posted sale whose money is recorded nowhere.
+     */
+    if (payment.saleId) {
+      throw new PaymentError(
+        "PAYMENT_IN_USE",
+        "This receipt settles a sale, so it is deleted with that sale rather than here.",
+        409,
+      );
+    }
+
+    /*
+     * The number is claimed in two places, and freeing one without the other
+     * leaves it just as unusable. The registry is the obvious one; the order
+     * also carries downpaymentReceiptNumber, which is unique in its own right.
+     */
+    const freed = await tx.manualReceipt.deleteMany({
+      where: {
+        number: payment.receiptNumber,
+        locationId: payment.locationId,
+        // Purpose and order are matched as well as the number so that a sale
+        // receipt registered against the same order is never freed by mistake.
+        purpose: { in: ["CUSTOMER_ORDER_DOWNPAYMENT", "CUSTOMER_ORDER_PAYMENT"] },
+        ...(payment.orderId ? { orderId: payment.orderId } : {}),
+      },
+    });
+    const clearedOnOrder = payment.orderId
+      ? (await tx.customerOrder.updateMany({
+          // Matched on the number too, so an order whose downpayment receipt is
+          // a different one is left alone.
+          where: { id: payment.orderId, downpaymentReceiptNumber: payment.receiptNumber },
+          data: { downpaymentReceiptNumber: null },
+        })).count > 0
+      : false;
+    await tx.payment.delete({ where: { id: payment.id } });
+    return { payment, receiptFreed: freed.count > 0 || clearedOnOrder };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+  const { payment } = result;
+  await recordAuditLog({
+    category: "Receipt Verification",
+    action: "Voided Payment Deleted",
+    actorId: actor.userId,
+    reference: payment.receiptNumber,
+    locationLabel: payment.location.name,
+    details: `Deleted the voided ${PAYMENT_KIND_LABELS[payment.kind].toLowerCase()} ${payment.reference} so receipt ${payment.receiptNumber} can be used again`,
+    facts: [
+      { label: "Receipt number", value: payment.receiptNumber },
+      { label: "Voided amount", value: `₱${payment.amount.toNumber().toLocaleString("en-PH", { minimumFractionDigits: 2 })}` },
+      { label: "Order", value: payment.order?.reference ?? "-" },
+      { label: "Receipt number freed", value: result.receiptFreed ? "Yes" : "No registration found" },
+    ],
+  });
+  return { deleted: true, receiptNumber: payment.receiptNumber, receiptFreed: result.receiptFreed };
+}
+
 export function paymentsErrorResponse(error: unknown, context: string) {
   if (error instanceof PaymentError) {
     return Response.json({ error: { code: error.code, message: error.message } }, { status: error.status });

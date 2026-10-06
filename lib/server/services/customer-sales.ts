@@ -792,8 +792,14 @@ export async function createCustomerOrder(actor: AuthContext, input: z.infer<typ
       include: ORDER_INCLUDE,
     });
     if (input.downpaymentReceiptNumber) await registerReceipt(tx, input.downpaymentReceiptNumber, "CUSTOMER_ORDER_DOWNPAYMENT", { orderId: order.id, locationId, receiptBooklet: "" });
+    /*
+     * Handed back so the branch can attach the receipt photo straight after
+     * recording the money, instead of going to Accounting's queue to find the
+     * row. Nothing depends on it: it stays optional.
+     */
+    let downpaymentPaymentId: string | null = null;
     if (input.downpaymentAmount > 0 && input.downpaymentReceiptNumber) {
-      await recordPayment(tx, {
+      downpaymentPaymentId = (await recordPayment(tx, {
         kind: "ORDER_DOWNPAYMENT",
         locationId,
         customerId,
@@ -809,7 +815,7 @@ export async function createCustomerOrder(actor: AuthContext, input: z.infer<typ
           locationName: salesperson.location.name,
         },
         collectedById: actor.userId,
-      });
+      })).id;
     }
     if (input.downpaymentAmount > 0) {
       // The booking entry is derived from the order row, whose downpayment total
@@ -831,7 +837,7 @@ export async function createCustomerOrder(actor: AuthContext, input: z.infer<typ
         ],
       }, tx);
     }
-    return serializeOrder(order);
+    return { ...serializeOrder(order), downpaymentPaymentId };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") throw new CustomerSalesError("DUPLICATE_RECEIPT", "Manual receipt number already exists", 409);
@@ -1308,7 +1314,8 @@ export async function recordCustomerOrderPayment(
         locationId: order.locationId,
         receiptBooklet: "",
       });
-      await recordPayment(tx, {
+      // Handed back so the branch can attach the receipt photo straight away.
+      const payment = await recordPayment(tx, {
         kind: "ORDER_PAYMENT",
         locationId: order.locationId,
         customerId: order.customerId,
@@ -1357,7 +1364,7 @@ export async function recordCustomerOrderPayment(
           { label: "Balance after payment", value: `₱${updated.remainingBalance.toNumber().toLocaleString("en-PH", { minimumFractionDigits: 2 })}` },
         ],
       }, tx);
-      return serializeOrder(updated);
+      return { ...serializeOrder(updated), paymentId: payment.id };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
     if (
@@ -2074,6 +2081,184 @@ export async function respondToSaleMismatch(actor: AuthContext, saleId: string, 
  * confirm its own encoding correct, not void without a replacement — and only
  * after saying the sale was encoded incorrectly.
  */
+/**
+ * Accounting putting a wrongly keyed sale right, in place.
+ *
+ * The paper is correct and the encoding is not, so there is nothing to ask the
+ * branch and nothing to re-number: the sale keeps the receipt number printed on
+ * the paper. That is also why this cannot be a void and replace. Receipt
+ * identity is unique per branch and booklet, and the voided row would keep its
+ * claim on the number, forcing the correction to invent one the receipt does
+ * not carry.
+ *
+ * Stock moves by the difference and the ledger row is restated, both inside the
+ * transaction. What the sale said before survives in the audit entry, which is
+ * the only place it is kept.
+ */
+export async function correctEncodedSale(
+  actor: AuthContext,
+  saleId: string,
+  rawInput: z.input<typeof accountingResolutionSchema>,
+) {
+  // Two things at once -- rewriting a posted sale and verifying it -- so it
+  // takes the grant for each rather than just the first.
+  assertCapability(actor, "sales:void-replace");
+  assertCapability(actor, "sales:verify");
+  assertCapability(actor, "sales:evidence:view");
+  assertAccounting(actor);
+  const input = accountingResolutionSchema.parse(rawInput);
+  const corrected = input.replacement;
+  if (!corrected) throw new CustomerSalesError("INVALID_INPUT", "Corrected sale details are required", 400);
+  assertUniqueComparisonLines(corrected);
+
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Sale" WHERE id = ${saleId} FOR UPDATE`;
+    const sale = await tx.sale.findUnique({
+      where: { id: saleId },
+      include: {
+        lines: true,
+        accountingReview: true,
+        location: { select: { name: true } },
+        _count: { select: { refunds: true, warranties: true, originalBackjobs: true } },
+      },
+    });
+    if (!sale) throw new CustomerSalesError("NOT_FOUND", "Sale not found", 404);
+    assertOperationalResource(actor, sale.locationId);
+    const review = sale.accountingReview;
+    if (!review) throw new CustomerSalesError("NOT_FOUND", "Accounting review not found", 404);
+    if (sale.status !== "POSTED") throw new CustomerSalesError("INVALID_STATE", "Only a posted sale can be corrected", 409);
+    /*
+     * Only after Accounting has put on record that the sale does not match the
+     * paper. The reported mismatch is what says why a posted sale changed, so
+     * the correction is never the first anyone hears of it.
+     */
+    if (review.status !== "MISMATCH_REPORTED" || review.resolvedAt) {
+      throw new CustomerSalesError("INVALID_STATE", "Report the mismatch first, so the record says why the sale changed", 409);
+    }
+    // The rule the branch already lives by, kept for everyone: nothing is
+    // verified on no evidence, and this step verifies.
+    if (!review.receiptPhotoKey) {
+      throw new CustomerSalesError("EVIDENCE_REQUIRED", "Attach the receipt photo before correcting and verifying this sale", 409);
+    }
+    /*
+     * Each of these was worked out from the lines or the money as they stand.
+     * Rewriting them underneath would leave the other record describing a sale
+     * that no longer exists, so the correction stops rather than guess.
+     */
+    const standingOn: Array<[number, string]> = [
+      [sale._count.refunds, "refund(s) already given against it"],
+      [sale._count.warranties, "customer warranty case(s) raised against it"],
+      [sale._count.originalBackjobs, "backjob(s) naming it as the original sale"],
+    ];
+    for (const [count, description] of standingOn) {
+      if (count > 0) {
+        throw new CustomerSalesError(
+          "SALE_IN_USE",
+          `This sale has ${count} ${description}, so it cannot be rewritten. Void and replace it instead.`,
+          409,
+        );
+      }
+    }
+    if (corrected.receiptNumber !== sale.manualReceiptNumber || corrected.receiptBooklet !== sale.receiptBooklet) {
+      throw new CustomerSalesError(
+        "INVALID_REPLACEMENT_RECEIPT",
+        "This step corrects what was keyed, not which receipt it was. Keep the receipt number.",
+        409,
+      );
+    }
+
+    const itemCodes = corrected.lines.map((line) => line.itemCode);
+    const products = await tx.product.findMany({
+      where: { itemCode: { in: itemCodes }, status: "ACTIVE" },
+      select: { id: true, itemCode: true, name: true, warrantyDurationMonths: true },
+    });
+    if (products.length !== new Set(itemCodes).size) {
+      throw new CustomerSalesError("INVALID_LINES", "Every corrected line must reference an active product", 400);
+    }
+    const productsByCode = new Map(products.map((product) => [product.itemCode, product]));
+
+    const subtotalCents = cents(corrected.lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0));
+    const totalCents = subtotalCents - cents(corrected.discountAmount);
+    if (totalCents < 0) throw new CustomerSalesError("INVALID_DISCOUNT", "Discount cannot exceed the corrected subtotal", 400);
+    if (cents(corrected.totalAmount) !== totalCents) throw new CustomerSalesError("INVALID_TOTAL", "Corrected total must match lines less discount", 400);
+    if (cents(corrected.amountPaid) !== totalCents) throw new CustomerSalesError("INVALID_PAYMENT", "Corrected payment must match the corrected total", 400);
+    const total = totalCents / 100;
+
+    const now = new Date();
+    const before = `${sale.lines.map((line) => `${line.productItemCode} x${line.quantity} @${line.unitPrice.toNumber()}`).join(", ")} = ${sale.totalAmount.toNumber()}`;
+
+    // The difference, in two halves: what was never sold comes back, and what
+    // was actually sold goes out.
+    await updateSaleInventory(tx, sale.locationId, sale.lines.map((line) => ({ productId: line.productId, quantity: line.quantity })), "reverse", actor.userId, `ENCODING-FIX-REVERSAL-${sale.reference}`);
+    await updateSaleInventory(tx, sale.locationId, corrected.lines.map((line) => ({ productId: productsByCode.get(line.itemCode)!.id, quantity: line.quantity })), "deduct", actor.userId, `ENCODING-FIX-${sale.reference}`);
+
+    await tx.saleLine.deleteMany({ where: { saleId: sale.id } });
+    await tx.sale.update({
+      where: { id: sale.id },
+      data: {
+        paymentMethod: corrected.paymentMethod as PaymentMethod,
+        totalAmount: decimal(total),
+        discountAmount: decimal(corrected.discountAmount),
+        amountPaid: decimal(corrected.amountPaid),
+        correctedById: actor.userId,
+        correctedAt: now,
+        lines: {
+          create: corrected.lines.map((line) => {
+            const product = productsByCode.get(line.itemCode)!;
+            return {
+              productId: product.id,
+              productItemCode: product.itemCode,
+              productName: product.name,
+              quantity: line.quantity,
+              unitPrice: decimal(line.unitPrice),
+              warrantyDurationMonths: product.warrantyDurationMonths,
+            };
+          }),
+        },
+      },
+    });
+
+    // The receipt really did collect this money, and its number has not moved,
+    // so the ledger row is restated rather than voided and written again.
+    await tx.payment.updateMany({
+      where: { saleId: sale.id },
+      data: { amount: decimal(corrected.amountPaid), method: corrected.paymentMethod as PaymentMethod },
+    });
+
+    const updatedReview = await tx.saleAccountingReview.update({
+      where: { id: review.id },
+      data: {
+        status: "VERIFIED",
+        verifiedAt: now,
+        reviewedById: actor.userId,
+        reviewedAt: now,
+        resolutionNote: input.note,
+        resolvedById: actor.userId,
+        resolvedAt: now,
+      },
+    });
+    await syncSalePaymentReview(tx, sale.id, updatedReview);
+
+    const after = `${corrected.lines.map((line) => `${line.itemCode} x${line.quantity} @${line.unitPrice}`).join(", ")} = ${total}`;
+    await recordAuditLog({
+      category: "Receipt Verification",
+      action: "Sale Encoding Corrected",
+      actorId: actor.userId,
+      reference: sale.manualReceiptNumber,
+      locationLabel: sale.location.name,
+      details: `Accounting corrected what was keyed against receipt ${sale.manualReceiptNumber} and verified it. ${input.note}`,
+      facts: [
+        { label: "Was", value: before },
+        { label: "Now", value: after },
+        { label: "Receipt number", value: sale.manualReceiptNumber },
+      ],
+    }, tx);
+
+    const refreshed = await tx.sale.findUniqueOrThrow({ where: { id: sale.id }, include: SALE_INCLUDE });
+    return { action: "ENCODING_CORRECTED" as const, sale: serializeSaleWithCorrection(refreshed) };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
 export async function resolveSale(
   actor: AuthContext,
   saleId: string,

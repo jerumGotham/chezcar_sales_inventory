@@ -28,6 +28,7 @@ export const CAPABILITY_CATALOG = [
   { id: "sales:refund", module: "POS", label: "Refund a posted sale and take stock back" },
   { id: "sales:void-replace", module: "Receipt Verification", label: "Keep sale posted / Approve and void sale / Void and replace / Void sale and restore inventory" },
   { id: "sales:delete-voided", module: "Receipt Verification", label: "Delete a voided sale so the branch can encode it again" },
+  { id: "payments:delete-voided", module: "Receipt Verification", label: "Delete a voided payment receipt so its number can be used again" },
   { id: "sales:mismatch:respond", module: "Receipt Verification", label: "Submit or update branch response" },
   { id: "sales:evidence:view", module: "Receipt Verification", label: "View uploaded receipt photo" },
   { id: "sales:evidence:upload", module: "Receipt Verification", label: "Attach or replace receipt photo" },

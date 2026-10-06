@@ -9,7 +9,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   Loader2,
-  Plus,
   Search,
   Trash2,
   Upload,
@@ -238,6 +237,90 @@ async function searchProducts(term: string): Promise<PickerProduct[]> {
     seen.add(product.id);
     return true;
   });
+}
+
+/**
+ * Picks a product out of the catalogue instead of asking for an item code.
+ *
+ * A code typed by hand is the thing most likely to be wrong on a receipt being
+ * corrected, and a code that matches no product at all -- a stray "sd" -- reads
+ * downstream as a real line the sale is missing.
+ */
+function ProductPicker({
+  id,
+  label,
+  exclude,
+  onPick,
+}: {
+  id: string;
+  label: string;
+  exclude: readonly string[];
+  onPick: (product: PickerProduct) => void;
+}) {
+  const [term, setTerm] = useState("");
+  /*
+   * The products list is an expensive query -- it carries compatibilities,
+   * stock and filter options -- so typing waits for a pause rather than asking
+   * on every keystroke.
+   */
+  const [settled, setSettled] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(term.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [term]);
+  const results = useQuery({
+    queryKey: ["product-picker", settled],
+    enabled: settled.length > 0,
+    queryFn: () => searchProducts(settled),
+    placeholderData: (previous) => previous,
+    staleTime: 60_000,
+  });
+  const searching = results.isLoading || settled !== term.trim();
+
+  return (
+    <div className="mt-3 space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      <Input
+        id={id}
+        value={term}
+        onChange={(event) => setTerm(event.target.value)}
+        placeholder="Search by item code or name"
+      />
+      {term.trim() ? (
+        <div className="max-h-56 overflow-y-auto rounded-xl border">
+          {searching ? (
+            <p className="px-3 py-4 text-sm text-muted-foreground">Searching...</p>
+          ) : (results.data ?? []).length === 0 ? (
+            <p className="px-3 py-4 text-sm text-muted-foreground">No product matches that.</p>
+          ) : (
+            (results.data ?? []).map((product) => {
+              const already = exclude.includes(product.itemCode);
+              return (
+                <button
+                  key={product.id}
+                  type="button"
+                  disabled={already}
+                  className="flex w-full items-center justify-between gap-3 border-b px-3 py-2 text-left last:border-0 hover:bg-accent/50 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => {
+                    onPick(product);
+                    setTerm("");
+                  }}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm">{product.name}</span>
+                    <span className="block text-xs text-muted-foreground">{product.itemCode}</span>
+                  </span>
+                  <span className="shrink-0 text-sm tabular-nums">
+                    {already ? "Already added" : formatPeso(product.price ?? 0)}
+                  </span>
+                </button>
+              );
+            })
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function parseComparison(draft: ComparisonDraft) {
@@ -483,6 +566,13 @@ function ReceiptVerificationContent() {
   const [branchResponseNote, setBranchResponseNote] = useState("");
   /** The branch corrects its own sale in a dialog, not in Accounting's form. */
   const [isCorrectionOpen, setIsCorrectionOpen] = useState(false);
+  /*
+   * The same form serves two different acts. The branch answers for its own
+   * keying, so its correction takes a fresh receipt number and goes back to
+   * Accounting. Accounting correcting the encoding against the paper keeps the
+   * number the paper carries and is finished when it saves.
+   */
+  const [correctionMode, setCorrectionMode] = useState<"BRANCH" | "ACCOUNTING">("BRANCH");
   const [branchReplacementPhotoFile, setBranchReplacementPhotoFile] =
     useState<File | null>(null);
   const [branchReplacementPhotoPreview, setBranchReplacementPhotoPreview] =
@@ -628,7 +718,10 @@ function ReceiptVerificationContent() {
     mutationFn: async () => {
       if (!selectedId) throw new Error("Select a receipt first.");
       if (!branchResponseNote.trim()) throw new Error("Say what was wrong before correcting it.");
-      if (comparison.receiptNumber.trim() === selectedSale?.manualReceiptNumber) {
+      if (
+        correctionMode === "BRANCH" &&
+        comparison.receiptNumber.trim() === selectedSale?.manualReceiptNumber
+      ) {
         throw new Error("Enter the new receipt number for the corrected sale.");
       }
       /*
@@ -636,7 +729,7 @@ function ReceiptVerificationContent() {
        * that the sale was keyed wrongly. Recording it here keeps that a detail
        * of the server rather than a second button the branch has to find.
        */
-      if (selectedSale?.branchResponse !== "SALE_ENCODED_INCORRECT") {
+      if (correctionMode === "BRANCH" && selectedSale?.branchResponse !== "SALE_ENCODED_INCORRECT") {
         const finding = await fetch(`/api/accounting/receipts/${selectedId}/branch-response`, {
           method: "POST",
           credentials: "same-origin",
@@ -646,16 +739,19 @@ function ReceiptVerificationContent() {
         const findingJson = (await finding.json().catch(() => null)) as { error?: { message?: string } } | null;
         if (!finding.ok) throw new Error(findingJson?.error?.message ?? "Unable to record the branch finding");
       }
-      const response = await fetch(`/api/accounting/receipts/${selectedId}/correct`, {
+      const response = await fetch(
+        `/api/accounting/receipts/${selectedId}/${correctionMode === "ACCOUNTING" ? "correct-verify" : "correct"}`,
+        {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "VOIDED_REPLACED",
-          note: branchResponseNote,
-          replacement: toComparison(correctionDraft),
-        }),
-      });
+          body: JSON.stringify({
+            action: "VOIDED_REPLACED",
+            note: branchResponseNote,
+            replacement: toComparison(correctionDraft),
+          }),
+        },
+      );
       const json = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
       if (!response.ok) throw new Error(json?.error?.message ?? "Unable to correct this sale");
       return json;
@@ -664,7 +760,11 @@ function ReceiptVerificationContent() {
       setIsCorrectionOpen(false);
       await queryClient.invalidateQueries({ queryKey: ["receipt-verifications"] });
       setFormError("");
-      setFormNotice("Sale corrected. The new receipt is waiting for Accounting to verify it.");
+      setFormNotice(
+        correctionMode === "ACCOUNTING"
+          ? "Sale corrected and verified. Nothing goes back to the branch."
+          : "Sale corrected. The new receipt is waiting for Accounting to verify it.",
+      );
     },
     onError: (error: Error) => { setFormNotice(""); setFormError(error.message); },
   });
@@ -1100,31 +1200,6 @@ function ReceiptVerificationContent() {
     setComparison((current) => ({ ...current, ...changes }));
   /** Names for picked products, so a line reads as more than a code. */
   const [correctionNames, setCorrectionNames] = useState<Record<string, string>>({});
-  const [productSearch, setProductSearch] = useState("");
-  /*
-   * The products list is an expensive query -- it carries compatibilities,
-   * stock and filter options -- so typing waits for a pause rather than
-   * asking on every keystroke.
-   */
-  const [settledSearch, setSettledSearch] = useState("");
-  useEffect(() => {
-    const timer = setTimeout(() => setSettledSearch(productSearch.trim()), 250);
-    return () => clearTimeout(timer);
-  }, [productSearch]);
-  const productResults = useQuery({
-    queryKey: ["correction-products", settledSearch],
-    enabled: isCorrectionOpen && settledSearch.length > 0,
-    queryFn: () => searchProducts(settledSearch),
-    placeholderData: (previous) => previous,
-    staleTime: 60_000,
-  });
-  const isSearchingProducts = productResults.isLoading || settledSearch !== productSearch.trim();
-  /*
-   * Worked out in whole cents, the same way the server does it: it recomputes
-   * the total from the lines and refuses a replacement that disagrees by a
-   * single cent, so rounding here has to match there rather than merely come
-   * close.
-   */
   const correctionSubtotalCents = Math.round(
     comparison.lines.reduce(
       (sum, line) => sum + (Number(line.quantity) || 0) * (Number(line.unitPrice) || 0),
@@ -1649,6 +1724,42 @@ function ReceiptVerificationContent() {
                     {reportedDifferences.length > 0 && (
                       <MismatchDetails differences={reportedDifferences} />
                     )}
+                    {/*
+                      The sale is open to correction once Accounting has put on
+                      record that it does not match the paper. Beyond that there
+                      is nothing to ask the branch: the receipt is right, the
+                      keying is wrong, and Accounting is holding the receipt.
+                    */}
+                    {canVoidReplace && canReview && !selectedSale.resolvedAt && (
+                      <div className="rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-3">
+                        <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+                          Is the receipt right and the encoding wrong?
+                        </p>
+                        <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
+                          Correct the sale yourself against the receipt. It keeps the same receipt
+                          number and comes out verified, so nothing goes back to the branch.
+                        </p>
+                        <Button
+                          type="button"
+                          variant="warning"
+                          size="sm"
+                          className="mt-2"
+                          disabled={!selectedSale.receiptPhotoUrl}
+                          onClick={() => {
+                            branchCorrectionMutation.reset();
+                            setCorrectionMode("ACCOUNTING");
+                            setIsCorrectionOpen(true);
+                          }}
+                        >
+                          Correct this sale
+                        </Button>
+                        {!selectedSale.receiptPhotoUrl ? (
+                          <p className="mt-2 text-xs text-amber-800 dark:text-amber-300">
+                            Attach the receipt photo first: a sale is never verified without one.
+                          </p>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
                 )}
                 {selectedSale.branchResponse === "WRONG_RECEIPT_PHOTO" &&
@@ -1820,6 +1931,7 @@ function ReceiptVerificationContent() {
                           disabled={branchCorrectionMutation.isPending}
                           onClick={() => {
                               branchCorrectionMutation.reset();
+                              setCorrectionMode("BRANCH");
                               setIsCorrectionOpen(true);
                             }}
                         >
@@ -1988,25 +2100,13 @@ function ReceiptVerificationContent() {
                               key={index}
                               className="grid gap-2 rounded-lg bg-muted p-3 sm:grid-cols-[minmax(0,1fr)_100px_120px_40px] sm:bg-transparent sm:p-0"
                             >
-                              <div className="space-y-1">
-                                <Input
-                                  aria-label={`Item code ${index + 1}`}
-                                  placeholder="Item code"
-                                  value={line.itemCode}
-                                  onChange={(event) =>
-                                    setComparison((current) => ({
-                                      ...current,
-                                      lines: current.lines.map((item, itemIndex) =>
-                                        itemIndex === index ? { ...item, itemCode: event.target.value } : item,
-                                      ),
-                                    }))
-                                  }
-                                />
-                                {saleLine ? (
-                                  <p className="px-1 text-xs text-muted-foreground">
-                                    {saleLine.itemCode} - {saleLine.name}
-                                  </p>
-                                ) : null}
+                              <div className="min-w-0 space-y-1 self-center">
+                                <p className="truncate text-sm font-medium">
+                                  {saleLine?.name ?? correctionNames[line.itemCode] ?? "Unknown item"}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {line.itemCode || "no item code"}
+                                </p>
                               </div>
                               <Input
                                 aria-label={`Quantity ${index + 1}`}
@@ -2068,20 +2168,21 @@ function ReceiptVerificationContent() {
                           );
                         })}
                       </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="mt-3"
-                        onClick={() =>
+                      <ProductPicker
+                        id="comparison-add"
+                        label="Add a product"
+                        exclude={comparison.lines.map((line) => line.itemCode)}
+                        onPick={(product) => {
                           setComparison((current) => ({
                             ...current,
-                            lines: [...current.lines, { itemCode: "", quantity: "1", unitPrice: "0" }],
-                          }))
-                        }
-                      >
-                        <Plus className="mr-2 size-4" /> Add line
-                      </Button>
+                            lines: [
+                              ...current.lines.filter((line) => line.itemCode.trim() !== ""),
+                              { itemCode: product.itemCode, quantity: "1", unitPrice: String(product.price ?? 0) },
+                            ],
+                          }));
+                          setCorrectionNames((current) => ({ ...current, [product.itemCode]: product.name }));
+                        }}
+                      />
                     </div>
                     {comparisonError && (
                       <p role="alert" className="text-sm text-red-600">{comparisonError}</p>
@@ -2319,20 +2420,14 @@ function ReceiptVerificationContent() {
         should have been. Saving records the finding and posts the replacement
         together, so the branch answers once and it goes back to Accounting.
       */}
-      <Dialog
-        open={isCorrectionOpen}
-        onOpenChange={(open) => {
-          setIsCorrectionOpen(open);
-          if (!open) setProductSearch("");
-        }}
-      >
+      <Dialog open={isCorrectionOpen} onOpenChange={setIsCorrectionOpen}>
         <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Correct this sale</DialogTitle>
             <DialogDescription>
-              Change the items, quantities and prices to what was actually sold. Saving voids the
-              original receipt, returns its stock, and posts this as a new receipt for Accounting to
-              verify again.
+              {correctionMode === "ACCOUNTING"
+                ? "Change the items, quantities and prices to what the receipt in front of you says. Saving puts the sale right, keeps the receipt number, carries its photo over and marks it verified. Nothing goes back to the branch."
+                : "Change the items, quantities and prices to what was actually sold. Saving voids the original receipt, returns its stock, and posts this as a new receipt for Accounting to verify again."}
             </DialogDescription>
           </DialogHeader>
 
@@ -2343,9 +2438,15 @@ function ReceiptVerificationContent() {
                 <Input
                   id="correction-receipt"
                   value={comparison.receiptNumber}
+                  readOnly={correctionMode === "ACCOUNTING"}
+                  className={correctionMode === "ACCOUNTING" ? "bg-muted" : undefined}
                   onChange={(event) => updateComparison({ receiptNumber: event.target.value })}
                 />
-                <p className="text-xs text-muted-foreground">Must differ from the receipt being voided.</p>
+                <p className="text-xs text-muted-foreground">
+                  {correctionMode === "ACCOUNTING"
+                    ? "Stays as it is: the sale is being put right, not renumbered."
+                    : "Must differ from the receipt being voided."}
+                </p>
               </div>
               <div className="space-y-1">
                 <Label htmlFor="correction-discount">Discount</Label>
@@ -2426,57 +2527,21 @@ function ReceiptVerificationContent() {
                 })}
               </div>
 
-              {/* Picked from the catalogue rather than typed: an item code keyed
-                  by hand is the thing most likely to be wrong on a correction. */}
-              <div className="mt-3 space-y-2">
-                <Label htmlFor="correction-add">Add a product</Label>
-                <Input
-                  id="correction-add"
-                  value={productSearch}
-                  onChange={(event) => setProductSearch(event.target.value)}
-                  placeholder="Search by item code or name"
-                />
-                {productSearch.trim() ? (
-                  <div className="max-h-56 overflow-y-auto rounded-xl border">
-                    {isSearchingProducts ? (
-                      <p className="px-3 py-4 text-sm text-muted-foreground">Searching...</p>
-                    ) : (productResults.data ?? []).length === 0 ? (
-                      <p className="px-3 py-4 text-sm text-muted-foreground">No product matches that.</p>
-                    ) : (
-                      (productResults.data ?? []).map((product) => {
-                        const already = comparison.lines.some((line) => line.itemCode === product.itemCode);
-                        return (
-                          <button
-                            key={product.id}
-                            type="button"
-                            disabled={already}
-                            className="flex w-full items-center justify-between gap-3 border-b px-3 py-2 text-left last:border-0 hover:bg-accent/50 disabled:cursor-not-allowed disabled:opacity-50"
-                            onClick={() => {
-                              setComparison((current) => ({
-                                ...current,
-                                lines: [
-                                  ...current.lines.filter((line) => line.itemCode.trim() !== ""),
-                                  { itemCode: product.itemCode, quantity: "1", unitPrice: String(product.price ?? 0) },
-                                ],
-                              }));
-                              setCorrectionNames((current) => ({ ...current, [product.itemCode]: product.name }));
-                              setProductSearch("");
-                            }}
-                          >
-                            <span className="min-w-0">
-                              <span className="block truncate text-sm">{product.name}</span>
-                              <span className="block text-xs text-muted-foreground">{product.itemCode}</span>
-                            </span>
-                            <span className="shrink-0 text-sm tabular-nums">
-                              {already ? "Already added" : formatPeso(product.price ?? 0)}
-                            </span>
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-                ) : null}
-              </div>
+              <ProductPicker
+                id="correction-add"
+                label="Add a product"
+                exclude={comparison.lines.map((line) => line.itemCode)}
+                onPick={(product) => {
+                  setComparison((current) => ({
+                    ...current,
+                    lines: [
+                      ...current.lines.filter((line) => line.itemCode.trim() !== ""),
+                      { itemCode: product.itemCode, quantity: "1", unitPrice: String(product.price ?? 0) },
+                    ],
+                  }));
+                  setCorrectionNames((current) => ({ ...current, [product.itemCode]: product.name }));
+                }}
+              />
             </div>
 
             {/* Computed, not typed: the total of a corrected sale is whatever its
@@ -2519,10 +2584,7 @@ function ReceiptVerificationContent() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => {
-                setIsCorrectionOpen(false);
-                setProductSearch("");
-              }}
+              onClick={() => setIsCorrectionOpen(false)}
             >
               Cancel
             </Button>
@@ -2532,7 +2594,11 @@ function ReceiptVerificationContent() {
               disabled={branchCorrectionMutation.isPending || !branchResponseNote.trim() || Boolean(correctionError)}
               onClick={() => branchCorrectionMutation.mutate()}
             >
-              {branchCorrectionMutation.isPending ? "Saving..." : "Save and send back to Accounting"}
+              {branchCorrectionMutation.isPending
+                ? "Saving..."
+                : correctionMode === "ACCOUNTING"
+                  ? "Correct and verify"
+                  : "Save and send back to Accounting"}
             </Button>
           </DialogFooter>
         </DialogContent>
