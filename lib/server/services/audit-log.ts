@@ -3,6 +3,7 @@ import "server-only";
 import type { Prisma, PrismaClient } from "@prisma/client";
 
 import type { AuditCategory, AuditItemDto } from "@/lib/contracts/audit";
+import { auditExemptUsers, isAuditExemptLabel } from "@/lib/server/audit-exempt";
 import { prisma } from "@/lib/server/prisma";
 
 export type AuditLogInput = {
@@ -29,6 +30,8 @@ type Db = PrismaClient | Prisma.TransactionClient;
  */
 export async function recordAuditLog(input: AuditLogInput, db: Db = prisma): Promise<void> {
   try {
+    const exempt = await auditExemptUsers();
+    if ((input.actorId && exempt.ids.has(input.actorId)) || isAuditExemptLabel(exempt, input.actorLabel)) return;
     await db.auditLog.create({
       data: {
         category: input.category,

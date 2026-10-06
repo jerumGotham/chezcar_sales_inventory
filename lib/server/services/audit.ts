@@ -9,6 +9,7 @@ import {
   type AuditItemDto,
   type AuditTrailDto,
 } from "@/lib/contracts/audit";
+import { auditExemptUsers, isAuditExemptLabel } from "@/lib/server/audit-exempt";
 import { assertCapability, type AuthContext } from "@/lib/server/authorization";
 import { prisma } from "@/lib/server/prisma";
 
@@ -615,8 +616,12 @@ export async function getAuditTrail(
 
   const truncated = settled.some((rows) => rows.length >= SOURCE_LIMIT);
   const needle = query.search.toLowerCase();
+  // Derived entries carry only the actor's display name, so exempt accounts are
+  // matched by name and email here; this also hides their older logged rows.
+  const exempt = await auditExemptUsers();
   const rows = settled
     .flat()
+    .filter((row) => !isAuditExemptLabel(exempt, row.actor))
     .filter((row) => !needle || `${row.action} ${row.actor} ${row.reference} ${row.location} ${row.details}`.toLowerCase().includes(needle))
     .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt));
 
