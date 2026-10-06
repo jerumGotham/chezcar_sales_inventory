@@ -2026,12 +2026,12 @@ function ReceiptVerificationContent() {
                       <p className="font-semibold">
                         {selectedSale.branchResponse === "SALE_ENCODED_INCORRECT"
                           ? "What the sale should have been"
-                          : "Accounting verification details"}
+                          : "What the receipt says"}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {selectedSale.branchResponse === "SALE_ENCODED_INCORRECT"
                           ? "Correct the items, quantities and prices to what was actually sold. The receipt number stays as it is; saving corrects the sale and sends it back to Accounting to verify again."
-                          : "These editable fields start with the system sale values. Compare them with the uploaded receipt photo, then correct only the values that differ."}
+                          : "Write down what the photo shows. These start from what the branch encoded, so change only what the receipt says differently, including adding a line the encoding missed. This records the receipt for comparison; it does not change the sale."}
                       </p>
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">
@@ -2101,7 +2101,7 @@ function ReceiptVerificationContent() {
                       <p className="mt-1 text-xs text-muted-foreground">
                         {selectedSale.reviewStatus === "MISMATCH_REPORTED"
                           ? "The values reported by Accounting are loaded below. Change only what the replacement sale needs."
-                          : "Enter the quantity and unit price shown on the handwritten receipt."}
+                          : "The quantity and unit price shown on the handwritten receipt. Add a line the receipt lists but the encoding does not; remove one it does not show."}
                       </p>
                       <div className="mt-4 hidden grid-cols-[minmax(0,1fr)_100px_120px_40px] gap-2 px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground sm:grid">
                         <span>Item code - name</span>
@@ -2225,8 +2225,15 @@ function ReceiptVerificationContent() {
                           <CheckCircle2 className="mr-2 h-4 w-4" />
                           Confirm correct
                         </Button>
+                        {/* The old line read as an instruction to keep editing
+                            until the button came back. It says what the button
+                            means instead, and where a difference goes next. */}
                         <span className="self-center text-xs text-muted-foreground">
-                          Correct all comparison fields and attach receipt evidence before confirming.
+                          {!selectedSale.receiptPhotoUrl && !photoFile
+                            ? "Attach the receipt photo first: a sale is never verified without one."
+                            : differences.length > 0
+                              ? "Confirming says the encoding matches the paper, and what you have written does not. Report the mismatch instead, then correct the sale."
+                              : "Confirming says the encoding matches the paper."}
                         </span>
                       </div>
                     )}
