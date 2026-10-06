@@ -6,6 +6,7 @@ import Select from "react-select";
 
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { PageShell } from "@/components/page-shell";
+import { SortableHeader, useTableSort } from "@/components/sortable-header";
 import { TablePagination } from "@/components/table-pagination";
 import { useCan } from "@/components/shell-access-context";
 import { Badge } from "@/components/ui/badge";
@@ -214,6 +215,21 @@ export default function CustomersPage() {
   });
 
   const rows = data?.data ?? [];
+  const { rows: sortedRows, sort, toggle } = useTableSort(rows, {
+    id: (customer) => customer.id,
+    name: (customer) => customer.name,
+    mobile: (customer) => customer.mobile,
+    branch: (customer) => customer.branch,
+    city: (customer) => customer.city,
+    status: (customer) => getCustomerSummaryStatus(customer),
+    lastTransaction: (customer) => (customer.lastTransaction === "-" ? null : customer.lastTransaction),
+    totalSpend: (customer) =>
+      typeof customer.totalSpend === "number"
+        ? customer.totalSpend
+        : customer.totalSpend
+          ? Number(customer.totalSpend.replace(/[^0-9.-]/g, ""))
+          : null,
+  });
   const meta = data?.meta ?? {
     page: 1,
     pageSize,
@@ -422,30 +438,14 @@ export default function CustomersPage() {
               <table className="w-full min-w-[1100px]">
                 <thead className="bg-muted">
                   <tr className="border-b">
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Customer ID
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Name
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Mobile
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Branch
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      City
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Status
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Last Transaction
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Total Spend
-                    </th>
+                    <SortableHeader label="Customer ID" sortKey="id" sort={sort} onSort={toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    <SortableHeader label="Name" sortKey="name" sort={sort} onSort={toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    <SortableHeader label="Mobile" sortKey="mobile" sort={sort} onSort={toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    <SortableHeader label="Branch" sortKey="branch" sort={sort} onSort={toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    <SortableHeader label="City" sortKey="city" sort={sort} onSort={toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    <SortableHeader label="Status" sortKey="status" sort={sort} onSort={toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    <SortableHeader label="Last Transaction" sortKey="lastTransaction" sort={sort} onSort={toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    <SortableHeader label="Total Spend" sortKey="totalSpend" sort={sort} onSort={toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Action
                     </th>
@@ -476,7 +476,7 @@ export default function CustomersPage() {
                       </td>
                     </tr>
                   ) : (
-                    rows.map((customer) => (
+                    sortedRows.map((customer) => (
                       <tr
                         key={customer.id}
                         className="border-b transition-colors hover:bg-muted"

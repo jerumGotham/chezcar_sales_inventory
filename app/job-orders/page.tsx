@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
+import { SortableHeader, useTableSort } from "@/components/sortable-header";
 import { TablePagination } from "@/components/table-pagination";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -343,7 +344,18 @@ export default function JobOrdersPage() {
     totalPages: 1,
   };
 
-  const rows = data?.data ?? [];
+  const sorting = useTableSort(data?.data, {
+    joNo: (job) => job.joNo,
+    customer: (job) => job.customer,
+    vehicle: (job) => job.vehicle,
+    branch: (job) => job.branch,
+    service: (job) => job.service,
+    status: (job) => job.status,
+    serviceFee: (job) => job.serviceFee,
+    partsTotal: (job) => job.partsTotal,
+    totalAmount: (job) => job.totalAmount,
+  });
+  const rows = sorting.rows;
 
   const showingFrom = useMemo(() => {
     if (meta.total === 0) return 0;
@@ -510,33 +522,69 @@ export default function JobOrdersPage() {
               <table className="w-full min-w-[1280px]">
                 <thead className="bg-muted">
                   <tr className="border-b">
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      JO No.
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Customer
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Vehicle
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Branch
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Service
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Status
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Service Fee
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Parts Total
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Total Amount
-                    </th>
+                    <SortableHeader
+                      label="JO No."
+                      sortKey="joNo"
+                      sort={sorting.sort}
+                      onSort={sorting.toggle}
+                      className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                    />
+                    <SortableHeader
+                      label="Customer"
+                      sortKey="customer"
+                      sort={sorting.sort}
+                      onSort={sorting.toggle}
+                      className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                    />
+                    <SortableHeader
+                      label="Vehicle"
+                      sortKey="vehicle"
+                      sort={sorting.sort}
+                      onSort={sorting.toggle}
+                      className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                    />
+                    <SortableHeader
+                      label="Branch"
+                      sortKey="branch"
+                      sort={sorting.sort}
+                      onSort={sorting.toggle}
+                      className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                    />
+                    <SortableHeader
+                      label="Service"
+                      sortKey="service"
+                      sort={sorting.sort}
+                      onSort={sorting.toggle}
+                      className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                    />
+                    <SortableHeader
+                      label="Status"
+                      sortKey="status"
+                      sort={sorting.sort}
+                      onSort={sorting.toggle}
+                      className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                    />
+                    <SortableHeader
+                      label="Service Fee"
+                      sortKey="serviceFee"
+                      sort={sorting.sort}
+                      onSort={sorting.toggle}
+                      className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                    />
+                    <SortableHeader
+                      label="Parts Total"
+                      sortKey="partsTotal"
+                      sort={sorting.sort}
+                      onSort={sorting.toggle}
+                      className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                    />
+                    <SortableHeader
+                      label="Total Amount"
+                      sortKey="totalAmount"
+                      sort={sorting.sort}
+                      onSort={sorting.toggle}
+                      className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                    />
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Action
                     </th>
@@ -772,47 +820,7 @@ export default function JobOrdersPage() {
                       No items used. This is a service-only transaction.
                     </div>
                   ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[560px]">
-                        <thead className="bg-muted">
-                          <tr className="border-b">
-                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                              Item
-                            </th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                              Qty
-                            </th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                              Unit Price
-                            </th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                              Amount
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {selectedJobOrder.items.map((item, index) => (
-                            <tr
-                              key={`${item.productId}-${index}`}
-                              className="border-b"
-                            >
-                              <td className="px-4 py-3 text-sm text-foreground">
-                                {item.productName}
-                              </td>
-                              <td className="px-4 py-3 text-sm text-foreground">
-                                {item.quantity}
-                              </td>
-                              <td className="px-4 py-3 text-sm text-foreground">
-                                {formatPeso(item.unitPrice)}
-                              </td>
-                              <td className="px-4 py-3 text-sm font-medium text-foreground">
-                                {formatPeso(item.quantity * item.unitPrice)}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    <JobOrderItemsTable items={selectedJobOrder.items} />
                   )}
                 </CardContent>
               </Card>
@@ -842,5 +850,50 @@ export default function JobOrdersPage() {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function JobOrderItemsTable({ items }: { items: JobOrderItem[] }) {
+  const sorting = useTableSort(items, {
+    productName: (item) => item.productName,
+    quantity: (item) => item.quantity,
+    unitPrice: (item) => item.unitPrice,
+    amount: (item) => item.quantity * item.unitPrice,
+  });
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[560px]">
+        <thead className="bg-muted">
+          <tr className="border-b">
+            <SortableHeader label="Item" sortKey="productName" sort={sorting.sort} onSort={sorting.toggle} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+            <SortableHeader label="Qty" sortKey="quantity" sort={sorting.sort} onSort={sorting.toggle} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+            <SortableHeader label="Unit Price" sortKey="unitPrice" sort={sorting.sort} onSort={sorting.toggle} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+            <SortableHeader label="Amount" sortKey="amount" sort={sorting.sort} onSort={sorting.toggle} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+          </tr>
+        </thead>
+        <tbody>
+          {sorting.rows.map((item, index) => (
+            <tr
+              key={`${item.productId}-${index}`}
+              className="border-b"
+            >
+              <td className="px-4 py-3 text-sm text-foreground">
+                {item.productName}
+              </td>
+              <td className="px-4 py-3 text-sm text-foreground">
+                {item.quantity}
+              </td>
+              <td className="px-4 py-3 text-sm text-foreground">
+                {formatPeso(item.unitPrice)}
+              </td>
+              <td className="px-4 py-3 text-sm font-medium text-foreground">
+                {formatPeso(item.quantity * item.unitPrice)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

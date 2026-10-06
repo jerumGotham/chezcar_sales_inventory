@@ -13,7 +13,9 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useShellAccess } from "@/components/shell-access-context";
+import { ReceiptPhotoInput } from "@/components/receipt-photo-input";
+import { SortableHeader, useTableSort } from "@/components/sortable-header";
+import { useCan, useShellAccess } from "@/components/shell-access-context";
 import { getCustomerOrderActions, type CustomerOrderStatusCode } from "@/lib/customer-order-actions";
 
 type OrderDetail = {
@@ -58,6 +60,20 @@ export default function ReleaseCustomerOrderPage() {
   const orderId = params.id;
   const { data: order, isLoading, error } = useQuery({ queryKey: ["customer-order", orderId], queryFn: () => fetchOrder(orderId), enabled: Boolean(orderId) });
   const [salespersonId, setSalespersonId] = useState("");
+  const lineSort = useTableSort(order?.lines, {
+    item: (line) => line.itemCode,
+    quantity: (line) => line.quantity,
+    amount: (line) => line.amount,
+  });
+  /*
+   * The paper receipt for the balance collected at release. Accounting verifies
+   * the release sale against it, so it is asked for here rather than left for
+   * someone to chase from Receipt Verification later.
+   */
+  const canAttachReceipt = useCan("sales:evidence:upload");
+  const [receiptPhoto, setReceiptPhoto] = useState<File | null>(null);
+  const [releaseNotice, setReleaseNotice] = useState<string | null>(null);
+  const needsReceiptPhoto = (order?.balance ?? 0) > 0 && canAttachReceipt;
   /*
    * Release moves stock out and posts a sale, and neither is undone by going
    * back a page, so the form is held until it is confirmed.
@@ -89,6 +105,7 @@ export default function ReleaseCustomerOrderPage() {
       // paid in full takes none, so there is nothing to write a number on.
       const collectsMoney = (order?.balance ?? 0) > 0;
       if (collectsMoney && !finalReceiptNumber) throw new Error("Final receipt number is required.");
+      if (needsReceiptPhoto && !receiptPhoto) throw new Error("Attach a photo of the final receipt.");
       if (!salespersonId) throw new Error("Select an active salesperson.");
       if (salespersonId !== order?.salesperson?.personnelId) {
         const attributionResponse = await fetch(`/api/customer-orders/${orderId}`, {
@@ -112,9 +129,15 @@ export default function ReleaseCustomerOrderPage() {
       });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error?.message ?? "Unable to release order");
-      return json.data;
+      if (collectsMoney && receiptPhoto && canAttachReceipt) {
+        // The release is already posted, so a failed upload is a warning that
+        // sends the branch to Receipt Verification, not a failed release.
+        const attached = await attachReleaseReceipt(orderId, receiptPhoto).catch(() => false);
+        if (!attached) return { photoAttached: false };
+      }
+      return { photoAttached: true };
     },
-    onSuccess: async () => {
+    onSuccess: async ({ photoAttached }) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["customer-order", orderId] }),
         queryClient.invalidateQueries({ queryKey: ["customer-orders-list"] }),
@@ -126,6 +149,12 @@ export default function ReleaseCustomerOrderPage() {
         queryClient.invalidateQueries({ queryKey: ["customers"] }),
         queryClient.invalidateQueries({ queryKey: ["customer-history"] }),
       ]);
+      queryClient.invalidateQueries({ queryKey: ["customer-order-receipts", orderId] });
+      // Stay on the page when the photo missed, so the warning is read.
+      if (!photoAttached) {
+        setReleaseNotice("Order released, but the receipt photo did not attach. Attach it from Receipt Verification.");
+        return;
+      }
       router.push(`/customer-orders/${orderId}`);
     },
   });
@@ -139,6 +168,7 @@ export default function ReleaseCustomerOrderPage() {
     >
       {isLoading ? <div className="flex items-center gap-2 rounded-xl border p-6 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading order...</div> : null}
       {error ? <div className="rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-4 text-sm text-red-700 dark:text-red-300">{(error as Error).message}</div> : null}
+      {releaseNotice ? <div className="mb-4 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-4 text-sm text-amber-800 dark:text-amber-300">{releaseNotice}</div> : null}
       {releaseMutation.error ? <div className="mb-4 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-4 text-sm text-red-700 dark:text-red-300">{(releaseMutation.error as Error).message}</div> : null}
       {order ? (
         <div className="grid gap-6 xl:grid-cols-[1.3fr_0.9fr]">
@@ -162,8 +192,8 @@ export default function ReleaseCustomerOrderPage() {
                 <h3 className="font-semibold">Items for Release</h3>
                 <div className="mt-4 overflow-x-auto">
                   <table className="w-full min-w-[650px]">
-                    <thead className="bg-muted"><tr><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Item</th><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Quantity</th><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Amount</th></tr></thead>
-                    <tbody>{order.lines.map((item) => <tr key={item.itemCode} className="border-b"><td className="px-4 py-3 text-sm text-foreground">{item.itemCode} - {item.name}</td><td className="px-4 py-3 text-sm text-foreground">{item.quantity}</td><td className="px-4 py-3 text-sm font-medium text-foreground">{formatPeso(item.amount)}</td></tr>)}</tbody>
+                    <thead className="bg-muted"><tr><SortableHeader label="Item" sortKey="item" sort={lineSort.sort} onSort={lineSort.toggle} className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground" /><SortableHeader label="Quantity" sortKey="quantity" sort={lineSort.sort} onSort={lineSort.toggle} className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground" /><SortableHeader label="Amount" sortKey="amount" sort={lineSort.sort} onSort={lineSort.toggle} className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground" /></tr></thead>
+                    <tbody>{lineSort.rows.map((item) => <tr key={item.itemCode} className="border-b"><td className="px-4 py-3 text-sm text-foreground">{item.itemCode} - {item.name}</td><td className="px-4 py-3 text-sm text-foreground">{item.quantity}</td><td className="px-4 py-3 text-sm font-medium text-foreground">{formatPeso(item.amount)}</td></tr>)}</tbody>
                   </table>
                 </div>
               </CardContent>
@@ -192,11 +222,18 @@ export default function ReleaseCustomerOrderPage() {
                     This order is paid in full, so releasing it collects nothing and issues no receipt. The goods still leave the branch and the sale is recorded against {order.orderNo}.
                   </div>
                 )}
+                {needsReceiptPhoto ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="finalReceiptPhoto">Final Receipt Photo (required)</Label>
+                    <ReceiptPhotoInput id="finalReceiptPhoto" file={receiptPhoto} onChange={setReceiptPhoto} disabled={releaseMutation.isPending} required describedBy="finalReceiptPhotoHelp" />
+                    <p id="finalReceiptPhotoHelp" className="text-xs text-muted-foreground">Click the photo to magnify it and check the receipt number and amount are readable.</p>
+                  </div>
+                ) : null}
                 {order.balance > 0 ? (
                   <div className="space-y-2"><Label htmlFor="paymentMethod">Payment Method</Label><select id="paymentMethod" name="paymentMethod" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="CASH">Cash</option><option value="GCASH">GCash</option><option value="MAYA">Maya</option><option value="BANK_TRANSFER">Bank Transfer</option><option value="CREDIT_CARD">Credit Card</option><option value="SPLIT">Split</option></select></div>
                 ) : null}
                 <div className="space-y-2"><Label htmlFor="notes">Release Notes</Label><Input id="notes" name="notes" placeholder="Released by, remarks, etc." /></div>
-                <Button type="submit" variant="workflow" className="w-full" disabled={releaseMutation.isPending || salespersonQuery.isLoading || !salespersonId}>{releaseMutation.isPending ? "Releasing..." : "Confirm Release"}</Button>
+                <Button type="submit" variant="workflow" className="w-full" disabled={releaseMutation.isPending || salespersonQuery.isLoading || !salespersonId || (needsReceiptPhoto && !receiptPhoto)}>{releaseMutation.isPending ? "Releasing..." : "Confirm Release"}</Button>
               </form> : <p className="mt-6 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-4 text-sm text-amber-800 dark:text-amber-300">This order cannot be released in its current state or with your capabilities.</p>}
             </CardContent>
           </Card>
@@ -223,6 +260,22 @@ export default function ReleaseCustomerOrderPage() {
       />
     </PageShell>
   );
+}
+
+/*
+ * The release posts a sale, and its receipt is evidenced on that sale. The
+ * order's receipt list names the sale behind the final payment.
+ */
+async function attachReleaseReceipt(orderId: string, photo: File) {
+  const listResponse = await fetch(`/api/customer-orders/${orderId}/payments`, { credentials: "same-origin" });
+  if (!listResponse.ok) return false;
+  const list = (await listResponse.json()) as { data: { payments: Array<{ kind: string; saleId: string | null }> } };
+  const saleId = list.data.payments.find((payment) => payment.kind === "ORDER_FINAL" && payment.saleId)?.saleId;
+  if (!saleId) return false;
+  const body = new FormData();
+  body.set("photo", photo);
+  const response = await fetch(`/api/accounting/receipts/${encodeURIComponent(saleId)}/photo`, { method: "POST", credentials: "same-origin", body });
+  return response.ok;
 }
 
 function Info({ label, value }: { label: string; value: string }) {

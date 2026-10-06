@@ -9,6 +9,7 @@ import type { StylesConfig } from "react-select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ReceiptPhoto } from "@/components/receipt-photo";
+import { SortableHeader, useTableSort } from "@/components/sortable-header";
 import { TablePagination } from "@/components/table-pagination";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -215,6 +216,14 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
   });
 
   const rows = useMemo(() => data?.data ?? [], [data]);
+  const { rows: sortedRows, sort, toggle } = useTableSort(rows, {
+    receipt: (row) => row.receiptNumber,
+    type: (row) => row.kindLabel,
+    customer: (row) => row.customer,
+    branch: (row) => row.branch,
+    amount: (row) => row.amount,
+    state: (row) => (row.status === "VOIDED" ? "VOIDED" : row.reviewStatus),
+  });
   // Falling back to the first row keeps a receipt open as filters change without
   // an effect writing state back into the render that produced it.
   const selected = rows.find((row) => row.id === selectedId) ?? rows[0] ?? null;
@@ -453,12 +462,12 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
               <table className="w-full min-w-[720px] text-sm">
                 <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
-                    <th className="px-4 py-3">Receipt</th>
-                    <th className="px-4 py-3">Type</th>
-                    <th className="px-4 py-3">Customer / order</th>
-                    <th className="px-4 py-3">Branch</th>
-                    <th className="px-4 py-3 text-right">Amount</th>
-                    <th className="px-4 py-3">State</th>
+                    <SortableHeader label="Receipt" sortKey="receipt" sort={sort} onSort={toggle} className="px-4 py-3" />
+                    <SortableHeader label="Type" sortKey="type" sort={sort} onSort={toggle} className="px-4 py-3" />
+                    <SortableHeader label="Customer / order" sortKey="customer" sort={sort} onSort={toggle} className="px-4 py-3" />
+                    <SortableHeader label="Branch" sortKey="branch" sort={sort} onSort={toggle} className="px-4 py-3" />
+                    <SortableHeader label="Amount" sortKey="amount" sort={sort} onSort={toggle} className="px-4 py-3 text-right" align="right" />
+                    <SortableHeader label="State" sortKey="state" sort={sort} onSort={toggle} className="px-4 py-3" />
                   </tr>
                 </thead>
                 <tbody>
@@ -467,7 +476,7 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
                   ) : rows.length === 0 ? (
                     <tr><td className="px-4 py-6 text-muted-foreground" colSpan={6}>No payment receipts match these filters.</td></tr>
                   ) : (
-                    rows.map((row) => (
+                    sortedRows.map((row) => (
                       <tr
                         key={row.id}
                         onClick={() => setSelectedId(row.id)}

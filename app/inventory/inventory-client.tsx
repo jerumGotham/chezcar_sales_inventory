@@ -23,6 +23,7 @@ import { StatusBanner } from "@/components/status-banner";
 import { ZoomableImage } from "@/components/zoomable-image";
 import { TablePagination } from "@/components/table-pagination";
 import { useCan } from "@/components/shell-access-context";
+import { SortableHeader, useTableSort } from "@/components/sortable-header";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -537,9 +538,43 @@ export function InventoryClient({
     });
   }, [flatRows]);
 
-  const stockCardRows = movementsData?.data ?? [];
+  // One sort for every product's branch table: the balances are ranked once
+  // and each product lists its branches in that order.
+  const branchSort = useTableSort(flatRows, {
+    branch: (item) => item.location,
+    status: (item) => item.status,
+    onHand: (item) => item.onHand,
+    quarantined: (item) => item.quarantined,
+    available: (item) => getAvailableStock(item),
+    price: (item) => item.price ?? null,
+  });
+  const branchRank = useMemo(
+    () => new Map(branchSort.rows.map((item, index) => [item.id, index])),
+    [branchSort.rows],
+  );
 
-  const availabilityRows = availabilityData?.data ?? [];
+  const stockCardSort = useTableSort(movementsData?.data, {
+    date: (movement) => movement.date,
+    product: (movement) => movement.itemName,
+    type: (movement) => movement.type,
+    qty: (movement) => movement.qty,
+    reference: (movement) => movement.reference,
+    location: (movement) => movement.location,
+    remarks: (movement) => movement.remarks,
+  });
+  const stockCardRows = stockCardSort.rows;
+
+  const availabilitySort = useTableSort(availabilityData?.data, {
+    product: (row) => row.product.name,
+    category: (row) => row.product.category,
+    location: (row) => row.location.name,
+    onHand: (row) => row.onHand,
+    reserved: (row) => row.reserved,
+    quarantined: (row) => row.quarantined,
+    available: (row) => row.available,
+    status: (row) => row.status,
+  });
+  const availabilityRows = availabilitySort.rows;
   const availabilityProductOptions: SelectOption[] = [
     { value: "all", label: "All Products" },
     ...(availabilityData?.filterOptions.products ?? []).map((product) => ({
@@ -911,9 +946,12 @@ export function InventoryClient({
                   const stockedLocations = group.locations.filter(
                     (item) => item.onHand > 0,
                   );
-                  const visibleLocations = canSelectLocations
-                    ? group.locations
-                    : stockedLocations;
+                  const visibleLocations = [
+                    ...(canSelectLocations ? group.locations : stockedLocations),
+                  ].sort(
+                    (left, right) =>
+                      (branchRank.get(left.id) ?? 0) - (branchRank.get(right.id) ?? 0),
+                  );
                   const emptyLocationCount =
                     group.locations.length - stockedLocations.length;
 
@@ -1037,24 +1075,12 @@ export function InventoryClient({
                               <table className="w-full min-w-[640px] text-sm">
                                 <thead className="bg-muted">
                                   <tr className="border-b">
-                                    <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                      Branch
-                                    </th>
-                                    <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                      Status
-                                    </th>
-                                    <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                      On hand
-                                    </th>
-                                    <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                      Quarantined
-                                    </th>
-                                    <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                      Ready to sell
-                                    </th>
-                                    <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                      Price
-                                    </th>
+                                    <SortableHeader className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="Branch" sortKey="branch" sort={branchSort.sort} onSort={branchSort.toggle} />
+                                    <SortableHeader className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="Status" sortKey="status" sort={branchSort.sort} onSort={branchSort.toggle} />
+                                    <SortableHeader className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="On hand" sortKey="onHand" sort={branchSort.sort} onSort={branchSort.toggle} align="right" />
+                                    <SortableHeader className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="Quarantined" sortKey="quarantined" sort={branchSort.sort} onSort={branchSort.toggle} align="right" />
+                                    <SortableHeader className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="Ready to sell" sortKey="available" sort={branchSort.sort} onSort={branchSort.toggle} align="right" />
+                                    <SortableHeader className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="Price" sortKey="price" sort={branchSort.sort} onSort={branchSort.toggle} align="right" />
                                     {(canAdjustStock || canSetBranchPrice) && (
                                       <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                                         Action
@@ -1660,27 +1686,13 @@ export function InventoryClient({
             <table className="w-full min-w-[1100px]">
               <thead className="bg-muted">
                 <tr className="border-b">
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Date
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Product
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Movement Type
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Qty
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Reference
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Location
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Remarks
-                  </th>
+                  <SortableHeader className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="Date" sortKey="date" sort={stockCardSort.sort} onSort={stockCardSort.toggle} />
+                  <SortableHeader className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="Product" sortKey="product" sort={stockCardSort.sort} onSort={stockCardSort.toggle} />
+                  <SortableHeader className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="Movement Type" sortKey="type" sort={stockCardSort.sort} onSort={stockCardSort.toggle} />
+                  <SortableHeader className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="Qty" sortKey="qty" sort={stockCardSort.sort} onSort={stockCardSort.toggle} />
+                  <SortableHeader className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="Reference" sortKey="reference" sort={stockCardSort.sort} onSort={stockCardSort.toggle} />
+                  <SortableHeader className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="Location" sortKey="location" sort={stockCardSort.sort} onSort={stockCardSort.toggle} />
+                  <SortableHeader className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="Remarks" sortKey="remarks" sort={stockCardSort.sort} onSort={stockCardSort.toggle} />
                 </tr>
               </thead>
 
@@ -1837,28 +1849,14 @@ export function InventoryClient({
             <table className="w-full min-w-[1100px]">
               <thead className="bg-muted">
                 <tr className="border-b">
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Product
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Category
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Location
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    On Hand
-                  </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Reserved
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Quarantined</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Available
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Status
-                  </th>
+                  <SortableHeader className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="Product" sortKey="product" sort={availabilitySort.sort} onSort={availabilitySort.toggle} />
+                  <SortableHeader className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="Category" sortKey="category" sort={availabilitySort.sort} onSort={availabilitySort.toggle} />
+                  <SortableHeader className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="Location" sortKey="location" sort={availabilitySort.sort} onSort={availabilitySort.toggle} />
+                  <SortableHeader className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="On Hand" sortKey="onHand" sort={availabilitySort.sort} onSort={availabilitySort.toggle} />
+                  <SortableHeader className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="Reserved" sortKey="reserved" sort={availabilitySort.sort} onSort={availabilitySort.toggle} />
+                  <SortableHeader className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="Quarantined" sortKey="quarantined" sort={availabilitySort.sort} onSort={availabilitySort.toggle} />
+                  <SortableHeader className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="Available" sortKey="available" sort={availabilitySort.sort} onSort={availabilitySort.toggle} />
+                  <SortableHeader className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" label="Status" sortKey="status" sort={availabilitySort.sort} onSort={availabilitySort.toggle} />
                 </tr>
               </thead>
 

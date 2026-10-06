@@ -6,6 +6,7 @@ import { Loader2, Pencil, ShieldCheck, Trash2 } from "lucide-react";
 
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { PageShell } from "@/components/page-shell";
+import { SortableHeader, useTableSort } from "@/components/sortable-header";
 import { Badge } from "@/components/ui/badge";
 import { StatusBanner } from "@/components/status-banner";
 import { Button } from "@/components/ui/button";
@@ -294,6 +295,11 @@ export function RolesClient({
   const [editor, setEditor] = useState<EditorState>(null);
   const [banner, setBanner] = useState<string | null>(null);
   const query = useQuery({ queryKey: ["roles"], queryFn: listRoles });
+  const sorting = useTableSort(query.data, {
+    name: (role) => role.name,
+    assigned: (role) => role.assignedUserCount,
+    permissions: (role) => role.permissions.length,
+  });
   const [roleToDelete, setRoleToDelete] = useState<RoleDefinitionDto | null>(null);
   const deleteMutation = useMutation({
     mutationFn: async (role: RoleDefinitionDto) => {
@@ -369,14 +375,14 @@ export function RolesClient({
                 <table className="w-full min-w-[820px]">
                   <thead className="bg-muted/50 border-b text-left text-xs uppercase">
                     <tr>
-                      <th className="px-5 py-3">Role</th>
-                      <th className="px-5 py-3">Assigned</th>
-                      <th className="px-5 py-3">Permissions</th>
+                      <SortableHeader label="Role" sortKey="name" sort={sorting.sort} onSort={sorting.toggle} className="px-5 py-3" />
+                      <SortableHeader label="Assigned" sortKey="assigned" sort={sorting.sort} onSort={sorting.toggle} className="px-5 py-3" />
+                      <SortableHeader label="Permissions" sortKey="permissions" sort={sorting.sort} onSort={sorting.toggle} className="px-5 py-3" />
                       <th className="px-5 py-3">Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {query.data?.map((role) => (
+                    {sorting.rows.map((role) => (
                       <tr key={role.id} className="border-b last:border-b-0">
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-2 font-medium">

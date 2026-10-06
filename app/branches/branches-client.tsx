@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, Loader2, Pencil, Plus } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
+import { SortableHeader, useTableSort } from "@/components/sortable-header";
 import { StatusBanner } from "@/components/status-banner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -97,6 +98,12 @@ export function BranchesClient({
       return (response?.data ?? []) as BranchDto[];
     },
   });
+  const { rows: sortedBranches, sort, toggle } = useTableSort(query.data, {
+    code: (branch) => branch.code,
+    name: (branch) => branch.name,
+    location: (branch) => [branch.address, branch.city].filter(Boolean).join(", "),
+    contact: (branch) => branch.contactNumber || branch.email,
+  });
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -163,9 +170,9 @@ export function BranchesClient({
             <div className="flex min-h-48 flex-col items-center justify-center gap-2 text-muted-foreground"><Building2 className="h-8 w-8" /><p>No active branches yet.</p></div>
           ) : (
             <Table>
-              <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Branch</TableHead><TableHead>Location</TableHead><TableHead>Contact</TableHead><TableHead className="w-24 text-right">Action</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><SortableHeader label="Code" sortKey="code" sort={sort} onSort={toggle} className="h-12 px-4 text-left align-middle font-medium text-muted-foreground" /><SortableHeader label="Branch" sortKey="name" sort={sort} onSort={toggle} className="h-12 px-4 text-left align-middle font-medium text-muted-foreground" /><SortableHeader label="Location" sortKey="location" sort={sort} onSort={toggle} className="h-12 px-4 text-left align-middle font-medium text-muted-foreground" /><SortableHeader label="Contact" sortKey="contact" sort={sort} onSort={toggle} className="h-12 px-4 text-left align-middle font-medium text-muted-foreground" /><TableHead className="w-24 text-right">Action</TableHead></TableRow></TableHeader>
               <TableBody>
-                {query.data?.map((branch) => (
+                {sortedBranches.map((branch) => (
                   <TableRow key={branch.id}>
                     <TableCell className="font-mono font-semibold">{branch.code}</TableCell>
                     <TableCell className="font-medium">{branch.name}</TableCell>

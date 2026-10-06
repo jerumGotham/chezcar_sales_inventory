@@ -46,6 +46,8 @@ import { cn } from "@/lib/utils";
 import { reactSelectStyles } from "@/lib/select-styles";
 import { SaleRefundDialog } from "@/components/sale-refund-dialog";
 import { StatusBanner } from "@/components/status-banner";
+import { OrderPaymentDialog } from "./order-payment-dialog";
+import { SortableHeader, useTableSort } from "@/components/sortable-header";
 import {
   CANCELLATION_SETTLEMENT_OPTIONS,
   type CancellationSettlementDto,
@@ -151,15 +153,6 @@ const ORDER_STATUS_OPTIONS: SelectOption[] = [
   { value: "For Release", label: "For Release" },
   { value: "Released", label: "Released" },
   { value: "Cancelled", label: "Cancelled" },
-];
-
-const PAYMENT_METHOD_OPTIONS: SelectOption[] = [
-  { value: "CASH", label: "Cash" },
-  { value: "GCASH", label: "GCash" },
-  { value: "MAYA", label: "Maya" },
-  { value: "BANK_TRANSFER", label: "Bank Transfer" },
-  { value: "CREDIT_CARD", label: "Credit Card" },
-  { value: "SPLIT", label: "Split Payment" },
 ];
 
 const PAYMENT_STATUS_OPTIONS: SelectOption[] = [
@@ -339,7 +332,6 @@ export default function CustomerOrdersPage() {
   const canRequestSaleCorrection = hasCapability(capabilities, "sales:correction:request");
   const canCorrectSalesperson = hasCapability(capabilities, "sales:salesperson:update");
   const canRefundSale = hasCapability(capabilities, "sales:refund");
-  const canAttachReceipt = hasCapability(capabilities, "sales:evidence:upload");
   // Carried from the dashboard, so a figure clicked there opens the sales
   // behind it rather than everything.
   const salesPeriodFilter = searchParams.get("salesPeriod") ?? "";
@@ -347,9 +339,10 @@ export default function CustomerOrdersPage() {
   /*
    * Which sales the tab lists. "all" includes the sales written when a customer
    * order is released, which is what the dashboard's Sales card totals; the
-   * Direct Sales tab leaves them out, as it always has.
+   * Direct Sales tab leaves them out. All Sales is the default, so the menu
+   * entry opens the same list the dashboard's Sales card does.
    */
-  const salesSource = searchParams.get("source") === "all" ? "all" : "direct";
+  const salesSource = searchParams.get("source") === "direct" ? "direct" : "all";
   const activeView = searchParams.get("view") === "orders" && canViewOrders
     ? "orders"
     : canViewSales ? "sales" : canViewOrders ? "orders" : null;
@@ -371,15 +364,6 @@ export default function CustomerOrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<CustomerOrderRow | null>(
     null,
   );
-  const [paymentAmount, setPaymentAmount] = useState("");
-  const [paymentReference, setPaymentReference] = useState("");
-  /*
-   * Optional. The branch usually has the paper in hand while recording the
-   * money; attaching it here saves the trip to Accounting's queue, and leaving
-   * it empty is still a perfectly good payment.
-   */
-  const [paymentPhoto, setPaymentPhoto] = useState<File | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<SelectOption>(PAYMENT_METHOD_OPTIONS[0]);
   const [refundSaleId, setRefundSaleId] = useState<string | null>(null);
   // What just happened, said once in the place the reader is already looking.
   const [actionNotice, setActionNotice] = useState<string | null>(null);
@@ -456,58 +440,6 @@ export default function CustomerOrdersPage() {
       setCorrectionSale(null);
       setCorrectionReason("ACCIDENTAL_SUBMISSION");
       setCorrectionNote("");
-    },
-  });
-  const paymentMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedOrder) throw new Error("Select an order first.");
-      const response = await fetch(
-        `/api/customer-orders/${selectedOrder.id}/payment`,
-        {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            amount: Number(paymentAmount),
-            reference: paymentReference.trim(),
-            method: paymentMethod.value,
-          }),
-        },
-      );
-      const json = await response.json();
-      if (!response.ok) {
-        throw new Error(json.error?.message ?? "Unable to save payment");
-      }
-      const saved = json.data as CustomerOrderRow & { paymentId: string | null };
-      if (paymentPhoto && canAttachReceipt && saved.paymentId) {
-        const body = new FormData();
-        body.set("photo", paymentPhoto);
-        // The money is already recorded, so a failed upload is a warning, not
-        // a reason to report the payment as not saved.
-        const attached = await fetch(
-          `/api/accounting/payments/${encodeURIComponent(saved.paymentId)}/photo`,
-          { method: "POST", credentials: "same-origin", body },
-        ).catch(() => null);
-        if (!attached?.ok) {
-          throw new Error("Payment saved, but the receipt photo did not attach. Attach it from Receipt Verification.");
-        }
-      }
-      return saved;
-    },
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["customer-orders-list"] }),
-        queryClient.invalidateQueries({ queryKey: ["customer-order", selectedOrder?.id] }),
-        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
-        queryClient.invalidateQueries({ queryKey: ["customers"] }),
-        queryClient.invalidateQueries({ queryKey: ["customer-history"] }),
-      ]);
-      setIsDownpaymentOpen(false);
-      setSelectedOrder(null);
-      setPaymentAmount("");
-      setPaymentReference("");
-      setPaymentPhoto(null);
-      setPaymentMethod(PAYMENT_METHOD_OPTIONS[0]);
     },
   });
   // Keyed by sale, so opening another sale falls back to that sale's own
@@ -653,7 +585,19 @@ export default function CustomerOrdersPage() {
     },
   });
 
-  const rows = data?.data ?? [];
+  const orderSort = useTableSort(data?.data, {
+    orderNo: (order) => order.orderNo,
+    customer: (order) => order.customer,
+    salesperson: (order) => order.salesperson?.name,
+    items: (order) => order.itemSummary,
+    totalItems: (order) => order.totalItems,
+    status: (order) => order.status,
+    payment: (order) => order.paymentStatus,
+    downpayment: (order) => order.downpayment,
+    balance: (order) => order.balance,
+    releaseDate: (order) => order.releaseDate,
+  });
+  const rows = orderSort.rows;
   const meta = useMemo(
     () => data?.meta ?? {
       page: 1,
@@ -727,9 +671,22 @@ export default function CustomerOrdersPage() {
     })),
   ];
 
+  // The whole filtered list is held here, so a sort reorders every page.
+  const saleSort = useTableSort(filteredSales, {
+    receipt: (sale) => sale.manualReceiptNumber,
+    customer: (sale) => sale.customer,
+    branch: (sale) => sale.branch,
+    salesperson: (sale) => sale.salesperson?.name,
+    total: (sale) => sale.totalAmount,
+    discount: (sale) => sale.discountAmount,
+    payment: (sale) => sale.paymentMethod,
+    review: (sale) => sale.reviewStatus,
+    sold: (sale) => sale.soldAt,
+    posted: (sale) => sale.postedAt,
+  });
   const saleTotalPages = Math.max(1, Math.ceil(filteredSales.length / pageSize));
   const safeSalePage = Math.min(salePage, saleTotalPages);
-  const paginatedSales = filteredSales.slice(
+  const paginatedSales = saleSort.rows.slice(
     (safeSalePage - 1) * pageSize,
     safeSalePage * pageSize,
   );
@@ -826,7 +783,7 @@ export default function CustomerOrdersPage() {
           All Sales
         </Link> : null}
         {canViewSales ? <Link
-          href="/customer-orders?view=sales"
+          href="/customer-orders?view=sales&source=direct"
           className={buttonVariants({ variant: activeView === "sales" && salesSource === "direct" ? "default" : "ghost" })}
           aria-current={activeView === "sales" && salesSource === "direct" ? "page" : undefined}
           onClick={() => setSalePage(1)}
@@ -1013,34 +970,16 @@ export default function CustomerOrdersPage() {
             <table className="w-full min-w-[1550px]">
               <thead className="bg-muted">
                 <tr className="border-b">
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Order No.
-                  </th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Customer
-                  </th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Salesperson</th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Items
-                  </th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Total Items
-                  </th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Order Status
-                  </th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Payment
-                  </th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Downpayment
-                  </th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Balance
-                  </th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Release Date
-                  </th>
+                  <SortableHeader label="Order No." sortKey="orderNo" sort={orderSort.sort} onSort={orderSort.toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                  <SortableHeader label="Customer" sortKey="customer" sort={orderSort.sort} onSort={orderSort.toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                  <SortableHeader label="Salesperson" sortKey="salesperson" sort={orderSort.sort} onSort={orderSort.toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                  <SortableHeader label="Items" sortKey="items" sort={orderSort.sort} onSort={orderSort.toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                  <SortableHeader label="Total Items" sortKey="totalItems" sort={orderSort.sort} onSort={orderSort.toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                  <SortableHeader label="Order Status" sortKey="status" sort={orderSort.sort} onSort={orderSort.toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                  <SortableHeader label="Payment" sortKey="payment" sort={orderSort.sort} onSort={orderSort.toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                  <SortableHeader label="Downpayment" sortKey="downpayment" sort={orderSort.sort} onSort={orderSort.toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                  <SortableHeader label="Balance" sortKey="balance" sort={orderSort.sort} onSort={orderSort.toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                  <SortableHeader label="Release Date" sortKey="releaseDate" sort={orderSort.sort} onSort={orderSort.toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
                   <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Action
                   </th>
@@ -1147,8 +1086,6 @@ export default function CustomerOrdersPage() {
                              size="sm"
                              onClick={() => {
                               setSelectedOrder(order);
-                              setPaymentAmount("");
-                              setPaymentReference("");
                               setIsDownpaymentOpen(true);
                             }}
                            >
@@ -1190,176 +1127,28 @@ export default function CustomerOrdersPage() {
         </CardContent>
       </Card>
 
-      <Dialog
+      <OrderPaymentDialog
+        key={selectedOrder?.id ?? "none"}
         open={isDownpaymentOpen}
+        order={selectedOrder ? {
+          id: selectedOrder.id,
+          orderNo: selectedOrder.orderNo,
+          customer: selectedOrder.customer,
+          // The list carries a summary like "Brake pad × 2, Oil filter".
+          items: selectedOrder.itemSummary.split(",").filter((item) => item.trim()).map((item) => {
+            const [name, quantity] = item.split("×").map((part) => part.trim());
+            return { name, quantity: Number(quantity) || 1 };
+          }),
+          totalAmount: selectedOrder.totalAmount,
+          downpayment: selectedOrder.downpayment,
+          balance: selectedOrder.balance,
+        } : null}
         onOpenChange={(open) => {
           setIsDownpaymentOpen(open);
-          if (!open && !paymentMutation.isPending) {
-            setSelectedOrder(null);
-            setPaymentAmount("");
-            setPaymentReference("");
-            setPaymentMethod(PAYMENT_METHOD_OPTIONS[0]);
-          }
+          if (!open) setSelectedOrder(null);
         }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {selectedOrder?.downpayment
-                ? "Add Customer Payment"
-                : "Record Downpayment"}
-            </DialogTitle>
-            <DialogDescription>
-              {selectedOrder?.downpayment
-                ? "Add this payment to the order's existing downpayment."
-                : "Record the customer's first payment for this order."}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="grid gap-4 py-2">
-            <div className="space-y-2">
-              <Label>Order No.</Label>
-              <Input value={selectedOrder?.orderNo ?? ""} readOnly />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Customer</Label>
-              <Input value={selectedOrder?.customer ?? ""} readOnly />
-            </div>
-
-            {/* ✅ ITEMS SUMMARY */}
-            <div className="space-y-2">
-              <Label>Items</Label>
-              <div className="rounded-lg border bg-muted p-3 text-sm text-foreground">
-                <ul className="list-disc space-y-1 pl-5">
-                  {selectedOrder?.itemSummary?.split(",").map((item, index) => {
-                    const parts = item.split("×").map((str) => str.trim());
-
-                    const name = parts[0];
-                    const qty = parts[1] ?? "1"; // ✅ default qty = 1
-
-                    return (
-                      <li key={index}>
-                        {name} × {qty}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            </div>
-
-            {/* ✅ OPTIONAL (HIGHLY RECOMMENDED) */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">Total Amount</p>
-                <p className="text-sm font-semibold">
-                  ₱{selectedOrder?.totalAmount?.toLocaleString("en-PH")}
-                </p>
-              </div>
-
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">Current Downpayment</p>
-                <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
-                  ₱{selectedOrder?.downpayment?.toLocaleString("en-PH")}
-                </p>
-              </div>
-
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">Remaining Balance</p>
-                <p className="text-sm font-semibold text-amber-600">
-                  ₱{selectedOrder?.balance?.toLocaleString("en-PH")}
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="order-payment-amount">Payment Amount</Label>
-              <Input
-                id="order-payment-amount"
-                type="number"
-                min="0.01"
-                max={selectedOrder?.balance}
-                step="0.01"
-                placeholder="0.00"
-                value={paymentAmount}
-                onChange={(event) => setPaymentAmount(event.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="order-payment-reference">
-                Receipt Number (required)
-              </Label>
-              <Input
-                id="order-payment-reference"
-                placeholder="OR-000123"
-                value={paymentReference}
-                onChange={(event) => setPaymentReference(event.target.value)}
-                maxLength={100}
-              />
-              <p className="text-xs text-muted-foreground">
-                Accounting verifies this receipt against its photo, so every payment needs its own number.
-              </p>
-            </div>
-
-            {canAttachReceipt ? (
-              <div className="space-y-2">
-                <Label htmlFor="order-payment-photo">Receipt Photo (optional)</Label>
-                <Input
-                  id="order-payment-photo"
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  onChange={(event) => setPaymentPhoto(event.target.files?.[0] ?? null)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Attach it now if you have the receipt, or leave it and attach it later in Receipt Verification.
-                </p>
-              </div>
-            ) : null}
-
-            <div className="space-y-2">
-              <Label htmlFor="order-payment-method">Payment Method</Label>
-              <Select
-                inputId="order-payment-method"
-                instanceId="customer-orders-payment-method"
-                options={PAYMENT_METHOD_OPTIONS}
-                value={paymentMethod}
-                onChange={(option) => setPaymentMethod(option ?? PAYMENT_METHOD_OPTIONS[0])}
-                isSearchable
-                placeholder="Select payment method"
-                styles={reactSelectStyles}
-              />
-            </div>
-            {paymentMutation.error ? (
-              <p className="text-sm text-red-600">
-                {(paymentMutation.error as Error).message}
-              </p>
-            ) : null}
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsDownpaymentOpen(false)}
-              disabled={paymentMutation.isPending}
-            >
-              Cancel
-            </Button>
-
-            <Button
-              onClick={() => paymentMutation.mutate()}
-              disabled={
-                paymentMutation.isPending ||
-                Number(paymentAmount) <= 0 ||
-                Number(paymentAmount) > (selectedOrder?.balance ?? 0) ||
-                !paymentReference.trim()
-              }
-            >
-              {paymentMutation.isPending ? "Saving..." : "Save Payment"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        onSaved={(message) => setActionNotice(message)}
+      />
       <Dialog
         open={isCancelOpen}
         onOpenChange={(open) => {
@@ -1597,28 +1386,29 @@ export default function CustomerOrdersPage() {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1050px]">
+              <table className="w-full min-w-[1150px]">
                 <thead className="bg-muted">
                   <tr className="border-b">
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Receipt</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Customer</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Branch</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Salesperson</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Discount</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Payment</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Review</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Posted</th>
+                    <SortableHeader label="Receipt" sortKey="receipt" sort={saleSort.sort} onSort={(key) => { saleSort.toggle(key); setSalePage(1); }} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    <SortableHeader label="Customer" sortKey="customer" sort={saleSort.sort} onSort={(key) => { saleSort.toggle(key); setSalePage(1); }} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    <SortableHeader label="Branch" sortKey="branch" sort={saleSort.sort} onSort={(key) => { saleSort.toggle(key); setSalePage(1); }} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    <SortableHeader label="Salesperson" sortKey="salesperson" sort={saleSort.sort} onSort={(key) => { saleSort.toggle(key); setSalePage(1); }} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    <SortableHeader label="Total" sortKey="total" sort={saleSort.sort} onSort={(key) => { saleSort.toggle(key); setSalePage(1); }} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    <SortableHeader label="Discount" sortKey="discount" sort={saleSort.sort} onSort={(key) => { saleSort.toggle(key); setSalePage(1); }} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    <SortableHeader label="Payment" sortKey="payment" sort={saleSort.sort} onSort={(key) => { saleSort.toggle(key); setSalePage(1); }} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    <SortableHeader label="Review" sortKey="review" sort={saleSort.sort} onSort={(key) => { saleSort.toggle(key); setSalePage(1); }} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    <SortableHeader label="Sold" sortKey="sold" sort={saleSort.sort} onSort={(key) => { saleSort.toggle(key); setSalePage(1); }} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    <SortableHeader label="Posted" sortKey="posted" sort={saleSort.sort} onSort={(key) => { saleSort.toggle(key); setSalePage(1); }} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {directSalesQuery.isLoading ? (
-                    <tr><td colSpan={10} className="px-5 py-16 text-center text-muted-foreground">Loading direct sales...</td></tr>
+                    <tr><td colSpan={11} className="px-5 py-16 text-center text-muted-foreground">Loading direct sales...</td></tr>
                   ) : directSalesQuery.isError ? (
-                    <tr><td colSpan={10} className="px-5 py-16 text-center text-rose-600">Unable to load direct sales.</td></tr>
+                    <tr><td colSpan={11} className="px-5 py-16 text-center text-rose-600">Unable to load direct sales.</td></tr>
                   ) : paginatedSales.length === 0 ? (
-                    <tr><td colSpan={10} className="px-5 py-16 text-center text-muted-foreground">{salesSource === "all" ? "No sales found." : "No direct sales found."}</td></tr>
+                    <tr><td colSpan={11} className="px-5 py-16 text-center text-muted-foreground">{salesSource === "all" ? "No sales found." : "No direct sales found."}</td></tr>
                   ) : (
                     paginatedSales.map((sale) => (
                       <tr key={sale.id} className="border-b transition-colors hover:bg-muted">
@@ -1660,6 +1450,9 @@ export default function CustomerOrdersPage() {
                             ) : null}
                           </div>
                         </td>
+                        {/* The day the goods changed hands, which a late-encoded
+                            receipt can put before the day it was posted. */}
+                        <td className="px-5 py-4 text-sm text-muted-foreground">{formatDate(sale.soldAt)}</td>
                         <td className="px-5 py-4 text-sm text-muted-foreground">{formatDate(sale.postedAt)}</td>
                         <td className="px-5 py-4">
                           <div className="flex flex-wrap gap-2">

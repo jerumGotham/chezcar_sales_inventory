@@ -5,6 +5,7 @@ import { Boxes, FileText, Filter, Loader2, Receipt, RefreshCw, RotateCcw, Shield
 import { useState, useSyncExternalStore } from "react";
 
 import { PageShell } from "@/components/page-shell";
+import { SortableHeader, useTableSort, type SortState } from "@/components/sortable-header";
 import { SaleItemsCell } from "./sale-items-cell";
 import { TablePagination } from "@/components/table-pagination";
 import { useShellAccess } from "@/components/shell-access-context";
@@ -329,12 +330,16 @@ function StockMovementView({ report }: { report: StockMovementReport }) {
         row.lastSoldAt ? dateTime.format(new Date(row.lastSoldAt)) : "Never",
         "", "",
       ])}
+      sortValues={report.rows.map((row) => [row.itemCode, row.product, row.branch, MOVEMENT_RANK[row.grade], row.onHand, row.reserved, row.available, row.soldUnits, row.soldAmount, row.daysPerSale, row.lastSoldAt])}
+      unsortable={[11, 12]}
       footerRow={["OVERALL TOTAL", "", "", "", String(totals.onHand), "", String(totals.available), String(totals.soldUnits), peso.format(totals.soldAmount), "", "", "", ""]}
     />
   </>;
 }
 
 const MOVEMENT_LABELS = { FAST: "Fast", SLOW: "Slow", NO_MOVEMENT: "NO MOVEMENT" } as const;
+// Sorting the Movement column runs slowest first, the order a review reads it in.
+const MOVEMENT_RANK = { NO_MOVEMENT: 0, SLOW: 1, FAST: 2 } as const;
 
 // The headline figure names what it actually adds up in each view.
 const TOTAL_LABELS: Record<string, string> = {
@@ -359,15 +364,15 @@ function ReportView({ report }: { report: ReportResult }) {
       <PendingNotice report={report} />
       <p className="text-sm text-muted-foreground">See which receipts belong to each salesperson and their total verified sales. This is sales attribution, not a commission or payment report. Older sales without attribution appear under Not recorded (legacy).</p>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Metric label="Receipts" value={String(report.grandTotal.transactionCount)} /><Metric label="Units sold" value={String(report.grandTotal.units)} /><Metric label="Discounts" value={peso.format(report.grandTotal.totalDiscount)} /><Metric label="Average sale" value={peso.format(report.grandTotal.averageSale)} /><Metric label={TOTAL_LABELS[report.view]} value={peso.format(report.grandTotal.totalAmount)} /></div>
-      <Table title="Salesperson totals" numericFrom={1} headers={["Salesperson", "Receipts", "Units", "Discounts", "Average sale", "Sales", "% of grand total"]} rows={report.salespersonTotals.map((row) => [row.salesperson, String(row.transactionCount), String(row.units), peso.format(row.totalDiscount), peso.format(row.averageSale), peso.format(row.totalAmount), `${row.percentage.toFixed(1)}%`])} footerRow={["OVERALL TOTAL", String(report.grandTotal.transactionCount), String(report.grandTotal.units), peso.format(report.grandTotal.totalDiscount), peso.format(report.grandTotal.averageSale), peso.format(report.grandTotal.totalAmount), report.grandTotal.totalAmount ? "100.0%" : "0.0%"]} />
-      {report.salespersonTotals.map((group) => <Table key={group.salespersonId ?? "unattributed"} title={`${group.salesperson} - ${group.transactionCount} receipt(s)`} numericFrom={10} headers={["Sold", "Verified on", "Manual receipt", "Branch", "Customer", "Salesperson on receipt", "Encoder", "Source", "Items", "Payment", "Units", "Discount", "Final amount"]} rows={(salesByPerson.get(group.salespersonId) ?? []).map((row) => [dateTime.format(new Date(row.soldAt)), row.verifiedAt ? dateTime.format(new Date(row.verifiedAt)) : <span className="font-medium text-red-600 dark:text-red-400">Not verified</span>, <span key="receipt" className="block break-words">{row.manualReceiptNumber}</span>, row.branch, row.customer, row.salesperson, row.encoder, row.source, <SaleItemsCell key="items" row={row} />, humanize(row.paymentMethod), String(row.units), peso.format(row.discountAmount), peso.format(row.totalAmount)])} footerRow={["SALESPERSON TOTAL", "", "", "", "", "", "", "", "", "", String(group.units), peso.format(group.totalDiscount), peso.format(group.totalAmount)]} />)}
+      <Table title="Salesperson totals" numericFrom={1} headers={["Salesperson", "Receipts", "Units", "Discounts", "Average sale", "Sales", "% of grand total"]} rows={report.salespersonTotals.map((row) => [row.salesperson, String(row.transactionCount), String(row.units), peso.format(row.totalDiscount), peso.format(row.averageSale), peso.format(row.totalAmount), `${row.percentage.toFixed(1)}%`])} sortValues={report.salespersonTotals.map((row) => [row.salesperson, row.transactionCount, row.units, row.totalDiscount, row.averageSale, row.totalAmount, row.percentage])} footerRow={["OVERALL TOTAL", String(report.grandTotal.transactionCount), String(report.grandTotal.units), peso.format(report.grandTotal.totalDiscount), peso.format(report.grandTotal.averageSale), peso.format(report.grandTotal.totalAmount), report.grandTotal.totalAmount ? "100.0%" : "0.0%"]} />
+      {report.salespersonTotals.map((group) => <Table key={group.salespersonId ?? "unattributed"} title={`${group.salesperson} - ${group.transactionCount} receipt(s)`} numericFrom={10} headers={["Sold", "Verified on", "Manual receipt", "Branch", "Customer", "Salesperson on receipt", "Encoder", "Source", "Items", "Payment", "Units", "Discount", "Final amount"]} rows={(salesByPerson.get(group.salespersonId) ?? []).map((row) => [dateTime.format(new Date(row.soldAt)), row.verifiedAt ? dateTime.format(new Date(row.verifiedAt)) : <span className="font-medium text-red-600 dark:text-red-400">Not verified</span>, <span key="receipt" className="block break-words">{row.manualReceiptNumber}</span>, row.branch, row.customer, row.salesperson, row.encoder, row.source, <SaleItemsCell key="items" row={row} />, humanize(row.paymentMethod), String(row.units), peso.format(row.discountAmount), peso.format(row.totalAmount)])} sortValues={(salesByPerson.get(group.salespersonId) ?? []).map(saleSortValues)} footerRow={["SALESPERSON TOTAL", "", "", "", "", "", "", "", "", "", String(group.units), peso.format(group.totalDiscount), peso.format(group.totalAmount)]} />)}
     </>;
   }
   if (report.type === "sales") return <>
     <PendingNotice report={report} />
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Metric label="Receipts" value={String(report.grandTotal.transactionCount)} /><Metric label="Units sold" value={String(report.grandTotal.units)} /><Metric label="Discounts" value={peso.format(report.grandTotal.totalDiscount)} /><Metric label="Average sale" value={peso.format(report.grandTotal.averageSale)} /><Metric label={TOTAL_LABELS[report.view]} value={peso.format(report.grandTotal.totalAmount)} /></div>
-    <Table headers={["Sold", "Verified on", "Manual receipt", "Branch", "Customer", "Salesperson", "Encoder", "Source", "Items", "Payment", "Units", "Discount", "Final amount"]} numericFrom={10} rows={report.rows.map((row) => [dateTime.format(new Date(row.soldAt)), row.verifiedAt ? dateTime.format(new Date(row.verifiedAt)) : <span className="font-medium text-red-600 dark:text-red-400">Not verified</span>, <span key="receipt" className="block break-words">{row.manualReceiptNumber}</span>, row.branch, row.customer, row.salesperson, row.encoder, row.source, <SaleItemsCell key="items" row={row} />, humanize(row.paymentMethod), String(row.units), peso.format(row.discountAmount), peso.format(row.totalAmount)])} />
-    <Table title="Branch totals" headers={["Branch", "Receipts", "Units", "Sales", "% of grand total"]} rows={report.branchTotals.map((row) => [row.branch, String(row.transactionCount), String(row.units), peso.format(row.totalAmount), `${row.percentage.toFixed(1)}%`])} />
+    <Table headers={["Sold", "Verified on", "Manual receipt", "Branch", "Customer", "Salesperson", "Encoder", "Source", "Items", "Payment", "Units", "Discount", "Final amount"]} numericFrom={10} rows={report.rows.map((row) => [dateTime.format(new Date(row.soldAt)), row.verifiedAt ? dateTime.format(new Date(row.verifiedAt)) : <span className="font-medium text-red-600 dark:text-red-400">Not verified</span>, <span key="receipt" className="block break-words">{row.manualReceiptNumber}</span>, row.branch, row.customer, row.salesperson, row.encoder, row.source, <SaleItemsCell key="items" row={row} />, humanize(row.paymentMethod), String(row.units), peso.format(row.discountAmount), peso.format(row.totalAmount)])} sortValues={report.rows.map(saleSortValues)} />
+    <Table title="Branch totals" headers={["Branch", "Receipts", "Units", "Sales", "% of grand total"]} rows={report.branchTotals.map((row) => [row.branch, String(row.transactionCount), String(row.units), peso.format(row.totalAmount), `${row.percentage.toFixed(1)}%`])} sortValues={report.branchTotals.map((row) => [row.branch, row.transactionCount, row.units, row.totalAmount, row.percentage])} />
   </>;
   if (report.type === "inventory-summary") return <InventoryView report={report} />;
   if (report.type === "stock-movement") return <StockMovementView report={report} />;
@@ -376,24 +381,27 @@ function ReportView({ report }: { report: ReportResult }) {
     <p className="text-sm text-muted-foreground">Backjobs list all original items in one case row. Their affected-unit quantity is not recorded; original item selections are not unit counts.</p>
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><Metric label="Total cases" value={String(report.totals.total)} /><Metric label="Open" value={String(report.totals.open)} /><Metric label="Completed" value={String(report.totals.completed)} /><Metric label="Overdue" value={String(report.totals.overdue)} /><Metric label="Unresolved quarantine" value={String(report.totals.unresolvedQuarantinedQuantity)} /><Metric label="Backjob charges recorded" value={peso.format(report.totals.backjobChargeAmount)} /><Metric label="Supplier refunds tracked" value={peso.format(report.totals.supplierRefundAmount)} /><Metric label="Supplier credits tracked" value={peso.format(report.totals.supplierCreditAmount)} /></div>
     <Table title="Counts by type" headers={["Type", "Count"]} rows={report.totals.byType.map((row) => [row.label, String(row.count)])} />
-    <Table title="Counts by status, branch, and resolution" headers={["Group", "Value", "Count"]} rows={[...report.totals.byStatus.map((row) => ["Status", humanize(row.label), String(row.count)]), ...report.totals.byBranch.map((row) => ["Branch", row.label, String(row.count)]), ...report.totals.byResolution.map((row) => ["Resolution", humanize(row.label), String(row.count)])]} />
-    <Table headers={["Case date", "Type", "Reference", "Original reference", "Location", "Customer / supplier", "Product", "Case quantity", "Assigned personnel", "Salesperson", "Status", "Resolution", "Target", "Overdue", "Linked case", "Unresolved quarantine", "Backjob charge recorded", "Supplier refund", "Supplier credit"]} rows={report.rows.map((row) => [dateTime.format(new Date(row.caseDate)), row.recordType, row.reference, row.originalReference, row.branch, row.party, row.product, row.quantity === null ? "Not recorded" : String(row.quantity), row.assignedPersonnel, row.salesperson, humanize(row.status), humanize(row.resolution), row.targetDate ? dateTime.format(new Date(row.targetDate)) : "", row.overdue ? "Yes" : "No", row.linkedCase, String(row.unresolvedQuarantinedQuantity), row.backjobChargeAmount === null ? "Not applicable" : peso.format(row.backjobChargeAmount), peso.format(row.supplierRefundAmount), peso.format(row.supplierCreditAmount)])} />
+    <Table title="Counts by status, branch, and resolution" headers={["Group", "Value", "Count"]} rows={[...report.totals.byStatus.map((row) => ["Status", humanize(row.label), String(row.count)]), ...report.totals.byBranch.map((row) => ["Branch", row.label, String(row.count)]), ...report.totals.byResolution.map((row) => ["Resolution", humanize(row.label), String(row.count)])]} sortValues={[...report.totals.byStatus.map((row) => ["Status", humanize(row.label), row.count]), ...report.totals.byBranch.map((row) => ["Branch", row.label, row.count]), ...report.totals.byResolution.map((row) => ["Resolution", humanize(row.label), row.count])]} />
+    <Table headers={["Case date", "Type", "Reference", "Original reference", "Location", "Customer / supplier", "Product", "Case quantity", "Assigned personnel", "Salesperson", "Status", "Resolution", "Target", "Overdue", "Linked case", "Unresolved quarantine", "Backjob charge recorded", "Supplier refund", "Supplier credit"]} rows={report.rows.map((row) => [dateTime.format(new Date(row.caseDate)), row.recordType, row.reference, row.originalReference, row.branch, row.party, row.product, row.quantity === null ? "Not recorded" : String(row.quantity), row.assignedPersonnel, row.salesperson, humanize(row.status), humanize(row.resolution), row.targetDate ? dateTime.format(new Date(row.targetDate)) : "", row.overdue ? "Yes" : "No", row.linkedCase, String(row.unresolvedQuarantinedQuantity), row.backjobChargeAmount === null ? "Not applicable" : peso.format(row.backjobChargeAmount), peso.format(row.supplierRefundAmount), peso.format(row.supplierCreditAmount)])} sortValues={report.rows.map((row) => [row.caseDate, row.recordType, row.reference, row.originalReference, row.branch, row.party, row.product, row.quantity, row.assignedPersonnel, row.salesperson, humanize(row.status), humanize(row.resolution), row.targetDate, row.overdue, row.linkedCase, row.unresolvedQuarantinedQuantity, row.backjobChargeAmount, row.supplierRefundAmount, row.supplierCreditAmount])} />
   </>;
 }
 
 function InventoryView({ report }: { report: InventorySummaryReport }) {
   const [page, setPage] = useState(1);
+  const comparison = report.effectiveScope.length > 1;
+  // Sorted before paging, so a header orders every filtered product rather than one page.
+  const columnValues = (row: InventorySummaryReport["rows"][number]): SortCell[] => [row.itemCode, row.product, row.category, row.brand, ...(comparison ? report.effectiveScope.map((location) => row.availableByLocation[location.id]) : []), row.available];
+  const { rows: sortedRows, sort, toggle } = useTableSort(report.rows, columnAccessors(columnValues, 5 + (comparison ? report.effectiveScope.length : 0)));
   const pageSize = 25;
   const pageCount = Math.max(1, Math.ceil(report.rows.length / pageSize));
   const currentPage = Math.min(page, pageCount);
   const start = (currentPage - 1) * pageSize;
-  const comparison = report.effectiveScope.length > 1;
   const headers = ["Code", "Product", "Category", "Brand", ...(comparison ? report.effectiveScope.map((location) => location.label) : []), comparison ? "Total available" : "Available"];
   const totals = ["FULL FILTERED TOTAL", "", "", "", ...(comparison ? report.branchTotals.map((total) => String(total.available)) : []), String(report.totals.available)];
   return <>
     <p className="text-sm text-muted-foreground">Available = on hand minus reserved and quarantined. Only products with positive available stock in the selected branches are included, once per product. Comparison cells show 0 where no positive stock is available. In-transit stock is excluded.</p>
     <div className="grid gap-3 sm:grid-cols-3"><Metric label="Products (full filtered set)" value={String(report.totals.productCount)} /><Metric label="Branches in scope" value={String(report.totals.locationCount)} /><Metric label="Available units (full filtered set)" value={String(report.totals.available)} /></div>
-    <Table headers={headers} numericFrom={4} footerRow={totals} rows={report.rows.slice(start, start + pageSize).map((row) => [row.itemCode, row.product, row.category, row.brand, ...(comparison ? report.effectiveScope.map((location) => String(row.availableByLocation[location.id])) : []), String(row.available)])} />
+    <Table headers={headers} numericFrom={4} footerRow={totals} sorting={{ sort, onSort: (key) => { toggle(key); setPage(1); } }} rows={sortedRows.slice(start, start + pageSize).map((row) => [row.itemCode, row.product, row.category, row.brand, ...(comparison ? report.effectiveScope.map((location) => String(row.availableByLocation[location.id])) : []), String(row.available)])} />
     <nav aria-label="Inventory products pagination" className="flex flex-wrap items-center justify-between gap-3">
       <p className="text-xs text-muted-foreground">{report.rows.length ? `${start + 1}-${Math.min(start + pageSize, report.rows.length)}` : "0"} of {report.rows.length} products | 25 per page. Totals and PDF include all filtered products.</p>
       <TablePagination page={currentPage} totalPages={pageCount} onPageChange={setPage} />
@@ -409,6 +417,31 @@ function Metric({ label, value }: { label: string; value: string }) {
   return <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-xl font-semibold">{value}</p></CardContent></Card>;
 }
 
-function Table({ title, headers, rows, footerRow, numericFrom = Infinity }: { title?: string; headers: string[]; rows: React.ReactNode[][]; footerRow?: string[]; numericFrom?: number }) {
-  return <Card className="min-w-0"><CardContent className="p-0">{title && <h2 className="px-4 pt-4 font-semibold">{title}</h2>}<div className="overflow-x-auto"><table className="w-full min-w-max text-sm"><thead><tr className="border-b bg-muted/40">{headers.map((header, index) => <th key={`${header}-${index}`} className={`px-3 py-2 text-xs font-medium text-muted-foreground ${index >= numericFrom ? "text-right" : "text-left"}`}>{header}</th>)}</tr></thead><tbody>{rows.length ? rows.map((row, index) => <tr key={index} className="border-b last:border-0">{row.map((cell, cellIndex) => <td key={`${index}-${cellIndex}`} className={`max-w-72 px-3 py-2 ${cellIndex >= numericFrom ? "text-right tabular-nums" : ""}`}>{cell}</td>)}</tr>) : <tr><td colSpan={headers.length} className="px-4 py-8 text-center text-muted-foreground">No rows in the applied scope.</td></tr>}</tbody>{footerRow && <tfoot><tr className="border-t bg-muted/40 font-semibold">{footerRow.map((cell, index) => <td key={index} className={`px-3 py-2 ${index >= numericFrom ? "text-right tabular-nums" : ""}`}>{cell}</td>)}</tr></tfoot>}</table></div></CardContent></Card>;
+type SortCell = string | number | Date | boolean | null | undefined;
+
+/** One accessor per column, keyed by the column's index. */
+function columnAccessors<T>(values: (row: T) => SortCell[], columnCount: number) {
+  return Object.fromEntries(Array.from({ length: columnCount }, (_, column) => [String(column), (row: T) => values(row)[column]])) as Record<string, (row: T) => SortCell>;
+}
+
+function saleSortValues(row: SalesReport["rows"][number]): SortCell[] {
+  return [row.soldAt, row.verifiedAt, row.manualReceiptNumber, row.branch, row.customer, row.salesperson, row.encoder, row.source, row.items.length, humanize(row.paymentMethod), row.units, row.discountAmount, row.totalAmount];
+}
+
+/**
+ * `sortValues` holds each row's raw values, parallel to `rows`, and lets the
+ * table sort itself. `sorting` is for a caller that sorts before it pages and
+ * passes rows already in order.
+ */
+function Table({ title, headers, rows, footerRow, numericFrom = Infinity, sortValues, sorting, unsortable = [] }: { title?: string; headers: string[]; rows: React.ReactNode[][]; footerRow?: string[]; numericFrom?: number; sortValues?: SortCell[][]; sorting?: { sort: SortState<string>; onSort: (key: string) => void }; unsortable?: number[] }) {
+  const indexes = rows.map((_, index) => index);
+  const internal = useTableSort(indexes, columnAccessors((index: number) => sortValues?.[index] ?? [], headers.length));
+  const order = sorting ? indexes : internal.rows;
+  const control = sorting ?? (sortValues ? { sort: internal.sort, onSort: internal.toggle } : null);
+  return <Card className="min-w-0"><CardContent className="p-0">{title && <h2 className="px-4 pt-4 font-semibold">{title}</h2>}<div className="overflow-x-auto"><table className="w-full min-w-max text-sm"><thead><tr className="border-b bg-muted/40">{headers.map((header, index) => {
+    const className = `px-3 py-2 text-xs font-medium text-muted-foreground ${index >= numericFrom ? "text-right" : "text-left"}`;
+    return control && !unsortable.includes(index)
+      ? <SortableHeader key={`${header}-${index}`} label={header} sortKey={String(index)} sort={control.sort} onSort={control.onSort} className={className} align={index >= numericFrom ? "right" : "left"} />
+      : <th key={`${header}-${index}`} className={className}>{header}</th>;
+  })}</tr></thead><tbody>{rows.length ? order.map((rowIndex) => <tr key={rowIndex} className="border-b last:border-0">{rows[rowIndex].map((cell, cellIndex) => <td key={`${rowIndex}-${cellIndex}`} className={`max-w-72 px-3 py-2 ${cellIndex >= numericFrom ? "text-right tabular-nums" : ""}`}>{cell}</td>)}</tr>) : <tr><td colSpan={headers.length} className="px-4 py-8 text-center text-muted-foreground">No rows in the applied scope.</td></tr>}</tbody>{footerRow && <tfoot><tr className="border-t bg-muted/40 font-semibold">{footerRow.map((cell, index) => <td key={index} className={`px-3 py-2 ${index >= numericFrom ? "text-right tabular-nums" : ""}`}>{cell}</td>)}</tr></tfoot>}</table></div></CardContent></Card>;
 }

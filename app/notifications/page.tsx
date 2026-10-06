@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowUpRight, CheckCircle2, Info } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
+import { SortableHeader, useTableSort } from "@/components/sortable-header";
 import { useCan, useShellAccess } from "@/components/shell-access-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -139,11 +140,29 @@ export default function NotificationsPage() {
   // The endpoint returns at most 100 rows in one array, and the header bell and
   // the live stream read the same call, so the page is sliced here rather than
   // changing what that call returns.
-  const totalPages = Math.max(Math.ceil(filteredNotifications.length / PAGE_SIZE), 1);
+  // The endpoint sends newest first and only a relative "time" label, so the
+  // Time column sorts on that position: ascending runs oldest first.
+  const arrival = useMemo(
+    () => new Map(notifications.map((notification, index) => [notification.id, -index])),
+    [notifications],
+  );
+  const sorting = useTableSort(filteredNotifications, {
+    type: (notification) => notification.type,
+    title: (notification) => notification.title,
+    reference: (notification) => notification.relatedReference,
+    time: (notification) => arrival.get(notification.id),
+    read: (notification) => Boolean(notification.read),
+  });
+  const sortedNotifications = sorting.rows;
+  const sortBy = (key: Parameters<typeof sorting.toggle>[0]) => {
+    sorting.toggle(key);
+    setPage(1);
+  };
+  const totalPages = Math.max(Math.ceil(sortedNotifications.length / PAGE_SIZE), 1);
   const currentPage = Math.min(page, totalPages);
   const pageNotifications = useMemo(
-    () => filteredNotifications.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
-    [currentPage, filteredNotifications],
+    () => sortedNotifications.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [currentPage, sortedNotifications],
   );
 
   return (
@@ -178,11 +197,11 @@ export default function NotificationsPage() {
             <table className="w-full min-w-[820px] text-left text-sm">
               <thead className="border-b bg-muted text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <th className="w-12 px-4 py-3">Type</th>
-                  <th className="px-4 py-3">Notification</th>
-                  <th className="px-4 py-3">Reference</th>
-                  <th className="px-4 py-3">Time</th>
-                  <th className="px-4 py-3">Status</th>
+                  <SortableHeader label="Type" sortKey="type" sort={sorting.sort} onSort={sortBy} className="w-12 px-4 py-3" />
+                  <SortableHeader label="Notification" sortKey="title" sort={sorting.sort} onSort={sortBy} className="px-4 py-3" />
+                  <SortableHeader label="Reference" sortKey="reference" sort={sorting.sort} onSort={sortBy} className="px-4 py-3" />
+                  <SortableHeader label="Time" sortKey="time" sort={sorting.sort} onSort={sortBy} className="px-4 py-3" />
+                  <SortableHeader label="Status" sortKey="read" sort={sorting.sort} onSort={sortBy} className="px-4 py-3" />
                   <th className="w-28 px-4 py-3 text-right">Action</th>
                 </tr>
               </thead>

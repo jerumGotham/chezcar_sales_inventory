@@ -322,7 +322,7 @@ export async function listProducts(
     skip,
     take: query.pageSize,
     include: {
-       inventoryBalances: { where: { locationId }, select: { onHand: true, reserved: true } },
+       inventoryBalances: { where: { locationId }, select: { onHand: true, reserved: true, quarantined: true } },
       transferLines: { select: { id: true }, take: 1 },
       receiptLines: { select: { id: true }, take: 1 },
       inventoryMovements: { select: { id: true }, take: 1 },
@@ -359,6 +359,8 @@ export async function listProducts(
       hasStock: product.inventoryBalances.some((balance) => balance.onHand > 0 || balance.reserved > 0),
       // Already fetched for hasStock; summed here so the list can show it.
       stockOnHand: product.inventoryBalances.reduce((total, balance) => total + balance.onHand, 0),
+      // Free to sell: on hand less what orders hold and what is quarantined.
+      stockAvailable: product.inventoryBalances.reduce((total, balance) => total + availableStock(balance), 0),
     })),
     meta,
     filterOptions: {

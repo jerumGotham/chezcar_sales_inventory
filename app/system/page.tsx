@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Database, Download, Gauge, HardDrive, Info, Loader2, MemoryStick, RefreshCw, Save } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
+import { SortableHeader, useTableSort } from "@/components/sortable-header";
 import { TablePagination } from "@/components/table-pagination";
 import { useCan } from "@/components/shell-access-context";
 import { Button } from "@/components/ui/button";
@@ -203,25 +204,7 @@ export default function SystemPage() {
               Table, indexes and overflow together, which is what fills the disk. Row counts are the planner&apos;s estimate.
             </p>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[420px] text-sm">
-                <thead className="bg-muted/40">
-                  <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Table</th>
-                    <th className="px-4 py-2 text-right text-xs font-medium text-muted-foreground">Rows</th>
-                    <th className="px-4 py-2 text-right text-xs font-medium text-muted-foreground">Size</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(data?.database.tables ?? []).map((table) => (
-                    <tr key={table.name} className="border-t">
-                      <td className="px-4 py-2">{table.name}</td>
-                      <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">{table.rows.toLocaleString("en-PH")}</td>
-                      <td className="px-4 py-2 text-right tabular-nums">{bytes(table.bytes)}</td>
-                    </tr>
-                  ))}
-                  {!data ? <tr><td colSpan={3} className="px-4 py-8 text-center text-muted-foreground">Reading...</td></tr> : null}
-                </tbody>
-              </table>
+              <BiggestTables tables={data?.database.tables} />
             </div>
           </CardContent>
         </Card>
@@ -354,6 +337,35 @@ export default function SystemPage() {
         </Card>
       </div>
     </PageShell>
+  );
+}
+
+function BiggestTables({ tables }: { tables: SystemHealth["database"]["tables"] | undefined }) {
+  const sorting = useTableSort(tables, {
+    name: (table) => table.name,
+    rows: (table) => table.rows,
+    bytes: (table) => table.bytes,
+  });
+  return (
+    <table className="w-full min-w-[420px] text-sm">
+      <thead className="bg-muted/40">
+        <tr>
+          <SortableHeader label="Table" sortKey="name" sort={sorting.sort} onSort={sorting.toggle} className="px-4 py-2 text-left text-xs font-medium text-muted-foreground" />
+          <SortableHeader label="Rows" sortKey="rows" sort={sorting.sort} onSort={sorting.toggle} className="px-4 py-2 text-right text-xs font-medium text-muted-foreground" align="right" />
+          <SortableHeader label="Size" sortKey="bytes" sort={sorting.sort} onSort={sorting.toggle} className="px-4 py-2 text-right text-xs font-medium text-muted-foreground" align="right" />
+        </tr>
+      </thead>
+      <tbody>
+        {sorting.rows.map((table) => (
+          <tr key={table.name} className="border-t">
+            <td className="px-4 py-2">{table.name}</td>
+            <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">{table.rows.toLocaleString("en-PH")}</td>
+            <td className="px-4 py-2 text-right tabular-nums">{bytes(table.bytes)}</td>
+          </tr>
+        ))}
+        {!tables ? <tr><td colSpan={3} className="px-4 py-8 text-center text-muted-foreground">Reading...</td></tr> : null}
+      </tbody>
+    </table>
   );
 }
 

@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Contact, Loader2, Pencil, Plus } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
+import { SortableHeader, useTableSort } from "@/components/sortable-header";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { StatusBanner } from "@/components/status-banner";
 import { TablePagination } from "@/components/table-pagination";
@@ -103,6 +104,12 @@ export function PersonnelClient({
     placeholderData: (previous) => previous,
   });
   const rows = query.data?.data ?? [];
+  const { rows: sortedRows, sort, toggle } = useTableSort(rows, {
+    name: (personnel) => personnel.fullName,
+    branch: (personnel) => personnel.location.name,
+    type: (personnel) => TYPE_LABELS[personnel.type],
+    status: (personnel) => personnel.status,
+  });
   const meta = query.data?.meta ?? { page: 1, totalPages: 1, total: 0 };
 
   const applyFilters = () => {
@@ -234,7 +241,7 @@ export function PersonnelClient({
         ) : rows.length === 0 ? (
           <div className="flex min-h-48 flex-col items-center justify-center gap-2 text-muted-foreground"><Contact className="h-8 w-8" /><p>No personnel yet.</p></div>
         ) : (
-          <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Home Branch</TableHead><TableHead>Type</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{rows.map((personnel) => (
+          <div className="overflow-x-auto"><Table><TableHeader><TableRow><SortableHeader label="Name" sortKey="name" sort={sort} onSort={toggle} className="h-12 px-4 text-left align-middle font-medium text-muted-foreground" /><SortableHeader label="Home Branch" sortKey="branch" sort={sort} onSort={toggle} className="h-12 px-4 text-left align-middle font-medium text-muted-foreground" /><SortableHeader label="Type" sortKey="type" sort={sort} onSort={toggle} className="h-12 px-4 text-left align-middle font-medium text-muted-foreground" /><SortableHeader label="Status" sortKey="status" sort={sort} onSort={toggle} className="h-12 px-4 text-left align-middle font-medium text-muted-foreground" /><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{sortedRows.map((personnel) => (
             <TableRow key={personnel.id}><TableCell className="font-medium">{personnel.fullName}</TableCell><TableCell>{personnel.location.name} ({personnel.location.code})</TableCell><TableCell>{TYPE_LABELS[personnel.type]}</TableCell><TableCell><span className={personnel.status === "ACTIVE" ? "text-emerald-700 dark:text-emerald-300" : "text-muted-foreground"}>{personnel.status === "ACTIVE" ? "Active" : "Inactive"}</span></TableCell><TableCell><div className="flex justify-end gap-2">{canUpdate ? <Button variant="edit" size="sm" onClick={() => openEdit(personnel)}><Pencil className="mr-2 h-4 w-4" />Edit</Button> : null}{canSetStatus ? <Button variant={personnel.status === "ACTIVE" ? "outline" : "workflow"} size="sm" disabled={statusMutation.isPending} onClick={() => personnel.status === "ACTIVE" ? setDeactivating(personnel) : statusMutation.mutate(personnel)}>{personnel.status === "ACTIVE" ? "Deactivate" : "Reactivate"}</Button> : null}{!canUpdate && !canSetStatus ? <span className="text-muted-foreground">-</span> : null}</div></TableCell></TableRow>
           ))}</TableBody></Table></div>
         )}

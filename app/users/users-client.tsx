@@ -12,6 +12,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Eye, EyeOff, Loader2, TriangleAlert } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
+import { SortableHeader, useTableSort } from "@/components/sortable-header";
 import { TablePagination } from "@/components/table-pagination";
 import { Badge } from "@/components/ui/badge";
 import { StatusBanner } from "@/components/status-banner";
@@ -137,6 +138,9 @@ const STATUS_FILTER_OPTIONS: ReadonlyArray<{
   { value: "ACTIVE", label: "Active" },
   { value: "INACTIVE", label: "Inactive" },
 ];
+
+// The classes TableHead applies, for the sortable headers that replace it.
+const HEAD_CLASS = "h-12 px-4 text-left align-middle font-medium text-muted-foreground";
 
 function staffRoleLabel(user: ManagedUserDto): string {
   return user.isOwner ? "Owner Admin" : user.roleName;
@@ -1175,7 +1179,15 @@ export function UsersClient({
   });
 
   const data = query.data;
-  const rows = data?.data ?? [];
+  const sorting = useTableSort(data?.data, {
+    name: (user) => user.name,
+    email: (user) => user.email,
+    role: (user) => staffRoleLabel(user),
+    location: (user) => locationScopeLabel(user),
+    status: (user) => statusLabel(user.status),
+    lastSignInAt: (user) => user.lastSignInAt,
+  });
+  const rows = sorting.rows;
   const meta = data?.meta ?? {
     page: 1,
     pageSize: USER_LIST_PAGE_SIZE,
@@ -1364,12 +1376,12 @@ export function UsersClient({
             <Table className="min-w-[960px]">
               <TableHeader>
                 <TableRow className="bg-muted/50 hover:bg-muted/50">
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Location Scope</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Last Sign-in</TableHead>
+                  <SortableHeader label="Name" sortKey="name" sort={sorting.sort} onSort={sorting.toggle} className={HEAD_CLASS} />
+                  <SortableHeader label="Email" sortKey="email" sort={sorting.sort} onSort={sorting.toggle} className={HEAD_CLASS} />
+                  <SortableHeader label="Role" sortKey="role" sort={sorting.sort} onSort={sorting.toggle} className={HEAD_CLASS} />
+                  <SortableHeader label="Location Scope" sortKey="location" sort={sorting.sort} onSort={sorting.toggle} className={HEAD_CLASS} />
+                  <SortableHeader label="Status" sortKey="status" sort={sorting.sort} onSort={sorting.toggle} className={HEAD_CLASS} />
+                  <SortableHeader label="Last Sign-in" sortKey="lastSignInAt" sort={sorting.sort} onSort={sorting.toggle} className={HEAD_CLASS} />
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>

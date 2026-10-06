@@ -18,6 +18,7 @@ import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PageShell } from "@/components/page-shell";
 import { ReceiptPhoto } from "@/components/receipt-photo";
+import { SortableHeader, useTableSort } from "@/components/sortable-header";
 import { TablePagination } from "@/components/table-pagination";
 import { PaymentReceiptsClient } from "./payment-receipts-client";
 import { useCan } from "@/components/shell-access-context";
@@ -72,6 +73,12 @@ const RECEIPT_CONFIRMATIONS = {
       "This writes what you have entered onto the sale, moves stock by the difference, restates its payment, and marks the receipt verified. The receipt number stays as it is and nothing goes back to the branch. What the sale said before is kept only in the audit trail.",
     confirmLabel: "Correct the sale and verify",
   },
+  VOID_VERIFIED_SALE: {
+    title: "Void this verified sale?",
+    description:
+      "This voids a sale Accounting already verified. Every line goes back into the branch's stock, its payment is voided, and the sales reports stop counting it on the day it was sold, so a period already reported will change. The note is kept on the review and in the audit trail. It cannot be undone.",
+    confirmLabel: "Void the verified sale",
+  },
   DELETE_VOIDED_SALE: {
     title: "Delete this voided sale?",
     description:
@@ -106,6 +113,7 @@ type Sale = {
   salesperson: { personnelId: string; name: string; branch: { id: string; code: string; name: string } } | null;
   reviewStatus: "UNVERIFIED" | "VERIFIED" | "MISMATCH_REPORTED";
   status: "POSTED" | "VOIDED";
+  source?: "Customer Order" | "Direct Sale";
   mismatchCategory: string | null;
   notes: string | null;
   reportedComparison: ReceiptComparison | null;
@@ -228,6 +236,8 @@ type PickerProduct = {
   price: number | null;
   /** On hand at the branch asked about, which is what a correction can move. */
   stockOnHand?: number;
+  /** On hand less reserved and quarantined units: what the branch can still sell. */
+  stockAvailable?: number;
 };
 
 /**
@@ -242,11 +252,13 @@ async function searchProducts(term: string, locationId: string): Promise<PickerP
     // Scoped to the sale's own branch: stock anywhere else cannot be moved by
     // this correction, and offering it is how a line lands on a product the
     // branch has no record of.
-    const params = new URLSearchParams({ [field]: query, pageSize: "8", locationId });
+    // Only what the branch has free to sell: a line on a product it has none
+    // of would be refused on save, or would sell units an order is holding.
+    const params = new URLSearchParams({ [field]: query, pageSize: "20", locationId, stockStatus: "has-stock" });
     const response = await fetch(`/api/products?${params}`, { credentials: "same-origin" });
     if (!response.ok) return [] as PickerProduct[];
     const json = (await response.json()) as { data?: PickerProduct[] };
-    return json.data ?? [];
+    return (json.data ?? []).filter((product) => (product.stockAvailable ?? product.stockOnHand ?? 0) > 0);
   };
   const [byCode, byName] = await Promise.all([ask("itemCode"), ask("name")]);
   const seen = new Set<string>();
@@ -311,13 +323,10 @@ function ProductPicker({
           {searching ? (
             <p className="px-3 py-4 text-sm text-muted-foreground">Searching...</p>
           ) : (results.data ?? []).length === 0 ? (
-            <p className="px-3 py-4 text-sm text-muted-foreground">No product matches that.</p>
+            <p className="px-3 py-4 text-sm text-muted-foreground">No product available at this branch matches that.</p>
           ) : (
             (results.data ?? []).map((product) => {
               const already = exclude.includes(product.itemCode);
-              // A branch with nothing on hand has no balance to move, and the
-              // save would be refused, so say so before it is picked.
-              const unstocked = (product.stockOnHand ?? 0) <= 0;
               return (
                 <button
                   key={product.id}
@@ -333,7 +342,7 @@ function ProductPicker({
                     <span className="block truncate text-sm">{product.name}</span>
                     <span className="block text-xs text-muted-foreground">
                       {product.itemCode}
-                      {unstocked ? " - none at this branch" : ` - ${product.stockOnHand} on hand`}
+                      {` - ${product.stockAvailable ?? product.stockOnHand} available`}
                     </span>
                   </span>
                   <span className="shrink-0 text-sm tabular-nums">
@@ -545,6 +554,8 @@ function ReceiptVerificationContent() {
   const canVoidReplace = useCan("sales:void-replace");
   const canRespond = useCan("sales:mismatch:respond");
   const canDeleteVoided = useCan("sales:delete-voided");
+  const canVoidVerified = useCan("sales:void-verified");
+  const [voidVerifiedNote, setVoidVerifiedNote] = useState("");
   const canUploadEvidence = useCan("sales:evidence:upload");
   const canDeleteEvidence = useCan("sales:evidence:delete");
   const searchParams = useSearchParams();
@@ -653,6 +664,15 @@ function ReceiptVerificationContent() {
     enabled: Boolean(linkedSaleId),
   });
   const sales = useMemo(() => data?.data ?? [], [data?.data]);
+  const { rows: sortedSales, sort, toggle } = useTableSort(sales, {
+    receipt: (sale) => sale.manualReceiptNumber,
+    branch: (sale) => sale.branch,
+    customer: (sale) => sale.customer,
+    total: (sale) => sale.totalAmount,
+    evidence: (sale) => (sale.status === "VOIDED" ? null : sale.receiptPhotoUrl ? "Attached" : "Pending"),
+    status: (sale) => (sale.status === "VOIDED" ? "VOIDED" : sale.reviewStatus),
+    resolutionNote: (sale) => sale.resolutionNote ?? sale.correctionRequest?.resolutionNote,
+  });
   const linkedSale = linkedReceiptQuery.data?.data[0] ?? null;
   const meta = data?.meta ?? {
     page: 1,
@@ -714,6 +734,36 @@ function ReceiptVerificationContent() {
    * server voids the wrong receipt and posts this one unverified for
    * Accounting. No Admin stands between the mistake and the fix.
    */
+  const voidVerifiedMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedId) throw new Error("Select a sale first.");
+      const response = await fetch(`/api/accounting/receipts/${selectedId}/void`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note: voidVerifiedNote }),
+      });
+      const json = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(json?.error?.message ?? "Unable to void the sale");
+    },
+    onSuccess: async () => {
+      setConfirmationAction(null);
+      setVoidVerifiedNote("");
+      setFormError(null);
+      setFormNotice("Sale voided. Its stock is back at the branch and the reports no longer count it.");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] }),
+        queryClient.invalidateQueries({ queryKey: ["inventory-locations"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
+      ]);
+    },
+    onError: (error: Error) => {
+      setConfirmationAction(null);
+      setFormNotice(null);
+      setFormError(error.message);
+    },
+  });
+
   const deleteVoidedMutation = useMutation({
     mutationFn: async () => {
       if (!selectedId) throw new Error("Select a sale first.");
@@ -778,7 +828,7 @@ function ReceiptVerificationContent() {
     },
     onSuccess: async () => {
       setIsCorrectionOpen(false);
-      await queryClient.invalidateQueries({ queryKey: ["receipt-verifications"] });
+      await queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] });
       setFormError("");
       setFormNotice(
         correctionMode === "ACCOUNTING"
@@ -799,6 +849,10 @@ function ReceiptVerificationContent() {
     mutationFn: async () => {
       if (!selectedId) throw new Error("Select a receipt first.");
       if (!notes.trim()) throw new Error("Say what was keyed wrongly before correcting the sale.");
+      // A receipt still waiting for its photo takes the one picked here first,
+      // the way Confirm correct does: the correction verifies, and a sale is
+      // never verified without one.
+      if (canUploadEvidence && photoFile) await uploadPhoto(selectedId, photoFile);
       const response = await fetch(`/api/accounting/receipts/${selectedId}/correct-verify`, {
         method: "POST",
         credentials: "same-origin",
@@ -815,8 +869,9 @@ function ReceiptVerificationContent() {
     },
     onSuccess: async () => {
       setConfirmationAction(null);
-      await queryClient.invalidateQueries({ queryKey: ["receipt-verifications"] });
+      await queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] });
       setFormError("");
+      setPhotoFile(null);
       setFormNotice("Sale corrected and verified. Nothing goes back to the branch.");
     },
     onError: (error: Error) => {
@@ -1146,6 +1201,7 @@ function ReceiptVerificationContent() {
   const selectSale = (sale: Sale) => {
     const reported = sale.reportedComparison;
     setSelectedId(sale.id);
+    setVoidVerifiedNote("");
     setFormError(null);
     setFormNotice(null);
     setComparison({
@@ -1464,18 +1520,18 @@ function ReceiptVerificationContent() {
                 <table className="w-full min-w-[840px] text-left text-sm">
                   <thead>
                     <tr className="border-b text-xs uppercase tracking-wide text-muted-foreground">
-                      <th className="px-3 py-3">Receipt</th>
-                      <th className="px-3 py-3">Branch</th>
-                      <th className="px-3 py-3">Customer</th>
-                      <th className="px-3 py-3">Total</th>
-                      <th className="px-3 py-3">Evidence</th>
-                       <th className="px-3 py-3">Status</th>
-                       <th className="px-3 py-3">Resolution note</th>
+                      <SortableHeader label="Receipt" sortKey="receipt" sort={sort} onSort={toggle} className="px-3 py-3" />
+                      <SortableHeader label="Branch" sortKey="branch" sort={sort} onSort={toggle} className="px-3 py-3" />
+                      <SortableHeader label="Customer" sortKey="customer" sort={sort} onSort={toggle} className="px-3 py-3" />
+                      <SortableHeader label="Total" sortKey="total" sort={sort} onSort={toggle} className="px-3 py-3" />
+                      <SortableHeader label="Evidence" sortKey="evidence" sort={sort} onSort={toggle} className="px-3 py-3" />
+                       <SortableHeader label="Status" sortKey="status" sort={sort} onSort={toggle} className="px-3 py-3" />
+                       <SortableHeader label="Resolution note" sortKey="resolutionNote" sort={sort} onSort={toggle} className="px-3 py-3" />
                        <th className="px-3 py-3" />
                     </tr>
                   </thead>
                   <tbody>
-                    {sales.map((sale) => (
+                    {sortedSales.map((sale) => (
                       <tr
                         key={sale.id}
                         onClick={() => selectSale(sale)}
@@ -1756,6 +1812,34 @@ function ReceiptVerificationContent() {
                   <div className="rounded-xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 p-3 text-sm text-emerald-800 dark:text-emerald-300">
                     <p className="font-medium">Original encoding confirmed</p>
                     <p className="mt-1">Resolution note: {selectedSale.resolutionNote}</p>
+                  </div>
+                )}
+                {/*
+                  Verification can itself be wrong. Undoing it is held back to
+                  whoever holds sales:void-verified, and only for a direct sale:
+                  a released order is undone with a refund.
+                */}
+                {canVoidVerified && selectedSale.status === "POSTED" && selectedSale.reviewStatus === "VERIFIED" && selectedSale.source !== "Customer Order" && (
+                  <div className="space-y-2 rounded-xl border border-red-200 p-3 dark:border-red-900">
+                    <Label htmlFor="void-verified-note">Void this verified sale</Label>
+                    <p className="text-xs text-muted-foreground">
+                      For a verification that turns out to be wrong. The stock goes back to the branch and the sale stops counting in the reports.
+                    </p>
+                    <Textarea
+                      id="void-verified-note"
+                      value={voidVerifiedNote}
+                      onChange={(event) => setVoidVerifiedNote(event.target.value)}
+                      placeholder="Why is this verified sale being voided?"
+                    />
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      disabled={voidVerifiedMutation.isPending || !voidVerifiedNote.trim()}
+                      onClick={() => setConfirmationAction("VOID_VERIFIED_SALE")}
+                    >
+                      {voidVerifiedMutation.isPending ? "Voiding..." : "Void verified sale"}
+                    </Button>
                   </div>
                 )}
                 {selectedSale.reviewStatus === "MISMATCH_REPORTED" && (
@@ -2257,51 +2341,13 @@ function ReceiptVerificationContent() {
                     {canReview &&
                       selectedSale.correctionRequest?.status !== "PENDING" &&
                       selectedSale.reviewStatus === "UNVERIFIED" && (
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          variant="workflow"
-                          onClick={() => reviewMutation.mutate("VERIFIED")}
-                          disabled={
-                            reviewMutation.isPending || evidenceMutation.isPending || deleteEvidenceMutation.isPending || Boolean(comparisonError) || differences.length > 0 || (!selectedSale.receiptPhotoUrl && !photoFile)
-                          }
-                        >
-                          <CheckCircle2 className="mr-2 h-4 w-4" />
-                          Confirm correct
-                        </Button>
-                        {/*
-                          Confirm correct asserts the encoding matches the
-                          paper, so it cannot be the button for a reader who has
-                          just written down something different. This is: it
-                          puts what was typed onto the sale, keeps the receipt
-                          number, and verifies, with no trip to the branch.
-                        */}
-                        {canVoidReplace && differences.length > 0 && selectedSale.receiptPhotoUrl ? (
-                          <Button
-                            type="button"
-                            variant="warning"
-                            disabled={correctAndVerifyMutation.isPending || Boolean(comparisonError) || !notes.trim()}
-                            onClick={() => setConfirmationAction("CORRECT_AND_VERIFY")}
-                          >
-                            {correctAndVerifyMutation.isPending ? "Correcting..." : "Correct the sale and verify"}
-                          </Button>
-                        ) : null}
-                        <span className="self-center text-xs text-muted-foreground">
-                          {!selectedSale.receiptPhotoUrl && !photoFile
-                            ? "Attach the receipt photo first: a sale is never verified without one."
-                            : differences.length === 0
-                              ? "Confirming says the encoding matches the paper."
-                              : canVoidReplace
-                                ? notes.trim()
-                                  ? "Correcting writes what you have written onto the sale and verifies it. Report mismatch instead to let the branch answer."
-                                  : "Say what was keyed wrongly in Notes, then correct the sale yourself or report the mismatch."
-                                : "Confirming says the encoding matches the paper, and what you have written does not. Report the mismatch instead."}
-                        </span>
-                      </div>
-                    )}
-                    {canReview &&
-                      selectedSale.correctionRequest?.status !== "PENDING" &&
-                      selectedSale.reviewStatus === "UNVERIFIED" && (
                       <>
+                        {/*
+                          Category and notes first: they say what is wrong,
+                          and two of the three buttons below need them. The
+                          three outcomes then sit side by side, so the choice
+                          between them is made in one place.
+                        */}
                         <div className="grid gap-2">
                           <Label htmlFor="mismatch-category">
                             Mismatch category
@@ -2330,33 +2376,69 @@ function ReceiptVerificationContent() {
                             placeholder="Describe the difference found on the handwritten receipt"
                           />
                         </div>
-                      </>
-                    )}
-                    {canReview &&
-                      selectedSale.correctionRequest?.status !== "PENDING" &&
-                      selectedSale.reviewStatus === "UNVERIFIED" && (
-                      <Button
-                        variant="warning"
-                        onClick={() => {
-                          if (!notes.trim()) {
-                            setFormError(
-                              "Notes are required when reporting a mismatch.",
-                            );
-                            return;
+                        <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="workflow"
+                          onClick={() => reviewMutation.mutate("VERIFIED")}
+                          disabled={
+                            reviewMutation.isPending || evidenceMutation.isPending || deleteEvidenceMutation.isPending || Boolean(comparisonError) || differences.length > 0 || (!selectedSale.receiptPhotoUrl && !photoFile)
                           }
-                          reviewMutation.mutate("MISMATCH_REPORTED");
-                        }}
-                        disabled={
-                          reviewMutation.isPending ||
-                          evidenceMutation.isPending ||
-                          deleteEvidenceMutation.isPending ||
-                          Boolean(comparisonError) ||
-                          (!selectedSale.receiptPhotoUrl && !photoFile)
-                        }
-                      >
-                        <AlertTriangle className="mr-2 h-4 w-4" />
-                        Report mismatch
-                      </Button>
+                        >
+                          <CheckCircle2 className="mr-2 h-4 w-4" />
+                          Confirm correct
+                        </Button>
+                        {/*
+                          Confirm correct asserts the encoding matches the
+                          paper, so it cannot be the button for a reader who has
+                          just written down something different. This is: it
+                          puts what was typed onto the sale, keeps the receipt
+                          number, and verifies, with no trip to the branch.
+                        */}
+                        {canVoidReplace && differences.length > 0 && (selectedSale.receiptPhotoUrl || (canUploadEvidence && photoFile)) ? (
+                          <Button
+                            type="button"
+                            variant="warning"
+                            disabled={correctAndVerifyMutation.isPending || Boolean(comparisonError) || !notes.trim()}
+                            onClick={() => setConfirmationAction("CORRECT_AND_VERIFY")}
+                          >
+                            {correctAndVerifyMutation.isPending ? "Correcting..." : "Correct the sale and verify"}
+                          </Button>
+                        ) : null}
+                        <Button
+                          variant="warning"
+                          onClick={() => {
+                            if (!notes.trim()) {
+                              setFormError(
+                                "Notes are required when reporting a mismatch.",
+                              );
+                              return;
+                            }
+                            reviewMutation.mutate("MISMATCH_REPORTED");
+                          }}
+                          disabled={
+                            reviewMutation.isPending ||
+                            evidenceMutation.isPending ||
+                            deleteEvidenceMutation.isPending ||
+                            Boolean(comparisonError) ||
+                            (!selectedSale.receiptPhotoUrl && !photoFile)
+                          }
+                        >
+                          <AlertTriangle className="mr-2 h-4 w-4" />
+                          Report mismatch
+                        </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {!selectedSale.receiptPhotoUrl && !photoFile
+                            ? "Attach the receipt photo first: a sale is never verified without one."
+                            : differences.length === 0
+                              ? "Confirming says the encoding matches the paper."
+                              : canVoidReplace
+                                ? notes.trim()
+                                  ? "Correcting writes what you have written onto the sale and verifies it. Report mismatch instead to let the branch answer."
+                                  : "Say what was keyed wrongly in Notes, then correct the sale yourself or report the mismatch."
+                                : "Confirming says the encoding matches the paper, and what you have written does not. Report the mismatch instead."}
+                        </p>
+                      </>
                     )}
                   </div>
                 ) : null}
@@ -2498,6 +2580,8 @@ function ReceiptVerificationContent() {
             resolveMutation.mutate("VOIDED");
           } else if (confirmationAction === "CORRECT_AND_VERIFY") {
             correctAndVerifyMutation.mutate();
+          } else if (confirmationAction === "VOID_VERIFIED_SALE") {
+            voidVerifiedMutation.mutate();
           } else if (confirmationAction === "DELETE_VOIDED_SALE") {
             deleteVoidedMutation.mutate();
           }

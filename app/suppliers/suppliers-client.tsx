@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Pencil, Plus, Truck } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
+import { SortableHeader, useTableSort } from "@/components/sortable-header";
 import { StatusBanner } from "@/components/status-banner";
 import { TablePagination } from "@/components/table-pagination";
 import { Button } from "@/components/ui/button";
@@ -112,6 +113,13 @@ export function SuppliersClient({ capabilities }: { capabilities: ReadonlyArray<
     placeholderData: (previous) => previous,
   });
   const rows = query.data?.data ?? [];
+  const { rows: sortedRows, sort, toggle } = useTableSort(rows, {
+    code: (supplier) => supplier.code,
+    name: (supplier) => supplier.name,
+    contactPerson: (supplier) => supplier.contactPerson,
+    contact: (supplier) => supplier.contactNumber || supplier.email,
+    status: (supplier) => supplier.status,
+  });
   const meta = query.data?.meta ?? { page: 1, totalPages: 1, total: 0 };
 
   const applyFilters = () => {
@@ -223,7 +231,7 @@ export function SuppliersClient({ capabilities }: { capabilities: ReadonlyArray<
         {query.isLoading ? <div className="flex min-h-48 items-center justify-center text-muted-foreground"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Loading suppliers</div>
           : query.error ? <div className="p-8 text-center text-sm text-destructive">{query.error.message}</div>
           : rows.length === 0 ? <div className="flex min-h-48 flex-col items-center justify-center gap-2 text-muted-foreground"><Truck className="h-8 w-8" /><p>No suppliers yet.</p></div>
-          : <Table><TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Supplier</TableHead><TableHead>Contact Person</TableHead><TableHead>Contact</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{rows.map((supplier) => <TableRow key={supplier.id}><TableCell className="font-mono font-semibold">{supplier.code || "-"}</TableCell><TableCell className="font-medium">{supplier.name}</TableCell><TableCell>{supplier.contactPerson || "-"}</TableCell><TableCell>{supplier.contactNumber || supplier.email || "-"}</TableCell><TableCell><span className={supplier.status === "ACTIVE" ? "text-emerald-700 dark:text-emerald-300" : "text-muted-foreground"}>{supplier.status === "ACTIVE" ? "Active" : "Inactive"}</span></TableCell><TableCell><div className="flex justify-end gap-2">{canUpdate ? <Button variant="edit" size="sm" onClick={() => openEdit(supplier)}><Pencil className="mr-2 h-4 w-4" />Edit</Button> : null}{canSetStatus ? <Button variant={supplier.status === "ACTIVE" ? "outline" : "workflow"} size="sm" disabled={statusMutation.isPending} onClick={() => statusMutation.mutate(supplier)}>{supplier.status === "ACTIVE" ? "Deactivate" : "Reactivate"}</Button> : null}{!canUpdate && !canSetStatus ? <span className="text-muted-foreground">-</span> : null}</div></TableCell></TableRow>)}</TableBody></Table>}
+          : <Table><TableHeader><TableRow><SortableHeader label="Code" sortKey="code" sort={sort} onSort={toggle} className="h-12 px-4 text-left align-middle font-medium text-muted-foreground" /><SortableHeader label="Supplier" sortKey="name" sort={sort} onSort={toggle} className="h-12 px-4 text-left align-middle font-medium text-muted-foreground" /><SortableHeader label="Contact Person" sortKey="contactPerson" sort={sort} onSort={toggle} className="h-12 px-4 text-left align-middle font-medium text-muted-foreground" /><SortableHeader label="Contact" sortKey="contact" sort={sort} onSort={toggle} className="h-12 px-4 text-left align-middle font-medium text-muted-foreground" /><SortableHeader label="Status" sortKey="status" sort={sort} onSort={toggle} className="h-12 px-4 text-left align-middle font-medium text-muted-foreground" /><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{sortedRows.map((supplier) => <TableRow key={supplier.id}><TableCell className="font-mono font-semibold">{supplier.code || "-"}</TableCell><TableCell className="font-medium">{supplier.name}</TableCell><TableCell>{supplier.contactPerson || "-"}</TableCell><TableCell>{supplier.contactNumber || supplier.email || "-"}</TableCell><TableCell><span className={supplier.status === "ACTIVE" ? "text-emerald-700 dark:text-emerald-300" : "text-muted-foreground"}>{supplier.status === "ACTIVE" ? "Active" : "Inactive"}</span></TableCell><TableCell><div className="flex justify-end gap-2">{canUpdate ? <Button variant="edit" size="sm" onClick={() => openEdit(supplier)}><Pencil className="mr-2 h-4 w-4" />Edit</Button> : null}{canSetStatus ? <Button variant={supplier.status === "ACTIVE" ? "outline" : "workflow"} size="sm" disabled={statusMutation.isPending} onClick={() => statusMutation.mutate(supplier)}>{supplier.status === "ACTIVE" ? "Deactivate" : "Reactivate"}</Button> : null}{!canUpdate && !canSetStatus ? <span className="text-muted-foreground">-</span> : null}</div></TableCell></TableRow>)}</TableBody></Table>}
         {rows.length > 0 ? (
           <div className="flex justify-end border-t px-5 py-3">
             <TablePagination

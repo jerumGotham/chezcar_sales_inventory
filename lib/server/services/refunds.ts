@@ -555,6 +555,7 @@ export async function listOrderPaymentHistory(actor: AuthContext, orderId: strin
       collectedAt: row.collectedAt.toISOString(),
       collectedBy: row.collectedBy.name,
       reviewStatus: row.reviewStatus,
+      saleId: row.saleId,
       receiptPhotoUrl: paymentPhotoUrl(row),
     })),
     refunds: refunds.map((row) => ({

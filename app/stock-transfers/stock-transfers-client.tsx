@@ -17,6 +17,7 @@ import {
 
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { PageShell } from "@/components/page-shell";
+import { SortableHeader, useTableSort } from "@/components/sortable-header";
 import { TablePagination } from "@/components/table-pagination";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -421,6 +422,42 @@ export function StockTransfersClient({
     ? (transfers.data?.data.find((transfer) => transfer.id === selectedTransferId) ??
       null)
     : null;
+  const productLabelOf = (line: TransferLine) =>
+    `${line.product.itemCode} - ${line.product.name}`;
+  const transferSort = useTableSort(transfers.data?.data, {
+    reference: (transfer) => transfer.reference,
+    source: (transfer) => transfer.source.name,
+    destination: (transfer) => transfer.destination.name,
+    status: (transfer) => getTransferStatusLabel(transfer.status),
+    products: (transfer) => transfer.lines.length,
+  });
+  const draftLineSort = useTableSort(selected?.lines, {
+    product: productLabelOf,
+    requested: (line) => line.requestedQuantity,
+  });
+  const sentLineSort = useTableSort(selected?.lines, {
+    product: productLabelOf,
+    sent: (line) => line.dispatchedQuantity || line.requestedQuantity,
+    received: (line) =>
+      line.discrepancy?.actualQuantity ??
+      (selected?.status === "RECEIVED" ? line.dispatchedQuantity : null),
+    missing: (line) =>
+      line.discrepancy
+        ? line.dispatchedQuantity - line.discrepancy.actualQuantity
+        : selected?.status === "RECEIVED"
+          ? 0
+          : null,
+    issue: (line) =>
+      selected?.status === "CANCELLED"
+        ? "Transfer cancelled"
+        : (line.discrepancy?.reason ?? "No issue"),
+  });
+  const resolvedLineSort = useTableSort(selected?.lines, {
+    product: productLabelOf,
+    posted: (line) => line.resolution?.destinationQty ?? 0,
+    restored: (line) => line.resolution?.restoreToSrQty ?? 0,
+    writtenOff: (line) => line.resolution?.lossQty ?? 0,
+  });
   // Which end of this transfer the viewer works at decides what they may do:
   // the sender dispatches and cancels, the receiver counts and reports.
   const holdsSourceSide = selected ? accessibleLocationIds.has(selected.source.id) : false;
@@ -1116,12 +1153,12 @@ export function StockTransfersClient({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left">
-                    <th>Product</th>
-                    <th>Requested</th>
+                    <SortableHeader label="Product" sortKey="product" sort={draftLineSort.sort} onSort={draftLineSort.toggle} />
+                    <SortableHeader label="Requested" sortKey="requested" sort={draftLineSort.sort} onSort={draftLineSort.toggle} />
                   </tr>
                 </thead>
                 <tbody>
-                  {selected.lines?.map((line) => (
+                  {draftLineSort.rows.map((line) => (
                     <tr key={line.id}>
                       <td>
                         {line.product.itemCode} - {line.product.name}
@@ -1199,15 +1236,15 @@ export function StockTransfersClient({
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left">
-                  <th>Product</th>
-                  <th>Sent</th>
-                  <th>Received by branch</th>
-                  <th>Missing / affected</th>
-                  <th>Issue</th>
+                  <SortableHeader label="Product" sortKey="product" sort={sentLineSort.sort} onSort={sentLineSort.toggle} />
+                  <SortableHeader label="Sent" sortKey="sent" sort={sentLineSort.sort} onSort={sentLineSort.toggle} />
+                  <SortableHeader label="Received by branch" sortKey="received" sort={sentLineSort.sort} onSort={sentLineSort.toggle} />
+                  <SortableHeader label="Missing / affected" sortKey="missing" sort={sentLineSort.sort} onSort={sentLineSort.toggle} />
+                  <SortableHeader label="Issue" sortKey="issue" sort={sentLineSort.sort} onSort={sentLineSort.toggle} />
                 </tr>
               </thead>
               <tbody>
-                {selected.lines?.map((line) => (
+                {sentLineSort.rows.map((line) => (
                   <tr key={line.id}>
                     <td>
                       {line.product.itemCode} - {line.product.name}
@@ -1268,14 +1305,14 @@ export function StockTransfersClient({
                   <table className="w-full min-w-[680px] text-sm">
                     <thead>
                       <tr className="text-left text-emerald-900 dark:text-emerald-300">
-                        <th className="py-2 pr-3">Product</th>
-                        <th className="py-2 pr-3">Branch stock posted</th>
-                        <th className="py-2 pr-3">Restored to SR</th>
-                        <th className="py-2 pr-3">Written off</th>
+                        <SortableHeader className="py-2 pr-3" label="Product" sortKey="product" sort={resolvedLineSort.sort} onSort={resolvedLineSort.toggle} />
+                        <SortableHeader className="py-2 pr-3" label="Branch stock posted" sortKey="posted" sort={resolvedLineSort.sort} onSort={resolvedLineSort.toggle} />
+                        <SortableHeader className="py-2 pr-3" label="Restored to SR" sortKey="restored" sort={resolvedLineSort.sort} onSort={resolvedLineSort.toggle} />
+                        <SortableHeader className="py-2 pr-3" label="Written off" sortKey="writtenOff" sort={resolvedLineSort.sort} onSort={resolvedLineSort.toggle} />
                       </tr>
                     </thead>
                     <tbody>
-                      {selected.lines?.map((line) => (
+                      {resolvedLineSort.rows.map((line) => (
                         <tr
                           className="border-t border-emerald-200 dark:border-emerald-900"
                           key={line.id}
@@ -1779,11 +1816,11 @@ export function StockTransfersClient({
             <table className="w-full min-w-[700px]">
               <thead className="bg-muted">
                 <tr>
-                  <th className="p-3 text-left">Reference</th>
-                  <th className="p-3 text-left">Source</th>
-                  <th className="p-3 text-left">Destination</th>
-                  <th className="p-3 text-left">Status</th>
-                  <th className="p-3 text-left">Products</th>
+                  <SortableHeader className="p-3 text-left" label="Reference" sortKey="reference" sort={transferSort.sort} onSort={transferSort.toggle} />
+                  <SortableHeader className="p-3 text-left" label="Source" sortKey="source" sort={transferSort.sort} onSort={transferSort.toggle} />
+                  <SortableHeader className="p-3 text-left" label="Destination" sortKey="destination" sort={transferSort.sort} onSort={transferSort.toggle} />
+                  <SortableHeader className="p-3 text-left" label="Status" sortKey="status" sort={transferSort.sort} onSort={transferSort.toggle} />
+                  <SortableHeader className="p-3 text-left" label="Products" sortKey="products" sort={transferSort.sort} onSort={transferSort.toggle} />
                   <th className="p-3" />
                 </tr>
               </thead>
@@ -1794,8 +1831,8 @@ export function StockTransfersClient({
                       Loading transfers...
                     </td>
                   </tr>
-                ) : transfers.data?.data.length ? (
-                  transfers.data.data.map((transfer) => (
+                ) : transferSort.rows.length ? (
+                  transferSort.rows.map((transfer) => (
                     <tr className="border-t" key={transfer.id}>
                       <td className="p-3 font-medium">{transfer.reference}</td>
                       <td className="p-3">

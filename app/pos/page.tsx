@@ -890,7 +890,7 @@ function PosTab() {
         <div className="mb-6 flex flex-col gap-3 rounded-xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 px-4 py-3 text-emerald-800 dark:text-emerald-300 sm:flex-row sm:items-center sm:justify-between">
           <p role="status" className="text-sm font-medium">{successMessage}</p>
           <div className="flex items-center gap-2">
-            <Link href="/customer-orders?view=sales" className={buttonVariants({ variant: "view", size: "sm" })}>
+            <Link href="/customer-orders?view=sales&source=direct" className={buttonVariants({ variant: "view", size: "sm" })}>
               View Customer Orders
             </Link>
             <Button size="sm" variant="ghost" onClick={() => setSuccessMessage("")}>Dismiss</Button>

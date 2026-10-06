@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
+import { SortableHeader, useTableSort } from "@/components/sortable-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -26,7 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { TablePagination } from "@/components/table-pagination";
-import { AUDIT_CATEGORIES, type AuditEntryDto, type AuditTrailDto } from "@/lib/contracts/audit";
+import { AUDIT_CATEGORIES, type AuditEntryDto, type AuditItemDto, type AuditTrailDto } from "@/lib/contracts/audit";
 
 const PAGE_SIZE = 25;
 
@@ -49,6 +50,16 @@ const dateTime = new Intl.DateTimeFormat("en-PH", {
 
 function formatMoment(value: string) {
   return dateTime.format(new Date(value));
+}
+
+// The classes TableHead applies, for the sortable headers that replace it.
+const HEAD_CLASS = "h-12 px-4 text-left align-middle font-medium text-muted-foreground";
+
+// Item amounts arrive formatted; sort on the figure, not the text.
+function amountValue(amount: string | undefined) {
+  if (!amount) return null;
+  const value = Number(amount.replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(value) ? value : amount;
 }
 
 export function AuditClient() {
@@ -77,7 +88,16 @@ export function AuditClient() {
     placeholderData: (previous) => previous,
   });
 
-  const rows = query.data?.data ?? [];
+  const sorting = useTableSort(query.data?.data, {
+    occurredAt: (row) => row.occurredAt,
+    category: (row) => row.category,
+    action: (row) => row.action,
+    actor: (row) => row.actor,
+    reference: (row) => row.reference,
+    location: (row) => row.location,
+    details: (row) => row.details,
+  });
+  const rows = sorting.rows;
   // Stable, so the memoised rows survive opening and closing the dialog.
   const openDetails = useCallback((row: AuditEntryDto) => setOpenEntry(row), []);
   const meta = query.data?.meta ?? { page: 1, pageSize: PAGE_SIZE, total: 0, totalPages: 1, truncated: false };
@@ -156,13 +176,13 @@ export function AuditClient() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>When</TableHead>
-                  <TableHead>Module</TableHead>
-                  <TableHead>Action</TableHead>
-                  <TableHead>User</TableHead>
-                  <TableHead>Reference</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Details</TableHead>
+                  <SortableHeader label="When" sortKey="occurredAt" sort={sorting.sort} onSort={sorting.toggle} className={HEAD_CLASS} />
+                  <SortableHeader label="Module" sortKey="category" sort={sorting.sort} onSort={sorting.toggle} className={HEAD_CLASS} />
+                  <SortableHeader label="Action" sortKey="action" sort={sorting.sort} onSort={sorting.toggle} className={HEAD_CLASS} />
+                  <SortableHeader label="User" sortKey="actor" sort={sorting.sort} onSort={sorting.toggle} className={HEAD_CLASS} />
+                  <SortableHeader label="Reference" sortKey="reference" sort={sorting.sort} onSort={sorting.toggle} className={HEAD_CLASS} />
+                  <SortableHeader label="Location" sortKey="location" sort={sorting.sort} onSort={sorting.toggle} className={HEAD_CLASS} />
+                  <SortableHeader label="Details" sortKey="details" sort={sorting.sort} onSort={sorting.toggle} className={HEAD_CLASS} />
                   <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
@@ -270,31 +290,42 @@ function AuditEntryDialog({ entry, onClose }: { entry: AuditEntryDto | null; onC
                 <h3 className="mb-2 text-sm font-medium">
                   Items <span className="text-muted-foreground font-normal">({entry.items.length})</span>
                 </h3>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Item</TableHead>
-                        <TableHead className="text-right">Quantity</TableHead>
-                        <TableHead className="text-right">Unit price</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {entry.items.map((item, index) => (
-                        <TableRow key={`${item.name}-${index}`}>
-                          <TableCell>{item.name}</TableCell>
-                          <TableCell className="text-right">{item.quantity ?? "-"}</TableCell>
-                          <TableCell className="text-right">{item.amount ?? "-"}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                <AuditItemsTable items={entry.items} />
               </section>
             ) : null}
           </div>
         ) : null}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function AuditItemsTable({ items }: { items: AuditItemDto[] }) {
+  const sorting = useTableSort(items, {
+    name: (item) => item.name,
+    quantity: (item) => item.quantity,
+    amount: (item) => amountValue(item.amount),
+  });
+  return (
+    <div className="overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <SortableHeader label="Item" sortKey="name" sort={sorting.sort} onSort={sorting.toggle} className={HEAD_CLASS} />
+            <SortableHeader label="Quantity" sortKey="quantity" sort={sorting.sort} onSort={sorting.toggle} className={`${HEAD_CLASS} text-right`} align="right" />
+            <SortableHeader label="Unit price" sortKey="amount" sort={sorting.sort} onSort={sorting.toggle} className={`${HEAD_CLASS} text-right`} align="right" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {sorting.rows.map((item, index) => (
+            <TableRow key={`${item.name}-${index}`}>
+              <TableCell>{item.name}</TableCell>
+              <TableCell className="text-right">{item.quantity ?? "-"}</TableCell>
+              <TableCell className="text-right">{item.amount ?? "-"}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }

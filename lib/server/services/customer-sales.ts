@@ -1485,6 +1485,96 @@ export async function deleteVoidedSale(actor: AuthContext, saleId: string) {
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
+export const voidVerifiedSaleSchema = z.object({
+  note: z.string().trim().min(1, "Say why this verified sale is being voided").max(5_000),
+});
+
+/**
+ * Takes back a sale Accounting already verified, for the case where the
+ * verification itself was wrong. The goods return to the branch, the payment
+ * row is voided so the sales reports stop counting it on the day it was sold,
+ * and the review records who undid it and why.
+ *
+ * Direct sales only: a released order's sale is one receipt of several on that
+ * order, and pulling it alone would leave the order released with its stock
+ * back on the shelf. A refund is the way to undo a release.
+ */
+export async function voidVerifiedSale(actor: AuthContext, saleId: string, rawInput: z.input<typeof voidVerifiedSaleSchema>) {
+  assertCapability(actor, "sales:void-verified");
+  const input = voidVerifiedSaleSchema.parse(rawInput);
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Sale" WHERE id = ${saleId} FOR UPDATE`;
+    const sale = await tx.sale.findUnique({
+      where: { id: saleId },
+      include: {
+        accountingReview: true,
+        lines: true,
+        location: { select: { name: true } },
+        _count: { select: { refunds: true, warranties: true, originalBackjobs: true, chargeBackjobs: true } },
+      },
+    });
+    if (!sale) throw new CustomerSalesError("NOT_FOUND", "Sale not found", 404);
+    assertOperationalResource(actor, sale.locationId);
+    if (sale.status !== "POSTED") throw new CustomerSalesError("INVALID_STATUS", "Only a posted sale can be voided", 409);
+    if (sale.orderId) {
+      throw new CustomerSalesError("INVALID_STATUS", "This sale released a customer order. Refund it instead of voiding it.", 409);
+    }
+    const review = sale.accountingReview;
+    if (!review || review.status !== "VERIFIED") {
+      throw new CustomerSalesError("INVALID_STATE", "Only a verified sale is voided here. Review it first.", 409);
+    }
+    const standingOn: Array<[number, string]> = [
+      [sale._count.refunds, "refund(s)"],
+      [sale._count.warranties, "customer warranty case(s)"],
+      [sale._count.originalBackjobs + sale._count.chargeBackjobs, "backjob(s)"],
+    ];
+    for (const [count, description] of standingOn) {
+      // Each was worked out from these lines; voiding under them would leave
+      // money or stock accounted for twice.
+      if (count > 0) throw new CustomerSalesError("SALE_IN_USE", `${count} ${description} stand on this sale, so it cannot be voided.`, 409);
+    }
+
+    const now = new Date();
+    await updateSaleInventory(
+      tx,
+      sale.locationId,
+      sale.lines.map((line) => ({ productId: line.productId, quantity: line.quantity })),
+      "reverse",
+      actor.userId,
+      `VOID-${sale.reference}`,
+      `Verified sale ${sale.reference} voided: ${input.note}`,
+    );
+    await tx.sale.update({ where: { id: sale.id }, data: { status: "VOIDED", correctedById: actor.userId, correctedAt: now } });
+    await voidSalePayment(tx, sale.id, `Verified sale ${sale.reference} was voided`, actor.userId);
+    await tx.saleAccountingReview.update({
+      where: { id: review.id },
+      data: { resolutionAction: "VOIDED", resolutionNote: input.note, resolvedById: actor.userId, resolvedAt: now },
+    });
+    await notifySaleParties(
+      tx,
+      sale,
+      "Verified sale voided",
+      `${sale.manualReceiptNumber} was voided after verification and its stock returned to the branch.`,
+      review.reviewedById ? [review.reviewedById] : [],
+    );
+    await recordAuditLog({
+      category: "Receipt Verification",
+      action: "Verified Sale Voided",
+      actorId: actor.userId,
+      reference: sale.manualReceiptNumber,
+      locationLabel: sale.location.name,
+      details: `Voided the verified sale ${sale.reference} and returned its stock. ${input.note}`,
+      items: sale.lines.map((line) => ({ name: `${line.productItemCode} ${line.productName}`, quantity: line.quantity })),
+      facts: [
+        { label: "Sale", value: sale.reference },
+        { label: "Total", value: String(sale.totalAmount.toNumber()) },
+        { label: "Verified on", value: review.verifiedAt?.toISOString().slice(0, 10) ?? "-" },
+      ],
+    }, tx);
+    return { saleId: sale.id, saleStatus: "VOIDED" as const };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
 export async function createDirectSale(actor: AuthContext, rawInput: z.input<typeof directSaleSchema>) {
   assertCapability(actor, "sales:post");
   return createDirectSaleForActor(actor, rawInput);
@@ -1763,7 +1853,7 @@ export async function listReceiptVerifications(actor: AuthContext, rawInput: unk
   });
 
   return {
-    data: sales.map(serializeSaleWithCorrection),
+    data: await nameReportedLines(sales.map(serializeSaleWithCorrection)),
     meta: { page, pageSize: input.pageSize, totalItems, totalPages, unverified, verified, mismatches, missingEvidence },
   };
 }
@@ -1983,7 +2073,7 @@ export async function reviewSale(actor: AuthContext, saleId: string, input: z.in
         verifiedAt: input.status === "VERIFIED" ? reviewedAt : null,
         mismatchCategory: input.status === "MISMATCH_REPORTED" ? input.mismatchCategory : null,
         notes: input.status === "MISMATCH_REPORTED" ? input.notes : null,
-        comparisonJson: JSON.stringify({ comparison: input.comparison, differences }),
+        comparisonJson: JSON.stringify({ comparison: await withProductNames(tx, input.comparison), differences }),
       },
     });
     await syncSalePaymentReview(tx, sale.id, {
@@ -2844,14 +2934,41 @@ function serializeSalespersonSnapshot(record: {
   };
 }
 
+/*
+ * Names a reported line from the catalogue when the sale never had that item.
+ * The sale's own lines name the rest when the sale is read; a line the receipt
+ * added would otherwise show its item code alone.
+ */
+async function withProductNames<T extends { lines: Array<{ itemCode: string; name?: string }> }>(
+  db: Pick<Prisma.TransactionClient, "product">,
+  comparison: T,
+): Promise<T> {
+  const codes = [...new Set(comparison.lines.filter((line) => !line.name).map((line) => line.itemCode))];
+  if (codes.length === 0) return comparison;
+  const products = await db.product.findMany({ where: { itemCode: { in: codes } }, select: { itemCode: true, name: true } });
+  const names = new Map(products.map((product) => [product.itemCode, product.name]));
+  return { ...comparison, lines: comparison.lines.map((line) => ({ ...line, name: line.name ?? names.get(line.itemCode) })) };
+}
+
+/** The same naming for comparisons stored before names were kept, in one query per page. */
+async function nameReportedLines<T extends { reportedComparison: { lines: Array<{ itemCode: string; name?: string }> } | null }>(rows: T[]) {
+  const codes = [...new Set(rows.flatMap((row) => row.reportedComparison?.lines.filter((line) => !line.name).map((line) => line.itemCode) ?? []))];
+  if (codes.length === 0) return rows;
+  const products = await prisma.product.findMany({ where: { itemCode: { in: codes } }, select: { itemCode: true, name: true } });
+  const names = new Map(products.map((product) => [product.itemCode, product.name]));
+  return rows.map((row) => row.reportedComparison
+    ? { ...row, reportedComparison: { ...row.reportedComparison, lines: row.reportedComparison.lines.map((line) => ({ ...line, name: line.name ?? names.get(line.itemCode) })) } }
+    : row);
+}
+
 function parseReportedComparison(comparisonJson: string | null | undefined, namesByItemCode: Map<string, string>) {
   if (!comparisonJson) return null;
   try {
     const stored = JSON.parse(comparisonJson) as { comparison?: unknown; replacement?: unknown };
     const parsed = receiptComparisonSchema.safeParse(stored.comparison ?? stored.replacement);
     if (!parsed.success) return null;
-    // A reported line may name an item the sale never had; that one keeps
-    // showing its code alone, which is the honest reading of the mismatch.
+    // A reported line may name an item the sale never had; the catalogue names
+    // that one (withProductNames on save, nameReportedLines on read).
     return { ...parsed.data, lines: parsed.data.lines.map((line) => ({ ...line, name: namesByItemCode.get(line.itemCode) ?? line.name })) };
   } catch {
     return null;

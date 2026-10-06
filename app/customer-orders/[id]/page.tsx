@@ -23,6 +23,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useCan, useShellAccess } from "@/components/shell-access-context";
 import { StatusBanner } from "@/components/status-banner";
+import { OrderPaymentDialog } from "../order-payment-dialog";
+import { SortableHeader, useTableSort } from "@/components/sortable-header";
 import { Input } from "@/components/ui/input";
 import { getCustomerOrderActions, type CustomerOrderStatusCode } from "@/lib/customer-order-actions";
 
@@ -113,8 +115,17 @@ export default function CustomerOrderDetailsPage() {
   const capabilities = access.authenticated ? access.capabilities : [];
   const orderId = params.id;
   const [isCancelOpen, setIsCancelOpen] = useState(false);
+  const [isPaymentOpen, setIsPaymentOpen] = useState(false);
+  // What just happened, said once at the top of the page the reader is on.
+  const [notice, setNotice] = useState<string | null>(null);
   const [cancellationNote, setCancellationNote] = useState("");
   const { data: order, isLoading, error } = useQuery({ queryKey: ["customer-order", orderId], queryFn: () => fetchOrder(orderId), enabled: Boolean(orderId) });
+  const lineSort = useTableSort(order?.lines, {
+    item: (line) => line.itemCode,
+    quantity: (line) => line.quantity,
+    unit: (line) => line.unitPrice,
+    amount: (line) => line.amount,
+  });
   const canViewEvidence = useCan("sales:evidence:view");
   /* Every receipt collected on the order, each with its uploaded photo. */
   const receiptsQuery = useQuery({
@@ -128,18 +139,22 @@ export default function CustomerOrderDetailsPage() {
     },
   });
 
-  /* The branch's catalogue, for adding a product the order did not have. */
+  /*
+   * What the branch has free to sell, for adding a product the order did not
+   * have. Out-of-stock and fully reserved products are left out: adding one
+   * would only fail when the edit tries to reserve it.
+   */
   const productsQuery = useQuery({
     queryKey: ["order-edit-products", order?.locationId],
     enabled: isEditOpen && Boolean(order?.locationId),
     queryFn: async () => {
       const response = await fetch(
-        `/api/customer-orders/options?locationId=${order!.locationId}&includeUnavailable=true`,
+        `/api/customer-orders/options?locationId=${encodeURIComponent(order!.locationId)}`,
         { credentials: "same-origin" },
       );
       const json = await response.json();
       if (!response.ok) throw new Error(json.error?.message ?? "Unable to load products");
-      return json.data.products as Array<{ id: string; itemCode: string; name: string; price: number }>;
+      return json.data.products as Array<{ id: string; itemCode: string; name: string; price: number; availableQuantity: number }>;
     },
   });
 
@@ -183,11 +198,25 @@ export default function CustomerOrderDetailsPage() {
       if (!response.ok) throw new Error(json.error?.message ?? "Unable to save the changes");
       return json.data;
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["customer-order", orderId] });
-      await queryClient.invalidateQueries({ queryKey: ["customer-orders"] });
+    onSuccess: async (saved: OrderDetail) => {
+      const refunded = handsMoneyBack ? Math.round((paidOnOrder - saved.totalAmount) * 100) / 100 : 0;
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["customer-order", orderId] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-orders-list"] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-order-receipts", orderId] }),
+        queryClient.invalidateQueries({ queryKey: ["inventory-locations"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
+      ]);
       setIsEditOpen(false);
       setEditError("");
+      setNotice(
+        `Items saved. ${saved.orderNo} now totals ${formatPeso(saved.totalAmount)}` +
+          (refunded > 0
+            ? `, and ${formatPeso(refunded)} was recorded as refunded to the customer.`
+            : saved.balance > 0
+              ? `, with ${formatPeso(saved.balance)} still to collect.`
+              : ", and it is paid in full."),
+      );
     },
     onError: (saveError: Error) => setEditError(saveError.message),
   });
@@ -242,6 +271,7 @@ export default function CustomerOrderDetailsPage() {
       ]);
       setIsCancelOpen(false);
       setCancellationNote("");
+      setNotice(`${order?.orderNo ?? "The order"} was cancelled and its reserved stock released.`);
     },
   });
   const reserveMutation = useMutation({
@@ -262,6 +292,7 @@ export default function CustomerOrderDetailsPage() {
         queryClient.invalidateQueries({ queryKey: ["customers"] }),
         queryClient.invalidateQueries({ queryKey: ["customer-history"] }),
       ]);
+      setNotice(`Stock reserved for ${order?.orderNo ?? "the order"}.`);
     },
   });
   const actions = order ? getCustomerOrderActions({ capabilities, statusCode: order.statusCode, downpayment: order.downpayment, balance: order.balance }) : null;
@@ -273,6 +304,7 @@ export default function CustomerOrderDetailsPage() {
       actions={
         <div className="flex flex-wrap gap-2">
           <Link href="/customer-orders?view=orders" className={buttonVariants({ variant: "outline" })}><ArrowLeft className="mr-2 h-4 w-4" />Back</Link>
+          {order && actions?.canRecordPayment ? <Button onClick={() => setIsPaymentOpen(true)}>{order.downpayment > 0 ? "Add Payment" : "Downpayment"}</Button> : null}
           {order && actions?.canReserve ? <Button variant="workflow" onClick={() => reserveMutation.mutate()} disabled={reserveMutation.isPending}>{reserveMutation.isPending ? "Reserving..." : "Reserve Stock"}</Button> : null}
           {order && actions?.canRelease ? <Link href={`/customer-orders/${order.id}/release`} className={buttonVariants({ variant: "workflow" })}>Release Order</Link> : null}
           {order && actions?.canCancel ? <Button variant="destructive" onClick={() => setIsCancelOpen(true)}>Cancel Order</Button> : null}
@@ -283,6 +315,7 @@ export default function CustomerOrderDetailsPage() {
       {error ? <div className="rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-4 text-sm text-red-700 dark:text-red-300">{(error as Error).message}</div> : null}
       {cancelMutation.error ? <div className="mb-4 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-4 text-sm text-red-700 dark:text-red-300">{(cancelMutation.error as Error).message}</div> : null}
       {reserveMutation.error ? <div className="mb-4 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-4 text-sm text-red-700 dark:text-red-300">{(reserveMutation.error as Error).message}</div> : null}
+      {notice ? <div className="mb-4"><StatusBanner tone="success" onDismiss={() => setNotice(null)}>{notice}</StatusBanner></div> : null}
       {order ? (
         <div className="grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
           <Card>
@@ -310,8 +343,8 @@ export default function CustomerOrderDetailsPage() {
               </div>
               <div className="mt-3 overflow-x-auto">
                 <table className="w-full min-w-[640px]">
-                  <thead className="bg-muted"><tr><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Item</th><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Qty</th><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Unit</th><th className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground">Amount</th></tr></thead>
-                  <tbody>{order.lines.map((line) => <tr key={line.itemCode} className="border-b"><td className="px-4 py-3 text-sm">{line.itemCode} - {line.name}</td><td className="px-4 py-3 text-sm">{line.quantity}</td><td className="px-4 py-3 text-sm">{formatPeso(line.unitPrice)}</td><td className="px-4 py-3 text-sm font-medium">{formatPeso(line.amount)}</td></tr>)}</tbody>
+                  <thead className="bg-muted"><tr><SortableHeader label="Item" sortKey="item" sort={lineSort.sort} onSort={lineSort.toggle} className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground" /><SortableHeader label="Qty" sortKey="quantity" sort={lineSort.sort} onSort={lineSort.toggle} className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground" /><SortableHeader label="Unit" sortKey="unit" sort={lineSort.sort} onSort={lineSort.toggle} className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground" /><SortableHeader label="Amount" sortKey="amount" sort={lineSort.sort} onSort={lineSort.toggle} className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground" /></tr></thead>
+                  <tbody>{lineSort.rows.map((line) => <tr key={line.itemCode} className="border-b"><td className="px-4 py-3 text-sm">{line.itemCode} - {line.name}</td><td className="px-4 py-3 text-sm">{line.quantity}</td><td className="px-4 py-3 text-sm">{formatPeso(line.unitPrice)}</td><td className="px-4 py-3 text-sm font-medium">{formatPeso(line.amount)}</td></tr>)}</tbody>
                 </table>
               </div>
             </CardContent>
@@ -367,6 +400,22 @@ export default function CustomerOrderDetailsPage() {
           </Card>
           </div>
         </div>
+      ) : null}
+      {order ? (
+        <OrderPaymentDialog
+          open={isPaymentOpen}
+          order={{
+            id: order.id,
+            orderNo: order.orderNo,
+            customer: order.customer,
+            items: order.lines.map((line) => ({ name: `${line.itemCode} - ${line.name}`, quantity: line.quantity })),
+            totalAmount: order.totalAmount,
+            downpayment: order.downpayment,
+            balance: order.balance,
+          }}
+          onOpenChange={setIsPaymentOpen}
+          onSaved={setNotice}
+        />
       ) : null}
       <Dialog open={isEditOpen} onOpenChange={(open) => { setIsEditOpen(open); if (!open) setEditError(""); }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
@@ -450,13 +499,17 @@ export default function CustomerOrderDetailsPage() {
                 }}
               >
                 <option value="">
-                  {productsQuery.isLoading ? "Loading products..." : "Choose a product to add"}
+                  {productsQuery.isLoading
+                    ? "Loading products..."
+                    : productsQuery.data?.length === 0
+                      ? "No products available at this branch"
+                      : "Choose a product to add"}
                 </option>
                 {(productsQuery.data ?? [])
                   .filter((product) => !editLines.some((line) => line.productId === product.id))
                   .map((product) => (
                     <option key={product.id} value={product.id}>
-                      {product.itemCode} - {product.name} ({formatPeso(product.price)})
+                      {product.itemCode} - {product.name} ({formatPeso(product.price)}, {product.availableQuantity} available)
                     </option>
                   ))}
               </select>

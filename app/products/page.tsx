@@ -16,6 +16,7 @@ import {
 
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { PageShell } from "@/components/page-shell";
+import { SortableHeader, useTableSort } from "@/components/sortable-header";
 import { TablePagination } from "@/components/table-pagination";
 import { useCan } from "@/components/shell-access-context";
 import { StatusBanner } from "@/components/status-banner";
@@ -260,6 +261,19 @@ export default function ProductsPage() {
   });
 
   const rows = useMemo(() => data?.data ?? [], [data?.data]);
+  const { rows: sortedRows, sort, toggle } = useTableSort(rows, {
+    itemCode: (product) => product.itemCode,
+    name: (product) => product.name,
+    brand: (product) => product.brand,
+    compatibility: (product) => product.vehicleCompatibilities.length === 0
+      ? ""
+      : product.vehicleCompatibilities.map((compatibility) => `${compatibility.make ?? ""} ${compatibility.model}`.trim()).join(", "),
+    price: (product) => product.price,
+    reorderLevel: (product) => product.reorderLevel,
+    stock: (product) => product.stockOnHand,
+    status: (product) => product.status,
+    description: (product) => product.description,
+  });
   // The same suppliers the filter offers, without the "All" row.
   const supplierOptions = useMemo(
     () => (data?.filterOptions.brands ?? []).map((supplier) => ({ value: supplier.id, label: supplier.name })),
@@ -631,31 +645,15 @@ export default function ProductsPage() {
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Image
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Item Code
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Name
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Brand
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Vehicle Compatibility</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Price
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Reorder Level
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Stock
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Status
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Description
-                    </th>
+                    <SortableHeader label="Item Code" sortKey="itemCode" sort={sort} onSort={toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    <SortableHeader label="Name" sortKey="name" sort={sort} onSort={toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    <SortableHeader label="Brand" sortKey="brand" sort={sort} onSort={toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    <SortableHeader label="Vehicle Compatibility" sortKey="compatibility" sort={sort} onSort={toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    <SortableHeader label="Price" sortKey="price" sort={sort} onSort={toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    <SortableHeader label="Reorder Level" sortKey="reorderLevel" sort={sort} onSort={toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    <SortableHeader label="Stock" sortKey="stock" sort={sort} onSort={toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    <SortableHeader label="Status" sortKey="status" sort={sort} onSort={toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
+                    <SortableHeader label="Description" sortKey="description" sort={sort} onSort={toggle} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" />
                     {hasProductActions && <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Action</th>}
                   </tr>
                 </thead>
@@ -689,7 +687,7 @@ export default function ProductsPage() {
                       </td>
                     </tr>
                   ) : (
-                    rows.map((product) => (
+                    sortedRows.map((product) => (
                       <tr
                         key={product.id}
                         className="border-b transition-colors hover:bg-muted"
