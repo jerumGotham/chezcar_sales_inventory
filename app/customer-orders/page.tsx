@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { Route } from "next";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Select from "react-select";
 import {
@@ -286,6 +286,15 @@ async function fetchCustomerOrders(params: {
   };
 }
 
+type SalesFilterBranch = { id: string; code: string; name: string };
+
+const SALES_PERIOD_OPTIONS = [
+  { value: "", label: "All time" },
+  { value: "today", label: "Today" },
+  { value: "last7Days", label: "Last 7 Days" },
+  { value: "monthToDate", label: "Month to Date" },
+] as const;
+
 type DirectSalesApiResponse = {
   data: DirectSaleRow[];
   summary: {
@@ -298,6 +307,8 @@ type DirectSalesApiResponse = {
   };
   /** What the list was narrowed to, when it came from the dashboard. */
   appliedFilter: { periodLabel: string; branchLabel: string } | null;
+  /** Empty for anyone who may not filter, which is how the controls decide. */
+  filterBranches: SalesFilterBranch[];
 };
 
 async function fetchDirectSales(
@@ -319,6 +330,7 @@ async function fetchDirectSales(
 
 export default function CustomerOrdersPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const access = useShellAccess();
   const capabilities = access.authenticated ? access.capabilities : [];
@@ -668,6 +680,29 @@ export default function CustomerOrdersPage() {
     );
   }, [directSalesQuery.data, saleSearch]);
   const salesSummary = directSalesQuery.isError ? undefined : directSalesQuery.data?.summary;
+  /*
+   * Written to the URL rather than to state, so the filter survives a reload
+   * and a shared link, and so the dashboard's own link is just this page with
+   * the parameters already set.
+   */
+  const applySalesFilter = (changes: { salesPeriod?: string; salesBranchId?: string }) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", "sales");
+    for (const [key, value] of Object.entries(changes)) {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    }
+    setSalePage(1);
+    router.replace(`/customer-orders?${params}` as Route);
+  };
+  const salesBranchOptions: SelectOption[] = [
+    { value: "all", label: "All Branches" },
+    ...(directSalesQuery.data?.filterBranches ?? []).map((branch) => ({
+      value: branch.id,
+      label: `${branch.code} - ${branch.name}`,
+    })),
+  ];
+
   const saleTotalPages = Math.max(1, Math.ceil(filteredSales.length / pageSize));
   const safeSalePage = Math.min(salePage, saleTotalPages);
   const paginatedSales = filteredSales.slice(
@@ -756,14 +791,8 @@ export default function CustomerOrdersPage() {
       ) : null}
 
       <div className="mb-6 flex flex-wrap gap-2 rounded-xl border bg-muted/50 p-2">
-        {canViewSales ? <Link
-          href="/customer-orders?view=sales"
-          className={buttonVariants({ variant: activeView === "sales" && salesSource === "direct" ? "default" : "ghost" })}
-          aria-current={activeView === "sales" && salesSource === "direct" ? "page" : undefined}
-          onClick={() => setSalePage(1)}
-        >
-          Direct Sales
-        </Link> : null}
+{/* All Sales leads: it is what the dashboard's Sales card opens and
+            what its figure counts. Direct Sales is the narrower view beside it. */}
         {canViewSales ? <Link
           href="/customer-orders?view=sales&source=all"
           className={buttonVariants({ variant: activeView === "sales" && salesSource === "all" ? "default" : "ghost" })}
@@ -771,6 +800,14 @@ export default function CustomerOrdersPage() {
           onClick={() => setSalePage(1)}
         >
           All Sales
+        </Link> : null}
+        {canViewSales ? <Link
+          href="/customer-orders?view=sales"
+          className={buttonVariants({ variant: activeView === "sales" && salesSource === "direct" ? "default" : "ghost" })}
+          aria-current={activeView === "sales" && salesSource === "direct" ? "page" : undefined}
+          onClick={() => setSalePage(1)}
+        >
+          Direct Sales
         </Link> : null}
         {canViewOrders ? <Link
           href="/customer-orders?view=orders"
@@ -1431,19 +1468,47 @@ export default function CustomerOrdersPage() {
         </>
       ) : activeView === "sales" ? (
         <>
-        {/* A short list is otherwise indistinguishable from a quiet week. */}
-        {directSalesQuery.data?.appliedFilter ? (
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/40 p-3">
-            <p className="text-sm text-sky-900 dark:text-sky-200">
-              Showing {directSalesQuery.data.appliedFilter.periodLabel.toLowerCase()} in{" "}
-              {directSalesQuery.data.appliedFilter.branchLabel}, carried from the dashboard.
-            </p>
-            <Link
-              href={salesSource === "all" ? "/customer-orders?view=sales&source=all" : "/customer-orders?view=sales"}
-              className={buttonVariants({ variant: "outline", size: "sm" })}
-            >
-              Clear filter
-            </Link>
+{/* The dashboard's own filter, offered here too, so a list reached from
+            a card can be re-aimed without going back to change it there. Shown
+            only where it can be used: the service refuses these parameters from
+            anyone else, and filterBranches is empty for them. */}
+        {(directSalesQuery.data?.filterBranches.length ?? 0) > 0 ? (
+          <div className="mb-4 grid gap-4 rounded-xl border bg-muted/50 p-4 sm:grid-cols-[auto_minmax(14rem,1fr)]">
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">Period</p>
+              <div className="flex flex-wrap gap-1 rounded-lg border bg-background p-1">
+                {SALES_PERIOD_OPTIONS.map((option) => (
+                  <Button
+                    key={option.value || "all"}
+                    type="button"
+                    size="sm"
+                    variant={salesPeriodFilter === option.value ? "default" : "ghost"}
+                    aria-pressed={salesPeriodFilter === option.value}
+                    onClick={() => applySalesFilter({ salesPeriod: option.value })}
+                  >
+                    {option.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">Branch</p>
+              <Select
+                inputId="sales-branch-filter"
+                instanceId="sales-branch-filter"
+                options={salesBranchOptions}
+                value={salesBranchOptions.find((option) => option.value === (salesBranchFilter || "all")) ?? salesBranchOptions[0]}
+                onChange={(option) => applySalesFilter({ salesBranchId: option?.value === "all" ? "" : option?.value ?? "" })}
+                styles={reactSelectStyles}
+                isSearchable
+              />
+            </div>
+            {directSalesQuery.data?.appliedFilter ? (
+              <p className="text-xs text-muted-foreground sm:col-span-2">
+                Showing {directSalesQuery.data.appliedFilter.periodLabel.toLowerCase()} in{" "}
+                {directSalesQuery.data.appliedFilter.branchLabel}. The dashboard&rsquo;s Sales card links here with its own filter.
+              </p>
+            ) : null}
           </div>
         ) : null}
         {/* Same shape and colours as the Customer Orders cards beside them, so
@@ -1520,7 +1585,7 @@ export default function CustomerOrdersPage() {
                   ) : directSalesQuery.isError ? (
                     <tr><td colSpan={10} className="px-5 py-16 text-center text-rose-600">Unable to load direct sales.</td></tr>
                   ) : paginatedSales.length === 0 ? (
-                    <tr><td colSpan={10} className="px-5 py-16 text-center text-muted-foreground">No direct sales found.</td></tr>
+                    <tr><td colSpan={10} className="px-5 py-16 text-center text-muted-foreground">{salesSource === "all" ? "No sales found." : "No direct sales found."}</td></tr>
                   ) : (
                     paginatedSales.map((sale) => (
                       <tr key={sale.id} className="border-b transition-colors hover:bg-muted">

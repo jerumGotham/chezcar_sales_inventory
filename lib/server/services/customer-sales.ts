@@ -1666,6 +1666,15 @@ export async function getDirectSalesOverview(
     // Said back so the page can state what it is showing rather than leaving a
     // short list looking like the whole of it.
     includesOrderReleases: Boolean(options.includeOrderReleases),
+    /*
+     * The branches this caller may narrow to. Empty for anyone who cannot
+     * filter, which is the same signal the dashboard uses to decide whether to
+     * offer the controls at all -- the service refuses the parameters from
+     * them, so offering the controls would only produce an error.
+     */
+    filterBranches: actor.isOwner
+      ? (await listActiveBranches()).map((branch) => ({ id: branch.id, code: branch.code, name: branch.name }))
+      : [],
     appliedFilter: window || branchFilter
       ? { periodLabel: window?.label ?? "All time", branchLabel }
       : null,
