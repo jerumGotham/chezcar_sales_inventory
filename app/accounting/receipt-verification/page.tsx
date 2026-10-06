@@ -1931,14 +1931,17 @@ function ReceiptVerificationContent() {
                       </Button>
 
                       {/*
-                        Offered once the branch has said the encoding was
-                        wrong. Its own correction, from the comparison it has
-                        already filled in: there is no Admin step between
-                        admitting the mistake and fixing it.
+                        Offered on the branch's choice, so the finding and the
+                        correction are one action rather than two: there is no
+                        Admin step between admitting the mistake and fixing it.
+                        Withheld from anyone who can correct and verify
+                        outright, because two buttons that both read as
+                        correcting the sale but end in different places -- one
+                        verified, one back in the queue -- is a choice that gets
+                        made wrong in a hurry. They have the one that finishes.
                       */}
-                      {/* Offered on the branch's choice, so the finding and the
-                          correction are one action rather than two. */}
-                      {(selectedSale.branchResponse === "SALE_ENCODED_INCORRECT" ||
+                      {!(canVoidReplace && canReview) &&
+                      (selectedSale.branchResponse === "SALE_ENCODED_INCORRECT" ||
                         branchResponse === "SALE_ENCODED_INCORRECT") ? (
                         <Button
                           variant="warning"
