@@ -88,6 +88,8 @@ type Sale = {
   manualReceiptNumber: string;
   receiptBooklet: string;
   branch: string;
+  /** The branch the sale belongs to, so stock can be looked up there. */
+  branchId: string;
   customer: string;
   totalAmount: number;
   discountAmount: number;
@@ -213,18 +215,28 @@ function draftNumber(value: string) {
 }
 
 /** A product as the correction picker needs it. */
-type PickerProduct = { id: string; itemCode: string; name: string; price: number | null };
+type PickerProduct = {
+  id: string;
+  itemCode: string;
+  name: string;
+  price: number | null;
+  /** On hand at the branch asked about, which is what a correction can move. */
+  stockOnHand?: number;
+};
 
 /**
  * Item code and name are separate filters on the products API, so a single
  * search box asks both and merges. Searching one field only would hide a part
  * whenever the typed text matched the other.
  */
-async function searchProducts(term: string): Promise<PickerProduct[]> {
+async function searchProducts(term: string, locationId: string): Promise<PickerProduct[]> {
   const query = term.trim();
   if (!query) return [];
   const ask = async (field: "itemCode" | "name") => {
-    const params = new URLSearchParams({ [field]: query, pageSize: "8" });
+    // Scoped to the sale's own branch: stock anywhere else cannot be moved by
+    // this correction, and offering it is how a line lands on a product the
+    // branch has no record of.
+    const params = new URLSearchParams({ [field]: query, pageSize: "8", locationId });
     const response = await fetch(`/api/products?${params}`, { credentials: "same-origin" });
     if (!response.ok) return [] as PickerProduct[];
     const json = (await response.json()) as { data?: PickerProduct[] };
@@ -249,11 +261,13 @@ async function searchProducts(term: string): Promise<PickerProduct[]> {
 function ProductPicker({
   id,
   label,
+  locationId,
   exclude,
   onPick,
 }: {
   id: string;
   label: string;
+  locationId: string;
   exclude: readonly string[];
   onPick: (product: PickerProduct) => void;
 }) {
@@ -269,9 +283,9 @@ function ProductPicker({
     return () => clearTimeout(timer);
   }, [term]);
   const results = useQuery({
-    queryKey: ["product-picker", settled],
-    enabled: settled.length > 0,
-    queryFn: () => searchProducts(settled),
+    queryKey: ["product-picker", settled, locationId],
+    enabled: settled.length > 0 && locationId.length > 0,
+    queryFn: () => searchProducts(settled, locationId),
     placeholderData: (previous) => previous,
     staleTime: 60_000,
   });
@@ -295,6 +309,9 @@ function ProductPicker({
           ) : (
             (results.data ?? []).map((product) => {
               const already = exclude.includes(product.itemCode);
+              // A branch with nothing on hand has no balance to move, and the
+              // save would be refused, so say so before it is picked.
+              const unstocked = (product.stockOnHand ?? 0) <= 0;
               return (
                 <button
                   key={product.id}
@@ -308,7 +325,10 @@ function ProductPicker({
                 >
                   <span className="min-w-0">
                     <span className="block truncate text-sm">{product.name}</span>
-                    <span className="block text-xs text-muted-foreground">{product.itemCode}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {product.itemCode}
+                      {unstocked ? " - none at this branch" : ` - ${product.stockOnHand} on hand`}
+                    </span>
                   </span>
                   <span className="shrink-0 text-sm tabular-nums">
                     {already ? "Already added" : formatPeso(product.price ?? 0)}
@@ -1751,7 +1771,7 @@ function ReceiptVerificationContent() {
                             setIsCorrectionOpen(true);
                           }}
                         >
-                          Correct this sale
+                          Correct and verify
                         </Button>
                         {!selectedSale.receiptPhotoUrl ? (
                           <p className="mt-2 text-xs text-amber-800 dark:text-amber-300">
@@ -1935,7 +1955,9 @@ function ReceiptVerificationContent() {
                               setIsCorrectionOpen(true);
                             }}
                         >
-                          {branchCorrectionMutation.isPending ? "Correcting..." : "Correct this sale"}
+                          {branchCorrectionMutation.isPending
+                            ? "Correcting..."
+                            : "Correct and send to Accounting"}
                         </Button>
                       ) : null}
                     </div>
@@ -2171,6 +2193,7 @@ function ReceiptVerificationContent() {
                       <ProductPicker
                         id="comparison-add"
                         label="Add a product"
+                        locationId={selectedSale.branchId}
                         exclude={comparison.lines.map((line) => line.itemCode)}
                         onPick={(product) => {
                           setComparison((current) => ({
@@ -2530,6 +2553,7 @@ function ReceiptVerificationContent() {
               <ProductPicker
                 id="correction-add"
                 label="Add a product"
+                locationId={selectedSale?.branchId ?? ""}
                 exclude={comparison.lines.map((line) => line.itemCode)}
                 onPick={(product) => {
                   setComparison((current) => ({

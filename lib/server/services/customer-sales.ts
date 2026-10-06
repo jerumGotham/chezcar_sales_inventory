@@ -360,8 +360,24 @@ async function saleCorrectionResolvers(tx: Prisma.TransactionClient, locationId:
 async function updateSaleInventory(tx: Prisma.TransactionClient, locationId: string, lines: Array<{ productId: string; quantity: number }>, direction: "reverse" | "deduct", actorId: string, reference: string, remarks?: string) {
   for (const line of lines) {
     const balance = await tx.inventoryBalance.findUnique({ where: { locationId_productId: { locationId, productId: line.productId } } });
-    if (!balance) throw new CustomerSalesError("INVENTORY_NOT_FOUND", "Inventory balance is missing for corrected sale", 409);
-    if (direction === "deduct" && availableStock(balance) < line.quantity) throw new CustomerSalesError("INSUFFICIENT_STOCK", "Corrected sale would make available stock negative", 409);
+    if (!balance) {
+      // Naming the product matters: the reader has to know which line to take
+      // off, and that the fix is to receive it into this branch first.
+      const missing = await tx.product.findUnique({ where: { id: line.productId }, select: { itemCode: true, name: true } });
+      throw new CustomerSalesError(
+        "INVENTORY_NOT_FOUND",
+        `${missing ? `${missing.itemCode} - ${missing.name}` : "That product"} has no stock record at this branch, so the sale cannot be changed to include it. Receive it into this branch first.`,
+        409,
+      );
+    }
+    if (direction === "deduct" && availableStock(balance) < line.quantity) {
+      const short = await tx.product.findUnique({ where: { id: line.productId }, select: { itemCode: true, name: true } });
+      throw new CustomerSalesError(
+        "INSUFFICIENT_STOCK",
+        `${short ? `${short.itemCode} - ${short.name}` : "That product"} has only ${availableStock(balance)} available at this branch, and the change needs ${line.quantity}.`,
+        409,
+      );
+    }
     if (direction === "reverse") {
       await tx.inventoryBalance.update({ where: { id: balance.id }, data: { onHand: { increment: line.quantity }, version: { increment: 1 } } });
     } else {
