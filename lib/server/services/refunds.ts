@@ -16,6 +16,7 @@ import {
 } from "../authorization";
 import { prisma } from "../prisma";
 import { recordAuditLog } from "./audit-log";
+import { receiptEvidenceVersion } from "./receipt-evidence";
 import { canAccessLocation, hasAllLocationAccess } from "../policy/access";
 import { notifyInventoryThresholdChange } from "./notifications";
 import { availableStock } from "@/lib/inventory-quantity";
@@ -486,6 +487,26 @@ export async function releaseQuarantinedStock(
  * What an order has actually collected, shown in the cancellation dialog so the
  * person handing money back can see every receipt before deciding the amount.
  */
+/*
+ * A receipt that settles a sale is evidenced through that sale's review, so its
+ * photo is served by the sale's route; every other receipt carries its own.
+ * The version pins the image the list was read against.
+ */
+function paymentPhotoUrl(row: {
+  id: string;
+  saleId: string | null;
+  receiptPhotoKey: string | null;
+  sale: { accountingReview: { receiptPhotoKey: string | null } | null } | null;
+}) {
+  if (row.saleId) {
+    const key = row.sale?.accountingReview?.receiptPhotoKey;
+    return key ? `/api/accounting/receipts/${encodeURIComponent(row.saleId)}/photo?version=${receiptEvidenceVersion(key)}` : null;
+  }
+  return row.receiptPhotoKey
+    ? `/api/accounting/payments/${encodeURIComponent(row.id)}/photo?version=${receiptEvidenceVersion(row.receiptPhotoKey)}`
+    : null;
+}
+
 export async function listOrderPaymentHistory(actor: AuthContext, orderId: string) {
   assertCapability(actor, "customer-orders:view");
   const order = await prisma.customerOrder.findUnique({
@@ -505,6 +526,8 @@ export async function listOrderPaymentHistory(actor: AuthContext, orderId: strin
         id: true, kind: true, amount: true, method: true, receiptNumber: true,
         receiptBooklet: true, collectedAt: true, reviewStatus: true,
         collectedBy: { select: { name: true } },
+        saleId: true, receiptPhotoKey: true,
+        sale: { select: { accountingReview: { select: { receiptPhotoKey: true } } } },
       },
     }),
     prisma.refund.findMany({
@@ -532,6 +555,7 @@ export async function listOrderPaymentHistory(actor: AuthContext, orderId: strin
       collectedAt: row.collectedAt.toISOString(),
       collectedBy: row.collectedBy.name,
       reviewStatus: row.reviewStatus,
+      receiptPhotoUrl: paymentPhotoUrl(row),
     })),
     refunds: refunds.map((row) => ({
       id: row.id,

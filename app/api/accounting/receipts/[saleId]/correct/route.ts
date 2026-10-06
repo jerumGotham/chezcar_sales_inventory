@@ -9,7 +9,9 @@ import { accountingResolutionSchema, correctEncodedSale, CustomerSalesError } fr
 type Context = { params: Promise<{ saleId: string }> };
 
 function errorResponse(error: unknown) {
-  if (error instanceof ZodError) return Response.json({ error: { code: "INVALID_INPUT", message: "Invalid correction input" } }, { status: 400 });
+  // The first issue, not a blanket "invalid": the reader has to know which
+  // field is wrong to fix it.
+  if (error instanceof ZodError) return Response.json({ error: { code: "INVALID_INPUT", message: error.issues[0]?.message ?? "Invalid correction input" } }, { status: 400 });
   if (error instanceof CustomerSalesError) return Response.json({ error: { code: error.code, message: error.message } }, { status: error.status });
   return authorizationErrorResponse(error);
 }

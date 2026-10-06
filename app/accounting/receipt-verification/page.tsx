@@ -66,6 +66,12 @@ const RECEIPT_CONFIRMATIONS = {
       "This voids the incorrectly encoded sale and restores every original line quantity to Branch inventory without creating a replacement sale. This action cannot be undone.",
     confirmLabel: "Void sale and restore inventory",
   },
+  CORRECT_AND_VERIFY: {
+    title: "Correct the sale and verify?",
+    description:
+      "This writes what you have entered onto the sale, moves stock by the difference, restates its payment, and marks the receipt verified. The receipt number stays as it is and nothing goes back to the branch. What the sale said before is kept only in the audit trail.",
+    confirmLabel: "Correct the sale and verify",
+  },
   DELETE_VOIDED_SALE: {
     title: "Delete this voided sale?",
     description:
@@ -101,7 +107,7 @@ type Sale = {
   reviewStatus: "UNVERIFIED" | "VERIFIED" | "MISMATCH_REPORTED";
   status: "POSTED" | "VOIDED";
   mismatchCategory: string | null;
-  reviewNotes: string | null;
+  notes: string | null;
   reportedComparison: ReceiptComparison | null;
   branchResponse: BranchMismatchResponseDto | null;
   branchResponseNote: string | null;
@@ -781,6 +787,43 @@ function ReceiptVerificationContent() {
       );
     },
     onError: (error: Error) => { setFormNotice(""); setFormError(error.message); },
+  });
+
+  /*
+   * What the owner asked for: Accounting holding the receipt corrects what was
+   * keyed and is finished, without reporting a mismatch to itself first. It
+   * sends the comparison exactly as typed; the server refuses a total that
+   * does not match its own lines, and says so.
+   */
+  const correctAndVerifyMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedId) throw new Error("Select a receipt first.");
+      if (!notes.trim()) throw new Error("Say what was keyed wrongly before correcting the sale.");
+      const response = await fetch(`/api/accounting/receipts/${selectedId}/correct-verify`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "VOIDED_REPLACED",
+          note: notes,
+          replacement: toComparison(comparison),
+        }),
+      });
+      const json = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+      if (!response.ok) throw new Error(json?.error?.message ?? "Unable to correct this sale");
+      return json;
+    },
+    onSuccess: async () => {
+      setConfirmationAction(null);
+      await queryClient.invalidateQueries({ queryKey: ["receipt-verifications"] });
+      setFormError("");
+      setFormNotice("Sale corrected and verified. Nothing goes back to the branch.");
+    },
+    onError: (error: Error) => {
+      setConfirmationAction(null);
+      setFormNotice("");
+      setFormError(error.message);
+    },
   });
 
   const resolveMutation = useMutation({
@@ -1724,7 +1767,7 @@ function ReceiptVerificationContent() {
                           "Uncategorized"}
                       </p>
                       <p className="mt-1">
-                        {selectedSale.reviewNotes || "No notes recorded."}
+                        {selectedSale.notes || "No notes recorded."}
                       </p>
                       <p className="mt-2 border-t border-rose-200 dark:border-rose-900 pt-2 font-medium">
                         {branchFindingSummary(selectedSale)}
@@ -2225,15 +2268,33 @@ function ReceiptVerificationContent() {
                           <CheckCircle2 className="mr-2 h-4 w-4" />
                           Confirm correct
                         </Button>
-                        {/* The old line read as an instruction to keep editing
-                            until the button came back. It says what the button
-                            means instead, and where a difference goes next. */}
+                        {/*
+                          Confirm correct asserts the encoding matches the
+                          paper, so it cannot be the button for a reader who has
+                          just written down something different. This is: it
+                          puts what was typed onto the sale, keeps the receipt
+                          number, and verifies, with no trip to the branch.
+                        */}
+                        {canVoidReplace && differences.length > 0 && selectedSale.receiptPhotoUrl ? (
+                          <Button
+                            type="button"
+                            variant="warning"
+                            disabled={correctAndVerifyMutation.isPending || Boolean(comparisonError) || !notes.trim()}
+                            onClick={() => setConfirmationAction("CORRECT_AND_VERIFY")}
+                          >
+                            {correctAndVerifyMutation.isPending ? "Correcting..." : "Correct the sale and verify"}
+                          </Button>
+                        ) : null}
                         <span className="self-center text-xs text-muted-foreground">
                           {!selectedSale.receiptPhotoUrl && !photoFile
                             ? "Attach the receipt photo first: a sale is never verified without one."
-                            : differences.length > 0
-                              ? "Confirming says the encoding matches the paper, and what you have written does not. Report the mismatch instead, then correct the sale."
-                              : "Confirming says the encoding matches the paper."}
+                            : differences.length === 0
+                              ? "Confirming says the encoding matches the paper."
+                              : canVoidReplace
+                                ? notes.trim()
+                                  ? "Correcting writes what you have written onto the sale and verifies it. Report mismatch instead to let the branch answer."
+                                  : "Say what was keyed wrongly in Notes, then correct the sale yourself or report the mismatch."
+                                : "Confirming says the encoding matches the paper, and what you have written does not. Report the mismatch instead."}
                         </span>
                       </div>
                     )}
@@ -2435,6 +2496,8 @@ function ReceiptVerificationContent() {
             resolveMutation.mutate("VOIDED_REPLACED");
           } else if (confirmationAction === "VOID_INCORRECT_SALE") {
             resolveMutation.mutate("VOIDED");
+          } else if (confirmationAction === "CORRECT_AND_VERIFY") {
+            correctAndVerifyMutation.mutate();
           } else if (confirmationAction === "DELETE_VOIDED_SALE") {
             deleteVoidedMutation.mutate();
           }

@@ -4,9 +4,10 @@ import Link from "next/link";
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Loader2, PackageCheck } from "lucide-react";
+import { ArrowLeft, ImageOff, Loader2, PackageCheck, ReceiptText } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
+import { ReceiptPhoto } from "@/components/receipt-photo";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -70,6 +71,23 @@ type OrderDetail = {
   }>;
 };
 
+type OrderReceipt = {
+  id: string;
+  kind: "ORDER_DOWNPAYMENT" | "ORDER_PAYMENT" | "ORDER_FINAL" | "DIRECT_SALE";
+  amount: number;
+  receiptNumber: string;
+  collectedAt: string;
+  collectedBy: string;
+  receiptPhotoUrl: string | null;
+};
+
+const RECEIPT_KIND_LABELS: Record<OrderReceipt["kind"], string> = {
+  ORDER_DOWNPAYMENT: "Downpayment",
+  ORDER_PAYMENT: "Payment",
+  ORDER_FINAL: "Final payment",
+  DIRECT_SALE: "Sale",
+};
+
 function formatPeso(value: number) {
   return new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 }
@@ -97,6 +115,18 @@ export default function CustomerOrderDetailsPage() {
   const [isCancelOpen, setIsCancelOpen] = useState(false);
   const [cancellationNote, setCancellationNote] = useState("");
   const { data: order, isLoading, error } = useQuery({ queryKey: ["customer-order", orderId], queryFn: () => fetchOrder(orderId), enabled: Boolean(orderId) });
+  const canViewEvidence = useCan("sales:evidence:view");
+  /* Every receipt collected on the order, each with its uploaded photo. */
+  const receiptsQuery = useQuery({
+    queryKey: ["customer-order-receipts", orderId],
+    enabled: Boolean(orderId),
+    queryFn: async () => {
+      const response = await fetch(`/api/customer-orders/${orderId}/payments`, { credentials: "same-origin" });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error?.message ?? "Unable to load receipts");
+      return json.data.payments as OrderReceipt[];
+    },
+  });
 
   /* The branch's catalogue, for adding a product the order did not have. */
   const productsQuery = useQuery({
@@ -286,6 +316,7 @@ export default function CustomerOrderDetailsPage() {
               </div>
             </CardContent>
           </Card>
+          <div className="space-y-6">
           <Card className="h-fit">
             <CardContent className="space-y-4 p-5">
               <Summary label="Subtotal" value={formatPeso(order.subtotal)} />
@@ -296,6 +327,45 @@ export default function CustomerOrderDetailsPage() {
               <Summary label="Payment" value={order.paymentStatus} />
             </CardContent>
           </Card>
+          <Card className="h-fit">
+            <CardContent className="space-y-4 p-5">
+              <div className="flex items-center gap-2"><ReceiptText className="h-5 w-5 text-muted-foreground" /><h3 className="font-semibold">Receipts</h3></div>
+              {receiptsQuery.isLoading ? (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading receipts...</p>
+              ) : receiptsQuery.error ? (
+                <p className="text-sm text-red-700 dark:text-red-300">{(receiptsQuery.error as Error).message}</p>
+              ) : !receiptsQuery.data?.length ? (
+                <p className="text-sm text-muted-foreground">No receipts recorded on this order yet.</p>
+              ) : (
+                <ul className="space-y-4">
+                  {receiptsQuery.data.map((receipt) => (
+                    <li key={receipt.id} className="space-y-2 border-t pt-4 first:border-t-0 first:pt-0">
+                      <div className="flex items-start justify-between gap-3 text-sm">
+                        <div>
+                          <p className="font-medium text-foreground">{RECEIPT_KIND_LABELS[receipt.kind]} · {receipt.receiptNumber}</p>
+                          <p className="text-xs text-muted-foreground">{new Date(receipt.collectedAt).toLocaleDateString("en-PH")} · {receipt.collectedBy}</p>
+                        </div>
+                        <p className="font-medium text-foreground">{formatPeso(receipt.amount)}</p>
+                      </div>
+                      {!receipt.receiptPhotoUrl ? (
+                        <p className="flex items-center gap-2 text-sm text-muted-foreground"><ImageOff className="h-4 w-4" />No photo attached</p>
+                      ) : canViewEvidence ? (
+                        <ReceiptPhoto
+                          src={receipt.receiptPhotoUrl}
+                          alt={`Receipt ${receipt.receiptNumber}`}
+                          caption={`${RECEIPT_KIND_LABELS[receipt.kind]} · ${formatPeso(receipt.amount)}`}
+                          className="max-h-48"
+                        />
+                      ) : (
+                        <p className="text-sm text-muted-foreground">You do not have permission to view receipt photos.</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+          </div>
         </div>
       ) : null}
       <Dialog open={isEditOpen} onOpenChange={(open) => { setIsEditOpen(open); if (!open) setEditError(""); }}>

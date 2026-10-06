@@ -2206,12 +2206,13 @@ export async function correctEncodedSale(
     if (!review) throw new CustomerSalesError("NOT_FOUND", "Accounting review not found", 404);
     if (sale.status !== "POSTED") throw new CustomerSalesError("INVALID_STATE", "Only a posted sale can be corrected", 409);
     /*
-     * Only after Accounting has put on record that the sale does not match the
-     * paper. The reported mismatch is what says why a posted sale changed, so
-     * the correction is never the first anyone hears of it.
+     * Any sale still under review, whether or not a mismatch was reported
+     * first. Accounting holding the receipt can correct what was keyed in one
+     * step; what says why a posted sale changed is the audit entry, which
+     * carries the required note and both versions of the lines.
      */
-    if (review.status !== "MISMATCH_REPORTED" || review.resolvedAt) {
-      throw new CustomerSalesError("INVALID_STATE", "Report the mismatch first, so the record says why the sale changed", 409);
+    if ((review.status !== "MISMATCH_REPORTED" && review.status !== "UNVERIFIED") || review.resolvedAt) {
+      throw new CustomerSalesError("INVALID_STATE", "Only a sale still under review can be corrected", 409);
     }
     /*
      * A branch that has told Accounting its encoding was right does not get to

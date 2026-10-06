@@ -58,14 +58,27 @@ describe("Accounting correcting a wrongly encoded sale itself", () => {
         lines: [{ itemCode: "ACORR-2", quantity: 2, unitPrice: 2500 }],
       };
 
-      // Nothing is open to correction until Accounting has put on record that
-      // the sale does not match the paper.
-      await expect(
-        correctEncodedSale(owner, sale.id, { action: "VOIDED_REPLACED", note: "n/a", replacement: paperSays }),
-      ).rejects.toMatchObject({ code: "INVALID_STATE" });
-
       const photo = { receiptPhotoKey: "test/acorr.jpg", receiptPhotoType: "image/jpeg", evidenceUploadedAt: new Date() };
       await prisma.saleAccountingReview.updateMany({ where: { saleId: sale.id }, data: photo });
+
+      /*
+       * Straight from the review, with no mismatch reported to itself first:
+       * Accounting holding the receipt corrects what was keyed in one step.
+       * Reported first below, to show the other way in is still open.
+       */
+      const fromReview = await correctEncodedSale(owner, sale.id, {
+        action: "VOIDED_REPLACED",
+        note: "Corrected while reviewing",
+        replacement: { ...paperSays, lines: [{ itemCode: "ACORR-2", quantity: 1, unitPrice: 2500 }], amountPaid: 2500, totalAmount: 2500 },
+      });
+      expect(fromReview.action).toBe("ENCODING_CORRECTED");
+      expect((await prisma.saleAccountingReview.findFirstOrThrow({ where: { saleId: sale.id } })).status).toBe("VERIFIED");
+
+      // Put it back under review so the reported-mismatch route is covered too.
+      await prisma.saleAccountingReview.updateMany({
+        where: { saleId: sale.id },
+        data: { status: "UNVERIFIED", verifiedAt: null, resolvedAt: null, resolutionNote: null, resolvedById: null },
+      });
 
       await reviewSale(owner, sale.id, {
         status: "MISMATCH_REPORTED",
