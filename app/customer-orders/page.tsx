@@ -106,6 +106,8 @@ type DirectSaleRow = {
   id: string;
   reference: string;
   source: "Customer Order" | "Direct Sale";
+  /** The order a release sale came from; null for a direct sale. */
+  orderId: string | null;
   manualReceiptNumber: string;
   branch: string;
   branchId: string;
@@ -1066,7 +1068,8 @@ export default function CustomerOrdersPage() {
                             href={`/customer-orders/${order.id}` as Route}
                             className={buttonVariants({ variant: "view", size: "sm" })}
                           >
-                            View / Edit
+                            {/* A released or cancelled order has nothing left to edit. */}
+                            {order.statusCode === "COMPLETED" || order.statusCode === "CANCELLED" ? "View" : "View / Edit"}
                           </Link>
                         </div>
 
@@ -1464,9 +1467,18 @@ export default function CustomerOrdersPage() {
                         <td className="px-5 py-4 text-sm text-muted-foreground">{formatDate(sale.postedAt)}</td>
                         <td className="px-5 py-4">
                           <div className="flex flex-wrap gap-2">
-                            <Button size="sm" variant="view" onClick={() => setSelectedSale(sale)}>
-                              <Eye className="mr-2 h-4 w-4" /> View
-                            </Button>
+                            {/* A release belongs to its order, which already
+                                shows its lines, receipts and payments; a direct
+                                sale has nowhere else to be read, so it opens here. */}
+                            {sale.source === "Customer Order" && sale.orderId ? (
+                              <Link href={`/customer-orders/${sale.orderId}` as Route} className={buttonVariants({ variant: "view", size: "sm" })}>
+                                <Eye className="mr-2 h-4 w-4" /> View
+                              </Link>
+                            ) : (
+                              <Button size="sm" variant="view" onClick={() => setSelectedSale(sale)}>
+                                <Eye className="mr-2 h-4 w-4" /> View
+                              </Button>
+                            )}
                             {/* Only a live sale can give money back; a voided one
                                 already reversed itself, and a sale that has been
                                 refunded in full has nothing left to give, so the
@@ -1682,6 +1694,9 @@ export default function CustomerOrdersPage() {
               {selectedSale &&
               selectedSale.source === "Direct Sale" &&
               selectedSale.correctionRequest?.status !== "PENDING" &&
+              // Once Accounting has verified it against the paper, the branch
+              // no longer reports it as a wrong submission.
+              selectedSale.reviewStatus !== "VERIFIED" &&
               canRequestSaleCorrection ? (
                 <Button
                   variant="warning"

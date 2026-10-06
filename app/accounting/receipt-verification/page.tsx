@@ -2176,7 +2176,7 @@ function ReceiptVerificationContent() {
                         */}
                         {branchResponse === "SALE_ENCODED_INCORRECT" ? (
                           <Button
-                            variant="warning"
+                            variant="workflow"
                             disabled={branchCorrectionMutation.isPending || !branchResponseNote.trim() || Boolean(correctionError)}
                             onClick={() => {
                               branchCorrectionMutation.reset();
