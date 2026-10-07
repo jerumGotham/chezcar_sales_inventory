@@ -31,6 +31,7 @@ type PaymentRow = {
   customer: string;
   orderReference: string | null;
   orderTotal: number | null;
+  orderDiscount: number | null;
   orderBalance: number | null;
   amount: number;
   method: string;
@@ -556,7 +557,10 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
                   <div><dt className="text-xs text-muted-foreground">Payment method</dt><dd>{humanize(selected.method)}</dd></div>
                   <div><dt className="text-xs text-muted-foreground">Customer</dt><dd>{selected.customer}</dd></div>
                   <div><dt className="text-xs text-muted-foreground">Order</dt><dd>{selected.orderReference ?? "-"}</dd></div>
-                  <div><dt className="text-xs text-muted-foreground">Order total</dt><dd>{selected.orderTotal === null ? "-" : peso.format(selected.orderTotal)}</dd></div>
+                  {selected.orderDiscount ? (
+                    <div><dt className="text-xs text-muted-foreground">Order discount</dt><dd className="text-amber-700 dark:text-amber-300">-{peso.format(selected.orderDiscount)}</dd></div>
+                  ) : null}
+                  <div><dt className="text-xs text-muted-foreground">Order total{selected.orderDiscount ? " (after discount)" : ""}</dt><dd>{selected.orderTotal === null ? "-" : peso.format(selected.orderTotal)}</dd></div>
                   <div><dt className="text-xs text-muted-foreground">Balance now</dt><dd>{selected.orderBalance === null ? "-" : peso.format(selected.orderBalance)}</dd></div>
                   <div><dt className="text-xs text-muted-foreground">Salesperson</dt><dd>{selected.salesperson ?? "-"}</dd></div>
                   <div><dt className="text-xs text-muted-foreground">Collected</dt><dd>{dateTime.format(new Date(selected.collectedAt))}</dd></div>

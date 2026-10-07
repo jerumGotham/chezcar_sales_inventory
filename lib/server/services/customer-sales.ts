@@ -90,6 +90,8 @@ export const customerOrderMutationSchema = z.object({
   downpaymentAmount: money.default(0),
   downpaymentReceiptNumber: z.string().trim().max(100).optional(),
   downpaymentMethod: z.enum(["CASH", "GCASH", "MAYA", "BANK_TRANSFER", "CREDIT_CARD", "SPLIT"]).optional(),
+  /** One figure off the whole order, as the edit dialog and a POS sale take it. */
+  discountAmount: money.optional(),
   lines: z.array(z.object({ productId: z.string().min(1), quantity: positiveInt, finalUnitPrice: money.optional() })).min(1),
 });
 
@@ -424,6 +426,45 @@ async function reserveLines(tx: Prisma.TransactionClient, locationId: string, li
   }
 }
 
+/*
+ * Holds as much of each line as the branch can spare right now and returns
+ * what was taken per line, in order. Nothing is refused: a line with no stock
+ * simply takes nothing and goes on waiting. The caller decides whether taking
+ * nothing at all is an error.
+ */
+async function reserveWhatIsAvailable(tx: Prisma.TransactionClient, locationId: string, lines: Array<{ productId: string; wanted: number }>) {
+  const taken: number[] = [];
+  for (const line of lines) {
+    if (line.wanted <= 0) {
+      taken.push(0);
+      continue;
+    }
+    const balance = await tx.inventoryBalance.findUnique({ where: { locationId_productId: { locationId, productId: line.productId } }, include: { product: { select: { itemCode: true, name: true, reorderLevel: true } }, location: { select: { name: true } } } });
+    const take = balance ? Math.min(line.wanted, Math.max(availableStock(balance), 0)) : 0;
+    if (!balance || take === 0) {
+      taken.push(0);
+      continue;
+    }
+    const updated = await tx.inventoryBalance.updateMany({
+      where: { id: balance.id, version: balance.version, onHand: { gte: balance.reserved + balance.quarantined + take } },
+      data: { reserved: { increment: take }, version: { increment: 1 } },
+    });
+    if (updated.count !== 1) throw new CustomerSalesError("INSUFFICIENT_STOCK", "Available stock changed before reservation; try again", 409);
+    await notifyInventoryThresholdChange(tx, { balanceId: balance.id, locationId, locationName: balance.location.name, productItemCode: balance.product.itemCode, productName: balance.product.name, reorderLevel: balance.product.reorderLevel, previousAvailable: availableStock(balance), nextAvailable: availableStock(balance) - take });
+    taken.push(take);
+  }
+  return taken;
+}
+
+/** Gives back held units without touching on hand: the goods never left. */
+async function unreserveUnits(tx: Prisma.TransactionClient, locationId: string, productId: string, quantity: number) {
+  if (quantity <= 0) return;
+  await tx.inventoryBalance.update({
+    where: { locationId_productId: { locationId, productId } },
+    data: { reserved: { decrement: quantity }, version: { increment: 1 } },
+  });
+}
+
 async function releaseReservedLines(tx: Prisma.TransactionClient, locationId: string, lines: Array<{ productId: string; quantity: number }>) {
   for (const line of lines) {
     const result = await tx.inventoryBalance.updateMany({
@@ -647,29 +688,29 @@ export async function updateCustomerOrderLines(
     const products = await activeProducts(tx, productIds, order.locationId);
 
     /*
-     * Only RESERVED and READY_FOR_RELEASE hold stock; a waiting-stock order
-     * holds none, which is what waiting means. Its lines move freely.
+     * Each product keeps what it already holds, up to its new quantity, and
+     * gives back the rest. What is still short is then taken: a reserved order
+     * must hold every unit or the edit is refused, as it always was; a
+     * waiting-stock order holds what the branch has and waits for the rest.
      */
-    const holdsStock = order.status === "RESERVED" || order.status === "READY_FOR_RELEASE";
-    if (holdsStock) {
-      const before = new Map(order.lines.map((line) => [line.productId, line.quantity]));
-      const after = new Map(input.lines.map((line) => [line.productId, line.quantity]));
-
-      for (const [productId, quantity] of after) {
-        const delta = quantity - (before.get(productId) ?? 0);
-        if (delta > 0) await reserveLines(tx, order.locationId, [{ productId, quantity: delta }]);
-      }
-      for (const [productId, quantity] of before) {
-        const delta = (after.get(productId) ?? 0) - quantity;
-        if (delta < 0) {
-          // Reserved only: the goods never left, so on hand does not move.
-          await tx.inventoryBalance.update({
-            where: { locationId_productId: { locationId: order.locationId, productId } },
-            data: { reserved: { decrement: -delta }, version: { increment: 1 } },
-          });
-        }
-      }
+    const fullyReserved = order.status === "RESERVED" || order.status === "READY_FOR_RELEASE";
+    const heldBefore = new Map(order.lines.map((line) => [line.productId, line.reservedQuantity]));
+    const after = new Map(input.lines.map((line) => [line.productId, line.quantity]));
+    for (const [productId, held] of heldBefore) {
+      await unreserveUnits(tx, order.locationId, productId, held - Math.min(held, after.get(productId) ?? 0));
     }
+    const kept = input.lines.map((line) => Math.min(heldBefore.get(line.productId) ?? 0, line.quantity));
+    let heldAfter: number[];
+    if (fullyReserved) {
+      await reserveLines(tx, order.locationId, input.lines.map((line, index) => ({ productId: line.productId, quantity: line.quantity - kept[index] })).filter((line) => line.quantity > 0));
+      heldAfter = input.lines.map((line) => line.quantity);
+    } else {
+      const taken = await reserveWhatIsAvailable(tx, order.locationId, input.lines.map((line, index) => ({ productId: line.productId, wanted: line.quantity - kept[index] })));
+      heldAfter = kept.map((quantity, index) => quantity + taken[index]);
+    }
+    const nextStatus: CustomerOrderStatus = fullyReserved
+      ? order.status
+      : input.lines.every((line, index) => heldAfter[index] === line.quantity) ? "RESERVED" : "WAITING_STOCK";
 
     const subtotal = input.lines.reduce((sum, line) => {
       const product = products.get(line.productId)!;
@@ -731,7 +772,7 @@ export async function updateCustomerOrderLines(
 
     await tx.customerOrderLine.deleteMany({ where: { orderId: order.id } });
     await tx.customerOrderLine.createMany({
-      data: input.lines.map((line) => {
+      data: input.lines.map((line, index) => {
         const product = products.get(line.productId)!;
         const unit = line.finalUnitPrice ?? product.price?.toNumber() ?? 0;
         return {
@@ -740,6 +781,7 @@ export async function updateCustomerOrderLines(
           productItemCode: product.itemCode,
           productName: product.name,
           quantity: line.quantity,
+          reservedQuantity: heldAfter[index],
           baseUnitPrice: product.price ?? decimal(0),
           finalUnitPrice: decimal(unit),
         };
@@ -749,6 +791,7 @@ export async function updateCustomerOrderLines(
     const updated = await tx.customerOrder.update({
       where: { id: order.id },
       data: {
+        status: nextStatus,
         totalAmount: decimal(total),
         discountAmount: decimal(discountAmount),
         // What is still owed after whatever has just been handed back. Never
@@ -787,12 +830,31 @@ export async function createCustomerOrder(actor: AuthContext, input: z.infer<typ
     if (!salesperson) throw new CustomerSalesError("INVALID_SALESPERSON", "Select an active salesperson within your authorized locations", 409);
     const products = await activeProducts(tx, productIds, locationId);
     const customerId = await resolveCustomer(tx, actor, input.customer);
-    const total = input.lines.reduce((sum, line) => {
+    const subtotal = input.lines.reduce((sum, line) => {
       const product = products.get(line.productId)!;
       return sum + line.quantity * (line.finalUnitPrice ?? product.price?.toNumber() ?? 0);
     }, 0);
-    const status: CustomerOrderStatus = input.type === "WAITING_STOCK" ? "WAITING_STOCK" : "RESERVED";
-    if (status === "RESERVED") await reserveLines(tx, locationId, input.lines);
+    const discountAmount = input.discountAmount ?? 0;
+    if (discountAmount > subtotal) throw new CustomerSalesError("INVALID_DISCOUNT", "Discount cannot exceed the order subtotal", 400);
+    const total = Math.round((subtotal - discountAmount) * 100) / 100;
+    if (input.downpaymentAmount > total) throw new CustomerSalesError("INVALID_DOWNPAYMENT", "Downpayment cannot exceed the order total", 400);
+    /*
+     * A reservation holds every unit or is refused. A waiting-stock order holds
+     * whatever the branch has now, so those units cannot be sold to someone
+     * else meanwhile, and waits for the rest; if everything happens to be on
+     * hand it is simply reserved.
+     */
+    let held: number[];
+    if (input.type === "WAITING_STOCK") {
+      const sortedProductIds = [...productIds].sort();
+      await tx.$queryRaw`SELECT id FROM "InventoryBalance" WHERE "locationId" = ${locationId} AND "productId" IN (${Prisma.join(sortedProductIds)}) ORDER BY "productId" FOR UPDATE`;
+      held = await reserveWhatIsAvailable(tx, locationId, input.lines.map((line) => ({ productId: line.productId, wanted: line.quantity })));
+    } else {
+      await reserveLines(tx, locationId, input.lines);
+      held = input.lines.map((line) => line.quantity);
+    }
+    const fullyHeld = input.lines.every((line, index) => held[index] === line.quantity);
+    const status: CustomerOrderStatus = fullyHeld ? "RESERVED" : "WAITING_STOCK";
     const order = await tx.customerOrder.create({
       data: {
         reference: `CO-${randomUUID()}`,
@@ -808,12 +870,13 @@ export async function createCustomerOrder(actor: AuthContext, input: z.infer<typ
         downpaymentAmount: decimal(input.downpaymentAmount),
         downpaymentReceiptNumber: input.downpaymentReceiptNumber || null,
         totalAmount: decimal(total),
-        remainingBalance: decimal(Math.max(total - input.downpaymentAmount, 0)),
+        discountAmount: decimal(discountAmount),
+        remainingBalance: decimal(Math.max(Math.round((total - input.downpaymentAmount) * 100) / 100, 0)),
         expectedReleaseDate: input.expectedReleaseDate ? new Date(input.expectedReleaseDate) : null,
         source: input.source || null,
         notes: input.notes || null,
         createdById: actor.userId,
-        lines: { create: input.lines.map((line) => { const product = products.get(line.productId)!; const unit = line.finalUnitPrice ?? product.price?.toNumber() ?? 0; return { productId: product.id, productItemCode: product.itemCode, productName: product.name, quantity: line.quantity, baseUnitPrice: product.price ?? decimal(0), finalUnitPrice: decimal(unit) }; }) },
+        lines: { create: input.lines.map((line, index) => { const product = products.get(line.productId)!; const unit = line.finalUnitPrice ?? product.price?.toNumber() ?? 0; return { productId: product.id, productItemCode: product.itemCode, productName: product.name, quantity: line.quantity, reservedQuantity: held[index], baseUnitPrice: product.price ?? decimal(0), finalUnitPrice: decimal(unit) }; }) },
       },
       include: ORDER_INCLUDE,
     });
@@ -1099,9 +1162,16 @@ export async function reserveCustomerOrder(actor: AuthContext, id: string) {
 
     const productIds = order.lines.map((line) => line.productId).sort();
     await tx.$queryRaw`SELECT id FROM "InventoryBalance" WHERE "locationId" = ${order.locationId} AND "productId" IN (${Prisma.join(productIds)}) ORDER BY "productId" FOR UPDATE`;
-    await reserveLines(tx, order.locationId, order.lines);
+    // Holds what the branch has now for each line still short, and waits for
+    // the rest. Refused only when nothing at all could be held.
+    const taken = await reserveWhatIsAvailable(tx, order.locationId, order.lines.map((line) => ({ productId: line.productId, wanted: line.quantity - line.reservedQuantity })));
+    if (taken.every((quantity) => quantity === 0)) throw new CustomerSalesError("INSUFFICIENT_STOCK", "Not enough available branch stock", 409);
+    for (const [index, line] of order.lines.entries()) {
+      if (taken[index] > 0) await tx.customerOrderLine.update({ where: { id: line.id }, data: { reservedQuantity: { increment: taken[index] } } });
+    }
+    const complete = order.lines.every((line, index) => line.reservedQuantity + taken[index] === line.quantity);
 
-    return serializeOrder(await tx.customerOrder.update({ where: { id: order.id }, data: { status: "RESERVED" }, include: ORDER_INCLUDE }));
+    return serializeOrder(await tx.customerOrder.update({ where: { id: order.id }, data: { status: complete ? "RESERVED" : "WAITING_STOCK" }, include: ORDER_INCLUDE }));
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
@@ -1141,6 +1211,8 @@ export async function releaseCustomerOrder(actor: AuthContext, id: string, input
     const saleReceiptNumber = input.finalReceiptNumber ?? order.reference;
     const releasedAt = new Date();
     await releaseReservedLines(tx, order.locationId, order.lines);
+    // The units have left the branch; nothing is held for this order any more.
+    await tx.customerOrderLine.updateMany({ where: { orderId: order.id }, data: { reservedQuantity: 0 } });
     const sale = await tx.sale.create({ data: { reference: `SALE-${randomUUID()}`, manualReceiptNumber: saleReceiptNumber, receiptIssued: collectsMoney, receiptBooklet: "", locationId: order.locationId, customerId: order.customerId, orderId: order.id, salespersonId: order.salespersonId, salespersonName: order.salespersonName, salespersonLocationId: order.salespersonLocationId, salespersonLocationCode: order.salespersonLocationCode, salespersonLocationName: order.salespersonLocationName, paymentMethod: input.paymentMethod as PaymentMethod, totalAmount: order.totalAmount, discountAmount: order.discountAmount, amountPaid: decimal(input.amountPaid), notes: input.notes || null, postedById: actor.userId, lines: { create: order.lines.map((line) => ({ productId: line.productId, productItemCode: line.productItemCode, productName: line.productName, quantity: line.quantity, unitPrice: line.finalUnitPrice })) }, accountingReview: { create: collectsMoney ? {} : {
       /*
        * Nothing to verify: no receipt was written, and the money this order
@@ -1237,9 +1309,12 @@ export async function cancelCustomerOrder(actor: AuthContext, id: string, input:
       assertCapability(actor, "customer-orders:cancel");
     }
     if (order.downpaymentAmount.toNumber() > 0 && !input.note) throw new CustomerSalesError("CANCELLATION_NOTE_REQUIRED", "A cancellation note is required for an order with a downpayment", 400);
-    if (order.status === "RESERVED" || order.status === "READY_FOR_RELEASE") {
-      for (const line of order.lines) await tx.inventoryBalance.update({ where: { locationId_productId: { locationId: order.locationId, productId: line.productId } }, data: { reserved: { decrement: line.quantity }, version: { increment: 1 } } });
+    // Gives back exactly what is held, which for a waiting-stock order may be
+    // part of a line or nothing at all.
+    for (const line of order.lines) {
+      await unreserveUnits(tx, order.locationId, line.productId, line.reservedQuantity);
     }
+    await tx.customerOrderLine.updateMany({ where: { orderId: order.id }, data: { reservedQuantity: 0 } });
 
     // Money already collected. Forfeited, it stays revenue, which is what this
     // workflow always did. Refunded, it goes back and the reports subtract it
@@ -2964,7 +3039,7 @@ function serializeOrder(order: Prisma.CustomerOrderGetPayload<{ include: typeof 
     COMPLETED: "Released",
     CANCELLED: "Cancelled",
   };
-  return { id: order.id, orderNo: order.reference, customer: order.customer.name, branch: order.location.name, locationId: order.locationId, salesperson: serializeSalespersonSnapshot(order), itemSummary: order.lines.map((line) => line.productName).join(", "), totalItems: order.lines.reduce((sum, line) => sum + line.quantity, 0), status: statusLabels[order.status], statusCode: order.status, type: order.type, paymentStatus: order.remainingBalance.toNumber() === 0 ? "Paid" : order.downpaymentAmount.toNumber() > 0 ? "Partial" : "Unpaid", downpayment: serializeMoney(order.downpaymentAmount), subtotal: order.lines.reduce((sum, line) => sum + line.quantity * line.finalUnitPrice.toNumber(), 0), discountAmount: serializeMoney(order.discountAmount), totalAmount: serializeMoney(order.totalAmount), balance: serializeMoney(order.remainingBalance), orderDate: order.createdAt.toISOString(), releaseDate: order.expectedReleaseDate?.toISOString() ?? "", finalReceiptNumber: order.finalReceiptNumber, downpaymentReceiptNumber: order.downpaymentReceiptNumber, notes: order.notes, cancelledAt: order.cancelledAt?.toISOString() ?? null, releasedAt: order.releasedAt?.toISOString() ?? null, lines: order.lines.map((line) => ({ productId: line.productId, itemCode: line.productItemCode, name: line.productName, quantity: line.quantity, listPrice: serializeMoney(line.baseUnitPrice), unitPrice: serializeMoney(line.finalUnitPrice), discount: serializeMoney(line.baseUnitPrice.sub(line.finalUnitPrice)), amount: line.quantity * line.finalUnitPrice.toNumber() })) };
+  return { id: order.id, orderNo: order.reference, customer: order.customer.name, branch: order.location.name, locationId: order.locationId, salesperson: serializeSalespersonSnapshot(order), itemSummary: order.lines.map((line) => line.productName).join(", "), totalItems: order.lines.reduce((sum, line) => sum + line.quantity, 0), status: order.status === "WAITING_STOCK" && order.lines.some((line) => line.reservedQuantity > 0) ? "Partially reserved" : statusLabels[order.status], statusCode: order.status, type: order.type, paymentStatus: order.remainingBalance.toNumber() === 0 ? "Paid" : order.downpaymentAmount.toNumber() > 0 ? "Partial" : "Unpaid", downpayment: serializeMoney(order.downpaymentAmount), subtotal: order.lines.reduce((sum, line) => sum + line.quantity * line.finalUnitPrice.toNumber(), 0), discountAmount: serializeMoney(order.discountAmount), totalAmount: serializeMoney(order.totalAmount), balance: serializeMoney(order.remainingBalance), orderDate: order.createdAt.toISOString(), releaseDate: order.expectedReleaseDate?.toISOString() ?? "", finalReceiptNumber: order.finalReceiptNumber, downpaymentReceiptNumber: order.downpaymentReceiptNumber, notes: order.notes, cancelledAt: order.cancelledAt?.toISOString() ?? null, releasedAt: order.releasedAt?.toISOString() ?? null, lines: order.lines.map((line) => ({ productId: line.productId, itemCode: line.productItemCode, name: line.productName, quantity: line.quantity, listPrice: serializeMoney(line.baseUnitPrice), unitPrice: serializeMoney(line.finalUnitPrice), discount: serializeMoney(line.baseUnitPrice.sub(line.finalUnitPrice)), amount: line.quantity * line.finalUnitPrice.toNumber(), reservedQuantity: line.reservedQuantity })) };
 }
 
 function serializeSalespersonSnapshot(record: {

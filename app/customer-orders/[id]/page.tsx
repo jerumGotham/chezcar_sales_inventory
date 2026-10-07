@@ -70,6 +70,8 @@ type OrderDetail = {
     unitPrice: number;
     discount: number;
     amount: number;
+    /** Units held against branch stock for this line right now. */
+    reservedQuantity: number;
   }>;
 };
 
@@ -125,7 +127,10 @@ export default function CustomerOrderDetailsPage() {
     quantity: (line) => line.quantity,
     unit: (line) => line.unitPrice,
     amount: (line) => line.amount,
+    reserved: (line) => line.reservedQuantity,
   });
+  // Held units only mean something while the order is still open.
+  const showsReservation = order ? !["COMPLETED", "CANCELLED"].includes(order.statusCode) : false;
   const canViewEvidence = useCan("sales:evidence:view");
   /* Every receipt collected on the order, each with its uploaded photo. */
   const receiptsQuery = useQuery({
@@ -281,7 +286,7 @@ export default function CustomerOrderDetailsPage() {
       if (!response.ok) throw new Error(json.error?.message ?? "Unable to reserve order");
       return json.data as OrderDetail;
     },
-    onSuccess: async () => {
+    onSuccess: async (reserved: OrderDetail) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["customer-order", orderId] }),
         queryClient.invalidateQueries({ queryKey: ["customer-orders-list"] }),
@@ -292,7 +297,13 @@ export default function CustomerOrderDetailsPage() {
         queryClient.invalidateQueries({ queryKey: ["customers"] }),
         queryClient.invalidateQueries({ queryKey: ["customer-history"] }),
       ]);
-      setNotice(`Stock reserved for ${order?.orderNo ?? "the order"}.`);
+      // Part of an order may be held while the rest waits; say which.
+      const short = reserved.lines.filter((line) => line.reservedQuantity < line.quantity);
+      setNotice(
+        short.length === 0
+          ? `All stock reserved for ${reserved.orderNo}. It is ready to release.`
+          : `Reserved what the branch has. Still waiting for: ${short.map((line) => `${line.itemCode} x${line.quantity - line.reservedQuantity}`).join(", ")}.`,
+      );
     },
   });
   const actions = order ? getCustomerOrderActions({ capabilities, statusCode: order.statusCode, downpayment: order.downpayment, balance: order.balance }) : null;
@@ -305,7 +316,7 @@ export default function CustomerOrderDetailsPage() {
         <div className="flex flex-wrap gap-2">
           <Link href="/customer-orders?view=orders" className={buttonVariants({ variant: "outline" })}><ArrowLeft className="mr-2 h-4 w-4" />Back</Link>
           {order && actions?.canRecordPayment ? <Button onClick={() => setIsPaymentOpen(true)}>{order.downpayment > 0 ? "Add Payment" : "Downpayment"}</Button> : null}
-          {order && actions?.canReserve ? <Button variant="workflow" onClick={() => reserveMutation.mutate()} disabled={reserveMutation.isPending}>{reserveMutation.isPending ? "Reserving..." : "Reserve Stock"}</Button> : null}
+          {order && actions?.canReserve ? <Button variant="workflow" onClick={() => reserveMutation.mutate()} disabled={reserveMutation.isPending}>{reserveMutation.isPending ? "Reserving..." : order.lines.some((line) => line.reservedQuantity > 0) ? "Reserve remaining stock" : "Reserve Stock"}</Button> : null}
           {order && actions?.canRelease ? <Link href={`/customer-orders/${order.id}/release`} className={buttonVariants({ variant: "workflow" })}>Release Order</Link> : null}
           {order && actions?.canCancel ? <Button variant="destructive" onClick={() => setIsCancelOpen(true)}>Cancel Order</Button> : null}
         </div>
@@ -343,8 +354,8 @@ export default function CustomerOrderDetailsPage() {
               </div>
               <div className="mt-3 overflow-x-auto">
                 <table className="w-full min-w-[640px]">
-                  <thead className="bg-muted"><tr><SortableHeader label="Item" sortKey="item" sort={lineSort.sort} onSort={lineSort.toggle} className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground" /><SortableHeader label="Qty" sortKey="quantity" sort={lineSort.sort} onSort={lineSort.toggle} className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground" /><SortableHeader label="Unit" sortKey="unit" sort={lineSort.sort} onSort={lineSort.toggle} className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground" /><SortableHeader label="Amount" sortKey="amount" sort={lineSort.sort} onSort={lineSort.toggle} className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground" /></tr></thead>
-                  <tbody>{lineSort.rows.map((line) => <tr key={line.itemCode} className="border-b"><td className="px-4 py-3 text-sm">{line.itemCode} - {line.name}</td><td className="px-4 py-3 text-sm">{line.quantity}</td><td className="px-4 py-3 text-sm">{formatPeso(line.unitPrice)}</td><td className="px-4 py-3 text-sm font-medium">{formatPeso(line.amount)}</td></tr>)}</tbody>
+                  <thead className="bg-muted"><tr><SortableHeader label="Item" sortKey="item" sort={lineSort.sort} onSort={lineSort.toggle} className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground" /><SortableHeader label="Qty" sortKey="quantity" sort={lineSort.sort} onSort={lineSort.toggle} className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground" /><SortableHeader label="Unit" sortKey="unit" sort={lineSort.sort} onSort={lineSort.toggle} className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground" /><SortableHeader label="Amount" sortKey="amount" sort={lineSort.sort} onSort={lineSort.toggle} className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground" />{showsReservation ? <SortableHeader label="Reserved" sortKey="reserved" sort={lineSort.sort} onSort={lineSort.toggle} className="px-4 py-3 text-left text-xs font-semibold uppercase text-muted-foreground" /> : null}</tr></thead>
+                  <tbody>{lineSort.rows.map((line) => <tr key={line.itemCode} className="border-b"><td className="px-4 py-3 text-sm">{line.itemCode} - {line.name}</td><td className="px-4 py-3 text-sm">{line.quantity}</td><td className="px-4 py-3 text-sm">{formatPeso(line.unitPrice)}</td><td className="px-4 py-3 text-sm font-medium">{formatPeso(line.amount)}</td>{showsReservation ? <td className={`px-4 py-3 text-sm font-medium ${line.reservedQuantity === line.quantity ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}`}>{line.reservedQuantity} of {line.quantity}</td> : null}</tr>)}</tbody>
                 </table>
               </div>
             </CardContent>

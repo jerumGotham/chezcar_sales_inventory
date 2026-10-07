@@ -83,7 +83,7 @@ export const paymentVerificationListQuerySchema = z.object({
 const PAYMENT_INCLUDE = {
   location: { select: { id: true, name: true, code: true } },
   customer: { select: { id: true, name: true } },
-  order: { select: { id: true, reference: true, totalAmount: true, remainingBalance: true, status: true } },
+  order: { select: { id: true, reference: true, totalAmount: true, discountAmount: true, remainingBalance: true, status: true } },
   collectedBy: { select: { id: true, name: true } },
   reviewedBy: { select: { id: true, name: true } },
   branchRespondedBy: { select: { id: true, name: true } },
@@ -126,6 +126,8 @@ export function serializePayment(payment: PaymentRow) {
     orderId: payment.orderId,
     orderReference: payment.order?.reference ?? null,
     orderTotal: payment.order ? payment.order.totalAmount.toNumber() : null,
+    // Taken off the whole order; orderTotal is already net of it.
+    orderDiscount: payment.order ? payment.order.discountAmount.toNumber() : null,
     orderBalance: payment.order ? payment.order.remainingBalance.toNumber() : null,
     saleId: payment.saleId,
     amount: payment.amount.toNumber(),

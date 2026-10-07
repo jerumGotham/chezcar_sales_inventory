@@ -93,6 +93,8 @@ export default function CreateCustomerOrderPage() {
   const [customer, setCustomer] = useState<SelectOption | null>(null);
   const [salesperson, setSalesperson] = useState<SelectOption | null>(null);
   const [downpayment, setDownpayment] = useState("0");
+  // One figure off the whole order, the way the edit dialog and a POS sale take it.
+  const [discount, setDiscount] = useState("0");
   const [downpaymentReceiptNumber, setDownpaymentReceiptNumber] = useState("");
   const [downpaymentMethod, setDownpaymentMethod] = useState<SelectOption>(DOWNPAYMENT_METHOD_OPTIONS[0]);
   const [releaseDate, setReleaseDate] = useState("");
@@ -109,6 +111,11 @@ export default function CreateCustomerOrderPage() {
   const customerOptions = optionsQuery.data?.customers.map((item) => ({ value: item.id, label: customerOptionLabel(item.name, item.type) })) ?? [];
   const itemOptions = optionsQuery.data?.products.map((item) => ({ value: item.id, label: `${item.itemCode} - ${item.name} (${item.availableQuantity} available)` })) ?? [];
   const salespersonOptions = optionsQuery.data?.salespersons.map((item) => ({ value: item.id, label: item.fullName })) ?? [];
+  /*
+   * The salesperson list is the chosen branch's, so it fills in once a branch
+   * is picked; a branch with exactly one eligible salesperson needs no choice.
+   */
+  const selectedSalesperson = salesperson ?? (salespersonOptions.length === 1 ? salespersonOptions[0] : null);
   const productById = new Map((optionsQuery.data?.products ?? []).map((item) => [item.id, item]));
 
   useEffect(() => {
@@ -122,7 +129,7 @@ export default function CreateCustomerOrderPage() {
     mutationFn: async () => {
       if (!customer) throw new Error("Select a customer.");
       if (!activeLocationId) throw new Error("Select a branch.");
-      if (!salesperson) throw new Error("Select a salesperson.");
+      if (!selectedSalesperson) throw new Error("Select a salesperson.");
       if (items.some((item) => !item.item || item.quantity < 1)) throw new Error("Select a product and valid quantity for every line.");
       if (status.value === "RESERVED" && items.some((item) => item.item && item.quantity > (productById.get(item.item.value)?.availableQuantity ?? 0))) throw new Error("Order quantity cannot exceed available branch stock.");
       const orderType = status.value === "WAITING_STOCK"
@@ -139,13 +146,14 @@ export default function CreateCustomerOrderPage() {
         body: JSON.stringify({
           customer: { id: customer.value, name: customer.label },
           locationId: activeLocationId,
-          salespersonId: salesperson.value,
+          salespersonId: selectedSalesperson.value,
           type: orderType,
           expectedReleaseDate: releaseDate || undefined,
           notes: notes || undefined,
           downpaymentAmount: orderType === "RESERVATION_WITH_DP" ? Number(downpayment) : 0,
           downpaymentReceiptNumber: orderType === "RESERVATION_WITH_DP" ? downpaymentReceiptNumber : undefined,
           downpaymentMethod: orderType === "RESERVATION_WITH_DP" ? downpaymentMethod.value : undefined,
+          discountAmount: parsedDiscount,
           lines: items.map((item) => ({ productId: item.item!.value, quantity: item.quantity, finalUnitPrice: item.unitPrice })),
         }),
       });
@@ -225,8 +233,10 @@ export default function CreateCustomerOrderPage() {
     return items.reduce((sum, row) => sum + row.quantity * row.unitPrice, 0);
   }, [items]);
 
+  const parsedDiscount = Math.min(Math.max(Number(discount) || 0, 0), subtotal);
+  const orderTotal = Math.round((subtotal - parsedDiscount) * 100) / 100;
   const parsedDownpayment = Number(downpayment || 0);
-  const balance = Math.max(subtotal - parsedDownpayment, 0);
+  const balance = Math.max(orderTotal - parsedDownpayment, 0);
 
   return (
     <PageShell
@@ -238,7 +248,7 @@ export default function CreateCustomerOrderPage() {
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Link>
-            {canCreate ? <Button onClick={() => { setErrorMessage(""); saveMutation.mutate(); }} disabled={saveMutation.isPending || optionsQuery.isLoading || !salesperson}>
+            {canCreate ? <Button onClick={() => { setErrorMessage(""); saveMutation.mutate(); }} disabled={saveMutation.isPending || optionsQuery.isLoading || !selectedSalesperson}>
              {saveMutation.isPending ? "Saving..." : "Save Order"}
            </Button> : null}
         </div>
@@ -277,12 +287,20 @@ export default function CreateCustomerOrderPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Release Date</Label>
-                  <Input
-                    type="date"
-                    value={releaseDate}
-                    onChange={(e) => setReleaseDate(e.target.value)}
-                  />
+                  <Label>Branch</Label>
+                  {requiresLocationSelection ? (
+                    <Select
+                      instanceId="create-order-location"
+                      options={optionsQuery.data?.branches.map((item) => ({ value: item.id, label: `${item.name} (${item.code})` })) ?? []}
+                      value={location}
+                      onChange={(option) => setLocation(option)}
+                      isSearchable
+                      placeholder="Select branch"
+                      styles={reactSelectStyles}
+                    />
+                  ) : (
+                    <Input value={access.authenticated ? access.scope.label : ""} disabled />
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -290,10 +308,11 @@ export default function CreateCustomerOrderPage() {
                   <Select
                     instanceId="create-order-salesperson"
                     options={salespersonOptions}
-                    value={salesperson}
+                    value={selectedSalesperson}
+                    isDisabled={!activeLocationId}
                     onChange={(option) => setSalesperson(option)}
                     isSearchable
-                    placeholder="Select salesperson"
+                    placeholder={activeLocationId ? "Select salesperson" : "Select a branch first"}
                     noOptionsMessage={() => "No eligible salespersons in your authorized locations"}
                     styles={reactSelectStyles}
                   />
@@ -312,23 +331,20 @@ export default function CreateCustomerOrderPage() {
                     isSearchable
                     styles={reactSelectStyles}
                   />
+                  {status.value === "WAITING_STOCK" ? (
+                    <p className="text-xs text-muted-foreground">
+                      Items the branch has now are reserved straight away, so they are not sold to someone else. The order waits for the rest; use Reserve remaining stock when it arrives.
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Branch</Label>
-                  {requiresLocationSelection ? (
-                    <Select
-                      instanceId="create-order-location"
-                      options={optionsQuery.data?.branches.map((item) => ({ value: item.id, label: `${item.name} (${item.code})` })) ?? []}
-                      value={location}
-                      onChange={(option) => setLocation(option)}
-                      isSearchable
-                      placeholder="Select branch"
-                      styles={reactSelectStyles}
-                    />
-                  ) : (
-                    <Input value={access.authenticated ? access.scope.label : ""} disabled />
-                  )}
+                  <Label>Release Date</Label>
+                  <Input
+                    type="date"
+                    value={releaseDate}
+                    onChange={(e) => setReleaseDate(e.target.value)}
+                  />
                 </div>
 
                 {status.value === "RESERVED" ? (
@@ -499,6 +515,24 @@ export default function CreateCustomerOrderPage() {
                   <span className="font-medium text-foreground">
                     {formatPeso(subtotal)}
                   </span>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="create-order-discount">Discount</Label>
+                  <Input
+                    id="create-order-discount"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={discount}
+                    onChange={(e) => setDiscount(e.target.value)}
+                  />
+                  {Number(discount) > subtotal ? <p className="text-xs text-amber-700 dark:text-amber-300">The discount cannot be more than the subtotal.</p> : null}
+                </div>
+
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Order total</span>
+                  <span className="font-semibold text-foreground">{formatPeso(orderTotal)}</span>
                 </div>
 
                 <div className="space-y-2">

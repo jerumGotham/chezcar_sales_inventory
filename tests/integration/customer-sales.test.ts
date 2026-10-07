@@ -205,9 +205,11 @@ describe("customer orders, direct sales, accounting", () => {
         ],
       });
 
-      expect(order).toMatchObject({ status: "Pending", statusCode: "WAITING_STOCK" });
+      // The item on hand is held straight away; the order waits for the other.
+      expect(order).toMatchObject({ status: "Partially reserved", statusCode: "WAITING_STOCK" });
+      // Nothing more can be held until the missing item arrives.
       await expect(reserveCustomerOrder(branchActor, order.id)).rejects.toMatchObject({ code: "INSUFFICIENT_STOCK" });
-      await expect(prisma.inventoryBalance.findUniqueOrThrow({ where: { locationId_productId: { locationId: fixture.locations.branches.QC.id, productId: availableProduct.id } } })).resolves.toMatchObject({ reserved: 0 });
+      await expect(prisma.inventoryBalance.findUniqueOrThrow({ where: { locationId_productId: { locationId: fixture.locations.branches.QC.id, productId: availableProduct.id } } })).resolves.toMatchObject({ reserved: 1 });
 
       await prisma.inventoryBalance.update({ where: { locationId_productId: { locationId: fixture.locations.branches.QC.id, productId: unavailableProduct.id } }, data: { onHand: 1 } });
       testEnvironment.getSession.mockResolvedValue({ user: { id: fixture.users.branchStaff.id } });

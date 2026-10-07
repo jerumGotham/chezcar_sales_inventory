@@ -61,6 +61,7 @@ type SelectOption = {
 type OrderStatus =
   | "Reserved"
   | "Pending"
+  | "Partially reserved"
   | "For Release"
   | "Released"
   | "Cancelled";
@@ -152,6 +153,7 @@ const ORDER_STATUS_OPTIONS: SelectOption[] = [
   { value: "all", label: "All Statuses" },
   { value: "Reserved", label: "Reserved" },
   { value: "Pending", label: "Pending" },
+  { value: "Partially reserved", label: "Partially reserved" },
   { value: "For Release", label: "For Release" },
   { value: "Released", label: "Released" },
   { value: "Cancelled", label: "Cancelled" },
@@ -183,6 +185,8 @@ function getOrderStatusBadgeClass(status: OrderStatus) {
       return "border border-violet-200 dark:border-violet-900 bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:bg-violet-950/40";
     case "Pending":
       return "border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:bg-amber-950/40";
+    case "Partially reserved":
+      return "border border-orange-200 dark:border-orange-900 bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 hover:bg-orange-50 dark:bg-orange-950/40";
     case "For Release":
       return "border border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 hover:bg-sky-50 dark:bg-sky-950/40";
     case "Released":
@@ -266,7 +270,7 @@ async function fetchCustomerOrders(params: {
     summary: {
       totalOrders: orders.length,
       pendingOrders: orders.filter(
-        (item) => item.status === "Pending" || item.status === "Reserved",
+        (item) => item.status === "Pending" || item.status === "Partially reserved" || item.status === "Reserved",
       ).length,
       forReleaseOrders: orders.filter(
         (item) => item.status === "For Release",
