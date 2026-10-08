@@ -49,9 +49,10 @@ describe("System cleanup", () => {
       const usedByPayment = "22222222-2222-2222-2222-222222222222.png";
       const orphan = "33333333-3333-3333-3333-333333333333.jpg";
       const fresh = "44444444-4444-4444-4444-444444444444.jpg";
+      const usedAsExtra = "77777777-7777-7777-7777-777777777777.jpg";
       const usedImage = "55555555-5555-5555-5555-555555555555.webp";
       const orphanImage = "66666666-6666-6666-6666-666666666666.webp";
-      for (const name of [used, usedByPayment, orphan]) await upload(receipts, name, true);
+      for (const name of [used, usedByPayment, usedAsExtra, orphan]) await upload(receipts, name, true);
       // Written moments ago: its row may not be saved yet, so it is never an orphan.
       await upload(receipts, fresh, false);
       await upload(images, usedImage, true);
@@ -78,6 +79,9 @@ describe("System cleanup", () => {
       await prisma.saleAccountingReview.updateMany({ where: { saleId: sale.id }, data: { receiptPhotoKey: used } });
       // A payment holds a photo too; borrowing this sale's row is enough to prove it is read.
       await prisma.payment.updateMany({ where: { saleId: sale.id }, data: { receiptPhotoKey: usedByPayment } });
+      // A second photo of the same receipt is in use too.
+      const review = await prisma.saleAccountingReview.findFirstOrThrow({ where: { saleId: sale.id } });
+      await prisma.receiptPhoto.create({ data: { saleReviewId: review.id, key: usedAsExtra, contentType: "image/jpeg", uploadedById: fixture.users.admin.id } });
 
       await prisma.systemLog.create({ data: { level: "ERROR", source: "test", message: "old", occurredAt: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000) } });
       await prisma.systemLog.create({ data: { level: "ERROR", source: "test", message: "recent" } });
@@ -99,7 +103,7 @@ describe("System cleanup", () => {
       const result = await runCleanup(developer, ["orphan-receipt-photos", "orphan-product-images", "old-backups", "old-system-logs", "expired-sessions"]);
       expect(result.freedBytes).toBe(300);
 
-      expect((await readdir(receipts)).sort()).toEqual([used, usedByPayment, fresh, "notes.txt"].sort());
+      expect((await readdir(receipts)).sort()).toEqual([used, usedByPayment, usedAsExtra, fresh, "notes.txt"].sort());
       expect(await readdir(images)).toEqual([usedImage]);
       // The newest two backups stay.
       expect((await readdir(backups)).sort()).toEqual(["a.dump", "b.dump"]);

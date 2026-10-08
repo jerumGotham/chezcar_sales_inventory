@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import Select from "react-select";
 
-import { ReceiptPhotoInput } from "@/components/receipt-photo-input";
+import { ReceiptPhotosInput, uploadReceiptPhotos } from "@/components/receipt-photos-input";
 import { useCan } from "@/components/shell-access-context";
 import { Button } from "@/components/ui/button";
 import {
@@ -65,13 +65,13 @@ export function OrderPaymentDialog({
   const canAttachReceipt = useCan("sales:evidence:upload");
   const [amount, setAmount] = useState("");
   const [reference, setReference] = useState("");
-  const [photo, setPhoto] = useState<File | null>(null);
+  const [photos, setPhotos] = useState<File[]>([]);
   const [method, setMethod] = useState<SelectOption>(PAYMENT_METHOD_OPTIONS[0]);
 
   const reset = () => {
     setAmount("");
     setReference("");
-    setPhoto(null);
+    setPhotos([]);
     setMethod(PAYMENT_METHOD_OPTIONS[0]);
   };
 
@@ -87,17 +87,12 @@ export function OrderPaymentDialog({
       const json = await response.json();
       if (!response.ok) throw new Error(json.error?.message ?? "Unable to save payment");
       const saved = json.data as { paymentId: string | null };
-      if (photo && canAttachReceipt && saved.paymentId) {
-        const body = new FormData();
-        body.set("photo", photo);
+      if (photos.length && canAttachReceipt && saved.paymentId) {
         // The money is already recorded, so a failed upload is a warning, not
         // a reason to report the payment as not saved.
-        const attached = await fetch(`/api/accounting/payments/${encodeURIComponent(saved.paymentId)}/photo`, {
-          method: "POST",
-          credentials: "same-origin",
-          body,
-        }).catch(() => null);
-        if (!attached?.ok) {
+        const paymentPath = `/api/accounting/payments/${encodeURIComponent(saved.paymentId)}`;
+        const attached = await uploadReceiptPhotos(photos, { primary: `${paymentPath}/photo`, extras: `${paymentPath}/photos` });
+        if (!attached) {
           return "Payment saved, but the receipt photo did not attach. Attach it from Receipt Verification.";
         }
       }
@@ -133,7 +128,7 @@ export function OrderPaymentDialog({
         }
       }}
     >
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>{order?.downpayment ? "Add Customer Payment" : "Record Downpayment"}</DialogTitle>
           <DialogDescription>
@@ -143,104 +138,112 @@ export function OrderPaymentDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4 py-2">
-          <div className="space-y-2">
-            <Label>Order No.</Label>
-            <Input value={order?.orderNo ?? ""} readOnly />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Customer</Label>
-            <Input value={order?.customer ?? ""} readOnly />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Items</Label>
-            <div className="rounded-lg border bg-muted p-3 text-sm text-foreground">
-              <ul className="list-disc space-y-1 pl-5">
-                {order?.items.map((item, index) => (
-                  <li key={`${item.name}-${index}`}>
-                    {item.name} × {item.quantity}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Total Amount</p>
-              <p className="text-sm font-semibold">{peso(order?.totalAmount ?? 0)}</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Current Downpayment</p>
-              <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">{peso(order?.downpayment ?? 0)}</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Remaining Balance</p>
-              <p className="text-sm font-semibold text-amber-600">{peso(balance)}</p>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="order-payment-amount">Payment Amount</Label>
-            <Input
-              id="order-payment-amount"
-              type="number"
-              min="0.01"
-              max={balance}
-              step="0.01"
-              placeholder="0.00"
-              value={amount}
-              onChange={(event) => setAmount(event.target.value)}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="order-payment-reference">Receipt Number (required)</Label>
-            <Input
-              id="order-payment-reference"
-              placeholder="OR-000123"
-              value={reference}
-              onChange={(event) => setReference(event.target.value)}
-              maxLength={100}
-            />
-            <p className="text-xs text-muted-foreground">
-              Accounting verifies this receipt against its photo, so every payment needs its own number.
-            </p>
-          </div>
-
-          {canAttachReceipt ? (
+        {/*
+          Two columns from tablet width up: the order and the money on the
+          left, the receipt photos on the right, so five pictures do not push
+          the form into a long scroll.
+        */}
+        <div className="grid gap-6 py-2 md:grid-cols-2">
+          <div className="grid content-start gap-4">
             <div className="space-y-2">
-              <Label htmlFor="order-payment-photo">Receipt Photo (optional)</Label>
-              <ReceiptPhotoInput
-                id="order-payment-photo"
-                file={photo}
-                onChange={setPhoto}
-                disabled={mutation.isPending}
-                describedBy="order-payment-photo-help"
+              <Label>Order No.</Label>
+              <Input value={order?.orderNo ?? ""} readOnly />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Customer</Label>
+              <Input value={order?.customer ?? ""} readOnly />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Items</Label>
+              <div className="rounded-lg border bg-muted p-3 text-sm text-foreground">
+                <ul className="list-disc space-y-1 pl-5">
+                  {order?.items.map((item, index) => (
+                    <li key={`${item.name}-${index}`}>
+                      {item.name} × {item.quantity}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Total Amount</p>
+                <p className="text-sm font-semibold">{peso(order?.totalAmount ?? 0)}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Current Downpayment</p>
+                <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">{peso(order?.downpayment ?? 0)}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Remaining Balance</p>
+                <p className="text-sm font-semibold text-amber-600">{peso(balance)}</p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="order-payment-amount" required>Payment Amount</Label>
+              <Input
+                id="order-payment-amount"
+                type="number"
+                min="0.01"
+                max={balance}
+                step="0.01"
+                placeholder="0.00"
+                value={amount}
+                onChange={(event) => setAmount(event.target.value)}
               />
-              <p id="order-payment-photo-help" className="text-xs text-muted-foreground">
-                Click the photo to magnify it and check the figures are readable. Attach it now if you have the receipt, or leave it and attach it later in Receipt Verification.
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="order-payment-reference" required>Receipt Number</Label>
+              <Input
+                id="order-payment-reference"
+                placeholder="OR-000123"
+                value={reference}
+                onChange={(event) => setReference(event.target.value)}
+                maxLength={100}
+              />
+              <p className="text-xs text-muted-foreground">
+                Accounting verifies this receipt against its photo, so every payment needs its own number.
               </p>
             </div>
-          ) : null}
-
-          <div className="space-y-2">
-            <Label htmlFor="order-payment-method">Payment Method</Label>
-            <Select
-              inputId="order-payment-method"
-              instanceId="customer-orders-payment-method"
-              options={PAYMENT_METHOD_OPTIONS}
-              value={method}
-              onChange={(option) => setMethod(option ?? PAYMENT_METHOD_OPTIONS[0])}
-              isSearchable
-              placeholder="Select payment method"
-              styles={reactSelectStyles}
-            />
+            <div className="space-y-2">
+              <Label htmlFor="order-payment-method">Payment Method</Label>
+              <Select
+                inputId="order-payment-method"
+                instanceId="customer-orders-payment-method"
+                options={PAYMENT_METHOD_OPTIONS}
+                value={method}
+                onChange={(option) => setMethod(option ?? PAYMENT_METHOD_OPTIONS[0])}
+                isSearchable
+                placeholder="Select payment method"
+                styles={reactSelectStyles}
+              />
+            </div>
           </div>
-          {mutation.error ? <p className="text-sm text-red-600">{(mutation.error as Error).message}</p> : null}
+          <div className="grid content-start gap-4">
+            {canAttachReceipt ? (
+              <div className="space-y-2">
+                <Label htmlFor="order-payment-photo">Receipt Photos (optional, up to 5)</Label>
+                <ReceiptPhotosInput
+                  id="order-payment-photo"
+                  files={photos}
+                  onChange={setPhotos}
+                  disabled={mutation.isPending}
+                  describedBy="order-payment-photo-help"
+                />
+                <p id="order-payment-photo-help" className="text-xs text-muted-foreground">
+                  Click the photo to magnify it and check the figures are readable. Attach it now if you have the receipt, or leave it and attach it later in Receipt Verification.
+                </p>
+              </div>
+            ) : null}
+            {!canAttachReceipt ? <p className="text-sm text-muted-foreground">You do not have permission to attach receipt photos.</p> : null}
+          </div>
         </div>
+        {mutation.error ? <p className="text-sm text-red-600">{(mutation.error as Error).message}</p> : null}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={mutation.isPending}>

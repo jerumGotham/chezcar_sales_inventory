@@ -844,6 +844,7 @@ model BackjobAttachment {
 
 model User {
   id                             String                          @id @default(cuid())
+  uploadedReceiptPhotos          ReceiptPhoto[]                  @relation("ReceiptPhotoUploadedBy")
   name                           String
   email                          String                          @unique
   emailVerified                  Boolean                         @default(false)
@@ -976,6 +977,8 @@ model StockTransfer {
   /// When the in-transit reminder last went out, so the sweep can space
   /// them evenly and stop once the transfer has been open long enough.
   transitReminderAt  DateTime?
+  /// The delivery receipt that travelled with the goods, written at dispatch.
+  dispatchReceiptNumber String?
   source             Location                    @relation("TransferSource", fields: [sourceId], references: [id])
   destination        Location                    @relation("TransferDestination", fields: [destinationId], references: [id])
   createdBy          User                        @relation("TransferCreatedBy", fields: [createdById], references: [id])
@@ -988,6 +991,7 @@ model StockTransfer {
   investigation      StockTransferInvestigation?
   resolution         StockTransferResolution?
   movements          InventoryMovement[]
+  receiptPhotos      ReceiptPhoto[]
   createdAt          DateTime                    @default(now())
   updatedAt          DateTime                    @updatedAt
 
@@ -1564,6 +1568,7 @@ model Payment {
   @@index([branchRespondedById])
   @@index([resolvedById])
   @@index([voidedById])
+  extraPhotos                    ReceiptPhoto[]
 }
 
 model SaleAccountingReview {
@@ -1605,6 +1610,7 @@ model SaleAccountingReview {
   @@index([resolvedById])
   @@index([branchRespondedById])
   @@index([evidenceReminderSentAt, receiptPhotoKey])
+  extraPhotos                    ReceiptPhoto[]
 }
 
 model SaleCorrectionRequest {
@@ -1821,4 +1827,29 @@ model Verification {
   updatedAt  DateTime @updatedAt
 
   @@index([identifier])
+}
+
+/// A receipt photo beyond the first. A payment or a sale keeps its first photo
+/// on its own row (Payment.receiptPhotoKey, SaleAccountingReview.receiptPhotoKey),
+/// which is what verification and the missing-photo reminder read; the rest of
+/// a receipt that needed more than one picture lives here, up to five in all.
+/// A stock transfer's dispatch receipt keeps every photo here. Exactly one
+/// owner is set, which a check constraint enforces.
+model ReceiptPhoto {
+  id           String                @id @default(cuid())
+  paymentId    String?
+  saleReviewId String?
+  transferId   String?
+  key          String                @unique
+  contentType  String
+  uploadedById String
+  createdAt    DateTime              @default(now())
+  payment      Payment?              @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  saleReview   SaleAccountingReview? @relation(fields: [saleReviewId], references: [id], onDelete: Cascade)
+  transfer     StockTransfer?        @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  uploadedBy   User                  @relation("ReceiptPhotoUploadedBy", fields: [uploadedById], references: [id])
+
+  @@index([paymentId])
+  @@index([saleReviewId])
+  @@index([transferId])
 }

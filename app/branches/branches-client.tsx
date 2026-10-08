@@ -195,8 +195,8 @@ export function BranchesClient({
               <DialogDescription>{editing ? "Update branch details. The code cannot be changed." : "Create an active branch available throughout sales and inventory."}</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-5 sm:grid-cols-2">
-              <div className="space-y-2"><Label htmlFor="branch-code">Code</Label><Input id="branch-code" value={form.code} disabled={Boolean(editing)} required minLength={2} maxLength={12} onChange={(event) => setField("code", event.target.value)} /></div>
-              <div className="space-y-2"><Label htmlFor="branch-name">Name</Label><Input id="branch-name" value={form.name} required maxLength={120} onChange={(event) => setField("name", event.target.value)} /></div>
+              <div className="space-y-2"><Label htmlFor="branch-code" required>Code</Label><Input id="branch-code" value={form.code} disabled={Boolean(editing)} required minLength={2} maxLength={12} onChange={(event) => setField("code", event.target.value)} /></div>
+              <div className="space-y-2"><Label htmlFor="branch-name" required>Name</Label><Input id="branch-name" value={form.name} required maxLength={120} onChange={(event) => setField("name", event.target.value)} /></div>
               <div className="space-y-2 sm:col-span-2"><Label htmlFor="branch-address">Address</Label><Input id="branch-address" value={form.address} maxLength={300} onChange={(event) => setField("address", event.target.value)} /></div>
               <div className="space-y-2"><Label htmlFor="branch-city">City</Label><Input id="branch-city" value={form.city} maxLength={120} onChange={(event) => setField("city", event.target.value)} /></div>
               <div className="space-y-2"><Label htmlFor="branch-contact">Contact number</Label><Input id="branch-contact" value={form.contactNumber} maxLength={60} onChange={(event) => setField("contactNumber", event.target.value)} /></div>

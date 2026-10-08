@@ -123,7 +123,7 @@ function RoleEditor({
         >
           <div className="grid gap-4">
             <div className="space-y-2">
-              <Label htmlFor="role-name">Role Name</Label>
+              <Label htmlFor="role-name" required>Role Name</Label>
               <Input
                 id="role-name"
                 value={name}

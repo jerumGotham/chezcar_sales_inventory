@@ -574,7 +574,7 @@ function UserFormDialog({
           <form className="space-y-4" onSubmit={handleSubmit} noValidate>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="user-form-name">Full Name</Label>
+                <Label htmlFor="user-form-name" required>Full Name</Label>
                 <Input
                   ref={nameRef}
                   id="user-form-name"
@@ -598,7 +598,7 @@ function UserFormDialog({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="user-form-email">Email Address</Label>
+                <Label htmlFor="user-form-email" required>Email Address</Label>
                 <Input
                   ref={emailRef}
                   id="user-form-email"
@@ -623,7 +623,7 @@ function UserFormDialog({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="user-form-role">Role</Label>
+                <Label htmlFor="user-form-role" required>Role</Label>
                 <UsersSelect
                   value={roleId}
                   onValueChange={handleRoleChange}
@@ -633,7 +633,7 @@ function UserFormDialog({
               </div>
 
               <div className="space-y-2">
-                <Label>Locations</Label>
+                <Label required={!hasAllLocations}>Locations</Label>
                 {hasAllLocations ? (
                   <p className="text-muted-foreground rounded-lg border p-3 text-sm">
                     This role can access all active locations, so individual assignments are not required.
@@ -669,7 +669,7 @@ function UserFormDialog({
               {isCreate && (
                 <>
                   <div className="space-y-2">
-                    <Label htmlFor="user-form-password">Temporary Password</Label>
+                    <Label htmlFor="user-form-password" required>Temporary Password</Label>
                     <PasswordInput
                       ref={passwordRef}
                       id="user-form-password"
@@ -695,7 +695,7 @@ function UserFormDialog({
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="user-form-confirm-password">
+                    <Label htmlFor="user-form-confirm-password" required>
                       Confirm Temporary Password
                     </Label>
                     <PasswordInput
@@ -896,7 +896,7 @@ function ResetPasswordDialog({
           noValidate
         >
           <div className="space-y-2">
-            <Label htmlFor="reset-temporary-password">Temporary Password</Label>
+            <Label htmlFor="reset-temporary-password" required>Temporary Password</Label>
             <Input
               ref={newPasswordRef}
               id="reset-temporary-password"
@@ -926,7 +926,7 @@ function ResetPasswordDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="reset-confirm-password">
+            <Label htmlFor="reset-confirm-password" required>
               Confirm Temporary Password
             </Label>
             <Input

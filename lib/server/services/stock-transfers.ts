@@ -21,6 +21,7 @@ import { prisma } from "@/lib/server/prisma";
 import { findActiveBranch, listAccessibleOperationalLocations } from "@/lib/server/locations";
 import { canAccessLocation, hasAllLocationAccess } from "@/lib/server/policy/access";
 import { createNotifications } from "./notifications";
+import { receiptPhotoUrl } from "@/lib/server/services/receipt-photos";
 
 export class TransferError extends Error {
   constructor(
@@ -33,6 +34,7 @@ export class TransferError extends Error {
 }
 
 const TRANSFER_INCLUDE = {
+  receiptPhotos: { select: { id: true }, orderBy: { createdAt: "asc" } },
   source: { select: { id: true, code: true, name: true } },
   destination: { select: { id: true, code: true, name: true } },
   lines: {
@@ -726,6 +728,8 @@ export async function dispatchTransfer(
   actor: AuthContext,
   id: string,
   version: number,
+  /** The delivery receipt that goes out with the goods. Optional. */
+  receiptNumber?: string,
 ) {
   assertCapability(actor, "stock-transfers:dispatch");
   return prisma.$transaction(
@@ -772,6 +776,7 @@ export async function dispatchTransfer(
           status: "IN_TRANSIT",
           dispatchedById: actor.userId,
           dispatchedAt: new Date(),
+          dispatchReceiptNumber: receiptNumber?.trim() || null,
           version: { increment: 1 },
         },
         include: TRANSFER_INCLUDE,
@@ -1278,6 +1283,8 @@ function serializeTransfer(transfer: TransferRecord, includeAudit = false) {
   return {
     id: transfer.id,
     reference: transfer.reference,
+    dispatchReceiptNumber: transfer.dispatchReceiptNumber,
+    receiptPhotoUrls: transfer.receiptPhotos.map((photo) => receiptPhotoUrl(photo.id)),
     status: transfer.status as StockTransferStatus,
     version: transfer.version,
     source: transfer.source,

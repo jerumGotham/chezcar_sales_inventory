@@ -26,6 +26,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { CapabilityId } from "@/lib/contracts/roles";
 import type { TransferProductOptionDto } from "@/lib/contracts/stock-transfers";
+import { ReceiptPhotosInput } from "@/components/receipt-photos-input";
+import { ReceiptExtraPhotos } from "@/components/receipt-extra-photos";
 
 type TransferLine = {
   id: string;
@@ -71,6 +73,9 @@ type Transfer = {
   cancellation: { reason: string; cancelledAt: string } | null;
   timeline?: TransferTimelineItem[];
   movements?: TransferMovement[];
+  /** The delivery receipt that went out with the goods, and its photos. */
+  dispatchReceiptNumber?: string | null;
+  receiptPhotoUrls?: string[];
 };
 
 type Option = { id: string; code: string; name: string };
@@ -606,6 +611,22 @@ export function StockTransfersClient({
         resolve: "Transfer discrepancy resolved.",
       };
       notify(successMessages[action] ?? "Transfer updated successfully.");
+      if (action === "dispatch" && dispatchPhotos.length) {
+        const photos = dispatchPhotos;
+        const body = new FormData();
+        photos.forEach((photo) => body.append("photos", photo));
+        // The goods are already on the road; a photo that missed is a warning.
+        void fetch(`/api/stock-transfers/${encodeURIComponent(transfer.id)}/receipt-photos`, { method: "POST", credentials: "same-origin", body })
+          .then((response) => {
+            if (!response.ok) notify("Transfer dispatched, but the receipt photos did not attach. Add them from the transfer.");
+            queryClient.invalidateQueries({ queryKey: ["stock-transfers"] });
+          })
+          .catch(() => notify("Transfer dispatched, but the receipt photos did not attach. Add them from the transfer."));
+      }
+      if (action === "dispatch") {
+        setDispatchReceiptNumber("");
+        setDispatchPhotos([]);
+      }
       setValidationErrors([]);
       rememberTransfer(transfer, action === "create");
       setEditLines(
@@ -719,6 +740,11 @@ export function StockTransfersClient({
       },
     });
   };
+
+  // The delivery receipt written at dispatch: its number goes with the
+  // dispatch, and its photos follow it once the transfer is on the road.
+  const [dispatchReceiptNumber, setDispatchReceiptNumber] = useState("");
+  const [dispatchPhotos, setDispatchPhotos] = useState<File[]>([]);
 
   const act = (action: string, body: object) => {
     mutation.mutate({
@@ -857,31 +883,43 @@ export function StockTransfersClient({
                 {productOptions.error.message}
               </p>
             )}
-            <ChoiceSelect
-              id="create-transfer-source"
-              label="Source location"
-              placeholder="Source location"
-              isSearchable
-              options={sources.map((source) => ({ value: source.id, label: `${source.name} (${source.code})` }))}
-              value={sourceId}
-              onChange={(value) => {
-                setValidationErrors([]);
-                setSourceId(value);
-                setDraftLines([{ productId: "", quantity: 1 }]);
-              }}
-            />
-            <ChoiceSelect
-              id="create-transfer-destination"
-              label="Destination branch"
-              placeholder="Destination branch"
-              isSearchable
-              options={branches.map((branch) => ({ value: branch.id, label: `${branch.name} (${branch.code})` }))}
-              value={destinationId}
-              onChange={(value) => {
-                setValidationErrors([]);
-                setDestinationId(value);
-              }}
-            />
+            <div className="grid gap-1.5">
+              <Label htmlFor="create-transfer-source" required>Source location</Label>
+              <ChoiceSelect
+                id="create-transfer-source"
+                label="Source location"
+                placeholder="Source location"
+                isSearchable
+                options={sources.map((source) => ({ value: source.id, label: `${source.name} (${source.code})` }))}
+                value={sourceId}
+                onChange={(value) => {
+                  setValidationErrors([]);
+                  setSourceId(value);
+                  setDraftLines([{ productId: "", quantity: 1 }]);
+                }}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="create-transfer-destination" required>Destination branch</Label>
+              <ChoiceSelect
+                id="create-transfer-destination"
+                label="Destination branch"
+                placeholder="Destination branch"
+                isSearchable
+                options={branches.map((branch) => ({ value: branch.id, label: `${branch.name} (${branch.code})` }))}
+                value={destinationId}
+                onChange={(value) => {
+                  setValidationErrors([]);
+                  setDestinationId(value);
+                }}
+              />
+            </div>
+            {/* Column labels once, above the lines they name. */}
+            <div className="hidden min-w-0 gap-2 sm:flex">
+              <Label htmlFor="create-transfer-product-0" required className="flex-1">Product</Label>
+              <Label required className="w-24">Quantity</Label>
+              <span className="w-10" aria-hidden="true" />
+            </div>
             {draftLines.map((line, index) => (
               <div className="flex min-w-0 flex-col gap-2 sm:flex-row" key={`${line.productId}-${index}`}>
                 <div className="min-w-0 flex-1">
@@ -1345,6 +1383,48 @@ export function StockTransfersClient({
               </div>
             )}
 
+            {/* The delivery receipt that went with the goods: shown to both
+                sides once dispatched; the sender can add photos on the road. */}
+            {selected.status !== "DRAFT" && selected.status !== "FOR_DISPATCH" &&
+              (selected.dispatchReceiptNumber || (selected.receiptPhotoUrls?.length ?? 0) > 0 || (canDispatch && selected.status === "IN_TRANSIT")) && (
+              <div className="space-y-2 rounded-xl border p-4">
+                <p className="text-sm font-semibold">Delivery receipt</p>
+                <p className="text-sm text-muted-foreground">
+                  Number: <span className="font-medium text-foreground">{selected.dispatchReceiptNumber || "Not recorded"}</span>
+                </p>
+                <ReceiptExtraPhotos
+                  urls={selected.receiptPhotoUrls ?? []}
+                  hasPrimary={false}
+                  standalone
+                  addUrl={`/api/stock-transfers/${encodeURIComponent(selected.id)}/receipt-photos`}
+                  canAdd={canDispatch && selected.status === "IN_TRANSIT"}
+                  canDelete={canDispatch && selected.status === "IN_TRANSIT"}
+                  label={`Delivery receipt ${selected.dispatchReceiptNumber ?? selected.reference}`}
+                  onChanged={() => queryClient.invalidateQueries({ queryKey: ["stock-transfers"] })}
+                />
+                {(selected.receiptPhotoUrls?.length ?? 0) === 0 && !(canDispatch && selected.status === "IN_TRANSIT") ? (
+                  <p className="text-xs text-muted-foreground">No photos attached.</p>
+                ) : null}
+              </div>
+            )}
+            {canDispatch && selected.status === "FOR_DISPATCH" && (
+              <div className="grid gap-3 rounded-xl border p-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="dispatch-receipt-number">Delivery receipt number (optional)</Label>
+                  <Input
+                    id="dispatch-receipt-number"
+                    value={dispatchReceiptNumber}
+                    maxLength={100}
+                    placeholder="DR-000123"
+                    onChange={(event) => setDispatchReceiptNumber(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="dispatch-receipt-photos">Delivery receipt photos (optional, up to 5)</Label>
+                  <ReceiptPhotosInput id="dispatch-receipt-photos" files={dispatchPhotos} onChange={setDispatchPhotos} disabled={mutation.isPending} />
+                </div>
+              </div>
+            )}
             {(canDispatch || canDelete) &&
               selected.status === "FOR_DISPATCH" && (
               <div className="flex items-center gap-3">
@@ -1352,7 +1432,7 @@ export function StockTransfersClient({
                   <Button
                     variant="workflow"
                     disabled={mutation.isPending}
-                    onClick={() => act("dispatch", {})}
+                    onClick={() => act("dispatch", { receiptNumber: dispatchReceiptNumber.trim() || undefined })}
                   >
                     Dispatch from source
                   </Button>
@@ -1433,7 +1513,7 @@ export function StockTransfersClient({
                   ))}
                 {canReportDiscrepancy && (
                   <div className="space-y-2">
-                    <Label htmlFor="discrepancy-notes">What happened?</Label>
+                    <Label htmlFor="discrepancy-notes" required>What happened?</Label>
                     <ChoiceSelect
                       id="discrepancy-notes"
                       label="What happened"
@@ -1521,7 +1601,7 @@ export function StockTransfersClient({
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="cancellation-reason">Cancellation reason</Label>
+                  <Label htmlFor="cancellation-reason" required>Cancellation reason</Label>
                   <Input
                     id="cancellation-reason"
                     value={cancellationReason}
@@ -1548,7 +1628,7 @@ export function StockTransfersClient({
             {canInvestigate &&
             selected.status === "DISCREPANCY_REPORTED" ? (
               <div className="space-y-2">
-                <Label htmlFor="transfer-notes">Investigation findings</Label>
+                <Label htmlFor="transfer-notes" required>Investigation findings</Label>
                 <Input
                   id="transfer-notes"
                   value={notes}
@@ -1642,7 +1722,7 @@ export function StockTransfersClient({
                     </table>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="transfer-notes">Resolution notes</Label>
+                    <Label htmlFor="transfer-notes" required>Resolution notes</Label>
                     <Input
                       id="transfer-notes"
                       value={notes}

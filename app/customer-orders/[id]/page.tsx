@@ -8,6 +8,7 @@ import { ArrowLeft, ImageOff, Loader2, PackageCheck, ReceiptText } from "lucide-
 
 import { PageShell } from "@/components/page-shell";
 import { ReceiptPhoto } from "@/components/receipt-photo";
+import { ReceiptExtraPhotos } from "@/components/receipt-extra-photos";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -83,6 +84,8 @@ type OrderReceipt = {
   collectedAt: string;
   collectedBy: string;
   receiptPhotoUrl: string | null;
+  /** The receipt's second to fifth pictures. */
+  extraPhotoUrls: string[];
 };
 
 const RECEIPT_KIND_LABELS: Record<OrderReceipt["kind"], string> = {
@@ -394,12 +397,15 @@ export default function CustomerOrderDetailsPage() {
                       {!receipt.receiptPhotoUrl ? (
                         <p className="flex items-center gap-2 text-sm text-muted-foreground"><ImageOff className="h-4 w-4" />No photo attached</p>
                       ) : canViewEvidence ? (
-                        <ReceiptPhoto
-                          src={receipt.receiptPhotoUrl}
-                          alt={`Receipt ${receipt.receiptNumber}`}
-                          caption={`${RECEIPT_KIND_LABELS[receipt.kind]} · ${formatPeso(receipt.amount)}`}
-                          className="max-h-48"
-                        />
+                        <>
+                          <ReceiptPhoto
+                            src={receipt.receiptPhotoUrl}
+                            alt={`Receipt ${receipt.receiptNumber}`}
+                            caption={`${RECEIPT_KIND_LABELS[receipt.kind]} · ${formatPeso(receipt.amount)}`}
+                            className="max-h-48"
+                          />
+                          <ReceiptExtraPhotos urls={receipt.extraPhotoUrls ?? []} hasPrimary label={`Receipt ${receipt.receiptNumber}`} />
+                        </>
                       ) : (
                         <p className="text-sm text-muted-foreground">You do not have permission to view receipt photos.</p>
                       )}
@@ -561,11 +567,11 @@ export default function CustomerOrderDetailsPage() {
                   This returns {formatPeso(paidOnOrder - editedTotal)} to the customer.
                 </p>
                 <div className="space-y-1">
-                  <Label htmlFor="order-edit-ack">Acknowledgement number</Label>
+                  <Label htmlFor="order-edit-ack" required>Acknowledgement number</Label>
                   <Input id="order-edit-ack" value={editAck} onChange={(event) => setEditAck(event.target.value)} />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="order-edit-note">Reason</Label>
+                  <Label htmlFor="order-edit-note" required>Reason</Label>
                   <Textarea id="order-edit-note" value={editNote} onChange={(event) => setEditNote(event.target.value)} />
                 </div>
               </div>
@@ -608,7 +614,7 @@ export default function CustomerOrderDetailsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <Label htmlFor="cancellation-note">Cancellation note{order && order.downpayment > 0 ? " (required)" : ""}</Label>
+            <Label htmlFor="cancellation-note" required={Boolean(order && order.downpayment > 0)}>Cancellation note</Label>
             <Textarea
               id="cancellation-note"
               value={cancellationNote}

@@ -109,7 +109,7 @@ export function SignInForm({ callbackUrl }: { callbackUrl: string }) {
       <CardContent>
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email" required>Email</Label>
             <Input
               id="email"
               type="email"
@@ -120,7 +120,7 @@ export function SignInForm({ callbackUrl }: { callbackUrl: string }) {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password" required>Password</Label>
             <div className="relative">
               <Input
                 id="password"

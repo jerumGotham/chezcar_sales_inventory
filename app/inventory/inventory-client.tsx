@@ -1245,7 +1245,7 @@ export function InventoryClient({
               <Input value={releaseRow ? `${releaseRow.itemCode} - ${releaseRow.name}` : ""} disabled />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="release-quantity">Units to release</Label>
+              <Label htmlFor="release-quantity" required>Units to release</Label>
               <Input
                 id="release-quantity"
                 type="number"
@@ -1260,7 +1260,7 @@ export function InventoryClient({
               </p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="release-reason">Reason</Label>
+              <Label htmlFor="release-reason" required>Reason</Label>
               <Input
                 id="release-reason"
                 maxLength={500}
@@ -1324,7 +1324,7 @@ export function InventoryClient({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="branch-price">Price at this branch</Label>
+              <Label htmlFor="branch-price" required>Price at this branch</Label>
               <Input
                 id="branch-price"
                 type="number"
@@ -1413,7 +1413,7 @@ export function InventoryClient({
           <div className="grid gap-6 py-2">
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2 md:col-span-2">
-                <Label>Inventory Balance</Label>
+                <Label required>Inventory Balance</Label>
                 <Select
                   instanceId="adjust-product"
                   options={balanceOptions}
@@ -1431,7 +1431,7 @@ export function InventoryClient({
               </div>
 
               <div className="space-y-2">
-                <Label>Adjustment Type</Label>
+                <Label required>Adjustment Type</Label>
                 <Select
                   instanceId="adjust-type"
                   options={ADJUSTMENT_TYPE_OPTIONS}
@@ -1443,7 +1443,7 @@ export function InventoryClient({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="adjustment-qty">Quantity Change</Label>
+                <Label htmlFor="adjustment-qty" required>Quantity Change</Label>
                 <Input id="adjustment-qty" type="number" min="0" placeholder="0" value={adjustQuantity} onChange={(event) => setAdjustQuantity(event.target.value)} />
               </div>
 
@@ -1453,7 +1453,7 @@ export function InventoryClient({
               </div>
 
               <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="adjustment-reason">Reason</Label>
+                <Label htmlFor="adjustment-reason" required>Reason</Label>
                 <Input
                   id="adjustment-reason"
                   placeholder="Damaged item, recount correction, missing stock, found stock, expired item, etc."
@@ -1534,7 +1534,7 @@ export function InventoryClient({
               </div>
 
               <div className="space-y-2">
-                <Label>Adjustment Type</Label>
+                <Label required>Adjustment Type</Label>
                 <Select
                   instanceId="quick-adjust-type"
                   options={ADJUSTMENT_TYPE_OPTIONS}
@@ -1546,7 +1546,7 @@ export function InventoryClient({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="quick-adjust-qty">Quantity Change</Label>
+                <Label htmlFor="quick-adjust-qty" required>Quantity Change</Label>
                 <Input id="quick-adjust-qty" type="number" min="0" placeholder="0" value={quickAdjustQuantity} onChange={(event) => setQuickAdjustQuantity(event.target.value)} />
               </div>
 
@@ -1556,7 +1556,7 @@ export function InventoryClient({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="quick-adjust-reason">Reason</Label>
+                <Label htmlFor="quick-adjust-reason" required>Reason</Label>
                 <Input
                   id="quick-adjust-reason"
                   placeholder="Wrong encoding, recount mismatch, damaged, etc."

@@ -4,7 +4,12 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-function Label({ className, ...props }: React.ComponentProps<"label">) {
+/**
+ * `required` puts a red asterisk after the text, the one mark every form uses
+ * for a field that must be filled. It is a visual cue only: the input still
+ * needs its own `required` or validation.
+ */
+function Label({ className, required, children, ...props }: React.ComponentProps<"label"> & { required?: boolean }) {
   return (
     <label
       data-slot="label"
@@ -13,7 +18,14 @@ function Label({ className, ...props }: React.ComponentProps<"label">) {
         className
       )}
       {...props}
-    />
+    >
+      {children}
+      {required ? (
+        <span aria-hidden="true" className="-ml-1.5 text-red-600 dark:text-red-400">
+          *
+        </span>
+      ) : null}
+    </label>
   )
 }
 

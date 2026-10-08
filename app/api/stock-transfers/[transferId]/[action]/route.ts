@@ -1,4 +1,4 @@
-import { ZodError } from "zod";
+import { ZodError, z } from "zod";
 
 import type { CapabilityId } from "@/lib/contracts/roles";
 import { authorizationErrorResponse, requireCapability } from "@/lib/server/authorization";
@@ -36,7 +36,10 @@ export async function POST(request: Request, context: Context) {
     const body = await request.json();
     if (action === "delete") return Response.json({ data: await deleteDraftTransfer(actor, transferId, versionSchema.parse(body).version) });
     if (action === "finalize") return Response.json({ data: await finalizeTransfer(actor, transferId, versionSchema.parse(body).version) });
-    if (action === "dispatch") return Response.json({ data: await dispatchTransfer(actor, transferId, versionSchema.parse(body).version) });
+    if (action === "dispatch") {
+      const input = versionSchema.extend({ receiptNumber: z.string().trim().max(100).optional() }).parse(body);
+      return Response.json({ data: await dispatchTransfer(actor, transferId, input.version, input.receiptNumber) });
+    }
     if (action === "cancel") return Response.json({ data: await cancelTransfer(actor, transferId, cancelTransferSchema.parse(body)) });
     if (action === "confirm-receipt") return Response.json({ data: await confirmReceipt(actor, transferId, versionSchema.parse(body).version) });
     if (action === "report-discrepancy") return Response.json({ data: await reportDiscrepancy(actor, transferId, discrepancySchema.parse(body)) });

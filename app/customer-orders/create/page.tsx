@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { useShellAccess } from "@/components/shell-access-context";
 import { hasCapability } from "@/lib/permissions";
 import { reactSelectStyles } from "@/lib/select-styles";
+import { ReceiptPhotosInput, uploadReceiptPhotos } from "@/components/receipt-photos-input";
 
 type SelectOption = {
   value: string;
@@ -78,7 +79,7 @@ export default function CreateCustomerOrderPage() {
    * order with no photo yet is still a perfectly good order, and the queue
    * still chases it.
    */
-  const [downpaymentPhoto, setDownpaymentPhoto] = useState<File | null>(null);
+  const [downpaymentPhotos, setDownpaymentPhotos] = useState<File[]>([]);
   const [location, setLocation] = useState<SelectOption | null>(null);
   const [status, setStatus] = useState<SelectOption>(STATUS_OPTIONS[1]);
   const assignedLocationId = access.authenticated ? access.scope.locationId : null;
@@ -160,16 +161,12 @@ export default function CreateCustomerOrderPage() {
       const json = await response.json();
       if (!response.ok) throw new Error(json.error?.message ?? "Unable to save customer order");
       const order = json.data as { orderNo: string; downpaymentPaymentId: string | null };
-      if (downpaymentPhoto && canAttachReceipt && order.downpaymentPaymentId) {
-        const body = new FormData();
-        body.set("photo", downpaymentPhoto);
+      if (downpaymentPhotos.length && canAttachReceipt && order.downpaymentPaymentId) {
         // The order is already saved, so a failed photo is a warning, not a
         // reason to tell the branch the order did not go through.
-        const attached = await fetch(
-          `/api/accounting/payments/${encodeURIComponent(order.downpaymentPaymentId)}/photo`,
-          { method: "POST", credentials: "same-origin", body },
-        ).catch(() => null);
-        if (!attached?.ok) {
+        const paymentPath = `/api/accounting/payments/${encodeURIComponent(order.downpaymentPaymentId)}`;
+        const attached = await uploadReceiptPhotos(downpaymentPhotos, { primary: `${paymentPath}/photo`, extras: `${paymentPath}/photos` });
+        if (!attached) {
           setErrorMessage("Order saved, but the receipt photo did not attach. Attach it from Receipt Verification.");
         }
       }
@@ -271,7 +268,7 @@ export default function CreateCustomerOrderPage() {
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-2">
-                    <Label>Customer</Label>
+                    <Label required>Customer</Label>
                     <Link href="/customers" className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 dark:text-emerald-300">Manage customers</Link>
                   </div>
                   <Select
@@ -287,7 +284,7 @@ export default function CreateCustomerOrderPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Branch</Label>
+                  <Label required={requiresLocationSelection}>Branch</Label>
                   {requiresLocationSelection ? (
                     <Select
                       instanceId="create-order-location"
@@ -304,7 +301,7 @@ export default function CreateCustomerOrderPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Salesperson</Label>
+                  <Label required>Salesperson</Label>
                   <Select
                     instanceId="create-order-salesperson"
                     options={salespersonOptions}
@@ -357,18 +354,13 @@ export default function CreateCustomerOrderPage() {
                       <Input type="number" min="0.01" step="0.01" value={downpayment} onChange={(e) => setDownpayment(e.target.value)} />
                     </div>
                     <div className="space-y-2">
-                      <Label>Downpayment Receipt No.</Label>
+                      <Label required={Number(downpayment) > 0}>Downpayment Receipt No.</Label>
                       <Input value={downpaymentReceiptNumber} onChange={(e) => setDownpaymentReceiptNumber(e.target.value)} placeholder="OR-000123" />
                     </div>
                     {canAttachReceipt ? (
                       <div className="space-y-2">
-                        <Label htmlFor="downpayment-photo">Receipt Photo (optional)</Label>
-                        <Input
-                          id="downpayment-photo"
-                          type="file"
-                          accept="image/jpeg,image/png,image/webp"
-                          onChange={(e) => setDownpaymentPhoto(e.target.files?.[0] ?? null)}
-                        />
+                        <Label htmlFor="downpayment-photo">Receipt Photos (optional, up to 5)</Label>
+                        <ReceiptPhotosInput id="downpayment-photo" files={downpaymentPhotos} onChange={setDownpaymentPhotos} />
                         <p className="text-xs text-muted-foreground">
                           Attach it now if you have the receipt, or leave it and attach it later in Receipt Verification.
                         </p>
@@ -446,7 +438,7 @@ export default function CreateCustomerOrderPage() {
 
                       <div className="grid gap-4 md:grid-cols-4">
                         <div className="space-y-2 md:col-span-2">
-                          <Label>Product</Label>
+                          <Label required>Product</Label>
                           <Select
                             instanceId={`create-order-item-${index}`}
                              options={itemOptions}
@@ -460,7 +452,7 @@ export default function CreateCustomerOrderPage() {
                         </div>
 
                         <div className="space-y-2">
-                           <Label>Quantity {row.item && !includeUnavailable ? `(max ${productById.get(row.item.value)?.availableQuantity ?? 0})` : ""}</Label>
+                           <Label required>Quantity {row.item && !includeUnavailable ? `(max ${productById.get(row.item.value)?.availableQuantity ?? 0})` : ""}</Label>
                            <Input
                              type="number"
                              min={1}

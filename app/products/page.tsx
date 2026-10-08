@@ -873,7 +873,7 @@ export default function ProductsPage() {
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="itemCode">Item Code</Label>
+                <Label htmlFor="itemCode" required>Item Code</Label>
                 <Input
                   id="itemCode"
                   value={form.itemCode}
@@ -887,7 +887,7 @@ export default function ProductsPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="productName">Product Name</Label>
+                <Label htmlFor="productName" required>Product Name</Label>
                 <Input
                   id="productName"
                   value={form.name}
@@ -943,7 +943,7 @@ export default function ProductsPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="status">Status</Label>
+                <Label htmlFor="status" required>Status</Label>
                 <select
                   id="status"
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -992,8 +992,14 @@ export default function ProductsPage() {
                 </div>
                 {form.vehicleCompatibilities.map((compatibility, index) => (
                   <div key={index} className="grid gap-2 rounded-xl border p-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_180px_auto]">
-                    <Input aria-label={`Vehicle make ${index + 1}`} placeholder="Make" value={compatibility.make} disabled={Boolean(selectedProduct && !canUpdate)} onChange={(event) => setForm((current) => ({ ...current, vehicleCompatibilities: current.vehicleCompatibilities.map((item, itemIndex) => itemIndex === index ? { ...item, make: event.target.value } : item) }))} />
-                    <Input aria-label={`Vehicle model ${index + 1}`} placeholder="Model" value={compatibility.model} disabled={Boolean(selectedProduct && !canUpdate)} onChange={(event) => setForm((current) => ({ ...current, vehicleCompatibilities: current.vehicleCompatibilities.map((item, itemIndex) => itemIndex === index ? { ...item, model: event.target.value } : item) }))} />
+                    <div className="grid gap-1.5">
+                      <Label htmlFor={`vehicle-make-${index}`} required>Make</Label>
+                      <Input id={`vehicle-make-${index}`} aria-label={`Vehicle make ${index + 1}`} placeholder="Make" value={compatibility.make} disabled={Boolean(selectedProduct && !canUpdate)} onChange={(event) => setForm((current) => ({ ...current, vehicleCompatibilities: current.vehicleCompatibilities.map((item, itemIndex) => itemIndex === index ? { ...item, make: event.target.value } : item) }))} />
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor={`vehicle-model-${index}`} required>Model</Label>
+                      <Input id={`vehicle-model-${index}`} aria-label={`Vehicle model ${index + 1}`} placeholder="Model" value={compatibility.model} disabled={Boolean(selectedProduct && !canUpdate)} onChange={(event) => setForm((current) => ({ ...current, vehicleCompatibilities: current.vehicleCompatibilities.map((item, itemIndex) => itemIndex === index ? { ...item, model: event.target.value } : item) }))} />
+                    </div>
                     <Input aria-label={`Years ${index + 1}`} placeholder="2016-2020, 2019 up, universal" title="Type the years however they are written: 2018, 2016-2020, 2019 up, universal, or leave blank." value={compatibility.yearsLabel} disabled={Boolean(selectedProduct && !canUpdate)} onChange={(event) => setForm((current) => ({ ...current, vehicleCompatibilities: current.vehicleCompatibilities.map((item, itemIndex) => itemIndex === index ? { ...item, yearsLabel: event.target.value } : item) }))} />
                     <Button type="button" variant="ghost" size="sm" aria-label={`Remove vehicle compatibility ${index + 1}`} disabled={Boolean(selectedProduct && !canUpdate)} onClick={() => setForm((current) => ({ ...current, vehicleCompatibilities: current.vehicleCompatibilities.filter((_, itemIndex) => itemIndex !== index) }))}><Trash2 className="h-4 w-4" /></Button>
                   </div>

@@ -246,7 +246,7 @@ export function SaleRefundDialog({
               </div>
             ) : (
               <div className="space-y-2">
-                <Label>Items returned</Label>
+                <Label required>Items returned</Label>
                 <div className="space-y-2">
                   {sale.lines.map((line) => (
                     <div key={line.productId} className="grid gap-2 rounded-xl border border-border p-3 sm:grid-cols-[1fr_7rem_14rem]">
@@ -343,7 +343,7 @@ export function SaleRefundDialog({
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="refund-ack">Acknowledgement slip no.</Label>
+                <Label htmlFor="refund-ack" required>Acknowledgement slip no.</Label>
                 <Input
                   id="refund-ack"
                   value={acknowledgement}
@@ -358,7 +358,7 @@ export function SaleRefundDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="refund-reason">Reason</Label>
+              <Label htmlFor="refund-reason" required>Reason</Label>
               <Textarea
                 id="refund-reason"
                 rows={3}

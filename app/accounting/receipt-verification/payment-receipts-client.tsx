@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { useCan } from "@/components/shell-access-context";
 import { cn } from "@/lib/utils";
+import { ReceiptExtraPhotos } from "@/components/receipt-extra-photos";
 
 type Option = { value: string; label: string };
 
@@ -47,6 +48,8 @@ type PaymentRow = {
   reviewedBy: string | null;
   reviewedAt: string | null;
   receiptPhotoUrl: string | null;
+  /** The receipt's second to fifth pictures. */
+  extraPhotoUrls?: string[];
   receiptPhotoVersion: string | null;
   evidencePendingNotifiedAt: string | null;
   branchResponse: string | null;
@@ -569,11 +572,22 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
                 <div className="space-y-2">
                   <Label>Receipt photo</Label>
                   {selected.receiptPhotoUrl && canViewEvidence ? (
-                    <ReceiptPhoto
-                      src={selected.receiptPhotoUrl}
-                      alt={`Receipt ${selected.receiptNumber}`}
-                      caption={`${selected.kindLabel} · ${selected.branch} · ${peso.format(selected.amount)}`}
-                    />
+                    <>
+                      <ReceiptPhoto
+                        src={selected.receiptPhotoUrl}
+                        alt={`Receipt ${selected.receiptNumber}`}
+                        caption={`${selected.kindLabel} · ${selected.branch} · ${peso.format(selected.amount)}`}
+                      />
+                      <ReceiptExtraPhotos
+                        urls={selected.extraPhotoUrls ?? []}
+                        hasPrimary
+                        addUrl={`/api/accounting/payments/${encodeURIComponent(selected.id)}/photos`}
+                        canAdd={canUpload && selected.reviewStatus !== "VERIFIED" && selected.status === "ACTIVE" && !selected.resolvedAt}
+                        canDelete={canDelete && selected.reviewStatus === "UNVERIFIED" && !selected.reviewedAt && !selected.resolvedAt}
+                        label={`Receipt ${selected.receiptNumber}`}
+                        onChanged={() => queryClient.invalidateQueries({ queryKey: ["accounting-payments"] })}
+                      />
+                    </>
                   ) : selected.receiptPhotoUrl ? (
                     <p className="text-sm text-muted-foreground">You do not have permission to view receipt photos.</p>
                   ) : (
@@ -690,7 +704,8 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
                           styles={selectStyles}
                           isSearchable
                         />
-                        <Textarea value={branchNote} onChange={(event) => setBranchNote(event.target.value)} rows={3} placeholder="Explain what the branch found" />
+                        <Label htmlFor="payment-branch-note" required>Branch explanation</Label>
+                        <Textarea id="payment-branch-note" value={branchNote} onChange={(event) => setBranchNote(event.target.value)} rows={3} placeholder="Explain what the branch found" />
                         <Input value={replacementReceipt} onChange={(event) => setReplacementReceipt(event.target.value)} placeholder="Replacement receipt number (optional)" maxLength={100} />
                         <Button disabled={busy || !branchNote.trim()} onClick={() => branchResponseMutation.mutate()}>Submit Branch Response</Button>
                       </div>
@@ -700,7 +715,7 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
 
                     {selected.branchRespondedAt && !selected.resolvedAt && (canResolve || canVoid) ? (
                       <div className="space-y-2 rounded-lg border bg-background p-3">
-                        <Label htmlFor="payment-resolution-note">Resolution note</Label>
+                        <Label htmlFor="payment-resolution-note" required>Resolution note</Label>
                         <Textarea id="payment-resolution-note" value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} rows={3} />
                         <div className="flex flex-wrap gap-2">
                           {canResolve ? (

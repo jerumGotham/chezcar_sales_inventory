@@ -35,6 +35,7 @@ import {
   type SaleCorrectionRequestDto,
 } from "@/lib/contracts/sales";
 import { cn } from "@/lib/utils";
+import { ReceiptExtraPhotos } from "@/components/receipt-extra-photos";
 
 type NewBranchFinding = Extract<
   BranchMismatchResponseDto,
@@ -127,6 +128,8 @@ type Sale = {
   branchReplacementReceiptNumber: string | null;
   branchRespondedAt: string | null;
   receiptPhotoUrl: string | null;
+  /** The receipt's second to fifth pictures. */
+  extraPhotoUrls?: string[];
   receiptPhotoVersion: string | null;
   reviewedAt: string | null;
   correctionOfId: string | null;
@@ -1691,7 +1694,7 @@ function ReceiptVerificationContent() {
                     {selectedSale.correctionRequest.status === "PENDING" && canVoidReplace && selectedSale.status === "POSTED" ? (
                       <div className="space-y-3 border-t border-amber-200 dark:border-amber-900 pt-3">
                         <div className="space-y-2">
-                          <Label htmlFor="correction-resolution-note">Admin resolution note</Label>
+                          <Label htmlFor="correction-resolution-note" required>Admin resolution note</Label>
                           <Textarea
                             id="correction-resolution-note"
                             value={correctionResolutionNote}
@@ -1766,6 +1769,18 @@ function ReceiptVerificationContent() {
                     ) : (
                       <p className="rounded-lg bg-amber-50 dark:bg-amber-950/40 p-3 text-sm text-amber-800 dark:text-amber-300">No receipt image uploaded.</p>
                     )}
+                    {/* A receipt that needed more than one picture: the rest of it. */}
+                    {canViewEvidence ? (
+                      <ReceiptExtraPhotos
+                        urls={selectedSale.extraPhotoUrls ?? []}
+                        hasPrimary={Boolean(selectedSale.receiptPhotoUrl)}
+                        addUrl={`/api/accounting/receipts/${encodeURIComponent(selectedSale.id)}/photos`}
+                        canAdd={canUploadEvidence && selectedSale.status === "POSTED" && selectedSale.reviewStatus !== "VERIFIED" && !selectedSale.resolvedAt}
+                        canDelete={canDeleteEvidence && selectedSale.reviewStatus === "UNVERIFIED" && !selectedSale.reviewedAt && !selectedSale.resolvedAt}
+                        label={`Receipt ${selectedSale.manualReceiptNumber}`}
+                        onChanged={() => queryClient.invalidateQueries({ queryKey: ["accounting-receipts"] })}
+                      />
+                    ) : null}
                     {canDeleteEvidence &&
                     selectedSale.receiptPhotoUrl &&
                     selectedSale.receiptPhotoVersion &&
@@ -1842,7 +1857,7 @@ function ReceiptVerificationContent() {
                 */}
                 {canVoidVerified && selectedSale.status === "POSTED" && selectedSale.reviewStatus === "VERIFIED" && selectedSale.source !== "Customer Order" && (
                   <div className="space-y-2 rounded-xl border border-red-200 p-3 dark:border-red-900">
-                    <Label htmlFor="void-verified-note">Void this verified sale</Label>
+                    <Label htmlFor="void-verified-note" required>Void this verified sale</Label>
                     <p className="text-xs text-muted-foreground">
                       For a verification that turns out to be wrong. The stock goes back to the branch and the sale stops counting in the reports.
                     </p>
@@ -1915,7 +1930,7 @@ function ReceiptVerificationContent() {
                         </p>
                       </div>
                       <fieldset className="space-y-2">
-                        <legend className="text-sm font-medium">Branch finding</legend>
+                        <legend className="text-sm font-medium">Branch finding <span aria-hidden="true" className="text-red-600 dark:text-red-400">*</span></legend>
                         <label
                           className={cn(
                             "flex cursor-pointer gap-3 rounded-xl border bg-background p-4",
@@ -1969,7 +1984,7 @@ function ReceiptVerificationContent() {
                               </p>
                             </div>
                               <div className="max-w-xs space-y-1">
-                                <Label htmlFor="correction-discount">Discount</Label>
+                                <Label htmlFor="correction-discount" required>Discount</Label>
                                 <Input
                                   id="correction-discount"
                                   inputMode="decimal"
@@ -2090,7 +2105,7 @@ function ReceiptVerificationContent() {
                       {branchResponse === "WRONG_RECEIPT_PHOTO" && (
                         <div className="space-y-3 rounded-xl border border-sky-200 dark:border-sky-900 bg-background p-4 dark:border-sky-800">
                           <div>
-                            <Label htmlFor="branch-replacement-photo">Correct replacement receipt photo</Label>
+                            <Label htmlFor="branch-replacement-photo" required>Correct replacement receipt photo</Label>
                             <p className="mt-1 text-xs text-muted-foreground">
                               This image is uploaded first. The mismatch stays open if the finding cannot be submitted, so you can retry.
                             </p>
@@ -2134,7 +2149,7 @@ function ReceiptVerificationContent() {
                         </div>
                       )}
                       <div className="grid gap-2">
-                        <Label htmlFor="branch-response-note">
+                        <Label htmlFor="branch-response-note" required>
                           Branch explanation
                         </Label>
                         <Textarea
@@ -2274,7 +2289,7 @@ function ReceiptVerificationContent() {
                         />
                       </div>
                       <div className="grid gap-2">
-                        <Label htmlFor="paper-number">
+                        <Label htmlFor="paper-number" required>
                           {selectedSale.reviewStatus === "MISMATCH_REPORTED"
                             ? "New replacement receipt number"
                             : "Receipt number"}
@@ -2312,7 +2327,7 @@ function ReceiptVerificationContent() {
                         ["paper-total", "Total", "totalAmount"],
                       ] as const).map(([id, label, field]) => (
                         <div key={field} className="grid gap-2">
-                          <Label htmlFor={id}>{label}</Label>
+                          <Label htmlFor={id} required>{label}</Label>
                           <Input
                             id={id}
                             inputMode="decimal"
@@ -2475,7 +2490,7 @@ function ReceiptVerificationContent() {
                           </select>
                         </div>
                         <div className="grid gap-2">
-                          <Label htmlFor="mismatch-notes">Notes</Label>
+                          <Label htmlFor="mismatch-notes" required={differences.length > 0}>Notes</Label>
                           <Textarea
                             id="mismatch-notes"
                             value={notes}
@@ -2592,7 +2607,7 @@ function ReceiptVerificationContent() {
                         </p>
                       ) : null}
                       <div className="grid gap-2">
-                        <Label htmlFor="resolution-note">
+                        <Label htmlFor="resolution-note" required>
                           {selectedSale.branchResponse === "SALE_ENCODED_INCORRECT"
                             ? "Admin void note"
                             : "Resolution note"}

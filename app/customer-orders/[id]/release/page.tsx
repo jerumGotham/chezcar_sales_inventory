@@ -13,7 +13,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ReceiptPhotoInput } from "@/components/receipt-photo-input";
+import { ReceiptPhotosInput, uploadReceiptPhotos } from "@/components/receipt-photos-input";
 import { SortableHeader, useTableSort } from "@/components/sortable-header";
 import { useCan, useShellAccess } from "@/components/shell-access-context";
 import { getCustomerOrderActions, type CustomerOrderStatusCode } from "@/lib/customer-order-actions";
@@ -71,7 +71,7 @@ export default function ReleaseCustomerOrderPage() {
    * someone to chase from Receipt Verification later.
    */
   const canAttachReceipt = useCan("sales:evidence:upload");
-  const [receiptPhoto, setReceiptPhoto] = useState<File | null>(null);
+  const [receiptPhotos, setReceiptPhotos] = useState<File[]>([]);
   const [releaseNotice, setReleaseNotice] = useState<string | null>(null);
   const needsReceiptPhoto = (order?.balance ?? 0) > 0 && canAttachReceipt;
   /*
@@ -105,7 +105,7 @@ export default function ReleaseCustomerOrderPage() {
       // paid in full takes none, so there is nothing to write a number on.
       const collectsMoney = (order?.balance ?? 0) > 0;
       if (collectsMoney && !finalReceiptNumber) throw new Error("Final receipt number is required.");
-      if (needsReceiptPhoto && !receiptPhoto) throw new Error("Attach a photo of the final receipt.");
+      if (needsReceiptPhoto && receiptPhotos.length === 0) throw new Error("Attach a photo of the final receipt.");
       if (!salespersonId) throw new Error("Select an active salesperson.");
       if (salespersonId !== order?.salesperson?.personnelId) {
         const attributionResponse = await fetch(`/api/customer-orders/${orderId}`, {
@@ -129,10 +129,10 @@ export default function ReleaseCustomerOrderPage() {
       });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error?.message ?? "Unable to release order");
-      if (collectsMoney && receiptPhoto && canAttachReceipt) {
+      if (collectsMoney && receiptPhotos.length && canAttachReceipt) {
         // The release is already posted, so a failed upload is a warning that
         // sends the branch to Receipt Verification, not a failed release.
-        const attached = await attachReleaseReceipt(orderId, receiptPhoto).catch(() => false);
+        const attached = await attachReleaseReceipt(orderId, receiptPhotos).catch(() => false);
         if (!attached) return { photoAttached: false };
       }
       return { photoAttached: true };
@@ -214,9 +214,9 @@ export default function ReleaseCustomerOrderPage() {
                 paymentMethod: String(formData.get("paymentMethod") ?? "CASH"),
                 notes: String(formData.get("notes") ?? "").trim(),
               })}>
-                <div className="space-y-2"><Label htmlFor="salespersonId">Salesperson</Label><select id="salespersonId" value={salespersonId} onChange={(event) => setSalespersonId(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" required><option value="">Select salesperson</option>{salespersonQuery.data?.map((personnel) => <option key={personnel.id} value={personnel.id}>{personnel.fullName}</option>)}</select>{salespersonQuery.data?.length === 0 ? <p className="text-xs text-amber-700 dark:text-amber-300">No eligible Salesperson is available in your authorized locations.</p> : null}</div>
+                <div className="space-y-2"><Label htmlFor="salespersonId" required>Salesperson</Label><select id="salespersonId" value={salespersonId} onChange={(event) => setSalespersonId(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" required><option value="">Select salesperson</option>{salespersonQuery.data?.map((personnel) => <option key={personnel.id} value={personnel.id}>{personnel.fullName}</option>)}</select>{salespersonQuery.data?.length === 0 ? <p className="text-xs text-amber-700 dark:text-amber-300">No eligible Salesperson is available in your authorized locations.</p> : null}</div>
                 {order.balance > 0 ? (
-                  <div className="space-y-2"><Label htmlFor="finalReceiptNumber">Final Receipt Number</Label><Input id="finalReceiptNumber" name="finalReceiptNumber" placeholder="Handwritten receipt number" /></div>
+                  <div className="space-y-2"><Label htmlFor="finalReceiptNumber" required>Final Receipt Number</Label><Input id="finalReceiptNumber" name="finalReceiptNumber" placeholder="Handwritten receipt number" /></div>
                 ) : (
                   <div className="rounded-xl border border-dashed p-3 text-sm text-muted-foreground" role="status">
                     This order is paid in full, so releasing it collects nothing and issues no receipt. The goods still leave the branch and the sale is recorded against {order.orderNo}.
@@ -224,8 +224,8 @@ export default function ReleaseCustomerOrderPage() {
                 )}
                 {needsReceiptPhoto ? (
                   <div className="space-y-2">
-                    <Label htmlFor="finalReceiptPhoto">Final Receipt Photo (required)</Label>
-                    <ReceiptPhotoInput id="finalReceiptPhoto" file={receiptPhoto} onChange={setReceiptPhoto} disabled={releaseMutation.isPending} required describedBy="finalReceiptPhotoHelp" />
+                    <Label htmlFor="finalReceiptPhoto" required>Final Receipt Photo</Label>
+                    <ReceiptPhotosInput id="finalReceiptPhoto" files={receiptPhotos} onChange={setReceiptPhotos} disabled={releaseMutation.isPending} required describedBy="finalReceiptPhotoHelp" />
                     <p id="finalReceiptPhotoHelp" className="text-xs text-muted-foreground">Click the photo to magnify it and check the receipt number and amount are readable.</p>
                   </div>
                 ) : null}
@@ -233,7 +233,7 @@ export default function ReleaseCustomerOrderPage() {
                   <div className="space-y-2"><Label htmlFor="paymentMethod">Payment Method</Label><select id="paymentMethod" name="paymentMethod" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="CASH">Cash</option><option value="GCASH">GCash</option><option value="MAYA">Maya</option><option value="BANK_TRANSFER">Bank Transfer</option><option value="CREDIT_CARD">Credit Card</option><option value="SPLIT">Split</option></select></div>
                 ) : null}
                 <div className="space-y-2"><Label htmlFor="notes">Release Notes</Label><Input id="notes" name="notes" placeholder="Released by, remarks, etc." /></div>
-                <Button type="submit" variant="workflow" className="w-full" disabled={releaseMutation.isPending || salespersonQuery.isLoading || !salespersonId || (needsReceiptPhoto && !receiptPhoto)}>{releaseMutation.isPending ? "Releasing..." : "Confirm Release"}</Button>
+                <Button type="submit" variant="workflow" className="w-full" disabled={releaseMutation.isPending || salespersonQuery.isLoading || !salespersonId || (needsReceiptPhoto && receiptPhotos.length === 0)}>{releaseMutation.isPending ? "Releasing..." : "Confirm Release"}</Button>
               </form> : <p className="mt-6 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-4 text-sm text-amber-800 dark:text-amber-300">This order cannot be released in its current state or with your capabilities.</p>}
             </CardContent>
           </Card>
@@ -266,16 +266,14 @@ export default function ReleaseCustomerOrderPage() {
  * The release posts a sale, and its receipt is evidenced on that sale. The
  * order's receipt list names the sale behind the final payment.
  */
-async function attachReleaseReceipt(orderId: string, photo: File) {
+async function attachReleaseReceipt(orderId: string, photos: File[]) {
   const listResponse = await fetch(`/api/customer-orders/${orderId}/payments`, { credentials: "same-origin" });
   if (!listResponse.ok) return false;
   const list = (await listResponse.json()) as { data: { payments: Array<{ kind: string; saleId: string | null }> } };
   const saleId = list.data.payments.find((payment) => payment.kind === "ORDER_FINAL" && payment.saleId)?.saleId;
   if (!saleId) return false;
-  const body = new FormData();
-  body.set("photo", photo);
-  const response = await fetch(`/api/accounting/receipts/${encodeURIComponent(saleId)}/photo`, { method: "POST", credentials: "same-origin", body });
-  return response.ok;
+  const salePath = `/api/accounting/receipts/${encodeURIComponent(saleId)}`;
+  return uploadReceiptPhotos(photos, { primary: `${salePath}/photo`, extras: `${salePath}/photos` });
 }
 
 function Info({ label, value }: { label: string; value: string }) {

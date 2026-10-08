@@ -1234,7 +1234,7 @@ export default function CustomerOrdersPage() {
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="cancel-refund-amount">Amount handed back</Label>
+                    <Label htmlFor="cancel-refund-amount" required>Amount handed back</Label>
                     <Input
                       id="cancel-refund-amount"
                       type="number"
@@ -1246,7 +1246,7 @@ export default function CustomerOrdersPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="cancel-refund-ack">Acknowledgement slip no.</Label>
+                    <Label htmlFor="cancel-refund-ack" required>Acknowledgement slip no.</Label>
                     <Input
                       id="cancel-refund-ack"
                       value={refundAcknowledgement}
@@ -1262,7 +1262,7 @@ export default function CustomerOrdersPage() {
             ) : null}
 
             <div className="space-y-2">
-              <Label htmlFor="list-cancellation-note">Cancellation note{needsCancellationNote ? " (required)" : ""}</Label>
+              <Label htmlFor="list-cancellation-note" required={needsCancellationNote}>Cancellation note</Label>
               <Textarea
                 id="list-cancellation-note"
                 value={cancellationNote}
@@ -1599,7 +1599,7 @@ export default function CustomerOrdersPage() {
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div className="space-y-1">
-                        <Label htmlFor="sale-salesperson">Credit this sale to</Label>
+                        <Label htmlFor="sale-salesperson" required>Credit this sale to</Label>
                         <select
                           id="sale-salesperson"
                           className="h-10 w-full rounded-md border border-input bg-background px-2 text-sm"
@@ -1757,7 +1757,7 @@ export default function CustomerOrdersPage() {
                 </select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="sale-correction-note">Explanation</Label>
+                <Label htmlFor="sale-correction-note" required>Explanation</Label>
                 <Textarea
                   id="sale-correction-note"
                   value={correctionNote}

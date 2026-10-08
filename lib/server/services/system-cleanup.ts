@@ -62,12 +62,15 @@ async function orphanReceiptPhotos() {
   const candidates = (await filesIn(RECEIPT_ROOT(), (name) => UPLOAD_KEY.test(name))).filter((file) => file.modifiedMs < cutoff);
   if (candidates.length === 0) return [];
   const keys = candidates.map((file) => file.name);
-  // Both places a receipt photo can be held: a sale's review and a payment.
-  const [reviews, payments] = await Promise.all([
+  // Every place a receipt photo can be held: the first photo of a sale's review
+  // or of a payment, and every further photo (and every transfer photo) in
+  // ReceiptPhoto. Leaving one out would read its files as orphans.
+  const [reviews, payments, extras] = await Promise.all([
     prisma.saleAccountingReview.findMany({ where: { receiptPhotoKey: { in: keys } }, select: { receiptPhotoKey: true } }),
     prisma.payment.findMany({ where: { receiptPhotoKey: { in: keys } }, select: { receiptPhotoKey: true } }),
+    prisma.receiptPhoto.findMany({ where: { key: { in: keys } }, select: { key: true } }),
   ]);
-  const used = new Set([...reviews, ...payments].map((row) => row.receiptPhotoKey));
+  const used = new Set([...reviews, ...payments].map((row) => row.receiptPhotoKey).concat(extras.map((row) => row.key)));
   return candidates.filter((file) => !used.has(file.name));
 }
 

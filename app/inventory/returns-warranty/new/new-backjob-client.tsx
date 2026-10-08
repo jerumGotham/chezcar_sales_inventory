@@ -69,7 +69,7 @@ export function NewBackjobClient({ isOwner }: { isOwner: boolean }) {
       {isOwner ? <label className="mb-5 flex items-center gap-2 text-sm"><input type="checkbox" checked={legacy} onChange={(event) => setLegacy(event.target.checked)} />Legacy record without a posted original sale</label> : null}
       <form className="grid gap-4 sm:grid-cols-2" onSubmit={submit}>
         {!legacy ? <>
-          <Field label="Posted sale" htmlFor="backjob-sale"><Select<SaleOption>
+          <Field label="Posted sale" htmlFor="backjob-sale" required><Select<SaleOption>
             inputId="backjob-sale"
             instanceId="backjob-sale"
             name="saleId"
@@ -90,20 +90,20 @@ export function NewBackjobClient({ isOwner }: { isOwner: boolean }) {
             className="min-w-0 text-sm"
           /></Field>
           <fieldset id="backjob-items" disabled={!sale || saving} className="grid min-w-0 content-start gap-2 rounded-md border p-3">
-            <legend className="px-1 text-sm font-medium">Affected purchased items</legend>
+            <legend className="px-1 text-sm font-medium">Affected purchased items <span aria-hidden="true" className="text-red-600 dark:text-red-400">*</span></legend>
             {!sale || !sale.lines.length ? <p className="text-sm text-muted-foreground">{!sale ? "Select a sale first" : "No items on this sale"}</p> : <div className="grid max-h-64 gap-2 overflow-y-auto">{sale.lines.map((line) => <label key={line.id} className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={lineIds.includes(line.id)} disabled={!lineIds.includes(line.id) && lineIds.length >= 100} onChange={(event) => setLineIds((current) => event.target.checked ? [...current, line.id] : current.filter((id) => id !== line.id))} /><span className="min-w-0 break-words">{line.itemCode} · {line.name}</span></label>)}</div>}
             <p className="text-xs text-muted-foreground">{lineIds.length} selected</p>
           </fieldset>
            <p className="text-sm text-muted-foreground sm:col-span-2">Select one or more purchased items from the same receipt. They share one Backjob, concern, schedule, and parts plan.</p>
            <Field label="Branch handling this Backjob"><Input readOnly value={saleLocation ? `${saleLocation.code} · ${saleLocation.name}` : "Select a posted sale first"} /></Field>
          </> : <>
-          <Field label="Branch"><select required className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">Select branch</option>{options.data?.locations.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></Field>
-          <Field label="Customer"><select required className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={customerId} onChange={(event) => setCustomerId(event.target.value)}><option value="">Select customer</option>{options.data?.customers.map((item) => <option key={item.id} value={item.id}>{item.name}{item.mobile ? ` · ${item.mobile}` : ""}</option>)}</select></Field>
-          <Field label="Legacy reference"><Input required value={legacyReference} onChange={(event) => setLegacyReference(event.target.value)} /></Field>
-          <Field label="Product description"><Input required value={legacyProductDescription} onChange={(event) => setLegacyProductDescription(event.target.value)} /></Field>
-          <div className="sm:col-span-2"><Field label="Reason original sale is unavailable"><Textarea required value={legacyReason} onChange={(event) => setLegacyReason(event.target.value)} /></Field></div>
+          <Field label="Branch" required><select required className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">Select branch</option>{options.data?.locations.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></Field>
+          <Field label="Customer" required><select required className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={customerId} onChange={(event) => setCustomerId(event.target.value)}><option value="">Select customer</option>{options.data?.customers.map((item) => <option key={item.id} value={item.id}>{item.name}{item.mobile ? ` · ${item.mobile}` : ""}</option>)}</select></Field>
+          <Field label="Legacy reference" required><Input required value={legacyReference} onChange={(event) => setLegacyReference(event.target.value)} /></Field>
+          <Field label="Product description" required><Input required value={legacyProductDescription} onChange={(event) => setLegacyProductDescription(event.target.value)} /></Field>
+          <div className="sm:col-span-2"><Field label="Reason original sale is unavailable" required><Textarea required value={legacyReason} onChange={(event) => setLegacyReason(event.target.value)} /></Field></div>
         </>}
-        <div className="sm:col-span-2"><Field label="Customer concern"><Textarea required value={concern} onChange={(event) => setConcern(event.target.value)} /></Field></div>
+        <div className="sm:col-span-2"><Field label="Customer concern" required><Textarea required value={concern} onChange={(event) => setConcern(event.target.value)} /></Field></div>
         {options.isError ? <div role="alert" className="text-sm text-destructive sm:col-span-2">{options.error.message} <Button type="button" variant="outline" onClick={() => void options.refetch()}><RefreshCw aria-hidden="true" />Retry options</Button></div> : null}
         {error ? <p role="alert" className="text-sm text-destructive sm:col-span-2">{error}</p> : null}
         <div className="sm:col-span-2"><Button type="submit" disabled={saving || options.isLoading || options.isError}><Plus aria-hidden="true" />{saving ? "Creating..." : "Create draft"}</Button></div>
@@ -112,4 +112,4 @@ export function NewBackjobClient({ isOwner }: { isOwner: boolean }) {
   </PageShell>;
 }
 
-function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; children: React.ReactNode }) { return <div className="grid min-w-0 gap-1.5"><Label htmlFor={htmlFor}>{label}</Label>{children}</div>; }
+function Field({ label, htmlFor, required, children }: { label: string; htmlFor?: string; required?: boolean; children: React.ReactNode }) { return <div className="grid min-w-0 gap-1.5"><Label htmlFor={htmlFor} required={required}>{label}</Label>{children}</div>; }

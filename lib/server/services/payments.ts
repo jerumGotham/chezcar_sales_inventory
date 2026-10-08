@@ -16,6 +16,7 @@ import { createNotifications } from "./notifications";
 import { receiptEvidenceVersion } from "./receipt-evidence";
 
 import { describeError, recordSystemLog } from "./system-log";
+import { receiptPhotoUrl } from "@/lib/server/services/receipt-photos";
 export class PaymentError extends Error {
   constructor(readonly code: string, message: string, readonly status = 400) {
     super(message);
@@ -84,6 +85,7 @@ const PAYMENT_INCLUDE = {
   location: { select: { id: true, name: true, code: true } },
   customer: { select: { id: true, name: true } },
   order: { select: { id: true, reference: true, totalAmount: true, discountAmount: true, remainingBalance: true, status: true } },
+  extraPhotos: { select: { id: true }, orderBy: { createdAt: "asc" } },
   collectedBy: { select: { id: true, name: true } },
   reviewedBy: { select: { id: true, name: true } },
   branchRespondedBy: { select: { id: true, name: true } },
@@ -148,6 +150,8 @@ export function serializePayment(payment: PaymentRow) {
       ? `/api/accounting/payments/${payment.id}/photo?v=${payment.evidenceUploadedAt?.getTime() ?? 0}`
       : null,
     receiptPhotoVersion: payment.receiptPhotoKey ? receiptEvidenceVersion(payment.receiptPhotoKey) : null,
+    // The receipt's second to fifth pictures, after the first above.
+    extraPhotoUrls: payment.extraPhotos.map((photo) => receiptPhotoUrl(photo.id)),
     // When the branch was last asked for the missing photo, so the screen can
     // say it has been chased instead of offering to chase it again.
     evidencePendingNotifiedAt: payment.evidencePendingNotifiedAt?.toISOString() ?? null,

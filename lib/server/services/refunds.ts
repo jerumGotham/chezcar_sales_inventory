@@ -20,6 +20,7 @@ import { receiptEvidenceVersion } from "./receipt-evidence";
 import { canAccessLocation, hasAllLocationAccess } from "../policy/access";
 import { notifyInventoryThresholdChange } from "./notifications";
 import { availableStock } from "@/lib/inventory-quantity";
+import { receiptPhotoUrl } from "@/lib/server/services/receipt-photos";
 
 export class RefundError extends Error {
   constructor(readonly code: string, message: string, readonly status = 400) {
@@ -527,7 +528,8 @@ export async function listOrderPaymentHistory(actor: AuthContext, orderId: strin
         receiptBooklet: true, collectedAt: true, reviewStatus: true,
         collectedBy: { select: { name: true } },
         saleId: true, receiptPhotoKey: true,
-        sale: { select: { accountingReview: { select: { receiptPhotoKey: true } } } },
+        extraPhotos: { select: { id: true }, orderBy: { createdAt: "asc" } },
+        sale: { select: { accountingReview: { select: { receiptPhotoKey: true, extraPhotos: { select: { id: true }, orderBy: { createdAt: "asc" } } } } } },
       },
     }),
     prisma.refund.findMany({
@@ -557,6 +559,8 @@ export async function listOrderPaymentHistory(actor: AuthContext, orderId: strin
       reviewStatus: row.reviewStatus,
       saleId: row.saleId,
       receiptPhotoUrl: paymentPhotoUrl(row),
+      // A receipt that settles a sale keeps its pictures on the sale.
+      extraPhotoUrls: (row.saleId ? row.sale?.accountingReview?.extraPhotos ?? [] : row.extraPhotos).map((photo) => receiptPhotoUrl(photo.id)),
     })),
     refunds: refunds.map((row) => ({
       id: row.id,

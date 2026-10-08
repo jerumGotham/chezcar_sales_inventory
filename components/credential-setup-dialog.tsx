@@ -297,7 +297,7 @@ export function CredentialSetupDialog({
 
         <form className="space-y-4" onSubmit={submitChange} noValidate>
           <div className="space-y-2">
-            <Label htmlFor="credential-current-password">Current Password</Label>
+            <Label htmlFor="credential-current-password" required>Current Password</Label>
             <PasswordInput
               inputRef={currentPasswordRef}
               id="credential-current-password"
@@ -327,7 +327,7 @@ export function CredentialSetupDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="credential-new-password">New Password</Label>
+            <Label htmlFor="credential-new-password" required>New Password</Label>
             <PasswordInput
               inputRef={newPasswordRef}
               id="credential-new-password"
@@ -356,7 +356,7 @@ export function CredentialSetupDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="credential-confirm-password">
+            <Label htmlFor="credential-confirm-password" required>
               Confirm New Password
             </Label>
             <PasswordInput

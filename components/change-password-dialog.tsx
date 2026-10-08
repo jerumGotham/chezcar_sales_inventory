@@ -34,7 +34,7 @@ function PasswordField({ id, name, label, autoComplete, describedBy }: { id: str
   const [visible, setVisible] = useState(false);
   return (
     <div className="grid gap-2">
-      <Label htmlFor={id}>{label}</Label>
+      <Label htmlFor={id} required>{label}</Label>
       <div className="relative">
         <Input id={id} name={name} type={visible ? "text" : "password"} autoComplete={autoComplete} required aria-describedby={describedBy} className="pr-10" />
         <button

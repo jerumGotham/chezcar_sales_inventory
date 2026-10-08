@@ -615,7 +615,7 @@ export default function CustomersPage() {
               {/* One party, one name. The type decides what the field is
                   called, because a company has no surname to split off. */}
               <div className="space-y-2">
-                <Label htmlFor="customerName">{customerNameLabel(customerForm.type)}</Label>
+                <Label htmlFor="customerName" required>{customerNameLabel(customerForm.type)}</Label>
                  <Input id="customerName" maxLength={200} value={customerForm.name} onChange={(event) => setCustomerForm((current) => ({ ...current, name: event.target.value }))} />
               </div>
               <div className="space-y-2">

@@ -19,7 +19,6 @@ import {
   Package2,
   Car,
   FileText,
-  Upload,
   AlertTriangle,
 } from "lucide-react";
 
@@ -71,6 +70,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { themedSelectStyles } from "@/lib/select-styles";
+import { ReceiptPhotosInput, uploadReceiptPhotos } from "@/components/receipt-photos-input";
 
 type Product = {
   id?: string | number;
@@ -266,7 +266,7 @@ function AddCustomerDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="customerName">
+              <Label htmlFor="customerName" required>
                 {customerNameLabel(customerForm.type)}
               </Label>
               <Input
@@ -514,8 +514,9 @@ function PosTab() {
   const [manualReceiptNumber, setManualReceiptNumber] = useState("");
   // A branch encoding yesterday's receipt dates it here; today is the default.
   const [soldAt, setSoldAt] = useState(() => todayInputValue());
-  const [receiptPhoto, setReceiptPhoto] = useState<File | null>(null);
-  const receiptPhotoInputRef = useRef<HTMLInputElement>(null);
+  // Up to five pictures of the handwritten receipt; the first is the one
+  // Accounting verifies against.
+  const [receiptPhotos, setReceiptPhotos] = useState<File[]>([]);
   const [checkoutError, setCheckoutError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [isCheckoutPending, setIsCheckoutPending] = useState(false);
@@ -752,8 +753,7 @@ function PosTab() {
     setPaymentType(null);
     setSelectedSalesperson(null);
     setManualReceiptNumber("");
-    setReceiptPhoto(null);
-    if (receiptPhotoInputRef.current) receiptPhotoInputRef.current.value = "";
+    setReceiptPhotos([]);
     setDiscountAmount("0");
     setCheckoutError("");
     setSearch("");
@@ -811,18 +811,10 @@ function PosTab() {
       }
       const payload = (await response.json()) as { data: { id: string } };
       let evidenceMessage = " Receipt evidence is pending.";
-      if (receiptPhoto && canUploadReceiptEvidence) {
-        const formData = new FormData();
-        formData.set("photo", receiptPhoto);
-        const evidenceResponse = await fetch(
-          `/api/accounting/receipts/${encodeURIComponent(payload.data.id)}/photo`,
-          {
-            method: "POST",
-            credentials: "same-origin",
-            body: formData,
-          },
-        );
-        evidenceMessage = evidenceResponse.ok
+      if (receiptPhotos.length && canUploadReceiptEvidence) {
+        const salePath = `/api/accounting/receipts/${encodeURIComponent(payload.data.id)}`;
+        const attached = await uploadReceiptPhotos(receiptPhotos, { primary: `${salePath}/photo`, extras: `${salePath}/photos` });
+        evidenceMessage = attached
           ? " Receipt photo attached for Accounting."
           : " Sale posted, but the receipt photo upload failed and remains pending.";
       }
@@ -1118,7 +1110,7 @@ function PosTab() {
             </div>
 
             <div className="space-y-3">
-              <Label>Payment Type</Label>
+              <Label required>Payment Type</Label>
               <Select
                 instanceId="payment-type-select"
                 options={paymentOptions}
@@ -1131,7 +1123,7 @@ function PosTab() {
             </div>
 
             <div className="space-y-3">
-              <Label>Salesperson</Label>
+              <Label required>Salesperson</Label>
               <Select
                 instanceId="salesperson-select"
                 options={salespersonOptions}
@@ -1146,7 +1138,7 @@ function PosTab() {
             </div>
 
             <div className="space-y-3">
-              <Label htmlFor="manual-receipt-number">Manual Receipt Number</Label>
+              <Label htmlFor="manual-receipt-number" required>Manual Receipt Number</Label>
               <Input
                 id="manual-receipt-number"
                 value={manualReceiptNumber}
@@ -1173,38 +1165,11 @@ function PosTab() {
 
             {canUploadReceiptEvidence ? (
               <div className="space-y-3">
-                <Label htmlFor="receipt-photo">Handwritten Receipt Photo</Label>
-                <Input
-                  id="receipt-photo"
-                  ref={receiptPhotoInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  capture="environment"
-                  disabled={isCheckoutPending}
-                  onChange={(event) => setReceiptPhoto(event.target.files?.[0] ?? null)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Take a clear photo of the complete receipt. The sale can still post if the upload fails, but Accounting cannot verify it until evidence is attached.
+                <Label htmlFor="receipt-photo">Handwritten Receipt Photos (up to 5)</Label>
+                <ReceiptPhotosInput id="receipt-photo" files={receiptPhotos} onChange={setReceiptPhotos} disabled={isCheckoutPending} describedBy="receipt-photo-help" />
+                <p id="receipt-photo-help" className="text-xs text-muted-foreground">
+                  Take a clear photo of the complete receipt; add more if it does not fit in one. The sale can still post if the upload fails, but Accounting cannot verify it until evidence is attached.
                 </p>
-                {receiptPhoto ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="flex min-w-0 items-center gap-2 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-                      <Upload className="size-4 shrink-0" /> <span className="break-all">{receiptPhoto.name}</span>
-                    </p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={isCheckoutPending}
-                      onClick={() => {
-                        setReceiptPhoto(null);
-                        if (receiptPhotoInputRef.current) receiptPhotoInputRef.current.value = "";
-                      }}
-                    >
-                      <Trash2 className="mr-2 size-4" /> Remove selected photo
-                    </Button>
-                  </div>
-                ) : null}
               </div>
             ) : null}
 
@@ -1369,7 +1334,7 @@ function PosTab() {
             {/* The label follows the type: a company has no surname, so the
                 sale records one party under one name. */}
             <div className="space-y-2">
-              <Label htmlFor="pos-customer-name">{customerNameLabel(customerForm.type)}</Label>
+              <Label htmlFor="pos-customer-name" required>{customerNameLabel(customerForm.type)}</Label>
               <Input
                 id="pos-customer-name"
                 value={customerForm.name}
@@ -1463,7 +1428,7 @@ function PosTab() {
               </div>
               <div className="sm:col-span-2">
                 <p className="text-muted-foreground">Receipt photo</p>
-                <p className="font-medium">{receiptPhoto?.name ?? "Not attached"}</p>
+                <p className="font-medium">{receiptPhotos.length ? `${receiptPhotos.length} photo(s) attached` : "Not attached"}</p>
               </div>
             </div>
             <div className="min-h-24 flex-1 overflow-auto rounded-xl border">

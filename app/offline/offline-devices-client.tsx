@@ -96,7 +96,7 @@ export function OfflineDevicesClient({
           </CardHeader>
           <CardContent className="space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="offline-branch">Branch</Label>
+              <Label htmlFor="offline-branch" required>Branch</Label>
               <select id="offline-branch" value={locationId} onChange={(event) => setLocationId(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
                 <option value="">Select branch</option>
                 {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name} ({branch.code})</option>)}
