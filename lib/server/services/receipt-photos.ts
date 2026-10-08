@@ -1,7 +1,7 @@
 import "server-only";
 
 import { assertCapability, type AuthContext } from "@/lib/server/authorization";
-import { canAccessLocation } from "@/lib/server/policy/access";
+import { canAccessLocation, evaluateAccess } from "@/lib/server/policy/access";
 import { prisma } from "@/lib/server/prisma";
 import { recordAuditLog } from "@/lib/server/services/audit-log";
 import { readReceiptEvidence, removeReceiptEvidence, saveReceiptEvidence } from "@/lib/server/services/receipt-evidence";
@@ -22,7 +22,8 @@ export class ReceiptPhotoError extends Error {
 export type ReceiptPhotoOwner =
   | { kind: "payment"; id: string }
   | { kind: "sale"; id: string }
-  | { kind: "transfer"; id: string };
+  | { kind: "transfer"; id: string }
+  | { kind: "stockReceipt"; id: string };
 
 export function receiptPhotoUrl(photoId: string) {
   return `/api/receipt-photos/${encodeURIComponent(photoId)}`;
@@ -63,6 +64,18 @@ async function resolveOwner(actor: AuthContext, owner: ReceiptPhotoOwner) {
     if (!review.receiptPhotoKey) throw new ReceiptPhotoError("PRIMARY_REQUIRED", "Attach the first receipt photo before adding more");
     return { link: { saleReviewId: review.id }, count: 1 + review._count.extraPhotos, reference: sale.manualReceiptNumber };
   }
+  if (owner.kind === "stockReceipt") {
+    // Whoever receives deliveries photographs the supplier's receipt. Posted
+    // stock receipts have no review to settle, so photos can follow later.
+    assertCapability(actor, "inventory-receiving:create");
+    const receipt = await prisma.stockReceipt.findUnique({
+      where: { id: owner.id },
+      select: { id: true, locationId: true, reference: true, _count: { select: { receiptPhotos: true } } },
+    });
+    if (!receipt) throw new ReceiptPhotoError("NOT_FOUND", "Supplier receipt not found", 404);
+    if (!canAccessLocation(actor, receipt.locationId)) throw new ReceiptPhotoError("FORBIDDEN", "That receipt is outside your assigned locations", 403);
+    return { link: { stockReceiptId: receipt.id }, count: receipt._count.receiptPhotos, reference: receipt.reference };
+  }
   assertCapability(actor, "stock-transfers:dispatch");
   const transfer = await prisma.stockTransfer.findUnique({
     where: { id: owner.id },
@@ -91,7 +104,7 @@ export async function addReceiptPhotos(actor: AuthContext, owner: ReceiptPhotoOw
         select: { id: true },
       })));
     await recordAuditLog({
-      category: owner.kind === "transfer" ? "Stock Transfers" : "Receipt Verification",
+      category: owner.kind === "transfer" ? "Stock Transfers" : owner.kind === "stockReceipt" ? "Inventory" : "Receipt Verification",
       action: "Receipt Photos Added",
       actorId: actor.userId,
       reference: target.reference,
@@ -117,6 +130,7 @@ async function loadPhoto(photoId: string) {
       payment: { select: { locationId: true, reviewStatus: true, reviewedAt: true, resolvedAt: true, receiptNumber: true } },
       saleReview: { select: { status: true, reviewedAt: true, resolvedAt: true, sale: { select: { locationId: true, manualReceiptNumber: true } } } },
       transfer: { select: { sourceId: true, destinationId: true, status: true, reference: true } },
+      stockReceipt: { select: { locationId: true, reference: true } },
     },
   });
   if (!photo) throw new ReceiptPhotoError("NOT_FOUND", "Photo not found", 404);
@@ -126,7 +140,12 @@ async function loadPhoto(photoId: string) {
 /** The image itself, to whoever may see that receipt. */
 export async function readReceiptPhoto(actor: AuthContext, photoId: string) {
   const photo = await loadPhoto(photoId);
-  if (photo.transfer) {
+  if (photo.stockReceipt) {
+    if (!evaluateAccess(actor, "stock-receipts:view") && !evaluateAccess(actor, "inventory-receiving:create")) {
+      throw new ReceiptPhotoError("FORBIDDEN", "Insufficient permissions", 403);
+    }
+    if (!canAccessLocation(actor, photo.stockReceipt.locationId)) throw new ReceiptPhotoError("FORBIDDEN", "That receipt is outside your assigned locations", 403);
+  } else if (photo.transfer) {
     assertCapability(actor, "stock-transfers:view");
     if (!canAccessLocation(actor, photo.transfer.sourceId) && !canAccessLocation(actor, photo.transfer.destinationId)) {
       throw new ReceiptPhotoError("FORBIDDEN", "That transfer is outside your assigned locations", 403);
@@ -143,7 +162,11 @@ export async function readReceiptPhoto(actor: AuthContext, photoId: string) {
 export async function deleteReceiptPhoto(actor: AuthContext, photoId: string) {
   const photo = await loadPhoto(photoId);
   let reference: string;
-  if (photo.transfer) {
+  if (photo.stockReceipt) {
+    assertCapability(actor, "inventory-receiving:create");
+    if (!canAccessLocation(actor, photo.stockReceipt.locationId)) throw new ReceiptPhotoError("FORBIDDEN", "That receipt is outside your assigned locations", 403);
+    reference = photo.stockReceipt.reference;
+  } else if (photo.transfer) {
     assertCapability(actor, "stock-transfers:dispatch");
     if (!canAccessLocation(actor, photo.transfer.sourceId)) throw new ReceiptPhotoError("FORBIDDEN", "That transfer is outside your assigned locations", 403);
     if (photo.transfer.status !== "IN_TRANSIT") throw new ReceiptPhotoError("INVALID_STATE", "Receipt photos can be removed only while the transfer is in transit");
@@ -162,7 +185,7 @@ export async function deleteReceiptPhoto(actor: AuthContext, photoId: string) {
   await prisma.receiptPhoto.delete({ where: { id: photo.id } });
   await removeReceiptEvidence(photo.key).catch((error) => console.error("Unable to remove deleted receipt photo", error));
   await recordAuditLog({
-    category: photo.transfer ? "Stock Transfers" : "Receipt Verification",
+    category: photo.transfer ? "Stock Transfers" : photo.stockReceipt ? "Inventory" : "Receipt Verification",
     action: "Receipt Photo Removed",
     actorId: actor.userId,
     reference,

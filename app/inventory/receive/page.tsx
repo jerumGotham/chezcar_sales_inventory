@@ -5,6 +5,7 @@ import { prisma } from "@/lib/server/prisma";
 import { loadShellAccess } from "@/lib/server/shell";
 import { requireCapability } from "@/lib/server/authorization";
 import { listActiveSupplierOptionsForReceiving } from "@/lib/server/services/suppliers";
+import { listRecentStockReceipts } from "@/lib/server/services/stock-receipts";
 import { listAccessibleActiveBranches } from "@/lib/server/locations";
 
 import { ReceiveStockForm } from "./receive-stock-form";
@@ -17,7 +18,7 @@ export default async function ReceiveStockPage() {
 
   const actor = await requireCapability(requestHeaders, "inventory-receiving:create");
 
-  const [products, suppliers, locations] = await Promise.all([
+  const [products, suppliers, locations, recentReceipts] = await Promise.all([
     prisma.product.findMany({
       where: { status: "ACTIVE" },
       orderBy: [{ itemCode: "asc" }],
@@ -27,6 +28,7 @@ export default async function ReceiveStockPage() {
     // Branches only, as Branch Maintenance defines them. A delivery is
     // received at the branch that physically took it.
     listAccessibleActiveBranches(actor),
+    listRecentStockReceipts(actor),
   ]);
 
   return (
@@ -34,6 +36,14 @@ export default async function ReceiveStockPage() {
       products={products}
       suppliers={suppliers}
       locations={locations.map(({ id, code, name }) => ({ id, code, name }))}
+      recentReceipts={recentReceipts.map((receipt) => ({
+        id: receipt.id,
+        reference: receipt.reference,
+        supplierName: receipt.supplier.name,
+        locationName: receipt.location.name,
+        receivedAt: receipt.receivedAt,
+        receiptPhotoUrls: receipt.receiptPhotoUrls,
+      }))}
     />
   );
 }

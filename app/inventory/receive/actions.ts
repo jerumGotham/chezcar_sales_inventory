@@ -7,7 +7,7 @@ import { createStockReceipt } from "@/lib/server/services/stock-receipts";
 
 import { parseReceiptFormData } from "./form-data";
 
-export type ReceiptFormState = { ok: boolean; message: string } | null;
+export type ReceiptFormState = { ok: boolean; message: string; receiptId?: string } | null;
 
 export async function postStockReceiptAction(
   _prev: ReceiptFormState,
@@ -22,7 +22,7 @@ export async function postStockReceiptAction(
     const receipt = await createStockReceipt(actor, {
       ...parsed.input,
     });
-    return { ok: true, message: `Receipt ${parsed.input.reference} posted to ${receipt.location.name}.` };
+    return { ok: true, message: `Receipt ${parsed.input.reference} posted to ${receipt.location.name}.`, receiptId: receipt.id };
   } catch (error) {
     return {
       ok: false,

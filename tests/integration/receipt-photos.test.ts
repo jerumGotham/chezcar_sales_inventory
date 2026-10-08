@@ -92,6 +92,22 @@ describe("Receipts with more than one photo", () => {
       expect(received.receiptPhotoUrls).toHaveLength(2);
       // Once received, the receipt is closed.
       await expect(addReceiptPhotos(sender, { kind: "transfer", id: draft.id }, [jpeg("t3.jpg")])).rejects.toMatchObject({ code: "INVALID_STATE" });
+
+      // A supplier delivery receipt: photos from whoever receives at that branch.
+      const supplier = await prisma.supplier.create({ data: { name: "Photo Supplier" } });
+      const stockReceipt = await prisma.stockReceipt.create({
+        data: { reference: "DR-PHOTO-1", supplierId: supplier.id, supplierName: supplier.name, locationId: branch.id, receivedById: fixture.users.admin.id },
+      });
+      const deliveryPhotos = await addReceiptPhotos(owner, { kind: "stockReceipt", id: stockReceipt.id }, [jpeg("s1.jpg"), jpeg("s2.jpg"), jpeg("s3.jpg"), jpeg("s4.jpg"), jpeg("s5.jpg")]);
+      expect(deliveryPhotos).toHaveLength(5);
+      await expect(addReceiptPhotos(owner, { kind: "stockReceipt", id: stockReceipt.id }, [jpeg("s6.jpg")])).rejects.toMatchObject({ code: "TOO_MANY_PHOTOS" });
+      // Another branch can neither add to it nor see it.
+      await expect(addReceiptPhotos(otherBranch, { kind: "stockReceipt", id: stockReceipt.id }, [jpeg("s7.jpg")])).rejects.toThrow();
+      await expect(readReceiptPhoto(otherBranch, deliveryPhotos[0].id)).rejects.toThrow();
+      await deleteReceiptPhoto(owner, deliveryPhotos[4].id);
+      const { listRecentStockReceipts } = await import("../../lib/server/services/stock-receipts");
+      const recent = await listRecentStockReceipts(owner);
+      expect(recent.find((receipt) => receipt.id === stockReceipt.id)?.receiptPhotoUrls).toHaveLength(4);
     });
   }, 60_000);
 });

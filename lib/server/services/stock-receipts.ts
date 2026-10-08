@@ -11,6 +11,7 @@ import { prisma } from "@/lib/server/prisma";
 import { hasAllLocationAccess } from "@/lib/server/policy/access";
 import { listAccessibleOperationalLocations } from "@/lib/server/locations";
 import { notifyStockReceived } from "./notifications";
+import { receiptPhotoUrl } from "@/lib/server/services/receipt-photos";
 
 export class StockReceiptError extends Error {
   constructor(public readonly code: string, message: string, public readonly status = 409) {
@@ -28,6 +29,7 @@ function serializeReceipt(receipt: {
   receivedAt: Date;
   location: { id: string; code: string; name: string };
   lines: Array<{ quantity: number; acceptedQuantity: number; quarantinedQuantity: number; missingQuantity: number; productItemCode: string; productName: string; productId: string }>;
+  receiptPhotos?: Array<{ id: string }>;
 }) {
   return {
     id: receipt.id,
@@ -38,7 +40,31 @@ function serializeReceipt(receipt: {
     receivedAt: receipt.receivedAt.toISOString(),
     location: receipt.location,
     lines: receipt.lines,
+    receiptPhotoUrls: (receipt.receiptPhotos ?? []).map((photo) => receiptPhotoUrl(photo.id)),
   };
+}
+
+const RECEIPT_LIST_INCLUDE = {
+  location: { select: { id: true, code: true, name: true } },
+  supplier: { select: { id: true, code: true, name: true } },
+  lines: { select: { productId: true, quantity: true, acceptedQuantity: true, quarantinedQuantity: true, missingQuantity: true, productItemCode: true, productName: true } },
+  receiptPhotos: { select: { id: true }, orderBy: { createdAt: "asc" } },
+} as const;
+
+/**
+ * The latest deliveries at the actor's locations, for the receiving screen:
+ * what was just posted, with its receipt photos, so a photo that did not go up
+ * with the delivery can be added afterwards.
+ */
+export async function listRecentStockReceipts(actor: AuthContext, take = 10) {
+  assertCapability(actor, "inventory-receiving:create");
+  const receipts = await prisma.stockReceipt.findMany({
+    where: hasAllLocationAccess(actor) ? {} : { locationId: { in: [...actor.locationIds] } },
+    orderBy: { receivedAt: "desc" },
+    take,
+    include: RECEIPT_LIST_INCLUDE,
+  });
+  return receipts.map(serializeReceipt);
 }
 
 export async function listStockReceipts(actor: AuthContext) {
@@ -47,11 +73,7 @@ export async function listStockReceipts(actor: AuthContext) {
   const receipts = await prisma.stockReceipt.findMany({
     where: hasAllLocationAccess(actor) ? {} : { locationId: { in: [...actor.locationIds] } },
     orderBy: { receivedAt: "desc" },
-    include: {
-      location: { select: { id: true, code: true, name: true } },
-      supplier: { select: { id: true, code: true, name: true } },
-      lines: { select: { productId: true, quantity: true, acceptedQuantity: true, quarantinedQuantity: true, missingQuantity: true, productItemCode: true, productName: true } },
-    },
+    include: RECEIPT_LIST_INCLUDE,
   });
   return receipts.map(serializeReceipt);
 }

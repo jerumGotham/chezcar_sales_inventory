@@ -1088,6 +1088,7 @@ model StockReceipt {
   lines         StockReceiptLine[]
   movements     InventoryMovement[]
   supplierClaim SupplierClaim?
+  receiptPhotos ReceiptPhoto[]
 
   @@index([locationId, receivedAt])
   @@index([receivedById])
@@ -1833,13 +1834,16 @@ model Verification {
 /// on its own row (Payment.receiptPhotoKey, SaleAccountingReview.receiptPhotoKey),
 /// which is what verification and the missing-photo reminder read; the rest of
 /// a receipt that needed more than one picture lives here, up to five in all.
-/// A stock transfer's dispatch receipt keeps every photo here. Exactly one
+/// A stock transfer's dispatch receipt and a supplier delivery receipt keep
+/// every photo here. Exactly one
 /// owner is set, which a check constraint enforces.
 model ReceiptPhoto {
   id           String                @id @default(cuid())
   paymentId    String?
   saleReviewId String?
   transferId   String?
+  /// A supplier delivery receipt, photographed when the stock was received.
+  stockReceiptId String?
   key          String                @unique
   contentType  String
   uploadedById String
@@ -1847,9 +1851,11 @@ model ReceiptPhoto {
   payment      Payment?              @relation(fields: [paymentId], references: [id], onDelete: Cascade)
   saleReview   SaleAccountingReview? @relation(fields: [saleReviewId], references: [id], onDelete: Cascade)
   transfer     StockTransfer?        @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  stockReceipt StockReceipt?         @relation(fields: [stockReceiptId], references: [id], onDelete: Cascade)
   uploadedBy   User                  @relation("ReceiptPhotoUploadedBy", fields: [uploadedById], references: [id])
 
   @@index([paymentId])
   @@index([saleReviewId])
   @@index([transferId])
+  @@index([stockReceiptId])
 }

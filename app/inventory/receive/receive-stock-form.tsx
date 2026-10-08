@@ -18,6 +18,9 @@ import { Label } from "@/components/ui/label";
 
 import { postStockReceiptAction, type ReceiptFormState } from "./actions";
 import type { SupplierOptionDto } from "@/lib/contracts/suppliers";
+import { useRouter } from "next/navigation";
+import { ReceiptPhotosInput } from "@/components/receipt-photos-input";
+import { ReceiptExtraPhotos } from "@/components/receipt-extra-photos";
 
 type ProductOption = { id: string; itemCode: string; name: string };
 type LocationOption = { id: string; code: string; name: string };
@@ -70,11 +73,18 @@ export function ReceiveStockForm({
   products,
   suppliers,
   locations,
+  recentReceipts,
 }: {
   products: readonly ProductOption[];
   suppliers: readonly SupplierOptionDto[];
   locations: readonly LocationOption[];
+  recentReceipts: ReadonlyArray<{ id: string; reference: string; supplierName: string; locationName: string; receivedAt: string; receiptPhotoUrls: string[] }>;
 }) {
+  const router = useRouter();
+  // Up to five pictures of the supplier's delivery receipt, sent once the
+  // receipt is posted; a photo that misses can be added from the list below.
+  const [photos, setPhotos] = useState<File[]>([]);
+  const [photoNotice, setPhotoNotice] = useState<string | null>(null);
   const [state, formAction, isPending] = useActionState<ReceiptFormState, FormData>(postStockReceiptAction, null);
   const [lines, setLines] = useState<ReceiptLine[]>([{ id: 1, productId: "", expected: 1, accepted: 1 }]);
   const [supplierId, setSupplierId] = useState("");
@@ -98,17 +108,35 @@ export function ReceiveStockForm({
   useEffect(() => {
     if (state?.ok) {
       formRef.current?.reset();
-      // The server action completed; clear the client-side line editor.
+      const posted = state.receiptId;
+      const picked = photos;
+      if (posted && picked.length) {
+        const body = new FormData();
+        picked.forEach((photo) => body.append("photos", photo));
+        void fetch(`/api/stock-receipts/${encodeURIComponent(posted)}/receipt-photos`, { method: "POST", credentials: "same-origin", body })
+          .then((response) => {
+            setPhotoNotice(response.ok ? null : "Receipt posted, but its photos did not attach. Add them from Recent receipts below.");
+            router.refresh();
+          })
+          .catch(() => setPhotoNotice("Receipt posted, but its photos did not attach. Add them from Recent receipts below."));
+      } else {
+        router.refresh();
+      }
+      // The server action completed; clear the client-side editor.
       // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPhotos([]);
       setLines([{ id: Date.now(), productId: "", expected: 1, accepted: 1 }]);
       setSupplierId("");
       setLocationId(locations.length === 1 ? locations[0].id : "");
     }
+    // Only a new result should send photos; the picked files are read once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, locations]);
 
   return (
     <PageShell title="Receive From Supplier" subtitle="Post an auditable supplier receipt into the location that received the delivery.">
       <div className="mb-6 flex justify-end"><Link href="/inventory" className={buttonVariants({ variant: "outline" })}><ArrowLeft className="mr-2 h-4 w-4" />Back to Inventory</Link></div>
+      {photoNotice ? <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">{photoNotice}</div> : null}
       {state && <div className={`mb-6 rounded-lg border px-4 py-3 text-sm ${state.ok ? "border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300" : "border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-300"}`}>{state.message}</div>}
       <form ref={formRef} action={formAction}>
         <input type="hidden" name="lineCount" value={lines.length} />
@@ -118,6 +146,10 @@ export function ReceiveStockForm({
               <div className="space-y-2"><Label htmlFor="receipt-location" required>Receive To</Label><input type="hidden" name="locationId" value={locationId} />{locations.length === 1 ? <Input value={`${locations[0].name} (${locations[0].code})`} disabled /> : <Select<SelectOption, false> instanceId="receipt-location" inputId="receipt-location" aria-label="Receiving location" options={locationOptions} value={locationOptions.find((option) => option.value === locationId) ?? null} onChange={(option) => setLocationId(option?.value ?? "")} isSearchable placeholder="Select receiving location" noOptionsMessage={() => "No assigned locations available"} styles={selectStyles} />}</div>
               <div className="space-y-2"><Label htmlFor="receipt-reference" required>Receipt / Reference</Label><Input id="receipt-reference" name="reference" placeholder="DR-000123" required /></div>
               <div className="space-y-2"><Label htmlFor="receipt-supplier" required>Supplier</Label><input type="hidden" name="supplierId" value={supplierId} /><Select<SelectOption, false> instanceId="receipt-supplier" inputId="receipt-supplier" aria-label="Supplier" options={supplierOptions} value={supplierOptions.find((option) => option.value === supplierId) ?? null} onChange={(option) => setSupplierId(option?.value ?? "")} isSearchable placeholder="Select active supplier" noOptionsMessage={() => "No active suppliers available"} styles={selectStyles} /></div>
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="receipt-photos">Receipt photos (optional, up to 5)</Label>
+                <ReceiptPhotosInput id="receipt-photos" files={photos} onChange={setPhotos} disabled={isPending} />
+              </div>
               <div className="space-y-2 md:col-span-2"><Label htmlFor="receipt-notes">Notes</Label><textarea id="receipt-notes" name="notes" className="flex min-h-20 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs" maxLength={4000} placeholder="Optional delivery notes" /></div>
             </CardContent></Card>
           </div>
@@ -132,6 +164,37 @@ export function ReceiveStockForm({
               </CardContent></Card>
         </div>
       </form>
+
+      {/* What was just received, with its receipt photos. */}
+      <Card className="mt-6">
+        <CardContent className="space-y-4 p-5">
+          <h2 className="font-semibold">Recent receipts</h2>
+          {recentReceipts.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No supplier receipts posted yet.</p>
+          ) : (
+            <ul className="divide-y">
+              {recentReceipts.map((receipt) => (
+                <li key={receipt.id} className="space-y-2 py-3 first:pt-0 last:pb-0">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+                    <p className="font-medium">{receipt.reference} · {receipt.supplierName}</p>
+                    <p className="text-xs text-muted-foreground">{receipt.locationName} · {new Date(receipt.receivedAt).toLocaleString("en-PH")}</p>
+                  </div>
+                  <ReceiptExtraPhotos
+                    urls={receipt.receiptPhotoUrls}
+                    hasPrimary={false}
+                    standalone
+                    addUrl={`/api/stock-receipts/${encodeURIComponent(receipt.id)}/receipt-photos`}
+                    canAdd
+                    canDelete
+                    label={`Supplier receipt ${receipt.reference}`}
+                    onChanged={() => router.refresh()}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
     </PageShell>
   );
 }
