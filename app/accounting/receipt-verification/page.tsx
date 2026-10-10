@@ -103,6 +103,8 @@ type SaleLine = {
 };
 type Sale = {
   id: string;
+  /** Bumped by every correction; a form filled at an older version is stale. */
+  version?: number;
   reference: string;
   manualReceiptNumber: string;
   receiptBooklet: string;
@@ -590,6 +592,9 @@ function ReceiptVerificationContent() {
     saleId: "",
   });
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // The sale's version when its form was filled, so a correction made on old
+  // figures is caught here and refused by the server.
+  const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
   const [category, setCategory] = useState("PRICE_MISMATCH");
   const [notes, setNotes] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
@@ -830,6 +835,7 @@ function ReceiptVerificationContent() {
         headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "VOIDED_REPLACED",
+            expectedVersion: selectedVersion ?? undefined,
             note: branchResponseNote,
             replacement: toComparison(correctionDraft),
           }),
@@ -868,6 +874,7 @@ function ReceiptVerificationContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "VOIDED_REPLACED",
+          expectedVersion: selectedVersion ?? undefined,
           note: notes,
           // Worked out from the lines, as the branch's correction is: the server
           // refuses a total that does not match them.
@@ -1220,6 +1227,7 @@ function ReceiptVerificationContent() {
      */
     const reported = sale.reviewStatus === "MISMATCH_REPORTED" ? sale.reportedComparison : null;
     setSelectedId(sale.id);
+    setSelectedVersion(sale.version ?? null);
     setVoidVerifiedNote("");
     setFormError(null);
     setFormNotice(null);
@@ -1358,6 +1366,28 @@ function ReceiptVerificationContent() {
     amountPaid: String(correctionTotal),
   };
   const parsedCorrection = parseComparison(correctionDraft);
+  /*
+   * What a correction will change, said in figures before it is confirmed: a
+   * correction that only moves the discount otherwise looks like nothing at all
+   * changed on the lines.
+   */
+  const correctionChange = selectedSale
+    ? `Total ${formatPeso(selectedSale.totalAmount)} → ${formatPeso(correctionTotal)} · Discount ${formatPeso(selectedSale.discountAmount)} → ${formatPeso(correctionDiscount)}.`
+    : "";
+  /*
+   * The branch has already put this sale right and sent it back. Changing the
+   * total again goes against what the branch read off the same paper, so it is
+   * said out loud rather than done quietly.
+   */
+  const overridesBranchCorrection = Boolean(
+    selectedSale &&
+    selectedSale.reviewStatus === "UNVERIFIED" &&
+    selectedSale.branchResponse === "SALE_ENCODED_INCORRECT" &&
+    Math.round(selectedSale.totalAmount * 100) !== correctionTotalCents,
+  );
+  const branchOverrideWarning = selectedSale && overridesBranchCorrection
+    ? `The branch already corrected this sale to ${formatPeso(selectedSale.totalAmount)}. You are changing it to ${formatPeso(correctionTotal)}. Check the paper receipt before you continue.`
+    : "";
   const correctionError =
     correctionTotalCents < 0
       ? "The discount is more than the items come to"
@@ -1739,6 +1769,19 @@ function ReceiptVerificationContent() {
                         Inventory remains deducted while this request waits for Admin resolution.
                       </p>
                     ) : null}
+                  </div>
+                ) : null}
+                {/*
+                  Someone else changed this sale while it was open -- the branch
+                  corrected it, say. The form below still holds what was loaded
+                  before, so it says so and offers to load the sale as it is now.
+                */}
+                {selectedVersion !== null && selectedSale.version !== undefined && selectedSale.version !== selectedVersion ? (
+                  <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+                    <span>This sale was changed while you had it open. The form below still shows the old figures.</span>
+                    <Button type="button" size="sm" variant="outline" onClick={() => selectSale(selectedSale)}>
+                      Reload this receipt
+                    </Button>
                   </div>
                 ) : null}
                 <div className="grid items-start gap-4 xl:grid-cols-2">
@@ -2498,6 +2541,11 @@ function ReceiptVerificationContent() {
                             placeholder="Describe the difference found on the handwritten receipt"
                           />
                         </div>
+                        {branchOverrideWarning ? (
+                          <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+                            {branchOverrideWarning}
+                          </p>
+                        ) : null}
                         <div className="flex flex-wrap gap-2">
                         {/*
                           The button names what the reviewer did. Nothing
@@ -2699,7 +2747,9 @@ function ReceiptVerificationContent() {
         }
         description={
           shownConfirmation
-            ? RECEIPT_CONFIRMATIONS[shownConfirmation].description
+            ? shownConfirmation === "CORRECT_AND_VERIFY" || shownConfirmation === "BRANCH_CORRECT"
+              ? [branchOverrideWarning && shownConfirmation === "CORRECT_AND_VERIFY" ? `Warning: ${branchOverrideWarning}` : "", correctionChange, RECEIPT_CONFIRMATIONS[shownConfirmation].description].filter(Boolean).join(" ")
+              : RECEIPT_CONFIRMATIONS[shownConfirmation].description
             : "Review this action before continuing."
         }
         confirmLabel={

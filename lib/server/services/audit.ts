@@ -164,7 +164,9 @@ async function saleEntries(range: ReturnType<typeof occurredAtFilter>) {
       sale.postedBy.name,
       sale.reference,
       sale.location.name,
-      `Receipt ${sale.manualReceiptNumber} for ${who}, ${pieces} ${pieces === 1 ? "piece" : "pieces"}, ${money(sale.totalAmount)}`,
+      // Read from the sale as it stands. Where it was corrected since, these are
+      // not the figures it was posted with, and the entry says so.
+      `Receipt ${sale.manualReceiptNumber} for ${who}, ${pieces} ${pieces === 1 ? "piece" : "pieces"}, ${money(sale.totalAmount)}${sale.correctedAt ? " (as it stands now; the sale was corrected later)" : ""}`,
       { items, facts: saleFacts },
     ));
     if (sale.correctedAt) {
@@ -601,6 +603,10 @@ export async function getAuditTrail(
     ["Inventory", () => receiptEntries(range)],
     ["Sales", () => saleEntries(range)],
     ["Sales", () => correctionEntries(range)],
+    // Posting a sale writes its own entry, with the sale as it was posted. The
+    // derived entry above reads the sale as it is now, which a later correction
+    // rewrites, so the logged one wins wherever it exists (below).
+    ["Sales", () => loggedEntries(range, "Sales")],
     ["Receipt Verification", () => reviewEntries(range)],
     // Receipt photo changes and every payment-receipt review are written to the
     // audit log rather than derived, so that category has to read them too.
@@ -619,8 +625,18 @@ export async function getAuditTrail(
   // Derived entries carry only the actor's display name, so exempt accounts are
   // matched by name and email here; this also hides their older logged rows.
   const exempt = await auditExemptUsers();
-  const rows = settled
-    .flat()
+  const merged = settled.flat();
+  // Sales posted since posting began writing its own entry: show that entry,
+  // which holds the totals as posted, and drop the derived duplicate that would
+  // show whatever a later correction changed them to.
+  const loggedPostings = new Set(
+    merged
+      .filter((row) => row.id.startsWith("log-") && row.action === "Direct Sale Posted")
+      .map((row) => row.facts?.find((fact) => fact.label === "Sale")?.value)
+      .filter((reference): reference is string => Boolean(reference)),
+  );
+  const rows = merged
+    .filter((row) => !(row.id.startsWith("sale-posted-") && loggedPostings.has(row.reference)))
     .filter((row) => !isAuditExemptLabel(exempt, row.actor))
     .filter((row) => !needle || `${row.action} ${row.actor} ${row.reference} ${row.location} ${row.details}`.toLowerCase().includes(needle))
     .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt));

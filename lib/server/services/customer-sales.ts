@@ -245,6 +245,12 @@ export const accountingResolutionSchema = z.object({
   action: z.enum(ACCOUNTING_RESOLUTION_ACTIONS),
   note: z.string().trim().min(1).max(5_000),
   replacement: receiptComparisonSchema.optional(),
+  /**
+   * The sale's version when the correction form was filled. A correction made
+   * against a sale that has changed since -- the branch corrected it a minute
+   * earlier -- is refused rather than writing the old figures back over it.
+   */
+  expectedVersion: z.number().int().positive().optional(),
 }).superRefine((input, context) => {
   if (input.action === "VOIDED_REPLACED" && !input.replacement) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["replacement"], message: "Replacement sale details are required" });
@@ -1723,7 +1729,7 @@ async function createDirectSaleForActor(actor: AuthContext, rawInput: z.input<ty
       actorId: actor.userId,
       reference: sale.manualReceiptNumber,
       locationLabel: sale.location.name,
-      details: `${input.lines.length} line(s), total ${total}, paid ${input.amountPaid} by ${input.paymentMethod}`,
+      details: `Receipt ${sale.manualReceiptNumber} for ${sale.customer?.name ?? "Guest"}: ${input.lines.length} line(s), discount ${input.discountAmount}, total ${total}, paid ${input.amountPaid} by ${input.paymentMethod}`,
       items: sale.lines.map((line) => ({ name: `${line.productItemCode} ${line.productName}`, quantity: line.quantity, amount: String(line.unitPrice.toNumber()) })),
       facts: [
         { label: "Sale", value: sale.reference },
@@ -2376,6 +2382,7 @@ export async function correctEncodedSale(
         lines: true,
         accountingReview: true,
         location: { select: { name: true } },
+        customer: { select: { name: true } },
         _count: { select: { refunds: true, warranties: true, originalBackjobs: true } },
       },
     });
@@ -2384,6 +2391,9 @@ export async function correctEncodedSale(
     const review = sale.accountingReview;
     if (!review) throw new CustomerSalesError("NOT_FOUND", "Accounting review not found", 404);
     if (sale.status !== "POSTED") throw new CustomerSalesError("INVALID_STATE", "Only a posted sale can be corrected", 409);
+    if (input.expectedVersion !== undefined && input.expectedVersion !== sale.version) {
+      throw new CustomerSalesError("STALE_SALE", "This sale changed since you opened it. Reload the receipt and check the figures before correcting it.", 409);
+    }
     /*
      * Any sale still under review, whether or not a mismatch was reported
      * first. Accounting holding the receipt can correct what was keyed in one
@@ -2451,7 +2461,9 @@ export async function correctEncodedSale(
     const total = totalCents / 100;
 
     const now = new Date();
-    const before = `${sale.lines.map((line) => `${line.productItemCode} x${line.quantity} @${line.unitPrice.toNumber()}`).join(", ")} = ${sale.totalAmount.toNumber()}`;
+    // The discount is written out: a correction that only moves the discount
+    // otherwise reads as identical lines with a different total.
+    const before = `${sale.lines.map((line) => `${line.productItemCode} x${line.quantity} @${line.unitPrice.toNumber()}`).join(", ")}, less discount ${sale.discountAmount.toNumber()} = ${sale.totalAmount.toNumber()}`;
 
     // The difference, in two halves: what was never sold comes back, and what
     // was actually sold goes out.
@@ -2468,6 +2480,9 @@ export async function correctEncodedSale(
         amountPaid: decimal(corrected.amountPaid),
         correctedById: actor.userId,
         correctedAt: now,
+        // A correction is a change to the sale; anyone holding the old figures
+        // must reload before correcting it again.
+        version: { increment: 1 },
         lines: {
           create: corrected.lines.map((line) => {
             const product = productsByCode.get(line.itemCode)!;
@@ -2516,7 +2531,7 @@ export async function correctEncodedSale(
     });
     await syncSalePaymentReview(tx, sale.id, updatedReview);
 
-    const after = `${corrected.lines.map((line) => `${line.itemCode} x${line.quantity} @${line.unitPrice}`).join(", ")} = ${total}`;
+    const after = `${corrected.lines.map((line) => `${line.itemCode} x${line.quantity} @${line.unitPrice}`).join(", ")}, less discount ${corrected.discountAmount} = ${total}`;
     await recordAuditLog({
       category: "Receipt Verification",
       action: "Sale Encoding Corrected",
@@ -2524,8 +2539,8 @@ export async function correctEncodedSale(
       reference: sale.manualReceiptNumber,
       locationLabel: sale.location.name,
       details: options.byBranch
-        ? `The branch corrected what it keyed against receipt ${sale.manualReceiptNumber}, for Accounting to review again. ${input.note}`
-        : `Accounting corrected what was keyed against receipt ${sale.manualReceiptNumber} and verified it. ${input.note}`,
+        ? `The branch corrected what it keyed against receipt ${sale.manualReceiptNumber} (${sale.customer?.name ?? "Guest"}), for Accounting to review again. ${input.note}`
+        : `Accounting corrected what was keyed against receipt ${sale.manualReceiptNumber} (${sale.customer?.name ?? "Guest"}) and verified it. ${input.note}`,
       facts: [
         { label: "Was", value: before },
         { label: "Now", value: after },
