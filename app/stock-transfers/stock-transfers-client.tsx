@@ -38,7 +38,7 @@ type TransferLine = {
   discrepancy: { actualQuantity: number; reason: string } | null;
   resolution?: {
     destinationQty: number;
-    restoreToSrQty: number;
+    restoreToSourceQty: number;
     lossQty: number;
   } | null;
 };
@@ -460,7 +460,7 @@ export function StockTransfersClient({
   const resolvedLineSort = useTableSort(selected?.lines, {
     product: productLabelOf,
     posted: (line) => line.resolution?.destinationQty ?? 0,
-    restored: (line) => line.resolution?.restoreToSrQty ?? 0,
+    restored: (line) => line.resolution?.restoreToSourceQty ?? 0,
     writtenOff: (line) => line.resolution?.lossQty ?? 0,
   });
   // Which end of this transfer the viewer works at decides what they may do:
@@ -810,7 +810,7 @@ export function StockTransfersClient({
         const actualQuantity =
           line.discrepancy?.actualQuantity ?? line.dispatchedQuantity;
         const resolvedShortage = line.resolution
-          ? line.resolution.restoreToSrQty + line.resolution.lossQty
+          ? line.resolution.restoreToSourceQty + line.resolution.lossQty
           : Math.max(0, line.dispatchedQuantity - actualQuantity);
 
         return { productId: line.product.id, quantity: resolvedShortage };
@@ -1345,7 +1345,7 @@ export function StockTransfersClient({
                       <tr className="text-left text-emerald-900 dark:text-emerald-300">
                         <SortableHeader className="py-2 pr-3" label="Product" sortKey="product" sort={resolvedLineSort.sort} onSort={resolvedLineSort.toggle} />
                         <SortableHeader className="py-2 pr-3" label="Branch stock posted" sortKey="posted" sort={resolvedLineSort.sort} onSort={resolvedLineSort.toggle} />
-                        <SortableHeader className="py-2 pr-3" label="Restored to SR" sortKey="restored" sort={resolvedLineSort.sort} onSort={resolvedLineSort.toggle} />
+                        <SortableHeader className="py-2 pr-3" label={`Restored to ${selected?.source.code ?? "source"}`} sortKey="restored" sort={resolvedLineSort.sort} onSort={resolvedLineSort.toggle} />
                         <SortableHeader className="py-2 pr-3" label="Written off" sortKey="writtenOff" sort={resolvedLineSort.sort} onSort={resolvedLineSort.toggle} />
                       </tr>
                     </thead>
@@ -1362,7 +1362,7 @@ export function StockTransfersClient({
                             {line.resolution?.destinationQty ?? 0}
                           </td>
                           <td className="py-3 pr-3">
-                            {line.resolution?.restoreToSrQty ?? 0}
+                            {line.resolution?.restoreToSourceQty ?? 0}
                           </td>
                           <td className="py-3 pr-3">
                             {line.resolution?.lossQty ?? 0}
