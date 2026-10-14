@@ -132,8 +132,13 @@ export default function CustomerOrderDetailsPage() {
     amount: (line) => line.amount,
     reserved: (line) => line.reservedQuantity,
   });
-  // Held units only mean something while the order is still open.
-  const showsReservation = order ? !["COMPLETED", "CANCELLED"].includes(order.statusCode) : false;
+  /*
+   * Held units only mean something while the goods are still in the branch.
+   * Release clears every reservation because the stock has physically left, so
+   * on a released order the column could only ever read "0 of n" in warning
+   * amber, as though something were missing.
+   */
+  const showsReservation = order ? !["COMPLETED", "CANCELLED", "RELEASED_UNPAID"].includes(order.statusCode) : false;
   const canViewEvidence = useCan("sales:evidence:view");
   /* Every receipt collected on the order, each with its uploaded photo. */
   const receiptsQuery = useQuery({
