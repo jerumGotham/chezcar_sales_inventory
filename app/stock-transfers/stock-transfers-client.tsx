@@ -95,6 +95,16 @@ type TransferConfirmation =
       kind: "cancel";
       reference: string;
       reason: string;
+    }
+  /**
+   * Writing a shortage off destroys the stock and cannot be undone, so the
+   * Admin is shown the split before it is posted rather than after.
+   */
+  | {
+      kind: "resolve";
+      reference: string;
+      lossQuantity: number;
+      restoreQuantity: number;
     };
 type TransferPage = {
   data: Transfer[];
@@ -794,7 +804,7 @@ export function StockTransfersClient({
         0,
         line.inTransitQuantity - actualQuantity,
       );
-      const resolution = shortageResolutions[line.id] ?? "loss";
+      const resolution = shortageResolutions[line.id];
 
       return {
         lineId: line.id,
@@ -803,6 +813,25 @@ export function StockTransfersClient({
         lossQuantity: resolution === "loss" ? shortageQuantity : 0,
       };
     }) ?? [];
+
+  /*
+   * Every shortage needs a decision of its own. This used to default to a
+   * write-off, so an Admin who typed the note and posted without opening a
+   * single dropdown destroyed the missing stock -- the one outcome here that
+   * cannot be undone.
+   */
+  const undecidedShortages =
+    selected?.lines?.filter((line) => {
+      const shortage = Math.max(0, line.inTransitQuantity - (line.discrepancy?.actualQuantity ?? 0));
+      return shortage > 0 && !shortageResolutions[line.id];
+    }) ?? [];
+  const resolutionTotals = resolutionLines.reduce(
+    (totals, line) => ({
+      loss: totals.loss + line.lossQuantity,
+      restore: totals.restore + line.restoreToSrQuantity,
+    }),
+    { loss: 0, restore: 0 },
+  );
 
   const shortageDraftLines =
     selected?.lines
@@ -1700,7 +1729,7 @@ export function StockTransfersClient({
                                         { value: "loss", label: "Write off missing quantity as loss" },
                                         { value: "restore", label: "Return missing quantity to the source location" },
                                       ]}
-                                      value={shortageResolutions[line.id] ?? "loss"}
+                                      value={shortageResolutions[line.id] ?? ""}
                                       onChange={(value) =>
                                         setShortageResolutions((current) => ({
                                           ...current,
@@ -1730,11 +1759,25 @@ export function StockTransfersClient({
                       placeholder="Example: Approved shortage write-off after investigation."
                     />
                   </div>
+                  {undecidedShortages.length > 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Choose what happens to every shortage before posting.
+                      {" "}
+                      {undecidedShortages.length === 1
+                        ? "One line is still undecided."
+                        : `${undecidedShortages.length} lines are still undecided.`}
+                    </p>
+                  ) : null}
                   <Button
                     variant="workflow"
-                    disabled={!notes.trim() || mutation.isPending}
+                    disabled={!notes.trim() || undecidedShortages.length > 0 || mutation.isPending}
                     onClick={() =>
-                      act("resolve", { notes, lines: resolutionLines })
+                      setConfirmation({
+                        kind: "resolve",
+                        reference: selected.reference,
+                        lossQuantity: resolutionTotals.loss,
+                        restoreQuantity: resolutionTotals.restore,
+                      })
                     }
                   >
                     Post stock resolution
@@ -1990,22 +2033,41 @@ export function StockTransfersClient({
       <ConfirmationDialog
         open={Boolean(confirmation)}
         title={
-          confirmation?.kind === "cancel"
-            ? "Cancel transfer and restore stock?"
-            : "Delete transfer draft?"
+          confirmation?.kind === "resolve"
+            ? "Post this stock resolution?"
+            : confirmation?.kind === "cancel"
+              ? "Cancel transfer and restore stock?"
+              : "Delete transfer draft?"
         }
         description={
-          confirmation?.kind === "cancel"
-            ? `${confirmation.reference} will be cancelled and all in-transit quantities will be restored to its source location. This action cannot be undone.`
-            : `${confirmation?.reference ?? "This draft"} will be permanently deleted. This action cannot be undone.`
+          confirmation?.kind === "resolve"
+            ? [
+                `${confirmation.reference}:`,
+                confirmation.lossQuantity > 0
+                  ? `${confirmation.lossQuantity} unit${confirmation.lossQuantity === 1 ? "" : "s"} will be written off as a loss and cannot be recovered.`
+                  : "Nothing will be written off.",
+                confirmation.restoreQuantity > 0
+                  ? `${confirmation.restoreQuantity} unit${confirmation.restoreQuantity === 1 ? "" : "s"} will go back to the source location.`
+                  : "Nothing goes back to the source location.",
+                "The received stock goes to the destination branch either way.",
+              ].join(" ")
+            : confirmation?.kind === "cancel"
+              ? `${confirmation.reference} will be cancelled and all in-transit quantities will be restored to its source location. This action cannot be undone.`
+              : `${confirmation?.reference ?? "This draft"} will be permanently deleted. This action cannot be undone.`
         }
         confirmLabel={
-          confirmation?.kind === "cancel"
-            ? "Cancel transfer and restore stock"
-            : "Delete draft"
+          confirmation?.kind === "resolve"
+            ? "Post stock resolution"
+            : confirmation?.kind === "cancel"
+              ? "Cancel transfer and restore stock"
+              : "Delete draft"
         }
         cancelLabel={
-          confirmation?.kind === "cancel" ? "Keep transfer" : "Keep draft"
+          confirmation?.kind === "resolve"
+            ? "Go back"
+            : confirmation?.kind === "cancel"
+              ? "Keep transfer"
+              : "Keep draft"
         }
         onOpenChange={(open) => {
           if (!open) setConfirmation(null);
@@ -2018,6 +2080,8 @@ export function StockTransfersClient({
             });
           } else if (confirmation?.kind === "cancel") {
             act("cancel", { reason: confirmation.reason });
+          } else if (confirmation?.kind === "resolve") {
+            act("resolve", { notes, lines: resolutionLines });
           }
         }}
       />
