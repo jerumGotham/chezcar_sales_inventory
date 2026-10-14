@@ -1288,7 +1288,21 @@ export async function releaseCustomerOrder(actor: AuthContext, id: string, input
      * way; what is left owed decides whether this order is closed or sits in
      * the unpaid list until the last payment clears it.
      */
-    const updated = await tx.customerOrder.update({ where: { id: order.id }, data: { status: onCredit ? "RELEASED_UNPAID" : "COMPLETED", finalReceiptNumber: input.finalReceiptNumber ?? null, remainingBalance: balanceAfter, releasedById: actor.userId, releasedAt }, include: ORDER_INCLUDE });
+    const updated = await tx.customerOrder.update({ where: { id: order.id }, data: {
+        status: onCredit ? "RELEASED_UNPAID" : "COMPLETED",
+        finalReceiptNumber: input.finalReceiptNumber ?? null,
+        remainingBalance: balanceAfter,
+        /*
+         * Money collected at the counter counts as collected. The field is the
+         * total paid on the order -- later payments add to it and voiding one
+         * takes it back off -- so leaving the release out of it showed a
+         * part-paid order as Unpaid with a downpayment that did not add up to
+         * the total.
+         */
+        downpaymentAmount: order.downpaymentAmount.add(decimal(input.amountPaid)),
+        releasedById: actor.userId,
+        releasedAt,
+      }, include: ORDER_INCLUDE });
     await recordAuditLog({
       category: "Customer Orders",
       action: "Customer Order Released",

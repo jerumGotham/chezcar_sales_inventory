@@ -53,6 +53,14 @@ describe("Releasing a customer order while money is still owed", () => {
       });
       expect(released.statusCode).toBe("RELEASED_UNPAID");
       expect(released.balance).toBe(11_000);
+      /*
+       * Money handed over at the counter is money collected: the 5,000 down
+       * plus the 4,000 taken at release, against 11,000 still owed. Leaving
+       * the release out of it read back as Unpaid with figures that did not
+       * add up to the order total.
+       */
+      expect(released.downpayment).toBe(9_000);
+      expect(released.paymentStatus).toBe("Partial");
 
       // The stock really left: this is what makes it a credit sale and not a
       // reservation, and it is why the balance has to be chased afterwards.
