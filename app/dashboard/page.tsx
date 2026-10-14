@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import type { Route } from "next";
-import { AlertTriangle, ArrowLeftRight, Bell, CalendarDays, ClipboardList, Loader2, MapPin, Package, ReceiptText, ShieldCheck, TrendingUp, Warehouse } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, Bell, CalendarDays, ClipboardList, Loader2, MapPin, Package, ReceiptText, ShieldCheck, TrendingUp, Wallet, Warehouse } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
@@ -69,6 +69,9 @@ type DashboardResponse = {
     monthTransactions: number;
     openOrders: number;
     readyOrders: number;
+    /** Orders whose goods left while money is still owed. */
+    releasedUnpaidOrders: number;
+    releasedUnpaidAmount: number;
     unverifiedSales: number;
     flaggedSales: number;
     verifiedToday: number;
@@ -164,6 +167,14 @@ export default function DashboardPage() {
                   <MetricCard href={salesHref} icon={<ReceiptText className="h-5 w-5 text-sky-600" />} label="Transactions" value={String(summary.filteredTransactions)} hint={`${summary.filteredTransactions} posted sale(s) in scope`} />
                   <MetricCard href="/reports" icon={<TrendingUp className="h-5 w-5 text-indigo-600" />} label="Average per Transaction" value={formatPeso(summary.filteredTransactions > 0 ? summary.filteredSales / summary.filteredTransactions : 0)} hint={`${summary.salesFilter.periodLabel} - ${summary.salesFilter.branchLabel}`} />
                   <MetricCard href="/inventory" icon={<AlertTriangle className="h-5 w-5 text-amber-600" />} label="Low-Stock Branches" value={String(summary.lowStockBranchCount)} hint={`${summary.lowStockCount} live low-stock row(s), not sales-filtered`} />
+                  {/*
+                    Sales above total posted sales, which carry the whole order
+                    value from the day the goods left. This says how much of
+                    that has not actually been collected.
+                  */}
+                  {summary.releasedUnpaidOrders > 0 ? (
+                    <MetricCard href={"/customer-orders?view=unpaid" as Route} icon={<Wallet className="h-5 w-5 text-amber-600" />} label="Released - Unpaid" value={formatPeso(summary.releasedUnpaidAmount)} hint={`${summary.releasedUnpaidOrders} order(s) released on credit, counted in Sales above`} />
+                  ) : null}
                </>
               ) : summary.capabilities.includes("inventory-receiving:create") && !summary.capabilities.includes("sales:post") ? (
                <>

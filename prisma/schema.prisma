@@ -175,6 +175,9 @@ enum CustomerOrderStatus {
   RESERVED
   WAITING_STOCK
   READY_FOR_RELEASE
+  /// Goods released while a balance is still owed. Becomes COMPLETED once the
+  /// last payment clears it.
+  RELEASED_UNPAID
   COMPLETED
   CANCELLED
 }

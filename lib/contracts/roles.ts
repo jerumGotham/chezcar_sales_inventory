@@ -14,6 +14,7 @@ export const CAPABILITY_CATALOG = [
   { id: "customer-orders:reserve", module: "Customer Orders", label: "Reserve order stock" },
   { id: "customer-orders:record-payment", module: "Customer Orders", label: "Record order payments" },
   { id: "customer-orders:release", module: "Customer Orders", label: "Release customer orders" },
+  { id: "customer-orders:release-unpaid", module: "Customer Orders", label: "Release orders with a balance owed" },
   { id: "customer-orders:update", module: "Customer Orders", label: "Edit customer orders before release" },
   { id: "customer-orders:cancel", module: "Customer Orders", label: "Cancel unpaid customer orders" },
   { id: "customer-orders:cancel-paid", module: "Customer Orders", label: "Cancel paid customer orders" },

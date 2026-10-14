@@ -63,6 +63,7 @@ type OrderStatus =
   | "Pending"
   | "Partially reserved"
   | "For Release"
+  | "Released - balance owed"
   | "Released"
   | "Cancelled";
 
@@ -99,6 +100,8 @@ type CustomerOrdersApiResponse = {
     forReleaseOrders: number;
     releasedOrders: number;
     totalDownpayments: number;
+    /** Outstanding balance across the listed orders. */
+    totalOwed: number;
   };
 };
 
@@ -155,6 +158,7 @@ const ORDER_STATUS_OPTIONS: SelectOption[] = [
   { value: "Pending", label: "Pending" },
   { value: "Partially reserved", label: "Partially reserved" },
   { value: "For Release", label: "For Release" },
+  { value: "Released - balance owed", label: "Released - balance owed" },
   { value: "Released", label: "Released" },
   { value: "Cancelled", label: "Cancelled" },
 ];
@@ -189,6 +193,9 @@ function getOrderStatusBadgeClass(status: OrderStatus) {
       return "border border-orange-200 dark:border-orange-900 bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 hover:bg-orange-50 dark:bg-orange-950/40";
     case "For Release":
       return "border border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 hover:bg-sky-50 dark:bg-sky-950/40";
+    // Amber, not emerald: the goods are gone but the money is not in.
+    case "Released - balance owed":
+      return "border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:bg-amber-950/40";
     case "Released":
       return "border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:bg-emerald-950/40";
     case "Cancelled":
@@ -218,14 +225,18 @@ async function fetchCustomerOrders(params: {
   customer: string;
   orderStatus: string;
   paymentStatus: string;
+  /** The unpaid tab: orders whose goods have gone out with money still owed. */
+  releasedUnpaidOnly?: boolean;
 }): Promise<CustomerOrdersApiResponse> {
-  const { page, pageSize, orderNo, customer, orderStatus, paymentStatus } =
+  const { page, pageSize, orderNo, customer, orderStatus, paymentStatus, releasedUnpaidOnly } =
     params;
 
   const response = await fetch("/api/customer-orders", { credentials: "same-origin" });
   const payload = (await response.json()) as { data?: CustomerOrderRow[]; error?: { message?: string } };
   if (!response.ok) throw new Error(payload.error?.message ?? "Unable to load customer orders");
-  const orders = payload.data ?? [];
+  const orders = (payload.data ?? []).filter(
+    (order) => !releasedUnpaidOnly || order.statusCode === "RELEASED_UNPAID",
+  );
   let filtered = [...orders];
 
   if (orderNo.trim()) {
@@ -281,6 +292,8 @@ async function fetchCustomerOrders(params: {
         (sum, item) => sum + item.downpayment,
         0,
       ),
+      // What the branch has handed over and not yet been paid for.
+      totalOwed: orders.reduce((sum, item) => sum + item.balance, 0),
     },
   };
 }
@@ -349,9 +362,17 @@ export default function CustomerOrdersPage() {
    * entry opens the same list the dashboard's Sales card does.
    */
   const salesSource = searchParams.get("source") === "direct" ? "direct" : "all";
-  const activeView = searchParams.get("view") === "orders" && canViewOrders
-    ? "orders"
-    : canViewSales ? "sales" : canViewOrders ? "orders" : null;
+  /*
+   * "unpaid" is the Customer Orders list narrowed to orders released on credit.
+   * It is a view of its own rather than a value in the status filter, because
+   * it is a list the branch comes back to rather than one it searches for.
+   */
+  const requestedView = searchParams.get("view");
+  const activeView =
+    (requestedView === "orders" || requestedView === "unpaid") && canViewOrders
+      ? requestedView
+      : canViewSales ? "sales" : canViewOrders ? "orders" : null;
+  const releasedUnpaidOnly = activeView === "unpaid";
   const [orderNo, setOrderNo] = useState("");
   const [customer, setCustomer] = useState("");
   const [orderStatus, setOrderStatus] = useState<SelectOption>(
@@ -398,6 +419,7 @@ export default function CustomerOrdersPage() {
         customer: appliedCustomer,
         orderStatus: appliedOrderStatus,
         paymentStatus: appliedPaymentStatus,
+        releasedUnpaidOnly,
       },
     ],
     queryFn: () =>
@@ -408,6 +430,7 @@ export default function CustomerOrdersPage() {
         customer: appliedCustomer,
         orderStatus: appliedOrderStatus,
         paymentStatus: appliedPaymentStatus,
+        releasedUnpaidOnly,
       }),
     enabled: canViewOrders,
     placeholderData: (previousData) => previousData,
@@ -619,6 +642,7 @@ export default function CustomerOrdersPage() {
     forReleaseOrders: 0,
     releasedOrders: 0,
     totalDownpayments: 0,
+    totalOwed: 0,
   };
 
   const filteredSales = useMemo(() => {
@@ -805,10 +829,60 @@ export default function CustomerOrdersPage() {
         >
           Customer Orders
         </Link> : null}
+        {/* The goods are out and the money is not in: a list to come back to. */}
+        {canViewOrders ? <Link
+          href="/customer-orders?view=unpaid"
+          className={buttonVariants({ variant: activeView === "unpaid" ? "default" : "ghost" })}
+          aria-current={activeView === "unpaid" ? "page" : undefined}
+          onClick={() => setPage(1)}
+        >
+          Released - Unpaid
+        </Link> : null}
       </div>
 
-      {activeView === "orders" ? (
+      {activeView === "orders" || activeView === "unpaid" ? (
         <>
+      {/*
+        The unpaid tab answers two questions and no others: how many orders are
+        out on credit, and how much is owed on them. The five cards above belong
+        to the whole order book and would read as nonsense here.
+      */}
+      {releasedUnpaidOnly ? (
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardContent className="flex items-start justify-between p-5">
+            <div>
+              <p className="text-sm text-muted-foreground">Released on credit</p>
+              <h3 className="mt-3 text-3xl font-bold text-foreground">
+                {summary.totalOrders}
+              </h3>
+              <p className="mt-2 text-sm text-amber-600">
+                Goods handed over, balance still owed
+              </p>
+            </div>
+            <div className="rounded-full bg-amber-50 dark:bg-amber-950/40 p-2">
+              <ShoppingBag className="h-5 w-5 text-amber-600" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex items-start justify-between p-5">
+            <div>
+              <p className="text-sm text-muted-foreground">Total Owed</p>
+              <h3 className="mt-3 text-3xl font-bold text-foreground">
+                {formatPeso(summary.totalOwed)}
+              </h3>
+              <p className="mt-2 text-sm text-amber-600">
+                Collected on the order, not on a new sale
+              </p>
+            </div>
+            <div className="rounded-full bg-amber-50 dark:bg-amber-950/40 p-2">
+              <Wallet className="h-5 w-5 text-amber-600" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+      ) : (
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <Card>
           <CardContent className="flex items-start justify-between p-5">
@@ -895,6 +969,7 @@ export default function CustomerOrdersPage() {
           </CardContent>
         </Card>
       </div>
+      )}
 
       <Card className="mt-6">
         <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-5">
@@ -964,10 +1039,12 @@ export default function CustomerOrdersPage() {
           <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
             <div>
               <h3 className="text-base font-semibold text-foreground">
-                Customer Order List
+                {releasedUnpaidOnly ? "Released on Credit" : "Customer Order List"}
               </h3>
               <p className="text-sm text-muted-foreground">
-                Showing {showingFrom} to {showingTo} of {meta.total} orders
+                {releasedUnpaidOnly
+                  ? `Showing ${showingFrom} to ${showingTo} of ${meta.total} orders awaiting payment`
+                  : `Showing ${showingFrom} to ${showingTo} of ${meta.total} orders`}
                 {isFetching && !isLoading ? " • Updating..." : ""}
               </p>
             </div>

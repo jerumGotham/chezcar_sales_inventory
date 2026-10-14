@@ -125,11 +125,15 @@ export const customerOrderSalespersonSchema = z.object({
 
 export const releaseOrderSchema = z.object({
   /**
-   * Left out when the order is already paid in full. A receipt is the record of
-   * money received, and releasing goods that were paid for earlier takes none,
-   * so there is nothing to write a number on.
+   * Left out when the release collects nothing: either the order was paid in
+   * full earlier, or it is going out on credit. A receipt is the record of
+   * money received, so with no money there is nothing to write a number on.
    */
   finalReceiptNumber: z.string().trim().min(1).max(100).optional(),
+  /**
+   * What is handed over at the counter now. Anything from nothing at all up to
+   * the whole remaining balance; what is left stays owed on the order.
+   */
   amountPaid: money,
   paymentMethod: z.enum(["CASH", "GCASH", "MAYA", "BANK_TRANSFER", "CREDIT_CARD", "SPLIT"]).default("CASH"),
   notes: z.string().trim().max(1_000).optional(),
@@ -1197,18 +1201,28 @@ export async function releaseCustomerOrder(actor: AuthContext, id: string, input
     }
     const salesperson = await resolveActiveSalespersonForTransaction(tx, actor, order.salespersonId, order.locationId);
     if (!salesperson) throw new CustomerSalesError("INVALID_SALESPERSON", "Assign an active salesperson within your authorized locations before release", 409);
-    if (input.amountPaid !== order.remainingBalance.toNumber()) throw new CustomerSalesError("INVALID_BALANCE", "Amount paid must match remaining balance", 400);
+    const balanceBefore = order.remainingBalance.toNumber();
+    if (input.amountPaid > balanceBefore) throw new CustomerSalesError("INVALID_BALANCE", "Amount paid cannot exceed the remaining balance", 400);
     /*
-     * Money decides whether there is a receipt. A balance settled at release is
-     * collected now and needs one; an order already paid in full takes nothing,
-     * and its money was receipted and verified when it came in.
+     * Goods going out while money is still owed is a credit sale, and handing
+     * out stock on credit is not the same decision as handing out stock that
+     * has been paid for. It takes a grant of its own.
      */
-    const collectsMoney = order.remainingBalance.toNumber() > 0;
+    // Decimal arithmetic, not floats: this figure is what the customer owes.
+    const balanceAfter = order.remainingBalance.sub(decimal(input.amountPaid));
+    const onCredit = balanceAfter.greaterThan(0);
+    if (onCredit) assertCapability(actor, "customer-orders:release-unpaid");
+    /*
+     * Money decides whether there is a receipt. Whatever is collected at the
+     * counter now needs one; a release that collects nothing takes none, and
+     * whatever was paid earlier was receipted and verified when it came in.
+     */
+    const collectsMoney = input.amountPaid > 0;
     if (collectsMoney && !input.finalReceiptNumber) {
-      throw new CustomerSalesError("RECEIPT_REQUIRED", "This release collects the remaining balance, so it needs a receipt number", 400);
+      throw new CustomerSalesError("RECEIPT_REQUIRED", "This release collects money, so it needs a receipt number", 400);
     }
     if (!collectsMoney && input.finalReceiptNumber) {
-      throw new CustomerSalesError("RECEIPT_NOT_EXPECTED", "This order is already paid in full, so releasing it issues no receipt", 400);
+      throw new CustomerSalesError("RECEIPT_NOT_EXPECTED", "This release collects nothing, so it issues no receipt", 400);
     }
     /*
      * With no receipt the sale still needs an identity of its own, and the order
@@ -1269,7 +1283,12 @@ export async function releaseCustomerOrder(actor: AuthContext, id: string, input
       await syncSalePaymentReview(tx, sale.id, { status: "VERIFIED", verifiedAt: releasedAt, reviewedById: actor.userId, reviewedAt: releasedAt });
     }
     for (const line of order.lines) await tx.inventoryMovement.create({ data: { productId: line.productId, locationId: order.locationId, quantity: -line.quantity, type: "CUSTOMER_ORDER_RELEASE", actorId: actor.userId, reference: saleReceiptNumber, remarks: `Released order ${order.reference}` } });
-    const updated = await tx.customerOrder.update({ where: { id: order.id }, data: { status: "COMPLETED", finalReceiptNumber: input.finalReceiptNumber ?? null, remainingBalance: decimal(0), releasedById: actor.userId, releasedAt }, include: ORDER_INCLUDE });
+    /*
+     * Released is not the same as settled any more. The goods have gone either
+     * way; what is left owed decides whether this order is closed or sits in
+     * the unpaid list until the last payment clears it.
+     */
+    const updated = await tx.customerOrder.update({ where: { id: order.id }, data: { status: onCredit ? "RELEASED_UNPAID" : "COMPLETED", finalReceiptNumber: input.finalReceiptNumber ?? null, remainingBalance: balanceAfter, releasedById: actor.userId, releasedAt }, include: ORDER_INCLUDE });
     await recordAuditLog({
       category: "Customer Orders",
       action: "Customer Order Released",
@@ -1277,8 +1296,10 @@ export async function releaseCustomerOrder(actor: AuthContext, id: string, input
       reference: order.reference,
       locationLabel: updated.location.name,
       details: collectsMoney
-        ? `Released against receipt ${saleReceiptNumber}, collecting ${input.amountPaid}`
-        : "Released with no receipt: the order was paid in full before release",
+        ? `Released against receipt ${saleReceiptNumber}, collecting ${input.amountPaid}${onCredit ? `, leaving ${balanceAfter.toNumber()} owed` : ""}`
+        : onCredit
+          ? `Released on credit with no receipt: the whole ${balanceAfter.toNumber()} is still owed`
+          : "Released with no receipt: the order was paid in full before release",
       items: order.lines.map((line) => ({ name: `${line.productItemCode} ${line.productName}`, quantity: line.quantity })),
       facts: [
         { label: "Sale", value: sale.reference },
@@ -1286,6 +1307,7 @@ export async function releaseCustomerOrder(actor: AuthContext, id: string, input
         { label: "Salesperson", value: order.salespersonName ?? "-" },
         { label: "Order total", value: String(order.totalAmount.toNumber()) },
         { label: "Collected at release", value: String(input.amountPaid) },
+        { label: "Balance left owed", value: String(balanceAfter.toNumber()) },
       ],
     }, tx);
     return serializeOrder(updated);
@@ -1401,6 +1423,11 @@ export async function recordCustomerOrderPayment(
         throw new CustomerSalesError("NOT_FOUND", "Order not found", 404);
       }
       assertOperationalResource(actor, order.locationId);
+      /*
+       * A released order on credit is exactly the one that still needs paying,
+       * so it is let through. COMPLETED means settled, and CANCELLED means the
+       * goods never left; neither has a balance to collect against.
+       */
       if (order.status === "COMPLETED" || order.status === "CANCELLED") {
         throw new CustomerSalesError(
           "INVALID_STATUS",
@@ -1441,11 +1468,21 @@ export async function recordCustomerOrderPayment(
         collectedById: actor.userId,
       });
       const currentDownpayment = order.downpaymentAmount.toNumber();
+      const balanceAfter = order.remainingBalance.sub(decimal(input.amount));
       const updated = await tx.customerOrder.update({
         where: { id: order.id },
         data: {
           downpaymentAmount: decimal(currentDownpayment + input.amount),
-          remainingBalance: decimal(remainingBalance - input.amount),
+          remainingBalance: balanceAfter,
+          /*
+           * The goods are already with the customer, so settling the last of
+           * the balance is what closes this order. An order still waiting to be
+           * released keeps the status it had: paying it off early does not hand
+           * anything over.
+           */
+          ...(order.status === "RELEASED_UNPAID" && !balanceAfter.greaterThan(0)
+            ? { status: "COMPLETED" as const }
+            : {}),
           downpaymentReceiptNumber:
             order.downpaymentReceiptNumber ?? input.reference,
           type:
@@ -2908,7 +2945,7 @@ export async function getDashboardSummary(
     kind: "POSTED_SALE",
     locationId: selectedSalesBranch?.id ?? locationIdFilter(actor),
   };
-  const [todaySales, mtdSales, filteredSales, openOrders, readyOrders, flagged, unverified, verifiedToday, agedOrders, lowBalances, supplierReceiptsToday, transferDrafts, transfersForDispatch, inTransitTransfers, discrepanciesNeedingAction, incomingTransfers, chartSales, todayRefunds, mtdRefunds, filteredRefunds, chartRefunds] = await Promise.all([
+  const [todaySales, mtdSales, filteredSales, openOrders, readyOrders, flagged, unverified, verifiedToday, agedOrders, lowBalances, supplierReceiptsToday, transferDrafts, transfersForDispatch, inTransitTransfers, discrepanciesNeedingAction, incomingTransfers, chartSales, todayRefunds, mtdRefunds, filteredRefunds, chartRefunds, releasedUnpaid] = await Promise.all([
     prisma.sale.aggregate({ where: { ...scopedSales, status: "POSTED", postedAt: { gte: today } }, _sum: { totalAmount: true }, _count: true }),
     prisma.sale.aggregate({ where: { ...scopedSales, status: "POSTED", postedAt: { gte: month } }, _sum: { totalAmount: true }, _count: true }),
     prisma.sale.aggregate({ where: { ...filteredSalesScope, status: "POSTED", postedAt: { gte: salesWindow.start, lte: now } }, _sum: { totalAmount: true }, _count: true }),
@@ -2933,6 +2970,8 @@ export async function getDashboardSummary(
     prisma.refund.aggregate({ where: { ...refundScope, refundedAt: { gte: month } }, _sum: { amount: true }, _count: true }),
     prisma.refund.aggregate({ where: { ...filteredRefundScope, refundedAt: { gte: salesWindow.start, lte: now } }, _sum: { amount: true }, _count: true }),
     prisma.refund.findMany({ where: { ...filteredRefundScope, refundedAt: { gte: salesWindow.start, lte: now } }, select: { refundedAt: true, amount: true, location: { select: { name: true } } } }),
+    // Outstanding, not windowed: a debt does not stop being owed next month.
+    prisma.customerOrder.aggregate({ where: { ...scopedOrders, status: "RELEASED_UNPAID" }, _sum: { remainingBalance: true }, _count: true }),
   ]);
   const lowStock = lowBalances
     .filter((balance) => availableStock(balance) <= balance.product.reorderLevel)
@@ -3003,6 +3042,15 @@ export async function getDashboardSummary(
     monthRefunds: mtdRefunds._sum.amount?.toNumber() ?? 0,
     openOrders,
     readyOrders,
+    /*
+     * Goods released on credit. The sales figures above total Sale rows, which
+     * carry the full order value from the day the goods left, so they already
+     * count money that has not arrived. Netting this out of them would make a
+     * period already reported move as payments trickle in -- the thing refunds
+     * are deliberately dated to avoid -- so it is shown beside them instead.
+     */
+    releasedUnpaidOrders: releasedUnpaid._count,
+    releasedUnpaidAmount: releasedUnpaid._sum.remainingBalance?.toNumber() ?? 0,
     unverifiedSales: unverified,
     flaggedSales: flagged,
     verifiedToday,
@@ -3057,6 +3105,7 @@ function serializeOrder(order: Prisma.CustomerOrderGetPayload<{ include: typeof 
     RESERVED: "Reserved",
     WAITING_STOCK: "Pending",
     READY_FOR_RELEASE: "For Release",
+    RELEASED_UNPAID: "Released - balance owed",
     COMPLETED: "Released",
     CANCELLED: "Cancelled",
   };

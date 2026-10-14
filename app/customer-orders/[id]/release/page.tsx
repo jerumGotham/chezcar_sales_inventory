@@ -38,7 +38,7 @@ type OrderDetail = {
 };
 
 /** The release form's typed values, copied out before React resets the form. */
-type ReleaseInput = { finalReceiptNumber: string; paymentMethod: string; notes: string };
+type ReleaseInput = { finalReceiptNumber: string; paymentMethod: string; notes: string; amountPaid: number };
 
 function formatPeso(value: number) {
   return new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
@@ -73,7 +73,19 @@ export default function ReleaseCustomerOrderPage() {
   const canAttachReceipt = useCan("sales:evidence:upload");
   const [receiptPhotos, setReceiptPhotos] = useState<File[]>([]);
   const [releaseNotice, setReleaseNotice] = useState<string | null>(null);
-  const needsReceiptPhoto = (order?.balance ?? 0) > 0 && canAttachReceipt;
+  /*
+   * Letting goods go while money is still owed is a credit sale, and not every
+   * branch user decides that. Without the grant the amount is fixed at the
+   * whole balance, which is the only release this page ever offered.
+   */
+  const canReleaseUnpaid = useCan("customer-orders:release-unpaid");
+  const [collectedDraft, setCollectedDraft] = useState("");
+  const balance = order?.balance ?? 0;
+  const collectedNow = canReleaseUnpaid
+    ? Math.min(Math.max(Number(collectedDraft === "" ? balance : collectedDraft) || 0, 0), balance)
+    : balance;
+  const balanceLeft = Math.round((balance - collectedNow) * 100) / 100;
+  const needsReceiptPhoto = collectedNow > 0 && canAttachReceipt;
   /*
    * Release moves stock out and posts a sale, and neither is undone by going
    * back a page, so the form is held until it is confirmed.
@@ -100,10 +112,11 @@ export default function ReleaseCustomerOrderPage() {
     setSalespersonId(currentIsValid ? order.salesperson!.personnelId : "");
   }, [order, salespersonQuery.data]);
   const releaseMutation = useMutation({
-    mutationFn: async ({ finalReceiptNumber, paymentMethod, notes }: ReleaseInput) => {
-      // A receipt records money received. Releasing an order that is already
-      // paid in full takes none, so there is nothing to write a number on.
-      const collectsMoney = (order?.balance ?? 0) > 0;
+    mutationFn: async ({ finalReceiptNumber, paymentMethod, notes, amountPaid }: ReleaseInput) => {
+      // A receipt records money received. A release that collects nothing --
+      // already paid in full, or going out on credit -- takes none, so there
+      // is nothing to write a number on.
+      const collectsMoney = amountPaid > 0;
       if (collectsMoney && !finalReceiptNumber) throw new Error("Final receipt number is required.");
       if (needsReceiptPhoto && receiptPhotos.length === 0) throw new Error("Attach a photo of the final receipt.");
       if (!salespersonId) throw new Error("Select an active salesperson.");
@@ -123,7 +136,7 @@ export default function ReleaseCustomerOrderPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...(collectsMoney ? { finalReceiptNumber, paymentMethod } : {}),
-          amountPaid: order?.balance ?? 0,
+          amountPaid,
           notes: notes || undefined,
         }),
       });
@@ -209,14 +222,39 @@ export default function ReleaseCustomerOrderPage() {
                 <Summary label="Downpayment" value={formatPeso(order.downpayment)} />
                 <Summary label="Remaining Balance" value={formatPeso(order.balance)} strong />
               </div>
+              {balanceLeft > 0 ? (
+                <Summary label="Left owed after release" value={formatPeso(balanceLeft)} strong />
+              ) : null}
               {actions?.canRelease ? <form className="mt-6 space-y-4" action={(formData) => setPendingRelease({
                 finalReceiptNumber: String(formData.get("finalReceiptNumber") ?? "").trim(),
                 paymentMethod: String(formData.get("paymentMethod") ?? "CASH"),
                 notes: String(formData.get("notes") ?? "").trim(),
+                amountPaid: collectedNow,
               })}>
                 <div className="space-y-2"><Label htmlFor="salespersonId" required>Salesperson</Label><select id="salespersonId" value={salespersonId} onChange={(event) => setSalespersonId(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" required><option value="">Select salesperson</option>{salespersonQuery.data?.map((personnel) => <option key={personnel.id} value={personnel.id}>{personnel.fullName}</option>)}</select>{salespersonQuery.data?.length === 0 ? <p className="text-xs text-amber-700 dark:text-amber-300">No eligible Salesperson is available in your authorized locations.</p> : null}</div>
-                {order.balance > 0 ? (
+                {order.balance > 0 && canReleaseUnpaid ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="amountCollected">Amount collected now</Label>
+                    <Input
+                      id="amountCollected"
+                      type="number"
+                      min={0}
+                      max={order.balance}
+                      step="0.01"
+                      value={collectedDraft === "" ? String(order.balance) : collectedDraft}
+                      onChange={(event) => setCollectedDraft(event.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Leave it at {formatPeso(order.balance)} to settle the order. Collect less, or nothing at all, and the goods still leave while the rest stays owed.
+                    </p>
+                  </div>
+                ) : null}
+                {collectedNow > 0 ? (
                   <div className="space-y-2"><Label htmlFor="finalReceiptNumber" required>Final Receipt Number</Label><Input id="finalReceiptNumber" name="finalReceiptNumber" placeholder="Handwritten receipt number" /></div>
+                ) : order.balance > 0 ? (
+                  <div className="rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-3 text-sm text-amber-800 dark:text-amber-300" role="status">
+                    Nothing is collected at this release, so no receipt is issued. {formatPeso(order.balance)} stays owed and the order moves to the unpaid list until it is settled.
+                  </div>
                 ) : (
                   <div className="rounded-xl border border-dashed p-3 text-sm text-muted-foreground" role="status">
                     This order is paid in full, so releasing it collects nothing and issues no receipt. The goods still leave the branch and the sale is recorded against {order.orderNo}.
@@ -229,7 +267,7 @@ export default function ReleaseCustomerOrderPage() {
                     <p id="finalReceiptPhotoHelp" className="text-xs text-muted-foreground">Click the photo to magnify it and check the receipt number and amount are readable.</p>
                   </div>
                 ) : null}
-                {order.balance > 0 ? (
+                {collectedNow > 0 ? (
                   <div className="space-y-2"><Label htmlFor="paymentMethod">Payment Method</Label><select id="paymentMethod" name="paymentMethod" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="CASH">Cash</option><option value="GCASH">GCash</option><option value="MAYA">Maya</option><option value="BANK_TRANSFER">Bank Transfer</option><option value="CREDIT_CARD">Credit Card</option><option value="SPLIT">Split</option></select></div>
                 ) : null}
                 <div className="space-y-2"><Label htmlFor="notes">Release Notes</Label><Input id="notes" name="notes" placeholder="Released by, remarks, etc." /></div>
@@ -245,9 +283,14 @@ export default function ReleaseCustomerOrderPage() {
         title="Release this order?"
         description={order
           ? `${order.lines.reduce((sum, line) => sum + line.quantity, 0)} unit(s) will leave ${order.branch} and a sale will be posted against ${order.customer}. ` +
-            (order.balance > 0
-              ? `${formatPeso(order.balance)} is collected now against the receipt you entered.`
-              : "The order is paid in full, so nothing is collected and no receipt is issued.") +
+            (collectedNow > 0
+              ? `${formatPeso(collectedNow)} is collected now against the receipt you entered.`
+              : order.balance > 0
+                ? "Nothing is collected now and no receipt is issued."
+                : "The order is paid in full, so nothing is collected and no receipt is issued.") +
+            (balanceLeft > 0
+              ? ` ${formatPeso(balanceLeft)} stays owed after the goods leave, and there is no way to take it back.`
+              : "") +
             " Stock and the posted sale cannot be undone from here."
           : ""}
         confirmLabel="Release order"
