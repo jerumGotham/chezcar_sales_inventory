@@ -123,7 +123,8 @@ type Sale = {
   status: "POSTED" | "VOIDED";
   source?: "Customer Order" | "Direct Sale";
   mismatchCategory: string | null;
-  notes: string | null;
+  /** The reporter's note on the mismatch, as `serializeSale` sends it. */
+  reviewNotes: string | null;
   reportedComparison: ReceiptComparison | null;
   branchResponse: BranchMismatchResponseDto | null;
   branchResponseNote: string | null;
@@ -719,7 +720,9 @@ function ReceiptVerificationContent() {
             status,
             mismatchCategory:
               status === "MISMATCH_REPORTED" ? category : undefined,
-            notes: status === "MISMATCH_REPORTED" ? notes : undefined,
+            // The Notes box sits beside Confirm correct too, so send whatever
+            // was typed there rather than only what a mismatch carries.
+            notes: notes.trim() ? notes : undefined,
             comparison: toComparison(comparison),
           }),
         },
@@ -1887,6 +1890,12 @@ function ReceiptVerificationContent() {
                     ) : null}
                   </div>
                 )}
+                {selectedSale.reviewStatus === "VERIFIED" && selectedSale.reviewNotes && (
+                  <div className="rounded-xl border bg-muted/40 p-3 text-sm">
+                    <p className="font-medium">Verification note</p>
+                    <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{selectedSale.reviewNotes}</p>
+                  </div>
+                )}
                 {selectedSale.reviewStatus === "VERIFIED" && selectedSale.resolutionNote && (
                   <div className="rounded-xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 p-3 text-sm text-emerald-800 dark:text-emerald-300">
                     <p className="font-medium">Original encoding confirmed</p>
@@ -1930,7 +1939,7 @@ function ReceiptVerificationContent() {
                           "Uncategorized"}
                       </p>
                       <p className="mt-1">
-                        {selectedSale.notes || "No notes recorded."}
+                        {selectedSale.reviewNotes || "No notes recorded."}
                       </p>
                       <p className="mt-2 border-t border-rose-200 dark:border-rose-900 pt-2 font-medium">
                         {branchFindingSummary(selectedSale)}

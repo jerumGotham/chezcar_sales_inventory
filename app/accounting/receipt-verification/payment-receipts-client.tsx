@@ -301,7 +301,10 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
     mutationFn: (status: "VERIFIED" | "MISMATCH_REPORTED") =>
       post(`/api/accounting/payments/${selected!.id}/review`, {
         status,
-        ...(status === "MISMATCH_REPORTED" ? { mismatchCategory: mismatchCategory.value, notes: reviewNotes } : {}),
+        ...(status === "MISMATCH_REPORTED" ? { mismatchCategory: mismatchCategory.value } : {}),
+        // The Notes box sits beside Confirm Correct too; a note typed there
+        // used to be dropped on the way out.
+        ...(reviewNotes.trim() ? { notes: reviewNotes } : {}),
         receiptAmount: Number(receiptAmount),
         receiptNumber,
       }),
@@ -670,6 +673,13 @@ export function PaymentReceiptsClient({ linkedPaymentId }: { linkedPaymentId: st
                     {!selected.receiptPhotoUrl ? (
                       <p className="text-xs text-muted-foreground">Attach the receipt photo before reviewing.</p>
                     ) : null}
+                  </div>
+                ) : null}
+
+                {selected.reviewStatus === "VERIFIED" && selected.reviewNotes ? (
+                  <div className="rounded-xl border bg-muted/40 p-3 text-sm">
+                    <p className="font-medium">Verification note</p>
+                    <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{selected.reviewNotes}</p>
                   </div>
                 ) : null}
 

@@ -2164,7 +2164,12 @@ export async function reviewSale(actor: AuthContext, saleId: string, input: z.in
         reviewedAt,
         verifiedAt: input.status === "VERIFIED" ? reviewedAt : null,
         mismatchCategory: input.status === "MISMATCH_REPORTED" ? input.mismatchCategory : null,
-        notes: input.status === "MISMATCH_REPORTED" ? input.notes : null,
+        /*
+         * The note is what the reviewer wrote down, not a part of the mismatch.
+         * Keeping it only for a mismatch silently threw away every note typed
+         * beside Confirm correct, which is the box the reviewer was looking at.
+         */
+        notes: input.notes ?? null,
         comparisonJson: JSON.stringify({ comparison: await withProductNames(tx, input.comparison), differences }),
       },
     });
@@ -2183,7 +2188,7 @@ export async function reviewSale(actor: AuthContext, saleId: string, input: z.in
       actorId: actor.userId,
       reference: sale.manualReceiptNumber,
       details: input.status === "VERIFIED"
-        ? "Confirmed against the handwritten receipt"
+        ? `Confirmed against the handwritten receipt${input.notes ? `: ${input.notes}` : ""}`
         : `${input.mismatchCategory}: ${input.notes ?? ""}`.trim(),
       facts: [
         { label: "Sale", value: sale.reference },
