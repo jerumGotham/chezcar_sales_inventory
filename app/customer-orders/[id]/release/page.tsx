@@ -79,11 +79,19 @@ export default function ReleaseCustomerOrderPage() {
    * whole balance, which is the only release this page ever offered.
    */
   const canReleaseUnpaid = useCan("customer-orders:release-unpaid");
-  const [collectedDraft, setCollectedDraft] = useState("");
+  /*
+   * null is the untouched box, which shows the whole balance because settling
+   * in full is the ordinary release. Once it is touched the typed text is kept
+   * exactly as typed, empty included: substituting the balance for an empty
+   * box snapped the field back on every backspace, so nothing could be cleared
+   * and 0 could not be typed at all.
+   */
+  const [collectedDraft, setCollectedDraft] = useState<string | null>(null);
   const balance = order?.balance ?? 0;
-  const collectedNow = canReleaseUnpaid
-    ? Math.min(Math.max(Number(collectedDraft === "" ? balance : collectedDraft) || 0, 0), balance)
-    : balance;
+  const typedCollected = collectedDraft === null ? balance : Number(collectedDraft) || 0;
+  const collectedNow = canReleaseUnpaid ? Math.min(Math.max(typedCollected, 0), balance) : balance;
+  // Typing past the balance is clamped, so say so rather than collect less in silence.
+  const collectedOverBalance = canReleaseUnpaid && typedCollected > balance;
   const balanceLeft = Math.round((balance - collectedNow) * 100) / 100;
   const needsReceiptPhoto = collectedNow > 0 && canAttachReceipt;
   /*
@@ -241,12 +249,15 @@ export default function ReleaseCustomerOrderPage() {
                       min={0}
                       max={order.balance}
                       step="0.01"
-                      value={collectedDraft === "" ? String(order.balance) : collectedDraft}
+                      value={collectedDraft ?? String(order.balance)}
                       onChange={(event) => setCollectedDraft(event.target.value)}
                     />
                     <p className="text-xs text-muted-foreground">
                       Leave it at {formatPeso(order.balance)} to settle the order. Collect less, or nothing at all, and the goods still leave while the rest stays owed.
                     </p>
+                    {collectedOverBalance ? (
+                      <p className="text-xs text-amber-700 dark:text-amber-300">This order only owes {formatPeso(order.balance)}, so that is all that will be collected.</p>
+                    ) : null}
                   </div>
                 ) : null}
                 {collectedNow > 0 ? (
