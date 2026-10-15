@@ -2,11 +2,12 @@ import "server-only";
 
 import { createPdfBuilder, dateTime, humanize, money, type PdfColumn } from "@/lib/server/pdf-document";
 
-import { FAST_MOVING_DAYS_PER_SALE, type ReportResult, type SalesReport } from "@/lib/contracts/reports";
+import { FAST_MOVING_DAYS_PER_SALE, type CollectionsReport, type ReportResult } from "@/lib/contracts/reports";
 
 export async function createReportPdf(report: ReportResult, metadata: { generatedBy: string }): Promise<ArrayBuffer> {
   const TITLES: Record<ReportResult["type"], string> = {
-    sales: "Sales Report",
+    sales: "Monthly Sales Report",
+    collections: "Collections Report",
     "salesperson-sales": "Sales by Salesperson",
     "inventory-summary": "Inventory Summary",
     "stock-movement": "Stock Movement",
@@ -28,14 +29,14 @@ export async function createReportPdf(report: ReportResult, metadata: { generate
   text(report.type === "inventory-summary"
     ? "Current branch snapshot. Available = on hand - reserved - quarantined. Positive available stock only; in-transit stock excluded. Comparison cells with no positive stock show 0."
     : `From ${report.dateFrom} to ${report.dateTo}, inclusive. Based on ${
-        report.type === "sales" || report.type === "salesperson-sales"
+        report.type === "collections" || report.type === "salesperson-sales"
           ? report.view === "VERIFIED_DATE" ? "verification" : "sale"
           : report.type === "stock-movement" ? "sale" : "case creation"
       } date in Asia/Manila.`);
   text(`Applied filters: ${report.appliedFilters.map((filter) => `${filter.label}: ${filter.value}`).join("; ") || "None"}`);
   space(16);
 
-  if (report.type === "sales" || report.type === "salesperson-sales") {
+  if (report.type === "collections" || report.type === "salesperson-sales") {
     const total = report.grandTotal;
     if (report.view === "VERIFIED_DATE") {
       text("Period measured on the date Accounting verified each receipt, so every row below is verified.");
@@ -79,7 +80,7 @@ export async function createReportPdf(report: ReportResult, metadata: { generate
       ...report.branchTotals.map((row) => [row.branch, String(row.transactionCount), String(row.units), money(row.totalAmount), `${row.percentage.toFixed(1)}%`]),
       ["OVERALL TOTAL", String(total.transactionCount), String(total.units), money(total.totalAmount), total.totalAmount ? "100.0%" : "0.0%"],
     ], true);
-    const salesByPerson = new Map<string | null, SalesReport["rows"]>();
+    const salesByPerson = new Map<string | null, CollectionsReport["rows"]>();
     if (report.type === "salesperson-sales") for (const row of report.rows) {
       const group = salesByPerson.get(row.salespersonId) ?? [];
       group.push(row);
@@ -170,6 +171,47 @@ export async function createReportPdf(report: ReportResult, metadata: { generate
       ]),
       ["OVERALL TOTAL", "", "", "", String(totals.onHand), String(totals.available), String(totals.soldUnits), "", "", "", ""],
     ], true);
+  } else if (report.type === "sales") {
+    const total = report.grandTotal;
+    text("What left the premises in this period: a direct sale on the day it was sold, and a customer order once, at its full value, on the day it was released. Money taken on an order still waiting in the warehouse is not a sale and is not counted here.");
+    if (report.unverified.count > 0) {
+      text(`${report.unverified.count} sale(s) worth ${money(report.unverified.amount)} are counted below but their receipts are not verified yet.`);
+    }
+    table("Sales summary", [{ header: "Measure", width: 3 }, { header: "Total", width: 2, numeric: true }], [
+      ["Gross sales", money(total.grossAmount)],
+      ["Less: discounts", money(total.totalDiscount)],
+      ["Less: returns and refunds", money(total.totalReturns)],
+      ["NET SALES", money(total.netAmount)],
+      ["Receipts", String(total.receiptCount)],
+      ["Units sold", String(total.units)],
+      ["Average sale", money(total.averageSale)],
+    ], true);
+    table("Sales detail", [
+      { header: "Sold", width: 3 }, { header: "Receipt", width: 3 }, { header: "Branch", width: 3 },
+      { header: "Customer", width: 4 }, { header: "Salesperson", width: 4 }, { header: "Source", width: 3 },
+      { header: "Units", width: 2, numeric: true }, { header: "Gross", width: 3, numeric: true },
+      { header: "Discount", width: 3, numeric: true }, { header: "Net", width: 3, numeric: true },
+    ], report.rows.map((row) => [
+      dateTime(row.soldAt),
+      row.receiptIssued ? row.manualReceiptNumber : "No receipt",
+      row.branch, row.customer, row.salesperson, row.source,
+      String(row.units), money(row.grossAmount), money(row.discountAmount), money(row.netAmount),
+    ]), true);
+    if (report.returns.length > 0) {
+      table("Returns and refunds in this period", [
+        { header: "Refunded", width: 3 }, { header: "Reference", width: 4 }, { header: "Branch", width: 3 },
+        { header: "Customer", width: 4 }, { header: "Reason", width: 5 }, { header: "Amount", width: 3, numeric: true },
+      ], report.returns.map((row) => [
+        dateTime(row.refundedAt), row.reference, row.branch, row.customer, row.reason, money(-row.amount),
+      ]), true);
+    }
+    table("Branch totals", [
+      { header: "Branch", width: 5 }, { header: "Receipts", width: 2, numeric: true },
+      { header: "Units", width: 2, numeric: true }, { header: "Net sales", width: 3, numeric: true },
+      { header: "% of net", width: 2, numeric: true },
+    ], report.branchTotals.map((row) => [
+      row.branch, String(row.receiptCount), String(row.units), money(row.netAmount), `${row.percentage.toFixed(1)}%`,
+    ]), true);
   } else {
     const total = report.totals;
     text("Backjob charges are recorded case amounts, not collected payments or additional Sales revenue. Supplier refunds/credits are separate claim tracking, not ledger totals. Amounts follow applied case filters, including status.");

@@ -40,24 +40,24 @@ describe("report filters", () => {
   });
 
   it("parses focused filters and rejects reversed or impossible dates", () => {
-    const parsed = reports.queryFromSearchParams(new URLSearchParams("type=sales&source=DIRECT_SALE&paymentMethod=GCASH"));
+    const parsed = reports.queryFromSearchParams(new URLSearchParams("type=collections&source=DIRECT_SALE&paymentMethod=GCASH"));
     expect(parsed).toMatchObject({
-      type: "sales",
+      type: "collections",
       source: "DIRECT_SALE",
       paymentMethod: "GCASH",
     });
     expect(parsed.dateFrom).toMatch(/^\d{4}-\d{2}-01$/);
     expect(parsed.dateTo).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(() => reports.queryFromSearchParams(new URLSearchParams("type=sales&dateFrom=2026-09-08&dateTo=2026-09-07"))).toThrow();
-    expect(reports.queryFromSearchParams(new URLSearchParams("type=sales&dateFrom=2024-02-10"))).toMatchObject({ dateFrom: "2024-02-10", dateTo: "2024-02-29" });
-    expect(reports.queryFromSearchParams(new URLSearchParams("type=sales&dateFrom=2024-02-10&dateTo=2024-03-15"))).toMatchObject({ dateFrom: "2024-02-10", dateTo: "2024-03-15" });
-    expect(() => reports.queryFromSearchParams(new URLSearchParams("type=sales&dateTo=2000-01-01"))).toThrow();
-    expect(() => reports.queryFromSearchParams(new URLSearchParams("type=sales&dateFrom=2026-02-30"))).toThrow();
+    expect(() => reports.queryFromSearchParams(new URLSearchParams("type=collections&dateFrom=2026-09-08&dateTo=2026-09-07"))).toThrow();
+    expect(reports.queryFromSearchParams(new URLSearchParams("type=collections&dateFrom=2024-02-10"))).toMatchObject({ dateFrom: "2024-02-10", dateTo: "2024-02-29" });
+    expect(reports.queryFromSearchParams(new URLSearchParams("type=collections&dateFrom=2024-02-10&dateTo=2024-03-15"))).toMatchObject({ dateFrom: "2024-02-10", dateTo: "2024-03-15" });
+    expect(() => reports.queryFromSearchParams(new URLSearchParams("type=collections&dateTo=2000-01-01"))).toThrow();
+    expect(() => reports.queryFromSearchParams(new URLSearchParams("type=collections&dateFrom=2026-02-30"))).toThrow();
     expect(() => reports.queryFromSearchParams(new URLSearchParams("type=inventory-summary&salespersonId=person-1"))).toThrow();
     expect(() => reports.queryFromSearchParams(new URLSearchParams("type=low-stock"))).toThrow();
     expect(() => reports.queryFromSearchParams(new URLSearchParams("type=inventory-movements"))).toThrow();
-    expect(() => reports.queryFromSearchParams(new URLSearchParams("type=sales&type=low-stock"))).toThrow();
-    expect(() => reports.queryFromSearchParams(new URLSearchParams("type=sales&locationId=one&locationId=two"))).toThrow();
+    expect(() => reports.queryFromSearchParams(new URLSearchParams("type=collections&type=low-stock"))).toThrow();
+    expect(() => reports.queryFromSearchParams(new URLSearchParams("type=collections&locationId=one&locationId=two"))).toThrow();
     expect(reports.queryFromSearchParams(new URLSearchParams("type=inventory-summary")).locationId).toBeUndefined();
     expect(reports.queryFromSearchParams(new URLSearchParams("type=inventory-summary&locationId=all")).locationId).toBe("all");
     expect(() => reports.queryFromSearchParams(new URLSearchParams("type=inventory-summary&locationId="))).toThrow();
@@ -118,7 +118,7 @@ describe("report quantity projections", () => {
 });
 
 describe("sales and salesperson sales reports", () => {
-  const actor = { userId: "actor", roleDefinitionId: "role", isOwner: false, capabilities: ["reports:sales", "reports:salesperson-sales", "reports:inventory-summary", "reports:stock-movement", "reports:returns-warranty"], locationIds: ["branch"] };
+  const actor = { userId: "actor", roleDefinitionId: "role", isOwner: false, capabilities: ["reports:sales", "reports:collections", "reports:salesperson-sales", "reports:inventory-summary", "reports:stock-movement", "reports:returns-warranty"], locationIds: ["branch"] };
   const query = { dateFrom: "2026-09-01", dateTo: "2026-09-30", locationId: "branch" };
   const attribution = [
     { salespersonId: "person-1", salespersonName: "Later historical name" },
@@ -148,7 +148,7 @@ describe("sales and salesperson sales reports", () => {
     };
   }
 
-  it.each(["sales", "salesperson-sales"] as const)("shares verified sales rows and totals for %s, grouping identities rather than snapshot names", async (type) => {
+  it.each(["collections", "salesperson-sales"] as const)("shares verified sales rows and totals for %s, grouping identities rather than snapshot names", async (type) => {
     reportPrisma.payment.findMany.mockResolvedValueOnce(attribution).mockResolvedValueOnce([
       sale("5", "person-1", "Same name", 120, 2),
       sale("4", "person-2", "Same name", 60),
@@ -158,7 +158,7 @@ describe("sales and salesperson sales reports", () => {
     ]);
     const report = await reports.getReport(actor, { type, ...query });
     expect(report.type).toBe(type);
-    if (report.type !== "sales" && report.type !== "salesperson-sales") throw new Error("Expected sales report");
+    if (report.type !== "collections" && report.type !== "salesperson-sales") throw new Error("Expected sales report");
     expect(report.rows.map((row) => [row.salespersonId, row.salesperson])).toEqual([
       ["person-1", "Same name"], ["person-2", "Same name"], ["person-1", "Old name"], [null, "Unassigned"], [null, "Legacy snapshot"],
     ]);
@@ -184,7 +184,7 @@ describe("sales and salesperson sales reports", () => {
     }));
   });
 
-  it.each(["sales", "salesperson-sales"] as const)("offers scoped historical identities for %s regardless of current personnel status/home branch or other filters", async (type) => {
+  it.each(["collections", "salesperson-sales"] as const)("offers scoped historical identities for %s regardless of current personnel status/home branch or other filters", async (type) => {
     reportPrisma.payment.findMany.mockResolvedValueOnce(attribution).mockResolvedValueOnce([]);
     const report = await reports.getReport(actor, { type, ...query, salespersonId: "person-1", source: "CUSTOMER_ORDER", paymentMethod: "GCASH" });
     expect(report.filters.salespersons).toEqual([
@@ -200,14 +200,14 @@ describe("sales and salesperson sales reports", () => {
     expect(reportPrisma.payment.findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
       where: expect.objectContaining({ locationId: { in: ["branch"] }, salespersonId: "person-1", kind: { in: ["ORDER_DOWNPAYMENT", "ORDER_PAYMENT", "ORDER_FINAL"] }, method: "GCASH" }),
     }));
-    if (report.type !== "sales" && report.type !== "salesperson-sales") throw new Error("Expected sales report");
+    if (report.type !== "collections" && report.type !== "salesperson-sales") throw new Error("Expected sales report");
     expect(report.rows).toEqual([]);
     expect(report.branchTotals).toEqual([]);
     expect(report.grandTotal).toEqual({ transactionCount: 0, units: 0, totalDiscount: 0, averageSale: 0, totalAmount: 0 });
     if (report.type === "salesperson-sales") expect(report.salespersonTotals).toEqual([]);
   });
 
-  it.each(["sales", "salesperson-sales"] as const)("rejects unauthorized locations and arbitrary salesperson IDs for %s before querying sale details", async (type) => {
+  it.each(["collections", "salesperson-sales"] as const)("rejects unauthorized locations and arbitrary salesperson IDs for %s before querying sale details", async (type) => {
     await expect(reports.getReport(actor, { type, ...query, locationId: "hidden" })).rejects.toThrow("Report location is not an active authorized location");
     expect(reportPrisma.payment.findMany).not.toHaveBeenCalled();
     reportPrisma.payment.findMany.mockResolvedValueOnce(attribution);
@@ -233,8 +233,8 @@ describe("sales and salesperson sales reports", () => {
       receipt("OR-2350", "ORDER_FINAL", 35_000, 3),
       receipt("OR-2240", "ORDER_DOWNPAYMENT", 10_000),
     ]);
-    const report = await reports.getReport(actor, { type: "sales", ...query });
-    if (report.type !== "sales") throw new Error("Expected sales report");
+    const report = await reports.getReport(actor, { type: "collections", ...query });
+    if (report.type !== "collections") throw new Error("Expected sales report");
     expect(report.rows.map((row) => [row.source, row.totalAmount])).toEqual([
       ["Order Downpayment", 10_000], ["Order Payment", 5_000], ["Order Release", 35_000], ["Order Downpayment", 10_000],
     ]);
@@ -283,8 +283,8 @@ describe("sales and salesperson sales reports", () => {
       { productId: "p-light", make: "Ford", model: "Ranger", yearsLabel: null, startYear: null, endYear: null },
     ]);
 
-    const report = await reports.getReport(actor, { type: "sales", ...query });
-    if (report.type !== "sales") throw new Error("Expected sales report");
+    const report = await reports.getReport(actor, { type: "collections", ...query });
+    if (report.type !== "collections") throw new Error("Expected sales report");
 
     expect(report.rows[0].items).toEqual([
       { itemCode: "BUMPER", name: "Bumper", quantity: 2, listPrice: 1_000, discount: 100, unitPrice: 900, amount: 1_800, fitment: ["Toyota Hilux 2016-2020"] },
@@ -311,24 +311,24 @@ describe("sales and salesperson sales reports", () => {
     reportPrisma.payment.findMany.mockImplementation((args) => Promise.resolve(args.distinct ? attribution : []));
     reportPrisma.payment.aggregate.mockResolvedValue({ _count: { _all: 2 }, _sum: { amount: { toNumber: () => 45_000 } } });
 
-    const onSaleDate = await reports.getReport(actor, { type: "sales", ...query });
+    const onSaleDate = await reports.getReport(actor, { type: "collections", ...query });
     expect(reportPrisma.payment.findMany.mock.calls[1][0].where).toMatchObject({
       collectedAt: { gte: new Date("2026-08-31T16:00:00Z"), lt: new Date("2026-09-30T16:00:00Z") },
     });
     expect(reportPrisma.payment.findMany.mock.calls[1][0].where.verifiedAt).toBeUndefined();
     // The default view holds back nothing, so it has no review-status filter.
     expect(reportPrisma.payment.findMany.mock.calls[1][0].where.reviewStatus).toBeUndefined();
-    if (onSaleDate.type !== "sales") throw new Error("Expected sales report");
+    if (onSaleDate.type !== "collections") throw new Error("Expected sales report");
     expect(onSaleDate.view).toBe("SALE_DATE");
     expect(onSaleDate.appliedFilters).toContainEqual({ label: "View", value: "Sale date (all receipts)" });
 
-    const onVerifiedDate = await reports.getReport(actor, { type: "sales", ...query, view: "VERIFIED_DATE" });
+    const onVerifiedDate = await reports.getReport(actor, { type: "collections", ...query, view: "VERIFIED_DATE" });
     expect(reportPrisma.payment.findMany.mock.calls[3][0].where).toMatchObject({
       verifiedAt: { gte: new Date("2026-08-31T16:00:00Z"), lt: new Date("2026-09-30T16:00:00Z") },
       reviewStatus: { equals: "VERIFIED" },
     });
     expect(reportPrisma.payment.findMany.mock.calls[3][0].where.collectedAt).toBeUndefined();
-    if (onVerifiedDate.type !== "sales") throw new Error("Expected sales report");
+    if (onVerifiedDate.type !== "collections") throw new Error("Expected sales report");
     expect(onVerifiedDate.appliedFilters).toContainEqual({ label: "View", value: "Verification date (verified only)" });
     // Only the verified view hides anything, so only it reports a gap.
     expect(onVerifiedDate.pending).toEqual({ count: 2, amount: 45_000 });
@@ -349,8 +349,8 @@ describe("sales and salesperson sales reports", () => {
       receipt("OR-2", 4_000, "UNVERIFIED"),
       receipt("OR-3", 1_000, "MISMATCH_REPORTED"),
     ]);
-    const report = await reports.getReport(actor, { type: "sales", ...query });
-    if (report.type !== "sales") throw new Error("Expected sales report");
+    const report = await reports.getReport(actor, { type: "collections", ...query });
+    if (report.type !== "collections") throw new Error("Expected sales report");
 
     expect(reportPrisma.payment.findMany.mock.calls[1][0].where.reviewStatus).toBeUndefined();
     // A confirmed figure and an unconfirmed one are never merged into one number.
@@ -366,8 +366,8 @@ describe("sales and salesperson sales reports", () => {
 
   it("dates the not-verified view by the sale day, because those receipts have no verification date", async () => {
     reportPrisma.payment.findMany.mockImplementation((args) => Promise.resolve(args.distinct ? attribution : []));
-    const report = await reports.getReport(actor, { type: "sales", ...query, view: "UNVERIFIED" });
-    if (report.type !== "sales") throw new Error("Expected sales report");
+    const report = await reports.getReport(actor, { type: "collections", ...query, view: "UNVERIFIED" });
+    if (report.type !== "collections") throw new Error("Expected sales report");
 
     expect(reportPrisma.payment.findMany.mock.calls[1][0].where.reviewStatus).toEqual({ not: "VERIFIED" });
     expect(reportPrisma.payment.findMany.mock.calls[1][0].where.collectedAt).toBeDefined();
@@ -384,7 +384,7 @@ describe("sales and salesperson sales reports", () => {
 });
 
 describe("stock movement report", () => {
-  const actor = { userId: "actor", roleDefinitionId: "role", isOwner: false, capabilities: ["reports:sales", "reports:salesperson-sales", "reports:inventory-summary", "reports:stock-movement", "reports:returns-warranty"], locationIds: ["branch"] };
+  const actor = { userId: "actor", roleDefinitionId: "role", isOwner: false, capabilities: ["reports:sales", "reports:collections", "reports:salesperson-sales", "reports:inventory-summary", "reports:stock-movement", "reports:returns-warranty"], locationIds: ["branch"] };
   const query = { type: "stock-movement" as const, dateFrom: "2026-09-01", dateTo: "2026-09-30", locationId: "branch" };
 
   beforeEach(() => {
@@ -463,7 +463,7 @@ describe("multi-item Backjob report", () => {
       installerName: null, scheduledFor: null, chargeableAmount: { toNumber: () => 1250 }, originalSale: null,
     }]);
     for (const entitySearch of ["p-2", "second product"]) {
-      const report = await reports.getReport({ userId: "actor", roleDefinitionId: "role", isOwner: false, capabilities: ["reports:sales", "reports:salesperson-sales", "reports:inventory-summary", "reports:stock-movement", "reports:returns-warranty"], locationIds: ["branch"] }, {
+      const report = await reports.getReport({ userId: "actor", roleDefinitionId: "role", isOwner: false, capabilities: ["reports:sales", "reports:collections", "reports:salesperson-sales", "reports:inventory-summary", "reports:stock-movement", "reports:returns-warranty"], locationIds: ["branch"] }, {
         type: "returns-warranty", caseType: "BACKJOB", dateFrom: "2026-09-01", dateTo: "2026-09-30", entitySearch,
       });
       expect(report.type).toBe("returns-warranty");

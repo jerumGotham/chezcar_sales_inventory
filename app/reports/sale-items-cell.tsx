@@ -4,9 +4,9 @@ import { useState } from "react";
 import { Car, PackageOpen } from "lucide-react";
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import type { SalesReport } from "@/lib/contracts/reports";
+import type { CollectionsReport } from "@/lib/contracts/reports";
 
-type Row = SalesReport["rows"][number];
+type Row = CollectionsReport["rows"][number];
 type Item = Row["items"][number];
 
 const peso = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 2 });

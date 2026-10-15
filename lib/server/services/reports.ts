@@ -22,6 +22,7 @@ import {
   type ReportBreakdown,
   type ReportOption,
   type ReportResult,
+  type CollectionsReport,
   type SalesReport,
   type SalespersonSalesReport,
   type StockMovementReport,
@@ -59,7 +60,10 @@ const reportQueryBaseSchema = z.object({
 }).strict().superRefine((value, context) => {
   const salesFilters = new Set(["type", "dateFrom", "dateTo", "locationId", "salespersonId", "source", "paymentMethod", "view"]);
   const allowed: Record<(typeof REPORT_TYPES)[number], ReadonlySet<string>> = {
-    sales: salesFilters,
+    // No view: a sale is dated by the day the goods left, and a verification
+    // date would not move it.
+    sales: new Set(["type", "dateFrom", "dateTo", "locationId", "salespersonId", "source", "paymentMethod"]),
+    collections: salesFilters,
     "salesperson-sales": salesFilters,
     "inventory-summary": new Set(["type", "locationId", "search", "category", "brand", "productStatus"]),
     "stock-movement": new Set(["type", "dateFrom", "dateTo", "locationId", "search", "category", "brand", "movement"]),
@@ -90,7 +94,7 @@ const CLOSED_WARRANTY = new Set(["COMPLETED", "CANCELLED", "REJECTED"]);
 const CLOSED_CLAIM = new Set(["COMPLETED", "CANCELLED", "REJECTED"]);
 
 function isDatedReport(type: (typeof REPORT_TYPES)[number]) {
-  return type === "sales" || type === "salesperson-sales" || type === "returns-warranty" || type === "stock-movement";
+  return type === "sales" || type === "collections" || type === "salesperson-sales" || type === "returns-warranty" || type === "stock-movement";
 }
 
 export function manilaDateKey(value: Date) {
@@ -117,7 +121,7 @@ async function options(query: ReportQuery, locations: ReportLocation[], effectiv
   const scopedLocation = { in: effectiveLocations.map((location) => location.id) };
   const inventoryProductStatus = query.type === "inventory-summary" ? query.productStatus : "ACTIVE";
   const [salespersons, categories, brands] = await Promise.all([
-    (query.type !== "sales" && query.type !== "salesperson-sales") || !effectiveLocations.length ? Promise.resolve([]) : prisma.payment.findMany({
+    (query.type !== "collections" && query.type !== "salesperson-sales") || !effectiveLocations.length ? Promise.resolve([]) : prisma.payment.findMany({
       where: { locationId: scopedLocation, status: "ACTIVE", salespersonId: { not: null }, reviewStatus: "VERIFIED", verifiedAt: { not: null } },
       // Historical attribution, independent of date/source/payment filters or current personnel assignments.
       select: { salespersonId: true, salespersonName: true },
@@ -162,7 +166,7 @@ function optionLabel(rows: ReportOption[], id: string | undefined) {
 function selectedFilters(query: ReportQuery, filters: Awaited<ReturnType<typeof options>>, range: ReturnType<typeof dateRange>) {
   const result: Array<{ label: string; value: string }> = [];
   if (range.dateFrom || range.dateTo) result.push({ label: "Date range", value: `${range.dateFrom ?? "Start"} to ${range.dateTo ?? "Today"}` });
-  if (query.type === "sales" || query.type === "salesperson-sales") {
+  if (query.type === "collections" || query.type === "salesperson-sales") {
     result.push({ label: "View", value: SALES_VIEW_LABELS[query.view ?? "SALE_DATE"] });
   }
   if (query.locationId) result.push({ label: "Location", value: query.type === "inventory-summary" && query.locationId === "all" ? "All authorized branches" : optionLabel(filters.locations, query.locationId) });
@@ -290,7 +294,145 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
   const undatedRange = dateRange(query, false);
   const base = { type: query.type, generatedAt: new Date().toISOString(), filters, effectiveScope };
 
-  if (query.type === "sales" || query.type === "salesperson-sales") {
+  if (query.type === "sales") {
+    const range = dateRange(query, true);
+    /*
+     * Dated by soldAt, the day the goods changed hands, so a branch that keys a
+     * receipt late still books the sale in the month it happened. postedAt is
+     * the keying moment and would move it.
+     */
+    const sales = await prisma.sale.findMany({
+      where: {
+        locationId: scopedLocation,
+        status: "POSTED",
+        salespersonId: query.salespersonId,
+        paymentMethod: query.paymentMethod,
+        // A release writes a Sale with an orderId; a direct sale has none.
+        ...(query.source === "DIRECT_SALE" ? { orderId: null } : {}),
+        ...(query.source === "CUSTOMER_ORDER" ? { orderId: { not: null } } : {}),
+        soldAt: range.where,
+      },
+      select: {
+        id: true, manualReceiptNumber: true, receiptIssued: true, orderId: true,
+        soldAt: true, paymentMethod: true, totalAmount: true, discountAmount: true,
+        salespersonId: true, salespersonName: true,
+        location: { select: { name: true } },
+        customer: { select: { name: true } },
+        postedBy: { select: { name: true } },
+        accountingReview: { select: { status: true } },
+        refunds: { select: { amount: true } },
+        lines: { select: { productItemCode: true, productName: true, quantity: true, unitPrice: true } },
+      },
+      orderBy: [{ soldAt: "desc" }, { id: "desc" }],
+    });
+
+    /*
+     * Refunds are dated by the day the money went back, whatever month the sale
+     * fell in, so a period already reported does not change underneath. They
+     * are listed as well as subtracted: a net figure nobody can take apart is a
+     * figure nobody can check.
+     */
+    const refunds = await prisma.refund.findMany({
+      where: { locationId: scopedLocation, refundedAt: range.where },
+      select: {
+        id: true, reference: true, amount: true, reason: true, refundedAt: true,
+        location: { select: { name: true } },
+        customer: { select: { name: true } },
+      },
+      orderBy: [{ refundedAt: "desc" }, { id: "desc" }],
+    });
+
+    const rows = sales.map((sale) => {
+      const netAmount = sale.totalAmount.toNumber();
+      const discountAmount = sale.discountAmount.toNumber();
+      return {
+        id: sale.id,
+        soldAt: sale.soldAt.toISOString(),
+        manualReceiptNumber: sale.manualReceiptNumber,
+        receiptIssued: sale.receiptIssued,
+        branch: sale.location.name,
+        customer: sale.customer?.name ?? "Guest",
+        salespersonId: sale.salespersonId,
+        salesperson: sale.salespersonName ?? "Not recorded",
+        encoder: sale.postedBy.name,
+        source: (sale.orderId ? "Order Release" : "Direct Sale") as "Direct Sale" | "Order Release",
+        paymentMethod: sale.paymentMethod,
+        units: sale.lines.reduce((sum, line) => sum + line.quantity, 0),
+        grossAmount: netAmount + discountAmount,
+        discountAmount,
+        netAmount,
+        refundedAmount: sale.refunds.reduce((sum, refund) => sum + refund.amount.toNumber(), 0),
+        verificationStatus: (sale.accountingReview?.status ?? "UNVERIFIED") as "VERIFIED" | "UNVERIFIED" | "MISMATCH_REPORTED",
+        items: sale.lines.map((line) => ({
+          itemCode: line.productItemCode,
+          name: line.productName,
+          quantity: line.quantity,
+          unitPrice: line.unitPrice.toNumber(),
+          amount: line.quantity * line.unitPrice.toNumber(),
+        })),
+      };
+    });
+
+    const returns = refunds.map((refund) => ({
+      id: refund.id,
+      refundedAt: refund.refundedAt.toISOString(),
+      reference: refund.reference,
+      branch: refund.location?.name ?? "-",
+      customer: refund.customer?.name ?? "Guest",
+      amount: refund.amount.toNumber(),
+      reason: refund.reason,
+    }));
+
+    const grossAmount = rows.reduce((sum, row) => sum + row.grossAmount, 0);
+    const totalDiscount = rows.reduce((sum, row) => sum + row.discountAmount, 0);
+    const totalReturns = returns.reduce((sum, row) => sum + row.amount, 0);
+    const netAmount = grossAmount - totalDiscount - totalReturns;
+
+    const branches = new Map<string, SalesReport["branchTotals"][number]>();
+    for (const row of rows) {
+      const total = branches.get(row.branch) ?? { branch: row.branch, receiptCount: 0, units: 0, netAmount: 0, percentage: 0 };
+      total.receiptCount += 1;
+      total.units += row.units;
+      total.netAmount += row.netAmount;
+      branches.set(row.branch, total);
+    }
+    // Returns belong to the branch that gave the money back.
+    for (const row of returns) {
+      const total = branches.get(row.branch) ?? { branch: row.branch, receiptCount: 0, units: 0, netAmount: 0, percentage: 0 };
+      total.netAmount -= row.amount;
+      branches.set(row.branch, total);
+    }
+    const branchNet = [...branches.values()].reduce((sum, total) => sum + total.netAmount, 0);
+    for (const total of branches.values()) total.percentage = branchNet ? (total.netAmount / branchNet) * 100 : 0;
+
+    const unverifiedRows = rows.filter((row) => row.verificationStatus !== "VERIFIED");
+    const report: SalesReport = {
+      ...base,
+      type: "sales",
+      dateFrom: range.dateFrom,
+      dateTo: range.dateTo,
+      appliedFilters: selectedFilters(query, filters, range),
+      unverified: {
+        count: unverifiedRows.length,
+        amount: unverifiedRows.reduce((sum, row) => sum + row.netAmount, 0),
+      },
+      rows,
+      returns,
+      branchTotals: [...branches.values()].sort((a, b) => a.branch.localeCompare(b.branch)),
+      grandTotal: {
+        receiptCount: rows.length,
+        units: rows.reduce((sum, row) => sum + row.units, 0),
+        grossAmount,
+        totalDiscount,
+        totalReturns,
+        netAmount,
+        averageSale: rows.length ? netAmount / rows.length : 0,
+      },
+    };
+    return report;
+  }
+
+  if (query.type === "collections" || query.type === "salesperson-sales") {
     const range = dateRange(query, true);
     const view = query.view ?? "SALE_DATE";
     // Only a confirmed receipt has a verification date, so measuring on that
@@ -519,8 +661,8 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
       totals.set(row.branch, total);
     }
     for (const total of totals.values()) total.percentage = grandAmount ? (total.totalAmount / grandAmount) * 100 : 0;
-    const salesReport: SalesReport = {
-      ...base, type: "sales", dateFrom: range.dateFrom, dateTo: range.dateTo, view, pending,
+    const salesReport: CollectionsReport = {
+      ...base, type: "collections", dateFrom: range.dateFrom, dateTo: range.dateTo, view, pending,
       verifiedTotal: {
         transactionCount: rows.filter((row) => row.verificationStatus === "VERIFIED").length,
         totalAmount: rows.filter((row) => row.verificationStatus === "VERIFIED").reduce((sum, row) => sum + row.totalAmount, 0),
@@ -539,7 +681,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
         totalAmount: grandAmount,
       },
     };
-    if (query.type === "sales") return salesReport;
+    if (query.type === "collections") return salesReport;
 
     const salespersonTotals = new Map<string | null, SalespersonSalesReport["salespersonTotals"][number]>();
     // Rows are newest verification first, with sale ID breaking ties; keep that first snapshot label.

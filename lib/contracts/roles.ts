@@ -60,7 +60,8 @@ export const CAPABILITY_CATALOG = [
   { id: "stock-transfers:investigate", module: "Stock Transfers", label: "Investigate transfer discrepancies" },
   { id: "stock-transfers:resolve", module: "Stock Transfers", label: "Resolve transfer discrepancies" },
   { id: "stock-transfers:audit:view", module: "Stock Transfers", label: "View transfer audit history" },
-  { id: "reports:sales", module: "Reports", label: "Sales" },
+  { id: "reports:sales", module: "Reports", label: "Sales (monthly sales report)" },
+  { id: "reports:collections", module: "Reports", label: "Collections (money received)" },
   { id: "reports:salesperson-sales", module: "Reports", label: "Sales by Salesperson" },
   { id: "reports:inventory-summary", module: "Reports", label: "Inventory Summary" },
   { id: "reports:stock-movement", module: "Reports", label: "Stock Movement" },
@@ -132,6 +133,7 @@ export type CapabilityId = (typeof CAPABILITY_CATALOG)[number]["id"];
  */
 export const REPORT_CAPABILITIES = [
   "reports:sales",
+  "reports:collections",
   "reports:salesperson-sales",
   "reports:inventory-summary",
   "reports:stock-movement",

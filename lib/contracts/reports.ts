@@ -1,5 +1,6 @@
 export const REPORT_TYPES = [
   "sales",
+  "collections",
   "salesperson-sales",
   "inventory-summary",
   "stock-movement",
@@ -67,8 +68,13 @@ export type ReportMeta = {
   filters: ReportFilterOptions;
 };
 
-export type SalesReport = ReportMeta & {
-  type: "sales";
+/**
+ * Money received, one row per receipt: a downpayment, a later payment and a
+ * release are three rows, and a deposit on goods still in the warehouse counts
+ * here though nothing has been sold. For what was sold, see SalesReport.
+ */
+export type CollectionsReport = ReportMeta & {
+  type: "collections";
   view: SalesView;
   /** Receipts issued inside the period that Accounting has not confirmed yet. */
   pending: { count: number; amount: number };
@@ -147,7 +153,7 @@ export type SalesReport = ReportMeta & {
   grandTotal: { transactionCount: number; units: number; totalDiscount: number; averageSale: number; totalAmount: number };
 };
 
-export type SalespersonSalesReport = Omit<SalesReport, "type"> & {
+export type SalespersonSalesReport = Omit<CollectionsReport, "type"> & {
   type: "salesperson-sales";
   salespersonTotals: Array<{
     salespersonId: string | null;
@@ -284,4 +290,80 @@ export type ReturnsWarrantyReport = ReportMeta & {
   };
 };
 
-export type ReportResult = SalesReport | SalespersonSalesReport | InventorySummaryReport | StockMovementReport | ReturnsWarrantyReport;
+/**
+ * The monthly sales report: what left the premises in the period.
+ *
+ * Built from Sale rows, not the payment ledger, so a released order is counted
+ * once at its full value on the day the goods went out, and a deposit taken on
+ * an order still waiting in the warehouse is not counted at all -- that money
+ * is owed back until the goods are handed over. It is the same measure the
+ * dashboard's Sales card shows.
+ *
+ * Returns are subtracted and shown rather than hidden or offered as an option:
+ * a figure whose definition moves cannot be compared with last month's.
+ */
+export type SalesReport = ReportMeta & {
+  type: "sales";
+  /**
+   * Posted sales in the period whose receipt Accounting has not confirmed yet.
+   * They are counted -- the goods did leave -- but the report says how much of
+   * the total is still unchecked.
+   */
+  unverified: { count: number; amount: number };
+  rows: Array<{
+    id: string;
+    /** The day the goods changed hands, not the day the sale was keyed. */
+    soldAt: string;
+    manualReceiptNumber: string;
+    /** False when a release collected nothing, so it carries the order reference. */
+    receiptIssued: boolean;
+    branch: string;
+    customer: string;
+    salespersonId: string | null;
+    salesperson: string;
+    encoder: string;
+    source: "Direct Sale" | "Order Release";
+    paymentMethod: string;
+    units: number;
+    /** Before the order's discount; grossAmount - discountAmount = netAmount. */
+    grossAmount: number;
+    discountAmount: number;
+    netAmount: number;
+    /** Money already handed back against this sale, inside the period or after. */
+    refundedAmount: number;
+    verificationStatus: "VERIFIED" | "UNVERIFIED" | "MISMATCH_REPORTED";
+    items: Array<{
+      itemCode: string;
+      name: string;
+      quantity: number;
+      unitPrice: number;
+      amount: number;
+    }>;
+  }>;
+  /** Refunds dated inside the period, whatever month the sale itself fell in. */
+  returns: Array<{
+    id: string;
+    refundedAt: string;
+    reference: string;
+    branch: string;
+    customer: string;
+    amount: number;
+    reason: string;
+  }>;
+  branchTotals: Array<{ branch: string; receiptCount: number; units: number; netAmount: number; percentage: number }>;
+  /**
+   * The four lines of a sales report, in the order they are read: gross, what
+   * was taken off, what came back, and what is left.
+   */
+  grandTotal: {
+    receiptCount: number;
+    units: number;
+    grossAmount: number;
+    totalDiscount: number;
+    totalReturns: number;
+    netAmount: number;
+    averageSale: number;
+  };
+};
+
+export type ReportResult = SalesReport | CollectionsReport | SalespersonSalesReport | InventorySummaryReport | StockMovementReport | ReturnsWarrantyReport;

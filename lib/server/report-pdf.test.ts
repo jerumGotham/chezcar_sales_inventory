@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-import type { SalesReport, SalespersonSalesReport } from "@/lib/contracts/reports";
+import type { CollectionsReport, SalespersonSalesReport } from "@/lib/contracts/reports";
 
 vi.mock("server-only", () => ({}));
 
@@ -16,7 +16,7 @@ function header(body: ArrayBuffer) {
   return new TextDecoder().decode(new Uint8Array(body).slice(0, 5));
 }
 
-const row: SalesReport["rows"][number] = {
+const row: CollectionsReport["rows"][number] = {
   id: "payment-1",
   soldAt: "2026-10-03T02:00:00.000Z",
   verifiedAt: "2026-10-03T04:00:00.000Z",
@@ -39,8 +39,8 @@ const row: SalesReport["rows"][number] = {
   itemsPending: false,
 };
 
-const sales: SalesReport = {
-  type: "sales",
+const sales: CollectionsReport = {
+  type: "collections",
   generatedAt: "2026-10-03T04:46:00.000Z",
   dateFrom: "2026-10-01",
   dateTo: "2026-10-31",

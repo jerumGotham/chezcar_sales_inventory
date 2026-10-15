@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Boxes, FileText, Filter, Loader2, Receipt, RefreshCw, RotateCcw, ShieldCheck, TrendingDown, Users, type LucideIcon } from "lucide-react";
+import { Boxes, FileText, Filter, Loader2, Receipt, RefreshCw, RotateCcw, ShieldCheck, TrendingDown, Users, Wallet, type LucideIcon } from "lucide-react";
 import { useState, useSyncExternalStore } from "react";
 
 import { PageShell } from "@/components/page-shell";
@@ -25,18 +25,20 @@ import {
   RETURN_RESOLUTIONS,
   RETURN_STATUSES,
   SALE_SOURCES,
+  STOCK_MOVEMENT_GRADES,
   reportMonthEnd,
   type InventorySummaryReport,
   type ReportFilterOptions,
   type ReportResult,
   type ReportType,
-  type SalesReport,
+  type CollectionsReport,
   type SalespersonSalesReport,
   type StockMovementReport,
 } from "@/lib/contracts/reports";
 
 const LABELS: Record<ReportType, string> = {
   sales: "Sales",
+  collections: "Collections",
   "salesperson-sales": "Sales by Salesperson",
   "inventory-summary": "Inventory Summary",
   "stock-movement": "Stock Movement",
@@ -45,6 +47,7 @@ const LABELS: Record<ReportType, string> = {
 
 const REPORT_ICONS: Record<ReportType, LucideIcon> = {
   sales: Receipt,
+  collections: Wallet,
   "salesperson-sales": Users,
   "inventory-summary": Boxes,
   "stock-movement": TrendingDown,
@@ -76,6 +79,21 @@ const EMPTY_FILTERS: Omit<Filters, "type" | "dateFrom" | "dateTo"> = {
   productStatus: "", caseType: "", status: "", resolution: "", entitySearch: "", movement: "",
 };
 
+/**
+ * The filters that take one of a fixed set of values. The rest are free text or
+ * an id resolved against the server's own options.
+ */
+const FIXED_CHOICES: Partial<Record<keyof typeof EMPTY_FILTERS, readonly string[]>> = {
+  source: SALE_SOURCES,
+  paymentMethod: PAYMENT_METHODS,
+  view: SALES_VIEWS,
+  productStatus: PRODUCT_STATUSES,
+  caseType: RETURN_CASE_TYPES,
+  status: RETURN_STATUSES,
+  resolution: RETURN_RESOLUTIONS,
+  movement: STOCK_MOVEMENT_GRADES,
+};
+
 function manilaToday() {
   return new Date(Date.now() + 8 * 60 * 60 * 1_000).toISOString().slice(0, 10);
 }
@@ -97,7 +115,17 @@ function filtersFromSearchParams(url = new URLSearchParams()): Filters {
     dateTo: isDated(type) ? url.get("dateTo") ?? reportMonthEnd(monthDate) : "",
     ...EMPTY_FILTERS,
   };
-  for (const key of Object.keys(EMPTY_FILTERS) as Array<keyof typeof EMPTY_FILTERS>) result[key] = url.get(key) ?? "";
+  for (const key of Object.keys(EMPTY_FILTERS) as Array<keyof typeof EMPTY_FILTERS>) {
+    const value = url.get(key) ?? "";
+    const allowed = FIXED_CHOICES[key];
+    /*
+     * A fixed-choice filter takes one of its choices or nothing at all. Letting
+     * anything else through put it in the dropdown as an option of its own and
+     * sent it to an API that refuses it, so a stale link answered with a
+     * validation message instead of a report.
+     */
+    result[key] = allowed && value && !allowed.includes(value) ? "" : value;
+  }
   return result;
 }
 
@@ -198,7 +226,10 @@ function ReportsContent() {
   exportParams.set("format", "pdf");
   const inventoryFilters = draft.type === "inventory-summary";
   const movementFilters = draft.type === "stock-movement";
-  const salesFilters = draft.type === "sales" || draft.type === "salesperson-sales";
+  const salesFilters = draft.type === "sales" || draft.type === "collections" || draft.type === "salesperson-sales";
+  // The View selector dates money against when it was received; a sale is
+  // dated by the day the goods left, so it has nothing to choose.
+  const ledgerFilters = draft.type === "collections" || draft.type === "salesperson-sales";
   const appliedData = data?.type === applied.type ? data : undefined;
   const locationOptions = filterOptions ?? appliedData?.filters;
   const pending = paramsFor(draft).toString() !== paramsFor(applied).toString();
@@ -228,7 +259,7 @@ function ReportsContent() {
             {salesFilters && <Field label="Salesperson"><NativeSelect value={draft.salespersonId} onChange={(value) => change("salespersonId", value)} options={filterOptions?.salespersons ?? []} disabled={optionsLoading || !filterOptions} allLabel={optionsLoading ? "Loading salespersons..." : "All salespersons"} /></Field>}
             {salesFilters && <Field label="Source"><NativeSelect value={draft.source} onChange={(value) => change("source", value)} options={options(SALE_SOURCES)} allLabel="All sources" /></Field>}
             {salesFilters && <Field label="Payment"><NativeSelect value={draft.paymentMethod} onChange={(value) => change("paymentMethod", value)} options={options(PAYMENT_METHODS)} allLabel="All methods" /></Field>}
-            {salesFilters && <Field label="View"><NativeSelect value={draft.view} onChange={(value) => change("view", value)} options={SALES_VIEWS.filter((id) => id !== "SALE_DATE").map((id) => ({ id, label: SALES_VIEW_LABELS[id] }))} allLabel={SALES_VIEW_LABELS.SALE_DATE} /></Field>}
+            {ledgerFilters && <Field label="View"><NativeSelect value={draft.view} onChange={(value) => change("view", value)} options={SALES_VIEWS.filter((id) => id !== "SALE_DATE").map((id) => ({ id, label: SALES_VIEW_LABELS[id] }))} allLabel={SALES_VIEW_LABELS.SALE_DATE} /></Field>}
 
             {(inventoryFilters || movementFilters) && <Field label="Item code or name"><Input value={draft.search} onChange={(event) => change("search", event.target.value)} placeholder="Search product" /></Field>}
             {(inventoryFilters || movementFilters) && <Field label="Category"><NativeSelect value={draft.category} onChange={(value) => change("category", value)} options={filterOptions?.categories ?? []} disabled={optionsLoading || !filterOptions} allLabel="All categories" /></Field>}
@@ -267,7 +298,7 @@ function NativeSelect({ value, onChange, options: rows, allLabel, disabled = fal
  * A printed report has to admit what it is missing: money the branch collected
  * inside the period that Accounting has not confirmed, and so is not counted.
  */
-function PendingNotice({ report }: { report: SalesReport | SalespersonSalesReport }) {
+function PendingNotice({ report }: { report: CollectionsReport | SalespersonSalesReport }) {
   // Once unverified receipts are on the page they speak for themselves; the
   // banner is for the default view, where they are missing without a word.
   if (report.view === "VERIFIED_DATE") {
@@ -354,7 +385,7 @@ function State({ children, destructive = false }: { children: React.ReactNode; d
 
 function ReportView({ report }: { report: ReportResult }) {
   if (report.type === "salesperson-sales") {
-    const salesByPerson = new Map<string | null, SalesReport["rows"]>();
+    const salesByPerson = new Map<string | null, CollectionsReport["rows"]>();
     for (const row of report.rows) {
       const group = salesByPerson.get(row.salespersonId) ?? [];
       group.push(row);
@@ -369,6 +400,76 @@ function ReportView({ report }: { report: ReportResult }) {
     </>;
   }
   if (report.type === "sales") return <>
+    {/* Counted but unchecked: the goods did leave, so the sale is in the
+        total, and the report says how much of it Accounting has not seen. */}
+    {report.unverified.count > 0 && (
+      <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/30">
+        <CardContent className="p-4 text-sm text-amber-900 dark:text-amber-200">
+          <strong>{report.unverified.count} sale(s)</strong> worth {peso.format(report.unverified.amount)} are counted below but their receipts are not verified yet.
+        </CardContent>
+      </Card>
+    )}
+    <p className="text-sm text-muted-foreground">What left the premises in this period: a direct sale on the day it was sold, and a customer order once, at its full value, on the day it was released. Money taken on an order still waiting in the warehouse is not a sale and is not here &mdash; it is in Collections.</p>
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <Metric label="Gross sales" value={peso.format(report.grandTotal.grossAmount)} />
+      <Metric label="Less discounts" value={peso.format(report.grandTotal.totalDiscount)} />
+      <Metric label="Less returns" value={peso.format(report.grandTotal.totalReturns)} />
+      <Metric label="Net sales" value={peso.format(report.grandTotal.netAmount)} />
+    </div>
+    <div className="grid gap-3 sm:grid-cols-3">
+      <Metric label="Receipts" value={String(report.grandTotal.receiptCount)} />
+      <Metric label="Units sold" value={String(report.grandTotal.units)} />
+      <Metric label="Average sale" value={peso.format(report.grandTotal.averageSale)} />
+    </div>
+    <Table
+      headers={["Sold", "Receipt", "Branch", "Customer", "Salesperson", "Encoder", "Source", "Items", "Payment", "Units", "Gross", "Discount", "Net"]}
+      numericFrom={9}
+      rows={report.rows.map((row) => [
+        dateTime.format(new Date(row.soldAt)),
+        row.receiptIssued ? row.manualReceiptNumber : <span key="r" className="text-muted-foreground">No receipt</span>,
+        row.branch,
+        row.customer,
+        row.salesperson,
+        row.encoder,
+        row.source,
+        row.items.length === 1 ? row.items[0].name : `${row.items.length} items`,
+        row.paymentMethod,
+        String(row.units),
+        peso.format(row.grossAmount),
+        peso.format(row.discountAmount),
+        peso.format(row.netAmount),
+      ])}
+    />
+    {/* Listed as well as subtracted, so the net figure can be taken apart. */}
+    {report.returns.length > 0 && (
+      <Table
+        title="Returns and refunds in this period"
+        numericFrom={4}
+        headers={["Refunded", "Reference", "Branch", "Customer", "Reason", "Amount"]}
+        rows={report.returns.map((row) => [
+          dateTime.format(new Date(row.refundedAt)),
+          row.reference,
+          row.branch,
+          row.customer,
+          row.reason,
+          peso.format(-row.amount),
+        ])}
+      />
+    )}
+    <Table
+      title="Branch totals"
+      numericFrom={1}
+      headers={["Branch", "Receipts", "Units", "Net sales", "% of net"]}
+      rows={report.branchTotals.map((row) => [
+        row.branch,
+        String(row.receiptCount),
+        String(row.units),
+        peso.format(row.netAmount),
+        `${row.percentage.toFixed(1)}%`,
+      ])}
+    />
+  </>;
+  if (report.type === "collections") return <>
     <PendingNotice report={report} />
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Metric label="Receipts" value={String(report.grandTotal.transactionCount)} /><Metric label="Units sold" value={String(report.grandTotal.units)} /><Metric label="Discounts" value={peso.format(report.grandTotal.totalDiscount)} /><Metric label="Average sale" value={peso.format(report.grandTotal.averageSale)} /><Metric label={TOTAL_LABELS[report.view]} value={peso.format(report.grandTotal.totalAmount)} /></div>
     <Table headers={["Sold", "Verified on", "Manual receipt", "Branch", "Customer", "Salesperson", "Encoder", "Source", "Items", "Payment", "Units", "Discount", "Final amount"]} numericFrom={10} rows={report.rows.map((row) => [dateTime.format(new Date(row.soldAt)), row.verifiedAt ? dateTime.format(new Date(row.verifiedAt)) : <span className="font-medium text-red-600 dark:text-red-400">Not verified</span>, <span key="receipt" className="block break-words">{row.manualReceiptNumber}</span>, row.branch, row.customer, row.salesperson, row.encoder, row.source, <SaleItemsCell key="items" row={row} />, humanize(row.paymentMethod), String(row.units), peso.format(row.discountAmount), peso.format(row.totalAmount)])} sortValues={report.rows.map(saleSortValues)} />
@@ -424,7 +525,7 @@ function columnAccessors<T>(values: (row: T) => SortCell[], columnCount: number)
   return Object.fromEntries(Array.from({ length: columnCount }, (_, column) => [String(column), (row: T) => values(row)[column]])) as Record<string, (row: T) => SortCell>;
 }
 
-function saleSortValues(row: SalesReport["rows"][number]): SortCell[] {
+function saleSortValues(row: CollectionsReport["rows"][number]): SortCell[] {
   return [row.soldAt, row.verifiedAt, row.manualReceiptNumber, row.branch, row.customer, row.salesperson, row.encoder, row.source, row.items.length, humanize(row.paymentMethod), row.units, row.discountAmount, row.totalAmount];
 }
 
