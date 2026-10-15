@@ -284,6 +284,39 @@ export async function getReportOptions(actor: AuthContext, rawQuery: unknown) {
   return (await reportContext(actor, rawQuery)).filters;
 }
 
+/**
+ * What each product fits, fetched once for every product on a page rather than
+ * joined onto each line: these queries have no row limit, so a nested include
+ * would repeat a product's whole fitment list for every line that sold it.
+ *
+ * Shared by both sales reports so one part is described identically wherever it
+ * appears.
+ */
+async function fitmentByProductFor(productIds: string[]): Promise<Map<string, string[]>> {
+  const byProduct = new Map<string, string[]>();
+  if (productIds.length === 0) return byProduct;
+  const rows = await prisma.productVehicleCompatibility.findMany({
+    where: { productId: { in: productIds } },
+    select: { productId: true, make: true, model: true, yearsLabel: true, startYear: true, endYear: true },
+    orderBy: [{ make: "asc" }, { model: "asc" }, { startYear: "asc" }],
+  });
+  for (const row of rows) {
+    // The same reading the product screen shows.
+    const years = row.yearsLabel
+      ? row.yearsLabel
+      : !row.startYear
+        ? "all years"
+        : row.startYear === row.endYear
+          ? String(row.startYear)
+          : `${row.startYear}-${row.endYear ?? "present"}`;
+    const label = [row.make, row.model].filter(Boolean).join(" ");
+    const existing = byProduct.get(row.productId) ?? [];
+    existing.push(`${label} ${years}`.trim());
+    byProduct.set(row.productId, existing);
+  }
+  return byProduct;
+}
+
 export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<ReportResult> {
   const { query, effectiveLocations, filters } = await reportContext(actor, rawQuery);
   if (query.salespersonId && !filters.salespersons.some((row) => row.id === query.salespersonId)) {
@@ -321,10 +354,20 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
         postedBy: { select: { name: true } },
         accountingReview: { select: { status: true } },
         refunds: { select: { amount: true } },
-        lines: { select: { productItemCode: true, productName: true, quantity: true, unitPrice: true } },
+        lines: { select: { productId: true, productItemCode: true, productName: true, quantity: true, unitPrice: true } },
+        /*
+         * A sale line records only what was charged, so the price it was cut
+         * from comes from the order it was released against. A direct sale has
+         * no order and so no recorded list price, and its discount column stays
+         * out of the panel.
+         */
+        order: { select: { lines: { select: { productItemCode: true, baseUnitPrice: true } } } },
       },
       orderBy: [{ soldAt: "desc" }, { id: "desc" }],
     });
+    const salesFitment = await fitmentByProductFor(
+      Array.from(new Set(sales.flatMap((sale) => sale.lines.map((line) => line.productId)))),
+    );
 
     /*
      * Refunds are dated by the day the money went back, whatever month the sale
@@ -351,6 +394,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
     const rows = sales.map((sale) => {
       const netAmount = sale.totalAmount.toNumber();
       const discountAmount = sale.discountAmount.toNumber();
+      const listPrices = new Map((sale.order?.lines ?? []).map((line) => [line.productItemCode, line.baseUnitPrice.toNumber()]));
       return {
         id: sale.id,
         soldAt: sale.soldAt.toISOString(),
@@ -369,13 +413,20 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
         netAmount,
         refundedAmount: sale.refunds.reduce((sum, refund) => sum + refund.amount.toNumber(), 0),
         verificationStatus: (sale.accountingReview?.status ?? "UNVERIFIED") as "VERIFIED" | "UNVERIFIED" | "MISMATCH_REPORTED",
-        items: sale.lines.map((line) => ({
-          itemCode: line.productItemCode,
-          name: line.productName,
-          quantity: line.quantity,
-          unitPrice: line.unitPrice.toNumber(),
-          amount: line.quantity * line.unitPrice.toNumber(),
-        })),
+        items: sale.lines.map((line) => {
+          const unitPrice = line.unitPrice.toNumber();
+          const listPrice = listPrices.get(line.productItemCode) ?? 0;
+          return {
+            itemCode: line.productItemCode,
+            name: line.productName,
+            quantity: line.quantity,
+            listPrice,
+            discount: Math.max(Math.round((listPrice - unitPrice) * 100) / 100, 0),
+            unitPrice,
+            amount: line.quantity * unitPrice,
+            fitment: salesFitment.get(line.productId) ?? [],
+          };
+        }),
       };
     });
 
@@ -531,27 +582,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
       ...records.flatMap((row) => [...(row.sale?.lines ?? []), ...(row.order?.lines ?? [])].map((line) => line.productId)),
       ...refundRecords.flatMap((row) => row.lines.map((line) => line.productId)),
     ]));
-    const fitmentRows = productIds.length === 0 ? [] : await prisma.productVehicleCompatibility.findMany({
-      where: { productId: { in: productIds } },
-      select: { productId: true, make: true, model: true, yearsLabel: true, startYear: true, endYear: true },
-      orderBy: [{ make: "asc" }, { model: "asc" }, { startYear: "asc" }],
-    });
-    const fitmentByProduct = new Map<string, string[]>();
-    for (const row of fitmentRows) {
-      // The same reading the product screen shows, so one part is described
-      // identically wherever it appears.
-      const years = row.yearsLabel
-        ? row.yearsLabel
-        : !row.startYear
-          ? "all years"
-          : row.startYear === row.endYear
-            ? String(row.startYear)
-            : `${row.startYear}-${row.endYear ?? "present"}`;
-      const label = [row.make, row.model].filter(Boolean).join(" ");
-      const existing = fitmentByProduct.get(row.productId) ?? [];
-      existing.push(`${label} ${years}`.trim());
-      fitmentByProduct.set(row.productId, existing);
-    }
+    const fitmentByProduct = await fitmentByProductFor(productIds);
 
     /*
      * What the row is for. A released order is read through its sale lines,

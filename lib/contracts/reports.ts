@@ -336,8 +336,13 @@ export type SalesReport = ReportMeta & {
       itemCode: string;
       name: string;
       quantity: number;
+      /** The branch price the line was discounted from; 0 when none was recorded. */
+      listPrice: number;
+      discount: number;
       unitPrice: number;
       amount: number;
+      /** What the part fits, as the catalogue records it. */
+      fitment: string[];
     }>;
   }>;
   /** Refunds dated inside the period, whatever month the sale itself fell in. */
