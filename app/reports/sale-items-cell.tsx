@@ -6,8 +6,16 @@ import { Car, PackageOpen } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { CollectionsReport } from "@/lib/contracts/reports";
 
-type Row = CollectionsReport["rows"][number];
-type Item = Row["items"][number];
+type CollectionsItem = CollectionsReport["rows"][number]["items"][number];
+/**
+ * What a line has to say to be shown. A sales row carries no list price,
+ * discount or fitment, so those are optional and their columns disappear.
+ */
+type Item = Omit<CollectionsItem, "listPrice" | "discount" | "fitment"> & {
+  listPrice?: number;
+  discount?: number;
+  fitment?: string[];
+};
 
 const peso = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 2 });
 
@@ -16,15 +24,34 @@ const peso = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP"
  * made every row a different height and pushed the money columns off screen, so
  * the cell says how many there are and the detail opens on its own.
  */
-export function SaleItemsCell({ row }: { row: Row }) {
+export function SaleItemsCell({
+  items,
+  receiptNumber,
+  source,
+  branch,
+  customer,
+  total,
+  discountAmount,
+  pending = false,
+}: {
+  items: Item[];
+  receiptNumber: string;
+  source: string;
+  branch: string;
+  customer: string;
+  total: number;
+  discountAmount: number;
+  /** Goods still on order rather than released. Never true on a sales row. */
+  pending?: boolean;
+}) {
   const [open, setOpen] = useState(false);
 
-  if (row.items.length === 0) {
+  if (items.length === 0) {
     return <span className="text-muted-foreground">Not recorded</span>;
   }
 
-  const count = row.items.length;
-  const units = row.items.reduce((sum, item) => sum + Math.abs(item.quantity), 0);
+  const count = items.length;
+  const units = items.reduce((sum, item) => sum + Math.abs(item.quantity), 0);
 
   return (
     <>
@@ -35,24 +62,24 @@ export function SaleItemsCell({ row }: { row: Row }) {
       >
         <PackageOpen aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="truncate">
-          {count === 1 ? row.items[0].name : `${count} items`}
+          {count === 1 ? items[0].name : `${count} items`}
           <span className="text-muted-foreground"> ({units} unit{units === 1 ? "" : "s"})</span>
         </span>
       </button>
-      {row.itemsPending ? (
+      {pending ? (
         <p className="mt-0.5 text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">On order, not yet released</p>
       ) : null}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Receipt {row.manualReceiptNumber}</DialogTitle>
+            <DialogTitle>Receipt {receiptNumber}</DialogTitle>
             <DialogDescription>
-              {row.source} · {row.branch} · {row.customer}
-              {row.itemsPending ? " · on order, not yet released" : ""}
+              {source} · {branch} · {customer}
+              {pending ? " · on order, not yet released" : ""}
             </DialogDescription>
           </DialogHeader>
-          <ItemTable items={row.items} total={row.totalAmount} discountAmount={row.discountAmount} pending={row.itemsPending} />
+          <ItemTable items={items} total={total} discountAmount={discountAmount} pending={pending} />
         </DialogContent>
       </Dialog>
     </>
@@ -61,7 +88,7 @@ export function SaleItemsCell({ row }: { row: Row }) {
 
 function ItemTable({ items, total, discountAmount, pending }: { items: Item[]; total: number; discountAmount: number; pending: boolean }) {
   // Only worth a column when at least one line was actually discounted.
-  const anyDiscount = items.some((item) => item.discount > 0);
+  const anyDiscount = items.some((item) => (item.discount ?? 0) > 0);
   const goods = items.reduce((sum, item) => sum + item.amount, 0);
 
   return (
@@ -86,9 +113,9 @@ function ItemTable({ items, total, discountAmount, pending }: { items: Item[]; t
                   <p className="text-xs text-muted-foreground">{item.itemCode}</p>
                   {/* What the part fits, so a receipt can be matched to a
                       vehicle without opening the product. */}
-                  {item.fitment.length > 0 ? (
+                  {(item.fitment ?? []).length > 0 ? (
                     <ul className="mt-1 space-y-0.5">
-                      {item.fitment.map((vehicle) => (
+                      {(item.fitment ?? []).map((vehicle) => (
                         <li key={vehicle} className="text-xs text-muted-foreground">
                           <Car aria-hidden="true" className="mr-1 inline size-3 align-[-2px]" />
                           {vehicle}
@@ -100,12 +127,12 @@ function ItemTable({ items, total, discountAmount, pending }: { items: Item[]; t
                 <td className="px-3 py-2 text-right tabular-nums">{item.quantity}</td>
                 {anyDiscount ? (
                   <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
-                    {item.listPrice > 0 ? peso.format(item.listPrice) : "-"}
+                    {(item.listPrice ?? 0) > 0 ? peso.format(item.listPrice ?? 0) : "-"}
                   </td>
                 ) : null}
                 {anyDiscount ? (
                   <td className="px-3 py-2 text-right tabular-nums">
-                    {item.discount > 0 ? `-${peso.format(item.discount)}` : "-"}
+                    {(item.discount ?? 0) > 0 ? `-${peso.format(item.discount ?? 0)}` : "-"}
                   </td>
                 ) : null}
                 <td className="px-3 py-2 text-right tabular-nums">{peso.format(item.unitPrice)}</td>
