@@ -55,6 +55,7 @@ const READ_ONLY_CAPABILITIES = [
   "stock-transfers:view",
   "stock-transfers:audit:view",
   "reports:sales",
+  "reports:collections",
   "reports:salesperson-sales",
   "reports:inventory-summary",
   "reports:stock-movement",
