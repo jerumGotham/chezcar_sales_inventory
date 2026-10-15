@@ -2960,9 +2960,9 @@ export async function getDashboardSummary(
     locationId: selectedSalesBranch?.id ?? locationIdFilter(actor),
   };
   const [todaySales, mtdSales, filteredSales, openOrders, readyOrders, flagged, unverified, verifiedToday, agedOrders, lowBalances, supplierReceiptsToday, transferDrafts, transfersForDispatch, inTransitTransfers, discrepanciesNeedingAction, incomingTransfers, chartSales, todayRefunds, mtdRefunds, filteredRefunds, chartRefunds, releasedUnpaid] = await Promise.all([
-    prisma.sale.aggregate({ where: { ...scopedSales, status: "POSTED", postedAt: { gte: today } }, _sum: { totalAmount: true }, _count: true }),
-    prisma.sale.aggregate({ where: { ...scopedSales, status: "POSTED", postedAt: { gte: month } }, _sum: { totalAmount: true }, _count: true }),
-    prisma.sale.aggregate({ where: { ...filteredSalesScope, status: "POSTED", postedAt: { gte: salesWindow.start, lte: now } }, _sum: { totalAmount: true }, _count: true }),
+    prisma.sale.aggregate({ where: { ...scopedSales, status: "POSTED", soldAt: { gte: today } }, _sum: { totalAmount: true }, _count: true }),
+    prisma.sale.aggregate({ where: { ...scopedSales, status: "POSTED", soldAt: { gte: month } }, _sum: { totalAmount: true }, _count: true }),
+    prisma.sale.aggregate({ where: { ...filteredSalesScope, status: "POSTED", soldAt: { gte: salesWindow.start, lte: now } }, _sum: { totalAmount: true }, _count: true }),
     prisma.customerOrder.count({ where: { ...scopedOrders, status: { in: ["RESERVED", "WAITING_STOCK", "READY_FOR_RELEASE"] } } }),
     prisma.customerOrder.count({ where: { ...scopedOrders, status: "READY_FOR_RELEASE" } }),
     prisma.saleAccountingReview.count({ where: { status: "MISMATCH_REPORTED", sale: { ...scopedSales, status: "POSTED" } } }),
@@ -2979,7 +2979,7 @@ export async function getDashboardSummary(
     prisma.stockTransfer.count({ where: { ...transferScope, status: "IN_TRANSIT" } }),
     prisma.stockTransfer.count({ where: { ...transferScope, status: { in: ["DISCREPANCY_REPORTED", "UNDER_REVIEW"] } } }),
     prisma.stockTransfer.count({ where: { ...transferScope, status: "IN_TRANSIT" } }),
-    prisma.sale.findMany({ where: { ...filteredSalesScope, status: "POSTED", postedAt: { gte: salesWindow.start, lte: now } }, select: { postedAt: true, totalAmount: true, location: { select: { name: true } } } }),
+    prisma.sale.findMany({ where: { ...filteredSalesScope, status: "POSTED", soldAt: { gte: salesWindow.start, lte: now } }, select: { soldAt: true, totalAmount: true, location: { select: { name: true } } } }),
     prisma.refund.aggregate({ where: { ...refundScope, refundedAt: { gte: today } }, _sum: { amount: true }, _count: true }),
     prisma.refund.aggregate({ where: { ...refundScope, refundedAt: { gte: month } }, _sum: { amount: true }, _count: true }),
     prisma.refund.aggregate({ where: { ...filteredRefundScope, refundedAt: { gte: salesWindow.start, lte: now } }, _sum: { amount: true }, _count: true }),
@@ -3012,8 +3012,8 @@ export async function getDashboardSummary(
   const branchByName = new Map<string, { branch: string; sales: number; transactions: number }>();
   for (const sale of chartSales) {
     const key = salesPeriod === "today"
-      ? hourKey(sale.postedAt)
-      : dateKey(sale.postedAt);
+      ? hourKey(sale.soldAt)
+      : dateKey(sale.soldAt);
     const daily = trendByDate.get(key);
     if (daily) {
       daily.sales += sale.totalAmount.toNumber();
