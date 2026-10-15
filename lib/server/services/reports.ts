@@ -333,7 +333,13 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
      * figure nobody can check.
      */
     const refunds = await prisma.refund.findMany({
-      where: { locationId: scopedLocation, refundedAt: range.where },
+      /*
+       * Only refunds that reverse a sale this report counted. A cancelled or
+       * amended order hands back a deposit, and a deposit was never a sale --
+       * subtracting it here would take money out of a total it was never in.
+       * POSTED_SALE is also the only kind where goods ever left to come back.
+       */
+      where: { kind: "POSTED_SALE", locationId: scopedLocation, refundedAt: range.where },
       select: {
         id: true, reference: true, amount: true, reason: true, refundedAt: true,
         location: { select: { name: true } },
