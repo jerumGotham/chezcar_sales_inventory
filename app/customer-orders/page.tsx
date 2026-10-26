@@ -1569,7 +1569,11 @@ export default function CustomerOrdersPage() {
                               <Button size="sm" variant="outline" onClick={() => setRefundSaleId(sale.id)}>
                                 Refund
                               </Button>
-                            ) : canRefundSale && sale.status === "POSTED" ? (
+                            ) : canRefundSale && sale.status === "POSTED" && sale.refundedAmount > 0 ? (
+                              /* Only a sale that really gave money back says so.
+                                 A sale that collected nothing also has nothing
+                                 left to refund, and it was reading as fully
+                                 refunded on the strength of 0 < 0 being false. */
                               <span className="text-xs font-medium text-muted-foreground">Fully refunded</span>
                             ) : null}
                           </div>
