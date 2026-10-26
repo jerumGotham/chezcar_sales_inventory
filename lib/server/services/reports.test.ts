@@ -68,7 +68,7 @@ describe("report filters", () => {
 describe("report quantity projections", () => {
   it("omits products without positive stock in effective locations", () => {
     const rows = reports.buildInventoryRows(
-      [{ id: "product-1", itemCode: "P-1", name: "Product", category: null, brand: null, status: "ACTIVE", reorderLevel: 3 }],
+      [{ id: "product-1", itemCode: "P-1", name: "Product", brand: null, status: "ACTIVE", reorderLevel: 3 }],
       [{ id: "allowed", code: "A", name: "Allowed" }],
       [{ id: "hidden-balance", productId: "product-1", locationId: "hidden", onHand: 9, reserved: 0, quarantined: 0 }],
     );
@@ -77,7 +77,7 @@ describe("report quantity projections", () => {
   });
 
   it("groups positive stock once per product with scoped branch contributions", () => {
-    const product = { id: "product-1", itemCode: "P-1", name: "Product", category: null, brand: null, status: "ACTIVE", reorderLevel: 3 };
+    const product = { id: "product-1", itemCode: "P-1", name: "Product", brand: null, status: "ACTIVE", reorderLevel: 3 };
     const locations = ["first", "second", "negative", "missing"].map((id) => ({ id, code: id, name: id }));
     const balances = [
       { id: "balance-1", productId: product.id, locationId: "first", onHand: 10, reserved: 2, quarantined: 3 },
@@ -86,10 +86,13 @@ describe("report quantity projections", () => {
       { id: "hidden-balance", productId: product.id, locationId: "hidden", onHand: 100, reserved: 0, quarantined: 0 },
       { id: "zero-balance", productId: "product-2", locationId: "first", onHand: 4, reserved: 1, quarantined: 3 },
     ];
-    expect(reports.buildInventoryRows([product, { ...product, id: "product-2", itemCode: "P-2" }], locations, balances)).toEqual([{
-      id: product.id, productId: product.id, itemCode: "P-1", product: "Product", category: "Uncategorized", brand: "Unbranded", productStatus: "ACTIVE",
+    const fitment = new Map([[product.id, ["Toyota Hilux 2016-2020"]]]);
+    expect(reports.buildInventoryRows([product, { ...product, id: "product-2", itemCode: "P-2" }], locations, balances, fitment)).toEqual([{
+      id: product.id, productId: product.id, itemCode: "P-1", product: "Product", fitment: ["Toyota Hilux 2016-2020"], brand: "Unbranded", productStatus: "ACTIVE",
       available: 8, availableByLocation: { first: 5, second: 3, negative: 0, missing: 0 },
     }]);
+    // A part that fits nothing in particular still lists, with an empty fitment.
+    expect(reports.buildInventoryRows([product], [locations[0]], balances)).toEqual([expect.objectContaining({ fitment: [] })]);
     expect(reports.buildInventoryRows([product], [locations[0]], balances)).toEqual([expect.objectContaining({ available: 5, availableByLocation: { first: 5 } })]);
     expect(reports.buildInventoryRows([product], [locations[2]], balances)).toEqual([]);
     expect(reports.buildInventoryRows([product], [], balances)).toEqual([]);
@@ -198,13 +201,45 @@ describe("sales and salesperson sales reports", () => {
     });
     expect(reportPrisma.location.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ["branch"] }, isActive: true } }));
     expect(reportPrisma.payment.findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      where: expect.objectContaining({ locationId: { in: ["branch"] }, salespersonId: "person-1", kind: { in: ["ORDER_DOWNPAYMENT", "ORDER_PAYMENT", "ORDER_FINAL"] }, method: "GCASH" }),
+      where: expect.objectContaining({ locationId: { in: ["branch"] }, salespersonId: { in: ["person-1"] }, kind: { in: ["ORDER_DOWNPAYMENT", "ORDER_PAYMENT", "ORDER_FINAL"] }, method: "GCASH" }),
     }));
     if (report.type !== "collections" && report.type !== "salesperson-sales") throw new Error("Expected sales report");
     expect(report.rows).toEqual([]);
     expect(report.branchTotals).toEqual([]);
     expect(report.grandTotal).toEqual({ transactionCount: 0, units: 0, totalDiscount: 0, averageSale: 0, totalAmount: 0 });
     if (report.type === "salesperson-sales") expect(report.salespersonTotals).toEqual([]);
+  });
+
+  /*
+   * A salesperson who works at more than one branch is registered once at each,
+   * so the list offered one entry per branch record of them and each entry
+   * reported a slice of their own receipts.
+   */
+  it("offers one entry per salesperson and reports every branch record of them together", async () => {
+    const sameName = [
+      { salespersonId: "person-3", salespersonName: "Aringo, Honey Grace M." },
+      { salespersonId: "person-1", salespersonName: "Aringo, Honey Grace M." },
+      { salespersonId: "person-2", salespersonName: "Same name" },
+    ];
+    reportPrisma.payment.findMany.mockResolvedValueOnce(sameName).mockResolvedValueOnce([
+      sale("2", "person-3", "Aringo, Honey Grace M.", 120, 2),
+      sale("1", "person-1", "Aringo, Honey Grace M.", 60),
+    ]);
+    const report = await reports.getReport(actor, { type: "salesperson-sales", ...query, salespersonId: "person-3" });
+    if (report.type !== "salesperson-sales") throw new Error("Expected the salesperson sales report");
+    expect(report.filters.salespersons).toEqual([
+      { id: "person-1", label: "Aringo, Honey Grace M." }, { id: "person-2", label: "Same name" },
+    ]);
+    // Selecting the person asks for every record of them, and an older link
+    // naming one of their other records still lands on the same person.
+    expect(reportPrisma.payment.findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: expect.objectContaining({ salespersonId: { in: ["person-1", "person-3"] } }),
+    }));
+    expect(report.appliedFilters).toContainEqual({ label: "Salesperson", value: "Aringo, Honey Grace M." });
+    expect(report.salespersonTotals).toEqual([
+      { salespersonId: "person-1", salesperson: "Aringo, Honey Grace M.", transactionCount: 2, units: 3, totalDiscount: 18, averageSale: 90, totalAmount: 180, percentage: 100 },
+    ]);
+    expect(report.rows.map((row) => row.salespersonId)).toEqual(["person-1", "person-1"]);
   });
 
   it.each(["collections", "salesperson-sales"] as const)("rejects unauthorized locations and arbitrary salesperson IDs for %s before querying sale details", async (type) => {

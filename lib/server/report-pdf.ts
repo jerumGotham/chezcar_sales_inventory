@@ -2,7 +2,7 @@ import "server-only";
 
 import { createPdfBuilder, dateTime, humanize, money, type PdfColumn } from "@/lib/server/pdf-document";
 
-import { FAST_MOVING_DAYS_PER_SALE, type CollectionsReport, type ReportResult } from "@/lib/contracts/reports";
+import { FAST_MOVING_DAYS_PER_SALE, fitmentLabel, type CollectionsReport, type ReportResult } from "@/lib/contracts/reports";
 
 export async function createReportPdf(report: ReportResult, metadata: { generatedBy: string }): Promise<ArrayBuffer> {
   const TITLES: Record<ReportResult["type"], string> = {
@@ -129,17 +129,17 @@ export async function createReportPdf(report: ReportResult, metadata: { generate
     ], true);
     const inventoryColumns: PdfColumn[] = [
       { header: "Item code", width: 1.4 }, { header: "Product", width: 3.5 },
-      { header: "Category", width: 1.5 }, { header: "Brand", width: 1.5 }, { header: "Available", width: 1.3, numeric: true },
+      { header: "Fits", width: 2.6 }, { header: "Brand", width: 1.5 }, { header: "Available", width: 1.3, numeric: true },
     ];
     table(report.effectiveScope.length > 1 ? "Product totals across selected branches" : "Available products", inventoryColumns, [
-      ...report.rows.map((row) => [row.itemCode, row.product, row.category, row.brand, String(row.available)]),
+      ...report.rows.map((row) => [row.itemCode, row.product, fitmentLabel(row.fitment), row.brand, String(row.available)]),
       ["FULL FILTERED TOTAL", "", "", "", String(report.totals.available)],
     ], true);
     if (report.effectiveScope.length > 1) {
       text("Branch comparison follows in separate sections. Every section includes the full filtered product set, including 0 cells, without narrowing columns for additional branches.");
       for (const location of report.effectiveScope) {
         table(`Branch: ${location.label}`, inventoryColumns, [
-          ...report.rows.map((row) => [row.itemCode, row.product, row.category, row.brand, String(row.availableByLocation[location.id])]),
+          ...report.rows.map((row) => [row.itemCode, row.product, fitmentLabel(row.fitment), row.brand, String(row.availableByLocation[location.id])]),
           ["BRANCH TOTAL", "", "", "", String(report.branchTotals.find((total) => total.locationId === location.id)?.available ?? 0)],
         ], true);
       }

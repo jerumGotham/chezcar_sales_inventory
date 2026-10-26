@@ -18,6 +18,7 @@ import {
   RETURN_STATUSES,
   SALE_SOURCES,
   reportMonthEnd,
+  salespersonKey,
   type InventoryReportRow,
   type ReportBreakdown,
   type ReportOption,
@@ -49,7 +50,6 @@ const reportQueryBaseSchema = z.object({
   paymentMethod: z.enum(PAYMENT_METHODS).optional(),
   view: z.enum(SALES_VIEWS).optional(),
   search: optionalText,
-  category: optionalText,
   brand: optionalText,
   productStatus: z.enum(PRODUCT_STATUSES).optional(),
   caseType: z.enum(RETURN_CASE_TYPES).optional(),
@@ -65,8 +65,8 @@ const reportQueryBaseSchema = z.object({
     sales: new Set(["type", "dateFrom", "dateTo", "locationId", "salespersonId", "source", "paymentMethod"]),
     collections: salesFilters,
     "salesperson-sales": salesFilters,
-    "inventory-summary": new Set(["type", "locationId", "search", "category", "brand", "productStatus"]),
-    "stock-movement": new Set(["type", "dateFrom", "dateTo", "locationId", "search", "category", "brand", "movement"]),
+    "inventory-summary": new Set(["type", "locationId", "search", "brand", "productStatus"]),
+    "stock-movement": new Set(["type", "dateFrom", "dateTo", "locationId", "search", "brand", "movement"]),
     "returns-warranty": new Set(["type", "dateFrom", "dateTo", "locationId", "caseType", "status", "resolution", "entitySearch"]),
   };
   for (const [key, selected] of Object.entries(value)) {
@@ -120,24 +120,39 @@ type ReportLocation = { id: string; code: string; name: string };
 async function options(query: ReportQuery, locations: ReportLocation[], effectiveLocations: ReportLocation[]) {
   const scopedLocation = { in: effectiveLocations.map((location) => location.id) };
   const inventoryProductStatus = query.type === "inventory-summary" ? query.productStatus : "ACTIVE";
-  const [salespersons, categories, brands] = await Promise.all([
-    (query.type !== "collections" && query.type !== "salesperson-sales") || !effectiveLocations.length ? Promise.resolve([]) : prisma.payment.findMany({
+  const [salespersons, brands] = await Promise.all([
+    (query.type !== "sales" && query.type !== "collections" && query.type !== "salesperson-sales") || !effectiveLocations.length ? Promise.resolve([]) : prisma.payment.findMany({
       where: { locationId: scopedLocation, status: "ACTIVE", salespersonId: { not: null }, reviewStatus: "VERIFIED", verifiedAt: { not: null } },
       // Historical attribution, independent of date/source/payment filters or current personnel assignments.
       select: { salespersonId: true, salespersonName: true },
       distinct: ["salespersonId"],
       orderBy: [{ verifiedAt: "desc" }, { id: "desc" }],
     }),
-    query.type !== "inventory-summary" || !effectiveLocations.length ? Promise.resolve([]) : prisma.product.findMany({ where: { ...(inventoryProductStatus ? { status: inventoryProductStatus } : {}), category: { not: null } }, distinct: ["category"], select: { category: true }, orderBy: { category: "asc" } }),
     query.type !== "inventory-summary" || !effectiveLocations.length ? Promise.resolve([]) : prisma.product.findMany({ where: { ...(inventoryProductStatus ? { status: inventoryProductStatus } : {}), brand: { not: null } }, distinct: ["brand"], select: { brand: true }, orderBy: { brand: "asc" } }),
   ]);
+  /*
+   * One entry per person. A salesperson works at more than one branch and is
+   * registered once at each, so a list of Personnel ids repeated the same name
+   * three and five times over, and picking one of them showed only the
+   * receipts written under that branch's record of them.
+   */
+  const idsByPerson = new Map<string, string[]>();
+  for (const row of salespersons) {
+    if (row.salespersonId === null) continue;
+    const person = salespersonKey({ salespersonId: row.salespersonId, salesperson: row.salespersonName ?? "Unassigned" });
+    idsByPerson.set(person, [...(idsByPerson.get(person) ?? []), row.salespersonId].sort());
+  }
   return {
-    locations: locations.map((row) => ({ id: row.id, label: `${row.code} - ${row.name}` })),
-    defaultLocationId: query.type === "inventory-summary" ? locations[0]?.id ?? null : null,
-    salespersons: salespersons.flatMap((row) => row.salespersonId !== null ? [{ id: row.salespersonId, label: row.salespersonName ?? "Unassigned" }] : [])
-      .sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id)),
-    categories: categories.flatMap((row) => row.category ? [{ id: row.category, label: row.category }] : []),
-    brands: brands.flatMap((row) => row.brand ? [{ id: row.brand, label: row.brand }] : []),
+    filters: {
+      locations: locations.map((row) => ({ id: row.id, label: `${row.code} - ${row.name}` })),
+      defaultLocationId: query.type === "inventory-summary" ? locations[0]?.id ?? null : null,
+      // The lowest id of the person's records stands for all of them, so the
+      // same link keeps selecting the same person however the list is read.
+      salespersons: [...idsByPerson].map(([label, ids]) => ({ id: ids[0], label }))
+        .sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id)),
+      brands: brands.flatMap((row) => row.brand ? [{ id: row.brand, label: row.brand }] : []),
+    },
+    idsByPerson,
   };
 }
 
@@ -163,7 +178,7 @@ function optionLabel(rows: ReportOption[], id: string | undefined) {
   return rows.find((row) => row.id === id)?.label ?? id ?? "";
 }
 
-function selectedFilters(query: ReportQuery, filters: Awaited<ReturnType<typeof options>>, range: ReturnType<typeof dateRange>) {
+function selectedFilters(query: ReportQuery, filters: Awaited<ReturnType<typeof options>>["filters"], range: ReturnType<typeof dateRange>) {
   const result: Array<{ label: string; value: string }> = [];
   if (range.dateFrom || range.dateTo) result.push({ label: "Date range", value: `${range.dateFrom ?? "Start"} to ${range.dateTo ?? "Today"}` });
   if (query.type === "collections" || query.type === "salesperson-sales") {
@@ -174,7 +189,6 @@ function selectedFilters(query: ReportQuery, filters: Awaited<ReturnType<typeof 
   if (query.source) result.push({ label: "Source", value: humanize(query.source) });
   if (query.paymentMethod) result.push({ label: "Payment method", value: humanize(query.paymentMethod) });
   if (query.search) result.push({ label: "Product search", value: query.search });
-  if (query.category) result.push({ label: "Category", value: query.category });
   if (query.brand) result.push({ label: "Brand", value: query.brand });
   if (query.productStatus) result.push({ label: "Product status", value: humanize(query.productStatus) });
   else if (query.type === "inventory-summary") result.push({ label: "Product status", value: "All statuses" });
@@ -194,7 +208,6 @@ type InventoryProduct = {
   id: string;
   itemCode: string;
   name: string;
-  category: string | null;
   brand: string | null;
   status: string;
   reorderLevel: number;
@@ -209,7 +222,7 @@ type InventoryBalanceRow = {
   quarantined: number;
 };
 
-export function buildInventoryRows(products: InventoryProduct[], locations: ReportLocation[], balances: InventoryBalanceRow[]): InventoryReportRow[] {
+export function buildInventoryRows(products: InventoryProduct[], locations: ReportLocation[], balances: InventoryBalanceRow[], fitmentByProduct: Map<string, string[]> = new Map()): InventoryReportRow[] {
   const byProductLocation = new Map(balances.map((balance) => [`${balance.productId}:${balance.locationId}`, balance]));
   return products.map((product) => {
     const availableByLocation = Object.fromEntries(locations.map((location): [string, number] => {
@@ -222,7 +235,7 @@ export function buildInventoryRows(products: InventoryProduct[], locations: Repo
       productId: product.id,
       itemCode: product.itemCode,
       product: product.name,
-      category: product.category ?? "Uncategorized",
+      fitment: fitmentByProduct.get(product.id) ?? [],
       brand: product.brand ?? "Unbranded",
       productStatus: product.status,
       available: Object.values(availableByLocation).reduce((sum, quantity) => sum + quantity, 0),
@@ -276,8 +289,8 @@ async function reportContext(actor: AuthContext, rawQuery: unknown) {
   // Resolve defaults before both options and rows; an omitted branch is never All.
   if (query.type === "inventory-summary" && !query.locationId) query = { ...query, locationId: locations[0]?.id };
   const effectiveLocations = allBranches || !query.locationId ? locations : locations.filter((location) => location.id === query.locationId);
-  const filters = await options(query, locations, effectiveLocations);
-  return { query, effectiveLocations, filters };
+  const { filters, idsByPerson } = await options(query, locations, effectiveLocations);
+  return { query, effectiveLocations, filters, idsByPerson };
 }
 
 export async function getReportOptions(actor: AuthContext, rawQuery: unknown) {
@@ -318,10 +331,31 @@ async function fitmentByProductFor(productIds: string[]): Promise<Map<string, st
 }
 
 export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<ReportResult> {
-  const { query, effectiveLocations, filters } = await reportContext(actor, rawQuery);
-  if (query.salespersonId && !filters.salespersons.some((row) => row.id === query.salespersonId)) {
-    throw new AuthorizationError("Salesperson has no verified sales in the selected report scope");
+  const context = await reportContext(actor, rawQuery);
+  const { effectiveLocations, filters, idsByPerson } = context;
+  let query = context.query;
+  /*
+   * A selected salesperson means every record that person was attributed on,
+   * not only the branch record the list happened to offer. An older link
+   * naming one of their other ids still resolves to the same person.
+   */
+  const selectedPerson = query.salespersonId
+    ? [...idsByPerson.values()].find((ids) => ids.includes(query.salespersonId as string))
+    : undefined;
+  if (query.salespersonId) {
+    if (!selectedPerson) throw new AuthorizationError("Salesperson has no verified sales in the selected report scope");
+    query = { ...query, salespersonId: selectedPerson[0] };
   }
+  const salespersonFilter = selectedPerson ? { in: selectedPerson } : undefined;
+  /*
+   * Every record of one person answers to the same id from here on, so rows,
+   * totals and the filter all treat them as the one salesperson they are.
+   * Grouping still goes by id rather than by the name snapshot on the receipt,
+   * which is what keeps a renamed salesperson in one pile.
+   */
+  const canonicalSalesperson = new Map<string, string>();
+  for (const ids of idsByPerson.values()) for (const id of ids) canonicalSalesperson.set(id, ids[0]);
+  const personId = (id: string | null) => id === null ? null : canonicalSalesperson.get(id) ?? id;
   const effectiveScope = effectiveLocations.map((location) => ({ id: location.id, label: `${location.code} - ${location.name}` }));
   const scopedLocation = { in: effectiveLocations.map((location) => location.id) };
   const undatedRange = dateRange(query, false);
@@ -338,7 +372,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
       where: {
         locationId: scopedLocation,
         status: "POSTED",
-        salespersonId: query.salespersonId,
+        salespersonId: salespersonFilter,
         paymentMethod: query.paymentMethod,
         // A release writes a Sale with an orderId; a direct sale has none.
         ...(query.source === "DIRECT_SALE" ? { orderId: null } : {}),
@@ -402,7 +436,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
         receiptIssued: sale.receiptIssued,
         branch: sale.location.name,
         customer: sale.customer?.name ?? "Guest",
-        salespersonId: sale.salespersonId,
+        salespersonId: personId(sale.salespersonId),
         salesperson: sale.salespersonName ?? "Not recorded",
         encoder: sale.postedBy.name,
         source: (sale.orderId ? "Order Release" : "Direct Sale") as "Direct Sale" | "Order Release",
@@ -505,7 +539,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
       where: {
         locationId: scopedLocation,
         status: "ACTIVE",
-        salespersonId: query.salespersonId,
+        salespersonId: salespersonFilter,
         kind: query.source === "DIRECT_SALE" ? "DIRECT_SALE" : query.source === "CUSTOMER_ORDER" ? { in: [...orderKinds] } : undefined,
         method: query.paymentMethod,
         reviewStatus: reviewStatusFilter,
@@ -534,7 +568,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
       where: {
         locationId: scopedLocation,
         status: "ACTIVE",
-        salespersonId: query.salespersonId,
+        salespersonId: salespersonFilter,
         kind: query.source === "DIRECT_SALE" ? "DIRECT_SALE" : query.source === "CUSTOMER_ORDER" ? { in: [...orderKinds] } : undefined,
         method: query.paymentMethod,
         reviewStatus: { not: "VERIFIED" },
@@ -553,7 +587,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
     const refundRecords = view === "UNVERIFIED" ? [] : await prisma.refund.findMany({
       where: {
         locationId: scopedLocation,
-        salespersonId: query.salespersonId,
+        salespersonId: salespersonFilter,
         method: query.paymentMethod,
         refundedAt: range.where,
         ...(query.source === "DIRECT_SALE"
@@ -629,7 +663,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
       receiptIssued: row.sale?.receiptIssued ?? true,
       branch: `${row.location.code} - ${row.location.name}`,
       customer: row.customer?.name ?? "Guest",
-      salespersonId: row.salespersonId,
+      salespersonId: personId(row.salespersonId),
       salesperson: row.salespersonName ?? "Unassigned",
       encoder: row.collectedBy.name,
       source: sourceLabels[row.kind],
@@ -652,7 +686,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
       receiptIssued: true,
       branch: `${row.location.code} - ${row.location.name}`,
       customer: row.customer?.name ?? "Guest",
-      salespersonId: row.salespersonId,
+      salespersonId: personId(row.salespersonId),
       salesperson: row.salespersonName ?? "Unassigned",
       encoder: row.refundedBy.name,
       source: row.kind === "POSTED_SALE" ? ("Sale Refund" as const) : ("Order Refund" as const),
@@ -747,20 +781,22 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
   if (query.type === "inventory-summary") {
     const productWhere: Prisma.ProductWhereInput = {
       ...(query.search ? { OR: [{ itemCode: { contains: query.search, mode: "insensitive" } }, { name: { contains: query.search, mode: "insensitive" } }] } : {}),
-      category: query.category,
       brand: query.brand,
       status: query.productStatus,
     };
     const products = effectiveLocations.length ? await prisma.product.findMany({
       where: productWhere,
-      select: { id: true, itemCode: true, name: true, category: true, brand: true, status: true, reorderLevel: true },
+      select: { id: true, itemCode: true, name: true, brand: true, status: true, reorderLevel: true },
       orderBy: { itemCode: "asc" },
     }) : [];
-    const balances = products.length ? await prisma.inventoryBalance.findMany({
-      where: { locationId: scopedLocation, productId: { in: products.map((product) => product.id) } },
-      select: { id: true, productId: true, locationId: true, onHand: true, reserved: true, quarantined: true },
-    }) : [];
-    const rows = buildInventoryRows(products, effectiveLocations, balances);
+    const [balances, fitmentByProduct] = await Promise.all([
+      products.length ? prisma.inventoryBalance.findMany({
+        where: { locationId: scopedLocation, productId: { in: products.map((product) => product.id) } },
+        select: { id: true, productId: true, locationId: true, onHand: true, reserved: true, quarantined: true },
+      }) : Promise.resolve([]),
+      fitmentByProductFor(products.map((product) => product.id)),
+    ]);
+    const rows = buildInventoryRows(products, effectiveLocations, balances, fitmentByProduct);
     return {
       ...base, type: "inventory-summary", dateFrom: null, dateTo: null, appliedFilters: selectedFilters(query, filters, undatedRange), rows,
       branchTotals: effectiveLocations.map((location) => ({ locationId: location.id, available: rows.reduce((sum, row) => sum + row.availableByLocation[location.id], 0) })),
@@ -780,12 +816,11 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
       : 30;
     const productWhere: Prisma.ProductWhereInput = {
       ...(query.search ? { OR: [{ itemCode: { contains: query.search, mode: "insensitive" } }, { name: { contains: query.search, mode: "insensitive" } }] } : {}),
-      category: query.category,
       brand: query.brand,
     };
     const products = effectiveLocations.length ? await prisma.product.findMany({
       where: productWhere,
-      select: { id: true, itemCode: true, name: true, category: true, brand: true },
+      select: { id: true, itemCode: true, name: true, brand: true },
       orderBy: { itemCode: "asc" },
     }) : [];
     const productIds = products.map((product) => product.id);
@@ -839,7 +874,6 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
           locationId: location.id,
           itemCode: product.itemCode,
           product: product.name,
-          category: product.category ?? "Uncategorized",
           brand: product.brand ?? "No brand",
           branch: `${location.code} - ${location.name}`,
           onHand,

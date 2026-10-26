@@ -46,7 +46,7 @@ const sales: CollectionsReport = {
   dateTo: "2026-10-31",
   effectiveScope: [{ id: "branch-bl", label: "BL - Binan Laguna" }],
   appliedFilters: [{ label: "Branch", value: "All authorized" }],
-  filters: { locations: [], defaultLocationId: null, salespersons: [], categories: [], brands: [] },
+  filters: { locations: [], defaultLocationId: null, salespersons: [], brands: [] },
   view: "SALE_DATE",
   pending: { count: 0, amount: 0 },
   verifiedTotal: { transactionCount: 1, totalAmount: 20_000 },

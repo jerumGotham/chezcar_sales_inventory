@@ -26,6 +26,7 @@ import {
   RETURN_STATUSES,
   SALE_SOURCES,
   STOCK_MOVEMENT_GRADES,
+  fitmentLabel,
   reportMonthEnd,
   type InventorySummaryReport,
   type ReportFilterOptions,
@@ -64,7 +65,6 @@ type Filters = {
   paymentMethod: string;
   view: string;
   search: string;
-  category: string;
   brand: string;
   productStatus: string;
   caseType: string;
@@ -75,7 +75,7 @@ type Filters = {
 };
 
 const EMPTY_FILTERS: Omit<Filters, "type" | "dateFrom" | "dateTo"> = {
-  locationId: "", salespersonId: "", source: "", paymentMethod: "", view: "", search: "", category: "", brand: "",
+  locationId: "", salespersonId: "", source: "", paymentMethod: "", view: "", search: "", brand: "",
   productStatus: "", caseType: "", status: "", resolution: "", entitySearch: "", movement: "",
 };
 
@@ -262,10 +262,9 @@ function ReportsContent() {
             {ledgerFilters && <Field label="View"><NativeSelect value={draft.view} onChange={(value) => change("view", value)} options={SALES_VIEWS.filter((id) => id !== "SALE_DATE").map((id) => ({ id, label: SALES_VIEW_LABELS[id] }))} allLabel={SALES_VIEW_LABELS.SALE_DATE} /></Field>}
 
             {(inventoryFilters || movementFilters) && <Field label="Item code or name"><Input value={draft.search} onChange={(event) => change("search", event.target.value)} placeholder="Search product" /></Field>}
-            {(inventoryFilters || movementFilters) && <Field label="Category"><NativeSelect value={draft.category} onChange={(value) => change("category", value)} options={filterOptions?.categories ?? []} disabled={optionsLoading || !filterOptions} allLabel="All categories" /></Field>}
             {(inventoryFilters || movementFilters) && <Field label="Brand"><NativeSelect value={draft.brand} onChange={(value) => change("brand", value)} options={filterOptions?.brands ?? []} disabled={optionsLoading || !filterOptions} allLabel="All brands" /></Field>}
             {movementFilters && <Field label="Movement" helper="No movement first shows stock nobody bought."><NativeSelect value={draft.movement} onChange={(value) => change("movement", value)} options={[{ id: "NO_MOVEMENT", label: "No movement" }, { id: "SLOW", label: "Slow moving" }, { id: "FAST", label: "Fast moving" }]} allLabel="All movement" /></Field>}
-            {draft.type === "inventory-summary" && <Field label="Product status"><NativeSelect value={draft.productStatus} onChange={(productStatus) => setDraft((current) => ({ ...current, productStatus, category: "", brand: "" }))} options={options(PRODUCT_STATUSES)} allLabel="All statuses" /></Field>}
+            {draft.type === "inventory-summary" && <Field label="Product status"><NativeSelect value={draft.productStatus} onChange={(productStatus) => setDraft((current) => ({ ...current, productStatus, brand: "" }))} options={options(PRODUCT_STATUSES)} allLabel="All statuses" /></Field>}
 
             {draft.type === "returns-warranty" && <Field label="Case type"><NativeSelect value={draft.caseType} onChange={(value) => change("caseType", value)} options={options(RETURN_CASE_TYPES)} allLabel="All case types" /></Field>}
             {draft.type === "returns-warranty" && <Field label="Status"><NativeSelect value={draft.status} onChange={(value) => change("status", value)} options={options(RETURN_STATUSES)} allLabel="All statuses" /></Field>}
@@ -491,18 +490,18 @@ function InventoryView({ report }: { report: InventorySummaryReport }) {
   const [page, setPage] = useState(1);
   const comparison = report.effectiveScope.length > 1;
   // Sorted before paging, so a header orders every filtered product rather than one page.
-  const columnValues = (row: InventorySummaryReport["rows"][number]): SortCell[] => [row.itemCode, row.product, row.category, row.brand, ...(comparison ? report.effectiveScope.map((location) => row.availableByLocation[location.id]) : []), row.available];
+  const columnValues = (row: InventorySummaryReport["rows"][number]): SortCell[] => [row.itemCode, row.product, fitmentLabel(row.fitment), row.brand, ...(comparison ? report.effectiveScope.map((location) => row.availableByLocation[location.id]) : []), row.available];
   const { rows: sortedRows, sort, toggle } = useTableSort(report.rows, columnAccessors(columnValues, 5 + (comparison ? report.effectiveScope.length : 0)));
   const pageSize = 25;
   const pageCount = Math.max(1, Math.ceil(report.rows.length / pageSize));
   const currentPage = Math.min(page, pageCount);
   const start = (currentPage - 1) * pageSize;
-  const headers = ["Code", "Product", "Category", "Brand", ...(comparison ? report.effectiveScope.map((location) => location.label) : []), comparison ? "Total available" : "Available"];
+  const headers = ["Code", "Product", "Fits", "Brand", ...(comparison ? report.effectiveScope.map((location) => location.label) : []), comparison ? "Total available" : "Available"];
   const totals = ["FULL FILTERED TOTAL", "", "", "", ...(comparison ? report.branchTotals.map((total) => String(total.available)) : []), String(report.totals.available)];
   return <>
     <p className="text-sm text-muted-foreground">Available = on hand minus reserved and quarantined. Only products with positive available stock in the selected branches are included, once per product. Comparison cells show 0 where no positive stock is available. In-transit stock is excluded.</p>
     <div className="grid gap-3 sm:grid-cols-3"><Metric label="Products (full filtered set)" value={String(report.totals.productCount)} /><Metric label="Branches in scope" value={String(report.totals.locationCount)} /><Metric label="Available units (full filtered set)" value={String(report.totals.available)} /></div>
-    <Table headers={headers} numericFrom={4} footerRow={totals} sorting={{ sort, onSort: (key) => { toggle(key); setPage(1); } }} rows={sortedRows.slice(start, start + pageSize).map((row) => [row.itemCode, row.product, row.category, row.brand, ...(comparison ? report.effectiveScope.map((location) => String(row.availableByLocation[location.id])) : []), String(row.available)])} />
+    <Table headers={headers} numericFrom={4} footerRow={totals} sorting={{ sort, onSort: (key) => { toggle(key); setPage(1); } }} rows={sortedRows.slice(start, start + pageSize).map((row) => [row.itemCode, row.product, fitmentLabel(row.fitment), row.brand, ...(comparison ? report.effectiveScope.map((location) => String(row.availableByLocation[location.id])) : []), String(row.available)])} />
     <nav aria-label="Inventory products pagination" className="flex flex-wrap items-center justify-between gap-3">
       <p className="text-xs text-muted-foreground">{report.rows.length ? `${start + 1}-${Math.min(start + pageSize, report.rows.length)}` : "0"} of {report.rows.length} products | 25 per page. Totals and PDF include all filtered products.</p>
       <TablePagination page={currentPage} totalPages={pageCount} onPageChange={setPage} />

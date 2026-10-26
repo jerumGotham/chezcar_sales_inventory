@@ -53,10 +53,29 @@ export function reportMonthEnd(date: string) {
 export type ReportFilterOptions = {
   locations: ReportOption[];
   defaultLocationId: string | null;
+  /**
+   * One entry per person, not per Personnel record. A salesperson is registered
+   * separately at each branch they work at, so the same name came back once per
+   * branch and each entry filtered to a slice of that person's own receipts.
+   */
   salespersons: ReportOption[];
-  categories: ReportOption[];
   brands: ReportOption[];
 };
+
+/** What a product fits, written as the product screen writes it. */
+export function fitmentLabel(fitment: string[]) {
+  return fitment.length ? fitment.join(", ") : "Universal / not specified";
+}
+
+/**
+ * Which person a receipt belongs to, for grouping and for the filter. The
+ * Personnel id splits one person's receipts into as many piles as they have
+ * branches, and the report is about the person, so the name is the key. Two
+ * spellings of one name are two people here; nothing else ties them together.
+ */
+export function salespersonKey(row: { salespersonId: string | null; salesperson: string }) {
+  return row.salespersonId === null ? "" : row.salesperson.trim().replace(/\s+/g, " ");
+}
 
 export type ReportMeta = {
   type: ReportType;
@@ -172,7 +191,8 @@ export type InventoryReportRow = {
   productId: string;
   itemCode: string;
   product: string;
-  category: string;
+  /** What the part fits, the same reading the product screen shows. */
+  fitment: string[];
   brand: string;
   productStatus: string;
   available: number;
@@ -221,7 +241,6 @@ export type StockMovementReport = ReportMeta & {
     locationId: string;
     itemCode: string;
     product: string;
-    category: string;
     brand: string;
     branch: string;
     onHand: number;
