@@ -282,20 +282,30 @@ describe("customer orders, direct sales, accounting", () => {
 
       const salesOnlyResponse = await GET(new Request(baseUrl));
       const salesOnlyPayload = await salesOnlyResponse.json() as {
-        data: {
-          customers: Array<{ id: string; name: string; type: string }>;
-          products: Array<{ id: string }>;
-        };
+        data: { products: Array<{ id: string }> };
       };
       expect(salesOnlyResponse.status).toBe(200);
       expect(salesOnlyPayload.data.products.map((product) => product.id)).toEqual([availableProduct.id]);
-      // The picker reads "name - type", so the options endpoint carries the
-      // kind of party alongside the name.
-      expect(salesOnlyPayload.data.customers).toContainEqual({
+
+      /*
+       * The customer picker is served by its own search rather than this
+       * payload, so a cashier holding nothing but sales:post has to reach it:
+       * requiring customers:view would leave POS with no customers at all.
+       * The picker reads "name - type", so the search carries the kind of
+       * party alongside the name, and it answers the typed text rather than a
+       * capped copy of the whole list.
+       */
+      const { GET: searchCustomers } = await import("../../app/api/customers/search/route");
+      const searchResponse = await searchCustomers(new Request("http://localhost/api/customers/search?q=selectable"));
+      const searchPayload = await searchResponse.json() as { data: { customers: Array<{ id: string; name: string; type: string }> } };
+      expect(searchResponse.status).toBe(200);
+      expect(searchPayload.data.customers).toContainEqual({
         id: selectableCustomer.id,
         name: selectableCustomer.name,
         type: "INDIVIDUAL",
       });
+      const missResponse = await searchCustomers(new Request("http://localhost/api/customers/search?q=nobody-by-that-name"));
+      expect(((await missResponse.json()) as { data: { customers: unknown[] } }).data.customers).toEqual([]);
 
       const { GET: getCustomers } = await import("../../app/api/customers/route");
       const customersResponse = await getCustomers(
