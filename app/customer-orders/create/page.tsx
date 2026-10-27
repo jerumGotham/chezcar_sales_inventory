@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { customerOptionLabel, type CustomerTypeDto } from "@/lib/contracts/customers";
 import Link from "next/link";
 import { Route } from "next";
 import { useRouter } from "next/navigation";
@@ -19,6 +18,7 @@ import { useShellAccess } from "@/components/shell-access-context";
 import { hasCapability } from "@/lib/permissions";
 import { reactSelectStyles } from "@/lib/select-styles";
 import { ReceiptPhotosInput, uploadReceiptPhotos } from "@/components/receipt-photos-input";
+import { CustomerSelect } from "@/components/customer-select";
 
 type SelectOption = {
   value: string;
@@ -51,7 +51,6 @@ function formatPeso(value: number) {
 }
 
 type OrderOptions = {
-  customers: Array<{ id: string; name: string; type: CustomerTypeDto }>;
   products: Array<{ id: string; itemCode: string; name: string; price: number; availableQuantity: number }>;
   branches: Array<{ id: string; code: string; name: string }>;
   salespersons: Array<{ id: string; fullName: string; locationId: string }>;
@@ -109,7 +108,6 @@ export default function CreateCustomerOrderPage() {
   ]);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const customerOptions = optionsQuery.data?.customers.map((item) => ({ value: item.id, label: customerOptionLabel(item.name, item.type) })) ?? [];
   const itemOptions = optionsQuery.data?.products.map((item) => ({ value: item.id, label: `${item.itemCode} - ${item.name} (${item.availableQuantity} available)` })) ?? [];
   const salespersonOptions = optionsQuery.data?.salespersons.map((item) => ({ value: item.id, label: item.fullName })) ?? [];
   /*
@@ -271,16 +269,13 @@ export default function CreateCustomerOrderPage() {
                     <Label required>Customer</Label>
                     <Link href="/customers" className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 dark:text-emerald-300">Manage customers</Link>
                   </div>
-                  <Select
+                  <CustomerSelect
                     instanceId="create-order-customer"
-                     options={customerOptions}
                     value={customer}
                     onChange={(option) => setCustomer(option)}
-                    isSearchable
                     placeholder="Select customer"
                     styles={reactSelectStyles}
                   />
-                  {optionsQuery.data && customerOptions.length === 0 ? <p className="text-xs text-amber-700 dark:text-amber-300">No active customers yet. Add one from the Customers page.</p> : null}
                 </div>
 
                 <div className="space-y-2">

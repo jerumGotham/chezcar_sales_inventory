@@ -22,8 +22,13 @@ export async function GET(request: Request) {
       ? await findActiveBranch(locationId)
       : null;
     if (locationId && (!location || !canAccessLocation(actor, location.id))) return NextResponse.json({ error: { code: "INVALID_LOCATION", message: "Select an assigned active branch" } }, { status: 400 });
-    const [customers, products, branches, salespersons] = await Promise.all([
-      prisma.customer.findMany({ where: { status: "ACTIVE" }, orderBy: { name: "asc" }, take: 200, select: { id: true, name: true, type: true } }),
+    /*
+     * Customers are not here. The list outgrew any cap worth carrying -- the
+     * branch keys a couple of hundred a month -- so the picker asks
+     * /api/customers/search as the cashier types instead of filtering a
+     * truncated copy that silently left the newest names out.
+     */
+    const [products, branches, salespersons] = await Promise.all([
       locationId
         ? prisma.product.findMany({ where: { status: "ACTIVE" }, orderBy: { itemCode: "asc" }, take: 2_000, select: { id: true, itemCode: true, name: true, category: true, price: true, branchPrices: { where: { locationId }, select: { price: true } }, inventoryBalances: { where: { locationId }, select: { onHand: true, reserved: true, quarantined: true } } } })
         : Promise.resolve([]),
@@ -37,7 +42,6 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       data: {
-        customers,
         products: products.map((product) => ({ id: product.id, itemCode: product.itemCode, name: product.name, category: product.category ?? "Uncategorized", price: (product.branchPrices[0]?.price ?? product.price)?.toNumber() ?? 0, availableQuantity: availableStock({ onHand: product.inventoryBalances[0]?.onHand ?? 0, reserved: product.inventoryBalances[0]?.reserved ?? 0, quarantined: product.inventoryBalances[0]?.quarantined ?? 0 }) })).filter((product) => includeUnavailable || product.availableQuantity > 0),
         branches,
         salespersons,

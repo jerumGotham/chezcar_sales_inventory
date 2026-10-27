@@ -35,6 +35,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { PageShell } from "@/components/page-shell";
+import { CustomerSelect } from "@/components/customer-select";
 import { TablePagination } from "@/components/table-pagination";
 import { StatusBanner } from "@/components/status-banner";
 import {
@@ -97,7 +98,6 @@ type SelectOption = {
   label: string;
 };
 
-type PosCustomer = { id: string; name: string; type: CustomerTypeDto };
 
 type OrderItemRow = {
   item: SelectOption | null;
@@ -119,6 +119,10 @@ type CustomerFormState = {
   source: string;
   customerNotes: string;
 };
+
+/* The walk-in who gives no name. Kept out of the search, which answers with
+ * recorded customers only. */
+const GUEST_CUSTOMER_OPTIONS: SelectOption[] = [{ value: "guest", label: "Guest" }];
 
 const mockCustomers: SelectOption[] = [
   { value: "guest", label: "Guest" },
@@ -446,7 +450,7 @@ function PosTab() {
       const response = await fetch(`/api/customer-orders/options${locationQuery}`, { credentials: "same-origin" });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error?.message ?? "Unable to load sales options");
-      return json.data as { customers: PosCustomer[]; products: Array<{ id: string; itemCode: string; name: string; category: string; price: number; availableQuantity: number }>; branches: Array<{ id: string; code: string; name: string }>; salespersons: Array<{ id: string; fullName: string; locationId: string }> };
+      return json.data as { products: Array<{ id: string; itemCode: string; name: string; category: string; price: number; availableQuantity: number }>; branches: Array<{ id: string; code: string; name: string }>; salespersons: Array<{ id: string; fullName: string; locationId: string }> };
     },
     enabled: access.authenticated,
   });
@@ -507,7 +511,7 @@ function PosTab() {
   const activeCategory = categoryOptions.find((option) => option.value === selectedCategory?.value) ?? categoryOptions[0];
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<SelectOption | null>(
-    mockCustomers[0],
+    GUEST_CUSTOMER_OPTIONS[0],
   );
 
   const [selectedSalesperson, setSelectedSalesperson] = useState<SelectOption | null>(null);
@@ -523,10 +527,6 @@ function PosTab() {
   const [isCheckoutPending, setIsCheckoutPending] = useState(false);
   const [isCheckoutConfirmationOpen, setIsCheckoutConfirmationOpen] = useState(false);
 
-  const customerOptions: SelectOption[] = [
-    { value: "guest", label: "Guest" },
-    ...(posOptionsQuery.data?.customers.map((customer) => ({ value: customer.id, label: customerOptionLabel(customer.name, customer.type) })) ?? []),
-  ];
 
   /*
    * Adding a customer without leaving the sale. The cashier has the person in
@@ -748,9 +748,7 @@ function PosTab() {
 
   const clearSale = () => {
     setCart([]);
-    setSelectedCustomer(
-      customerOptions.find((c) => c.value === "guest") ?? null,
-    );
+    setSelectedCustomer(GUEST_CUSTOMER_OPTIONS[0]);
     setPaymentType(null);
     setSelectedSalesperson(null);
     setManualReceiptNumber("");
@@ -1099,14 +1097,11 @@ function PosTab() {
                 ) : null}
               </div>
 
-              <Select
+              <CustomerSelect
                 instanceId="customer-select"
-                options={customerOptions}
                 value={selectedCustomer}
                 onChange={(option) => setSelectedCustomer(option)}
-                isSearchable
-                placeholder="Search customer..."
-                noOptionsMessage={() => "No customers found"}
+                extraOptions={GUEST_CUSTOMER_OPTIONS}
                 styles={selectStyles}
               />
             </div>
