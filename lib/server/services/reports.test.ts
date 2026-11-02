@@ -3,6 +3,8 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 const reportPrisma = vi.hoisted(() => ({
   location: { findMany: vi.fn() },
   backjob: { findMany: vi.fn() },
+  customerWarranty: { findMany: vi.fn() },
+  supplierClaim: { findMany: vi.fn() },
   sale: { findMany: vi.fn() },
   payment: { findMany: vi.fn(), aggregate: vi.fn() },
   refund: { findMany: vi.fn() },
@@ -199,7 +201,7 @@ describe("sales and salesperson sales reports", () => {
       select: { salespersonId: true, salespersonName: true }, distinct: ["salespersonId"],
       orderBy: [{ verifiedAt: "desc" }, { id: "desc" }],
     });
-    expect(reportPrisma.location.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ["branch"] }, isActive: true } }));
+    expect(reportPrisma.location.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ["branch"] }, isActive: true, type: "BRANCH" } }));
     expect(reportPrisma.payment.findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
       where: expect.objectContaining({ locationId: { in: ["branch"] }, salespersonId: { in: ["person-1"] }, kind: { in: ["ORDER_DOWNPAYMENT", "ORDER_PAYMENT", "ORDER_FINAL"] }, method: "GCASH" }),
     }));
@@ -208,6 +210,37 @@ describe("sales and salesperson sales reports", () => {
     expect(report.branchTotals).toEqual([]);
     expect(report.grandTotal).toEqual({ transactionCount: 0, units: 0, totalDiscount: 0, averageSale: 0, totalAmount: 0 });
     if (report.type === "salesperson-sales") expect(report.salespersonTotals).toEqual([]);
+  });
+
+  /*
+   * The branch picker on a sales report offers branches. A warehouse sells
+   * nothing, so the Stock Room sat in the list offering a report that could
+   * only ever come back empty. Stock Movement is the exception: stock is held
+   * and moved there, which is what that report measures.
+   */
+  it.each(["sales", "collections", "salesperson-sales", "inventory-summary", "returns-warranty"] as const)("offers only branches in the %s location filter", async (type) => {
+    reportPrisma.payment.findMany.mockResolvedValue([]);
+    reportPrisma.sale.findMany.mockResolvedValue([]);
+    reportPrisma.backjob.findMany.mockResolvedValue([]);
+    reportPrisma.customerWarranty.findMany.mockResolvedValue([]);
+    reportPrisma.supplierClaim.findMany.mockResolvedValue([]);
+    reportPrisma.product.findMany.mockResolvedValue([]);
+    reportPrisma.inventoryBalance.findMany.mockResolvedValue([]);
+    reportPrisma.saleLine.findMany.mockResolvedValue([]);
+    // Inventory Summary is the one report with no period to ask for.
+    await reports.getReport(actor, type === "inventory-summary" ? { type, locationId: "branch" } : { type, ...query });
+    expect(reportPrisma.location.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ type: "BRANCH" }),
+    }));
+  });
+
+  it("keeps every stock location in the stock movement filter", async () => {
+    reportPrisma.product.findMany.mockResolvedValue([]);
+    reportPrisma.inventoryBalance.findMany.mockResolvedValue([]);
+    reportPrisma.saleLine.findMany.mockResolvedValue([]);
+    await reports.getReport(actor, { type: "stock-movement", ...query });
+    const [call] = reportPrisma.location.findMany.mock.calls.at(-1) as [{ where: Record<string, unknown> }];
+    expect(call.where).not.toHaveProperty("type");
   });
 
   /*

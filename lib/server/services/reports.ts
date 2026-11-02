@@ -281,7 +281,14 @@ async function reportContext(actor: AuthContext, rawQuery: unknown) {
   const capability = reportCapability(query.type);
   if (!capability) throw new AuthorizationError("Unknown report type");
   assertCapability(actor, capability);
-  const locations = await prisma.location.findMany({ where: { id: locationFilter(actor), isActive: true, ...(query.type === "inventory-summary" ? { type: "BRANCH" as const } : {}) }, select: { id: true, code: true, name: true }, orderBy: [{ name: "asc" }, { id: "asc" }] });
+  /*
+   * Branches only, except for Stock Movement. Every other report is built from
+   * what a branch sold -- receipts, salespersons, warranties -- and a warehouse
+   * sells nothing, so the Stock Room sat in each branch picker offering a report
+   * that could only ever come back empty. Stock Movement keeps it: stock is held
+   * and moved there, which is exactly what that report measures.
+   */
+  const locations = await prisma.location.findMany({ where: { id: locationFilter(actor), isActive: true, ...(query.type === "stock-movement" ? {} : { type: "BRANCH" as const }) }, select: { id: true, code: true, name: true }, orderBy: [{ name: "asc" }, { id: "asc" }] });
   const allBranches = query.type === "inventory-summary" && query.locationId === "all";
   if (query.locationId && !allBranches && !locations.some((location) => location.id === query.locationId)) {
     throw new AuthorizationError("Report location is not an active authorized location");
