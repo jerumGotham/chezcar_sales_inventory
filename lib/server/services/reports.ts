@@ -145,7 +145,8 @@ async function options(query: ReportQuery, locations: ReportLocation[], effectiv
   return {
     filters: {
       locations: locations.map((row) => ({ id: row.id, label: `${row.code} - ${row.name}` })),
-      defaultLocationId: query.type === "inventory-summary" ? locations[0]?.id ?? null : null,
+      // All locations, which is what the report opens on.
+      defaultLocationId: query.type === "inventory-summary" ? "all" : null,
       // The lowest id of the person's records stands for all of them, so the
       // same link keeps selecting the same person however the list is read.
       salespersons: [...idsByPerson].map(([label, ids]) => ({ id: ids[0], label }))
@@ -184,7 +185,7 @@ function selectedFilters(query: ReportQuery, filters: Awaited<ReturnType<typeof 
   if (query.type === "collections" || query.type === "salesperson-sales") {
     result.push({ label: "View", value: SALES_VIEW_LABELS[query.view ?? "SALE_DATE"] });
   }
-  if (query.locationId) result.push({ label: "Location", value: query.type === "inventory-summary" && query.locationId === "all" ? "All authorized branches" : optionLabel(filters.locations, query.locationId) });
+  if (query.locationId) result.push({ label: "Location", value: query.type === "inventory-summary" && query.locationId === "all" ? "All authorized locations" : optionLabel(filters.locations, query.locationId) });
   if (query.salespersonId) result.push({ label: "Salesperson", value: optionLabel(filters.salespersons, query.salespersonId) });
   if (query.source) result.push({ label: "Source", value: humanize(query.source) });
   if (query.paymentMethod) result.push({ label: "Payment method", value: humanize(query.paymentMethod) });
@@ -192,7 +193,8 @@ function selectedFilters(query: ReportQuery, filters: Awaited<ReturnType<typeof 
   if (query.brand) result.push({ label: "Brand", value: query.brand });
   if (query.productStatus) result.push({ label: "Product status", value: humanize(query.productStatus) });
   else if (query.type === "inventory-summary") result.push({ label: "Product status", value: "All statuses" });
-  if (query.type === "inventory-summary") result.push({ label: "Availability", value: "Positive available stock only" });
+  // Every product matching the filters, whatever it holds; the figure is what can be sold.
+  if (query.type === "inventory-summary") result.push({ label: "Availability", value: "Available stock, reserved and quarantined excluded" });
   if (query.caseType) result.push({ label: "Case type", value: humanize(query.caseType) });
   if (query.status) result.push({ label: "Status", value: humanize(query.status) });
   if (query.resolution) result.push({ label: "Resolution", value: humanize(query.resolution) });
@@ -208,10 +210,15 @@ type InventoryProduct = {
   id: string;
   itemCode: string;
   name: string;
+  description: string | null;
+  imageKey: string | null;
   brand: string | null;
   status: string;
   reorderLevel: number;
 };
+
+/** A product's vehicles, kept in the two columns the stock sheet prints. */
+type VehicleColumns = { carModel: string; yearModel: string };
 
 type InventoryBalanceRow = {
   id: string;
@@ -222,7 +229,14 @@ type InventoryBalanceRow = {
   quarantined: number;
 };
 
-export function buildInventoryRows(products: InventoryProduct[], locations: ReportLocation[], balances: InventoryBalanceRow[], fitmentByProduct: Map<string, string[]> = new Map()): InventoryReportRow[] {
+/*
+ * Every product the filters match, including the ones holding nothing
+ * anywhere. The report used to drop a product whose every column read zero,
+ * which made it unusable as the stock sheet it is read against: a line that
+ * vanishes when it runs out is a line nobody can reorder from, and the branch
+ * cannot tell "none left" apart from "never carried".
+ */
+export function buildInventoryRows(products: InventoryProduct[], locations: ReportLocation[], balances: InventoryBalanceRow[], vehiclesByProduct: Map<string, VehicleColumns> = new Map()): InventoryReportRow[] {
   const byProductLocation = new Map(balances.map((balance) => [`${balance.productId}:${balance.locationId}`, balance]));
   return products.map((product) => {
     const availableByLocation = Object.fromEntries(locations.map((location): [string, number] => {
@@ -230,18 +244,23 @@ export function buildInventoryRows(products: InventoryProduct[], locations: Repo
       // Nonpositive balances contribute no available stock to the comparison.
       return [location.id, balance ? Math.max(availableStock(balance), 0) : 0];
     }));
+    const vehicles = vehiclesByProduct.get(product.id);
     return {
       id: product.id,
       productId: product.id,
       itemCode: product.itemCode,
       product: product.name,
-      fitment: fitmentByProduct.get(product.id) ?? [],
+      description: product.description ?? "",
+      carModel: vehicles?.carModel ?? "",
+      yearModel: vehicles?.yearModel ?? "",
+      // Served by the product image route, which the report grant reaches too.
+      imageUrl: product.imageKey ? `/api/products/${product.id}/image` : null,
       brand: product.brand ?? "Unbranded",
       productStatus: product.status,
       available: Object.values(availableByLocation).reduce((sum, quantity) => sum + quantity, 0),
       availableByLocation,
     };
-  }).filter((row) => row.available > 0);
+  });
 }
 
 export function unassignedWarrantyQuarantine(receivedQuantity: number, returnedQuantity: number, assignedClaimQuantity: number, releasedRepair: boolean) {
@@ -282,19 +301,35 @@ async function reportContext(actor: AuthContext, rawQuery: unknown) {
   if (!capability) throw new AuthorizationError("Unknown report type");
   assertCapability(actor, capability);
   /*
-   * Branches only, except for Stock Movement. Every other report is built from
-   * what a branch sold -- receipts, salespersons, warranties -- and a warehouse
-   * sells nothing, so the Stock Room sat in each branch picker offering a report
-   * that could only ever come back empty. Stock Movement keeps it: stock is held
-   * and moved there, which is exactly what that report measures.
+   * Branches only, except for the two reports about stock itself. Sales,
+   * Collections, Sales by Salesperson and Returns & Warranty are built from
+   * what a branch sold, and a warehouse sells nothing, so the Stock Room sat in
+   * each of those branch pickers offering a report that could only ever come
+   * back empty. Inventory Summary and Stock Movement keep it: stock is held and
+   * moved there, which is exactly what they measure.
    */
-  const locations = await prisma.location.findMany({ where: { id: locationFilter(actor), isActive: true, ...(query.type === "stock-movement" ? {} : { type: "BRANCH" as const }) }, select: { id: true, code: true, name: true }, orderBy: [{ name: "asc" }, { id: "asc" }] });
+  const stockReport = query.type === "stock-movement" || query.type === "inventory-summary";
+  const found = await prisma.location.findMany({ where: { id: locationFilter(actor), isActive: true, ...(stockReport ? {} : { type: "BRANCH" as const }) }, select: { id: true, code: true, name: true, type: true }, orderBy: [{ name: "asc" }, { id: "asc" }] });
+  /*
+   * Inventory Summary is read across its columns, so their order is part of the
+   * report: the Stock Room first, where goods land before a branch holds them,
+   * then the branches by code. Every other report takes the list as a picker
+   * and keeps the existing name order.
+   */
+  const locations: ReportLocation[] = query.type === "inventory-summary"
+    ? [...found].sort((a, b) => Number(b.type === "WAREHOUSE") - Number(a.type === "WAREHOUSE") || a.code.localeCompare(b.code))
+    : found;
+  /*
+   * Across every location by default, resolved before anything reads the scope.
+   * One branch at a time was the old default, but the report is now a column
+   * per location read side by side, and opening it on a single branch hides the
+   * comparison it exists for.
+   */
+  if (query.type === "inventory-summary" && !query.locationId) query = { ...query, locationId: "all" };
   const allBranches = query.type === "inventory-summary" && query.locationId === "all";
   if (query.locationId && !allBranches && !locations.some((location) => location.id === query.locationId)) {
     throw new AuthorizationError("Report location is not an active authorized location");
   }
-  // Resolve defaults before both options and rows; an omitted branch is never All.
-  if (query.type === "inventory-summary" && !query.locationId) query = { ...query, locationId: locations[0]?.id };
   const effectiveLocations = allBranches || !query.locationId ? locations : locations.filter((location) => location.id === query.locationId);
   const { filters, idsByPerson } = await options(query, locations, effectiveLocations);
   return { query, effectiveLocations, filters, idsByPerson };
@@ -312,6 +347,42 @@ export async function getReportOptions(actor: AuthContext, rawQuery: unknown) {
  * Shared by both sales reports so one part is described identically wherever it
  * appears.
  */
+/*
+ * The same vehicles as fitmentByProductFor, kept in two columns instead of one
+ * sentence, because the stock sheet this report is read against prints CAR
+ * MODEL and YEAR MODEL side by side.
+ */
+async function vehicleColumnsFor(productIds: string[]): Promise<Map<string, VehicleColumns>> {
+  const byProduct = new Map<string, VehicleColumns>();
+  if (productIds.length === 0) return byProduct;
+  const rows = await prisma.productVehicleCompatibility.findMany({
+    where: { productId: { in: productIds } },
+    select: { productId: true, make: true, model: true, yearsLabel: true, startYear: true, endYear: true },
+    orderBy: [{ make: "asc" }, { model: "asc" }, { startYear: "asc" }],
+  });
+  const parts = new Map<string, { models: string[]; years: string[] }>();
+  for (const row of rows) {
+    const entry = parts.get(row.productId) ?? { models: [], years: [] };
+    const model = [row.make, row.model].filter(Boolean).join(" ").trim();
+    if (model && !entry.models.includes(model)) entry.models.push(model);
+    const years = vehicleYears(row);
+    if (years && !entry.years.includes(years)) entry.years.push(years);
+    parts.set(row.productId, entry);
+  }
+  for (const [productId, entry] of parts) {
+    byProduct.set(productId, { carModel: entry.models.join(", "), yearModel: entry.years.join(", ") });
+  }
+  return byProduct;
+}
+
+/** The years as the product screen reads them, from the label or the range. */
+function vehicleYears(row: { yearsLabel: string | null; startYear: number | null; endYear: number | null }) {
+  if (row.yearsLabel) return row.yearsLabel;
+  if (!row.startYear) return "all years";
+  if (row.startYear === row.endYear) return String(row.startYear);
+  return `${row.startYear}-${row.endYear ?? "present"}`;
+}
+
 async function fitmentByProductFor(productIds: string[]): Promise<Map<string, string[]>> {
   const byProduct = new Map<string, string[]>();
   if (productIds.length === 0) return byProduct;
@@ -793,19 +864,21 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
     };
     const products = effectiveLocations.length ? await prisma.product.findMany({
       where: productWhere,
-      select: { id: true, itemCode: true, name: true, brand: true, status: true, reorderLevel: true },
+      select: { id: true, itemCode: true, name: true, description: true, imageKey: true, brand: true, status: true, reorderLevel: true },
       orderBy: { itemCode: "asc" },
     }) : [];
-    const [balances, fitmentByProduct] = await Promise.all([
+    const [balances, vehiclesByProduct] = await Promise.all([
       products.length ? prisma.inventoryBalance.findMany({
         where: { locationId: scopedLocation, productId: { in: products.map((product) => product.id) } },
         select: { id: true, productId: true, locationId: true, onHand: true, reserved: true, quarantined: true },
       }) : Promise.resolve([]),
-      fitmentByProductFor(products.map((product) => product.id)),
+      vehicleColumnsFor(products.map((product) => product.id)),
     ]);
-    const rows = buildInventoryRows(products, effectiveLocations, balances, fitmentByProduct);
+    const rows = buildInventoryRows(products, effectiveLocations, balances, vehiclesByProduct);
     return {
-      ...base, type: "inventory-summary", dateFrom: null, dateTo: null, appliedFilters: selectedFilters(query, filters, undatedRange), rows,
+      ...base, type: "inventory-summary", dateFrom: null, dateTo: null, appliedFilters: selectedFilters(query, filters, undatedRange),
+      locations: effectiveLocations.map((location) => ({ id: location.id, code: location.code, name: location.name })),
+      rows,
       branchTotals: effectiveLocations.map((location) => ({ locationId: location.id, available: rows.reduce((sum, row) => sum + row.availableByLocation[location.id], 0) })),
       totals: {
         productCount: rows.length,

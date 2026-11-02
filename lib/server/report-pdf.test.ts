@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-import type { CollectionsReport, SalespersonSalesReport } from "@/lib/contracts/reports";
+import type { CollectionsReport, InventorySummaryReport, SalespersonSalesReport } from "@/lib/contracts/reports";
 
 vi.mock("server-only", () => ({}));
 
@@ -90,6 +90,57 @@ describe("sales report PDF exports", () => {
         rows: [{ ...row, source: "Order Downpayment", units: 0, totalAmount: 10_000, itemsPending: true }],
         grandTotal: { ...sales.grandTotal, units: 0, totalAmount: 10_000, averageSale: 10_000 },
       },
+      metadata,
+    );
+    expect(header(body)).toBe("%PDF-");
+  });
+});
+
+/*
+ * One row per product with a column per location, the Stock Room first. The
+ * row count a branch reads is in the thousands and every cell is drawn, so the
+ * table has to survive a product holding nothing anywhere -- the case the old
+ * report dropped and this one prints.
+ */
+const inventory: InventorySummaryReport = {
+  type: "inventory-summary",
+  generatedAt: "2026-11-02T04:46:00.000Z",
+  dateFrom: null,
+  dateTo: null,
+  effectiveScope: [{ id: "stock-room", label: "SR - Stock Room" }, { id: "branch-bl", label: "BL - Binan Laguna" }],
+  appliedFilters: [{ label: "Branch", value: "All authorized" }],
+  filters: { locations: [], defaultLocationId: "all", salespersons: [], brands: [] },
+  locations: [
+    { id: "stock-room", code: "SR", name: "Stock Room" },
+    { id: "branch-bl", code: "BL", name: "Binan Laguna" },
+  ],
+  rows: [
+    {
+      id: "product-1", productId: "product-1", itemCode: "4", product: "NUDGEBAR",
+      description: "R6 w/ Ranger logo, chase light & shackle", carModel: "Ford Ranger", yearModel: "2023-2026",
+      imageUrl: "/api/products/product-1/image", brand: "RS", productStatus: "ACTIVE",
+      available: 3, availableByLocation: { "stock-room": 1, "branch-bl": 2 },
+    },
+    {
+      id: "product-2", productId: "product-2", itemCode: "5", product: "ROLLERLID",
+      description: "", carModel: "", yearModel: "", imageUrl: null, brand: "Unbranded", productStatus: "ACTIVE",
+      available: 0, availableByLocation: { "stock-room": 0, "branch-bl": 0 },
+    },
+  ],
+  branchTotals: [{ locationId: "stock-room", available: 1 }, { locationId: "branch-bl", available: 2 }],
+  totals: { productCount: 2, locationCount: 2, available: 3 },
+};
+
+describe("inventory summary PDF export", () => {
+  it("prints a column per location, and a product holding nothing anywhere", async () => {
+    const body = await reportPdf.createReportPdf(inventory, metadata);
+    expect(header(body)).toBe("%PDF-");
+    expect(body.byteLength).toBeGreaterThan(1000);
+  });
+
+  it("prints with one location in scope, where there is nothing to compare", async () => {
+    const body = await reportPdf.createReportPdf(
+      { ...inventory, locations: [inventory.locations[0]], branchTotals: [inventory.branchTotals[0]], totals: { ...inventory.totals, locationCount: 1 } },
       metadata,
     );
     expect(header(body)).toBe("%PDF-");

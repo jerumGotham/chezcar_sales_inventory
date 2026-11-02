@@ -68,18 +68,23 @@ describe("report filters", () => {
 });
 
 describe("report quantity projections", () => {
-  it("omits products without positive stock in effective locations", () => {
+  /*
+   * A product holding nothing in the locations being read is still a line, at
+   * zero. The report is the branches' stock sheet, and a line that disappears
+   * when it runs out is a line nobody can reorder from.
+   */
+  it("lists a product with no stock in the effective locations at zero", () => {
     const rows = reports.buildInventoryRows(
-      [{ id: "product-1", itemCode: "P-1", name: "Product", brand: null, status: "ACTIVE", reorderLevel: 3 }],
+      [{ id: "product-1", itemCode: "P-1", name: "Product", description: null, imageKey: null, brand: null, status: "ACTIVE", reorderLevel: 3 }],
       [{ id: "allowed", code: "A", name: "Allowed" }],
       [{ id: "hidden-balance", productId: "product-1", locationId: "hidden", onHand: 9, reserved: 0, quarantined: 0 }],
     );
 
-    expect(rows).toEqual([]);
+    expect(rows).toEqual([expect.objectContaining({ itemCode: "P-1", available: 0, availableByLocation: { allowed: 0 } })]);
   });
 
   it("groups positive stock once per product with scoped branch contributions", () => {
-    const product = { id: "product-1", itemCode: "P-1", name: "Product", brand: null, status: "ACTIVE", reorderLevel: 3 };
+    const product = { id: "product-1", itemCode: "P-1", name: "Product", description: "Bolt-on bumper", imageKey: "products/p-1.jpg", brand: null, status: "ACTIVE", reorderLevel: 3 };
     const locations = ["first", "second", "negative", "missing"].map((id) => ({ id, code: id, name: id }));
     const balances = [
       { id: "balance-1", productId: product.id, locationId: "first", onHand: 10, reserved: 2, quarantined: 3 },
@@ -88,16 +93,20 @@ describe("report quantity projections", () => {
       { id: "hidden-balance", productId: product.id, locationId: "hidden", onHand: 100, reserved: 0, quarantined: 0 },
       { id: "zero-balance", productId: "product-2", locationId: "first", onHand: 4, reserved: 1, quarantined: 3 },
     ];
-    const fitment = new Map([[product.id, ["Toyota Hilux 2016-2020"]]]);
-    expect(reports.buildInventoryRows([product, { ...product, id: "product-2", itemCode: "P-2" }], locations, balances, fitment)).toEqual([{
-      id: product.id, productId: product.id, itemCode: "P-1", product: "Product", fitment: ["Toyota Hilux 2016-2020"], brand: "Unbranded", productStatus: "ACTIVE",
+    const vehicles = new Map([[product.id, { carModel: "Toyota Hilux", yearModel: "2016-2020" }]]);
+    expect(reports.buildInventoryRows([product], locations, balances, vehicles)).toEqual([{
+      id: product.id, productId: product.id, itemCode: "P-1", product: "Product", description: "Bolt-on bumper",
+      carModel: "Toyota Hilux", yearModel: "2016-2020", imageUrl: "/api/products/product-1/image",
+      brand: "Unbranded", productStatus: "ACTIVE",
       available: 8, availableByLocation: { first: 5, second: 3, negative: 0, missing: 0 },
     }]);
-    // A part that fits nothing in particular still lists, with an empty fitment.
-    expect(reports.buildInventoryRows([product], [locations[0]], balances)).toEqual([expect.objectContaining({ fitment: [] })]);
+    // A part that fits nothing in particular still lists, with both columns empty.
+    expect(reports.buildInventoryRows([product], [locations[0]], balances)).toEqual([expect.objectContaining({ carModel: "", yearModel: "" })]);
     expect(reports.buildInventoryRows([product], [locations[0]], balances)).toEqual([expect.objectContaining({ available: 5, availableByLocation: { first: 5 } })]);
-    expect(reports.buildInventoryRows([product], [locations[2]], balances)).toEqual([]);
-    expect(reports.buildInventoryRows([product], [], balances)).toEqual([]);
+    // A product with no photo offers no link to one.
+    expect(reports.buildInventoryRows([{ ...product, imageKey: null }], [locations[0]], balances)).toEqual([expect.objectContaining({ imageUrl: null })]);
+    // Read across no locations at all, every product still lists, at zero.
+    expect(reports.buildInventoryRows([product], [], balances)).toEqual([expect.objectContaining({ available: 0, availableByLocation: {} })]);
   });
 
   it("attributes only unassigned unresolved warranty quarantine", () => {
@@ -218,7 +227,7 @@ describe("sales and salesperson sales reports", () => {
    * only ever come back empty. Stock Movement is the exception: stock is held
    * and moved there, which is what that report measures.
    */
-  it.each(["sales", "collections", "salesperson-sales", "inventory-summary", "returns-warranty"] as const)("offers only branches in the %s location filter", async (type) => {
+  it.each(["sales", "collections", "salesperson-sales", "returns-warranty"] as const)("offers only branches in the %s location filter", async (type) => {
     reportPrisma.payment.findMany.mockResolvedValue([]);
     reportPrisma.sale.findMany.mockResolvedValue([]);
     reportPrisma.backjob.findMany.mockResolvedValue([]);
@@ -227,18 +236,20 @@ describe("sales and salesperson sales reports", () => {
     reportPrisma.product.findMany.mockResolvedValue([]);
     reportPrisma.inventoryBalance.findMany.mockResolvedValue([]);
     reportPrisma.saleLine.findMany.mockResolvedValue([]);
-    // Inventory Summary is the one report with no period to ask for.
-    await reports.getReport(actor, type === "inventory-summary" ? { type, locationId: "branch" } : { type, ...query });
+    await reports.getReport(actor, { type, ...query });
     expect(reportPrisma.location.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ type: "BRANCH" }),
     }));
   });
 
-  it("keeps every stock location in the stock movement filter", async () => {
+  // Stock is held and moved in the warehouse, so the two reports about stock
+  // itself read it alongside the branches.
+  it.each(["stock-movement", "inventory-summary"] as const)("keeps every stock location in the %s filter", async (type) => {
     reportPrisma.product.findMany.mockResolvedValue([]);
     reportPrisma.inventoryBalance.findMany.mockResolvedValue([]);
     reportPrisma.saleLine.findMany.mockResolvedValue([]);
-    await reports.getReport(actor, { type: "stock-movement", ...query });
+    reportPrisma.productVehicleCompatibility.findMany.mockResolvedValue([]);
+    await reports.getReport(actor, type === "inventory-summary" ? { type, locationId: "branch" } : { type, ...query });
     const [call] = reportPrisma.location.findMany.mock.calls.at(-1) as [{ where: Record<string, unknown> }];
     expect(call.where).not.toHaveProperty("type");
   });

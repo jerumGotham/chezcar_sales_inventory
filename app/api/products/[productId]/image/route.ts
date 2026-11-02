@@ -1,5 +1,6 @@
 import {
   authorizationErrorResponse,
+  requireAnyCapability,
   requireCapability,
 } from "@/lib/server/authorization";
 import {
@@ -37,7 +38,13 @@ function errorResponse(error: unknown) {
 
 export async function GET(request: Request, context: Context) {
   try {
-    await requireCapability(request.headers, "products:view");
+    /*
+     * Inventory Summary prints the product photo, so a role granted that report
+     * and nothing else still has to fetch it; without this the column came back
+     * broken for exactly the people the report was built for. Reading a photo
+     * is no more than the report already shows them.
+     */
+    await requireAnyCapability(request.headers, ["products:view", "reports:inventory-summary"]);
     const { productId } = await context.params;
     const image = await readProductImage(productId);
     return new Response(image.body, {

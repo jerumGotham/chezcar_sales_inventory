@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Boxes, FileText, Filter, Loader2, Receipt, RefreshCw, RotateCcw, ShieldCheck, TrendingDown, Users, Wallet, type LucideIcon } from "lucide-react";
 import { useState, useSyncExternalStore } from "react";
+import Image from "next/image";
 
 import { PageShell } from "@/components/page-shell";
 import { SortableHeader, useTableSort, type SortState } from "@/components/sortable-header";
@@ -26,7 +27,6 @@ import {
   RETURN_STATUSES,
   SALE_SOURCES,
   STOCK_MOVEMENT_GRADES,
-  fitmentLabel,
   reportMonthEnd,
   type InventorySummaryReport,
   type ReportFilterOptions,
@@ -247,11 +247,11 @@ function ReportsContent() {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
             {isDated(draft.type) && <Field label="From" helper={salesFilters ? (draft.view === "VERIFIED_DATE" ? "Based on verification date (Manila)." : "Based on sale date (Manila).") : movementFilters ? "Sales counted inside this period (Manila)." : "Based on case creation date (Manila)."}><Input type="date" value={draft.dateFrom} onChange={(event) => changeDateFrom(event.target.value)} /></Field>}
             {isDated(draft.type) && <Field label="To" helper="Inclusive; defaults to month-end."><Input type="date" value={draft.dateTo} onChange={(event) => { setCustomDateTo(Boolean(event.target.value)); change("dateTo", event.target.value); }} /></Field>}
-            <Field label={inventoryFilters ? "Branch" : "Location"} helper={inventoryFilters ? "Defaults to one branch. Select All Branches to compare." : undefined}>
+            <Field label="Location" helper={inventoryFilters ? "Every location side by side by default. Pick one to read it on its own." : undefined}>
               <NativeSelect
                 value={draft.locationId || (inventoryFilters ? locationOptions?.defaultLocationId ?? "" : "")}
                 onChange={changeLocation}
-                options={inventoryFilters ? [{ id: "all", label: "All Branches (authorized)" }, ...(locationOptions?.locations ?? [])] : locationOptions?.locations ?? []}
+                options={inventoryFilters ? [{ id: "all", label: "All locations (authorized)" }, ...(locationOptions?.locations ?? [])] : locationOptions?.locations ?? []}
                 allLabel={inventoryFilters ? optionsLoading ? "Loading default branch..." : locationOptions?.locations.length ? "Default branch" : "No authorized active branches" : "All authorized"}
               />
             </Field>
@@ -486,22 +486,53 @@ function ReportView({ report }: { report: ReportResult }) {
   </>;
 }
 
+/*
+ * Laid out as the stock sheet the branches already read is laid out: the
+ * product on the left, then one short column of stock per location with the
+ * total beside them. The photo is here and not in the PDF, where 1,500 embedded
+ * images would make a file nobody waits for.
+ */
 function InventoryView({ report }: { report: InventorySummaryReport }) {
   const [page, setPage] = useState(1);
-  const comparison = report.effectiveScope.length > 1;
+  /*
+   * The stock columns are what this report is read for, so the prose columns
+   * are held to a width that leaves them on the page; the full text stays in
+   * each cell's tooltip and in the PDF, which wraps rather than truncates.
+   */
+  const columns = report.locations;
+  const comparison = columns.length > 1;
+  const stockColumns = comparison ? columns : [];
   // Sorted before paging, so a header orders every filtered product rather than one page.
-  const columnValues = (row: InventorySummaryReport["rows"][number]): SortCell[] => [row.itemCode, row.product, fitmentLabel(row.fitment), row.brand, ...(comparison ? report.effectiveScope.map((location) => row.availableByLocation[location.id]) : []), row.available];
-  const { rows: sortedRows, sort, toggle } = useTableSort(report.rows, columnAccessors(columnValues, 5 + (comparison ? report.effectiveScope.length : 0)));
+  const columnValues = (row: InventorySummaryReport["rows"][number]): SortCell[] => [row.itemCode, row.product, row.description, row.brand, row.carModel, row.yearModel, null, ...stockColumns.map((location) => row.availableByLocation[location.id]), row.available];
+  const { rows: sortedRows, sort, toggle } = useTableSort(report.rows, columnAccessors(columnValues, 8 + stockColumns.length));
   const pageSize = 25;
   const pageCount = Math.max(1, Math.ceil(report.rows.length / pageSize));
   const currentPage = Math.min(page, pageCount);
   const start = (currentPage - 1) * pageSize;
-  const headers = ["Code", "Product", "Fits", "Brand", ...(comparison ? report.effectiveScope.map((location) => location.label) : []), comparison ? "Total available" : "Available"];
-  const totals = ["FULL FILTERED TOTAL", "", "", "", ...(comparison ? report.branchTotals.map((total) => String(total.available)) : []), String(report.totals.available)];
+  const headers = ["Item code", "Item name", "Description", "Brand", "Car model", "Year model", "Photo", ...stockColumns.map((location) => location.code), comparison ? "Total stock available" : "Available"];
+  const totals = ["FULL FILTERED TOTAL", "", "", "", "", "", "", ...(comparison ? stockColumns.map((location) => String(report.branchTotals.find((total) => total.locationId === location.id)?.available ?? 0)) : []), String(report.totals.available)];
   return <>
-    <p className="text-sm text-muted-foreground">Available = on hand minus reserved and quarantined. Only products with positive available stock in the selected branches are included, once per product. Comparison cells show 0 where no positive stock is available. In-transit stock is excluded.</p>
-    <div className="grid gap-3 sm:grid-cols-3"><Metric label="Products (full filtered set)" value={String(report.totals.productCount)} /><Metric label="Branches in scope" value={String(report.totals.locationCount)} /><Metric label="Available units (full filtered set)" value={String(report.totals.available)} /></div>
-    <Table headers={headers} numericFrom={4} footerRow={totals} sorting={{ sort, onSort: (key) => { toggle(key); setPage(1); } }} rows={sortedRows.slice(start, start + pageSize).map((row) => [row.itemCode, row.product, fitmentLabel(row.fitment), row.brand, ...(comparison ? report.effectiveScope.map((location) => String(row.availableByLocation[location.id])) : []), String(row.available)])} />
+    <p className="text-sm text-muted-foreground">Available = on hand minus reserved and quarantined, so stock already promised to a customer order is not offered twice. Every product matching the filters is listed, including the ones holding nothing anywhere, so a line that has run out can still be seen and reordered. In-transit stock is excluded.{comparison ? ` Columns are ${stockColumns.map((location) => `${location.code} (${location.name})`).join(", ")}.` : ""}</p>
+    <div className="grid gap-3 sm:grid-cols-3"><Metric label="Products (full filtered set)" value={String(report.totals.productCount)} /><Metric label="Locations in scope" value={String(report.totals.locationCount)} /><Metric label="Available units (full filtered set)" value={String(report.totals.available)} /></div>
+    <Table headers={headers} numericFrom={7} unsortable={[6]} footerRow={totals} sorting={{ sort, onSort: (key) => { toggle(key); setPage(1); } }} rows={sortedRows.slice(start, start + pageSize).map((row) => [
+      row.itemCode,
+      <span key="name" className="block max-w-[8rem] truncate" title={row.product}>{row.product}</span>,
+      row.description
+        ? <span key="description" className="block max-w-[10rem] truncate" title={row.description}>{row.description}</span>
+        : <span className="text-muted-foreground">--</span>,
+      row.brand,
+      row.carModel
+        ? <span key="car" className="block max-w-[7rem] truncate" title={row.carModel}>{row.carModel}</span>
+        : <span className="text-muted-foreground">--</span>,
+      row.yearModel
+        ? <span key="year" className="block max-w-[6rem] truncate" title={row.yearModel}>{row.yearModel}</span>
+        : <span className="text-muted-foreground">--</span>,
+      row.imageUrl
+        ? <Image src={row.imageUrl} alt="" width={44} height={44} unoptimized className="h-11 w-11 rounded border border-border object-cover" />
+        : <span className="text-muted-foreground">--</span>,
+      ...stockColumns.map((location) => String(row.availableByLocation[location.id])),
+      String(row.available),
+    ])} />
     <nav aria-label="Inventory products pagination" className="flex flex-wrap items-center justify-between gap-3">
       <p className="text-xs text-muted-foreground">{report.rows.length ? `${start + 1}-${Math.min(start + pageSize, report.rows.length)}` : "0"} of {report.rows.length} products | 25 per page. Totals and PDF include all filtered products.</p>
       <TablePagination page={currentPage} totalPages={pageCount} onPageChange={setPage} />

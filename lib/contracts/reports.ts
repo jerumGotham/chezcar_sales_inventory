@@ -62,11 +62,6 @@ export type ReportFilterOptions = {
   brands: ReportOption[];
 };
 
-/** What a product fits, written as the product screen writes it. */
-export function fitmentLabel(fitment: string[]) {
-  return fitment.length ? fitment.join(", ") : "Universal / not specified";
-}
-
 /**
  * Which person a receipt belongs to, for grouping and for the filter. The
  * Personnel id splits one person's receipts into as many piles as they have
@@ -191,16 +186,34 @@ export type InventoryReportRow = {
   productId: string;
   itemCode: string;
   product: string;
-  /** What the part fits, the same reading the product screen shows. */
-  fitment: string[];
+  description: string;
+  /**
+   * What the part fits, split the way the stock sheet this report is read
+   * against splits it. A product fitting several vehicles joins them with a
+   * comma in both columns, so which year belongs to which model is lost; the
+   * sheet reads the same way, and the pairing lives on the product screen.
+   */
+  carModel: string;
+  yearModel: string;
+  /** Null when the product has no photo, which most do not. */
+  imageUrl: string | null;
   brand: string;
   productStatus: string;
   available: number;
   availableByLocation: Record<string, number>;
 };
 
+/** One column of stock, named as the sheet names it: the location code. */
+export type InventoryLocationColumn = { id: string; code: string; name: string };
+
 export type InventorySummaryReport = ReportMeta & {
   type: "inventory-summary";
+  /**
+   * The stock columns in the order they are printed, the Stock Room ahead of
+   * the branches. Stock is held there as much as anywhere, so it is a column
+   * here even though it is kept out of every report built from what was sold.
+   */
+  locations: InventoryLocationColumn[];
   rows: InventoryReportRow[];
   branchTotals: Array<{ locationId: string; available: number }>;
   totals: {
