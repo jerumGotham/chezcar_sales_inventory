@@ -151,6 +151,23 @@ export async function createReportPdf(report: ReportResult, metadata: { generate
         ...report.locations.map((location) => String(report.branchTotals.find((total) => total.locationId === location.id)?.available ?? 0)),
         String(report.totals.available)],
     ], true);
+    /*
+     * Its own block after the sheet rather than another column on it: this
+     * answers a different question from the quantities above, in a different
+     * unit, and a money column beside the stock columns invited reading one as
+     * the other.
+     */
+    text(`Priced the way the branch would sell it: its own branch price where one is set, the product price otherwise, which is how a POS line is priced. This is retail value, not cost -- cost is only recorded for stock received through Receive from Supplier, so stock carried over from the opening count has none and a cost figure would read a fraction of the truth.${report.totals.unpricedLines ? ` ${report.totals.unpricedLines} line(s) hold stock that no price covers and count as zero.` : ""}`);
+    table("Stock value by location", [
+      { header: "Location", width: 2.4 }, { header: "Code", width: 0.8 },
+      { header: "Available units", width: 1.4, numeric: true }, { header: "Stock value", width: 1.9, numeric: true },
+    ], [
+      ...report.locations.map((location) => {
+        const total = report.branchTotals.find((entry) => entry.locationId === location.id);
+        return [location.name, location.code, String(total?.available ?? 0), money(total?.value ?? 0)];
+      }),
+      ["OVERALL TOTAL", "", String(report.totals.available), money(report.totals.value)],
+    ], true);
   } else if (report.type === "stock-movement") {
     const totals = report.totals;
     text(`Sold counts every posted sale in the period, voided sales excluded, so it matches what left the shelf whether or not Accounting has verified the receipt. Sells every is how often one unit moved across the ${report.periodDays} days in this period: at least once every ${FAST_MOVING_DAYS_PER_SALE} days is Fast, slower is Slow, and nothing sold at all is NO MOVEMENT.`);

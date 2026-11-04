@@ -537,6 +537,25 @@ function InventoryView({ report }: { report: InventorySummaryReport }) {
       <p className="text-xs text-muted-foreground">{report.rows.length ? `${start + 1}-${Math.min(start + pageSize, report.rows.length)}` : "0"} of {report.rows.length} products | 25 per page. Totals and PDF include all filtered products.</p>
       <TablePagination page={currentPage} totalPages={pageCount} onPageChange={setPage} />
     </nav>
+    <div className="space-y-2">
+      <Table
+        title="Stock value by location"
+        numericFrom={2}
+        headers={["Location", "Code", "Available units", "Stock value"]}
+        rows={report.locations.map((location) => {
+          const total = report.branchTotals.find((entry) => entry.locationId === location.id);
+          return [location.name, location.code, String(total?.available ?? 0), peso.format(total?.value ?? 0)];
+        })}
+        sortValues={report.locations.map((location) => {
+          const total = report.branchTotals.find((entry) => entry.locationId === location.id);
+          return [location.name, location.code, total?.available ?? 0, total?.value ?? 0];
+        })}
+        footerRow={["OVERALL TOTAL", "", String(report.totals.available), peso.format(report.totals.value)]}
+      />
+      <p className="text-xs text-muted-foreground">
+        The same available stock as the table above, priced the way the branch would sell it: its own branch price where one is set, the product price otherwise, which is how a POS line is priced. This is retail value, not cost. Cost is only recorded for stock received through Receive from Supplier, so stock carried over from the opening count has none and a cost figure would read a fraction of the truth.{report.totals.unpricedLines ? ` ${report.totals.unpricedLines} line(s) hold stock that no price covers and count as zero here.` : ""}
+      </p>
+    </div>
   </>;
 }
 

@@ -215,11 +215,27 @@ export type InventorySummaryReport = ReportMeta & {
    */
   locations: InventoryLocationColumn[];
   rows: InventoryReportRow[];
-  branchTotals: Array<{ locationId: string; available: number }>;
+  branchTotals: Array<{ locationId: string; available: number; value: number }>;
+  /**
+   * What the available stock is worth at the price the branch would actually
+   * sell it for: its own ProductBranchPrice where one is set, the product
+   * price otherwise, which is the rule a POS line is priced by. Cost is
+   * deliberately not used: InventoryBalance.unitCost is only written by
+   * Receive from Supplier, so everything from the opening import still carries
+   * zero and a cost valuation would read a small fraction of the truth while
+   * looking like a real figure.
+   */
   totals: {
     productCount: number;
     locationCount: number;
     available: number;
+    value: number;
+    /**
+     * Lines holding stock that no price covers, counted at zero. Disclosed
+     * beside the figure rather than hidden inside it, because a valuation
+     * quietly missing lines is one nobody can reconcile.
+     */
+    unpricedLines: number;
   };
 };
 

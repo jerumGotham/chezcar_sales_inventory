@@ -109,6 +109,51 @@ describe("report quantity projections", () => {
     expect(reports.buildInventoryRows([product], [], balances)).toEqual([expect.objectContaining({ available: 0, availableByLocation: {} })]);
   });
 
+  /*
+   * The valuation has to price a unit the way the branch would sell it, or the
+   * figure disagrees with the till. A branch price beats the product price, and
+   * a line no price covers is counted at zero and disclosed rather than
+   * silently dropped.
+   */
+  it("values available stock at the branch price, then the product price", () => {
+    const locations = [{ id: "bl", code: "BL", name: "Binan" }, { id: "qc", code: "QC", name: "Quezon City" }];
+    const rows = [
+      { productId: "priced", availableByLocation: { bl: 2, qc: 3 } },
+      { productId: "branch-priced", availableByLocation: { bl: 1, qc: 1 } },
+      { productId: "unpriced", availableByLocation: { bl: 4, qc: 0 } },
+      { productId: "empty", availableByLocation: { bl: 0, qc: 0 } },
+    ] as unknown as Parameters<typeof reports.inventoryStockValue>[0];
+    const value = reports.inventoryStockValue(
+      rows,
+      locations,
+      new Map([["priced", 150_50], ["branch-priced", 100_00], ["unpriced", 0]]),
+      new Map([["branch-priced:qc", 250_00]]),
+    );
+
+    // BL: 2 x 150.50 + 1 x 100.00. QC: 3 x 150.50 + 1 x 250.00 (its own price).
+    expect(value.byLocation.get("bl")).toBe(401);
+    expect(value.byLocation.get("qc")).toBe(701.5);
+    expect(value.total).toBe(1102.5);
+    // Held at BL with no price, and not counted again where it holds nothing.
+    expect(value.unpricedLines).toBe(1);
+  });
+
+  /*
+   * Summed in centavos on purpose: adding 0.10 three thousand times as a float
+   * leaves dust, and a stock valuation is read against a spreadsheet.
+   */
+  it("keeps the valuation exact over many lines", () => {
+    const rows = Array.from({ length: 3_000 }, (_, index) => ({ productId: `p-${index}`, availableByLocation: { bl: 1 } })) as unknown as Parameters<typeof reports.inventoryStockValue>[0];
+    const value = reports.inventoryStockValue(
+      rows,
+      [{ id: "bl", code: "BL", name: "Binan" }],
+      new Map(Array.from({ length: 3_000 }, (_, index) => [`p-${index}`, 10] as const)),
+      new Map(),
+    );
+
+    expect(value.total).toBe(300);
+  });
+
   it("attributes only unassigned unresolved warranty quarantine", () => {
     expect(reports.unassignedWarrantyQuarantine(5, 1, 2, false)).toBe(2);
     expect(reports.unassignedWarrantyQuarantine(2, 1, 5, false)).toBe(0);

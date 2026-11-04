@@ -127,8 +127,11 @@ const inventory: InventorySummaryReport = {
       available: 0, availableByLocation: { "stock-room": 0, "branch-bl": 0 },
     },
   ],
-  branchTotals: [{ locationId: "stock-room", available: 1 }, { locationId: "branch-bl", available: 2 }],
-  totals: { productCount: 2, locationCount: 2, available: 3 },
+  branchTotals: [
+    { locationId: "stock-room", available: 1, value: 1500 },
+    { locationId: "branch-bl", available: 2, value: 3200 },
+  ],
+  totals: { productCount: 2, locationCount: 2, available: 3, value: 4700, unpricedLines: 1 },
 };
 
 describe("inventory summary PDF export", () => {

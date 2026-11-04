@@ -263,6 +263,46 @@ export function buildInventoryRows(products: InventoryProduct[], locations: Repo
   });
 }
 
+/*
+ * What the available stock is worth, one figure per location. Priced the way
+ * the branch would sell it -- its own branch price where one is set, the
+ * product price otherwise -- because that is the rule customer-sales prices a
+ * line by, so the valuation and the till cannot disagree.
+ *
+ * Cost would be the figure accounting wants and is not available: unitCost is
+ * only written when stock arrives through Receive from Supplier, so every line
+ * from the opening import still reads zero.
+ *
+ * Summed in centavos. Pesos are two-decimal values and a float sum over
+ * thousands of lines leaves dust that shows up in the total.
+ */
+export function inventoryStockValue(
+  rows: InventoryReportRow[],
+  locations: ReportLocation[],
+  basePrice: Map<string, number>,
+  branchPrice: Map<string, number>,
+): { byLocation: Map<string, number>; total: number; unpricedLines: number } {
+  const byLocation = new Map<string, number>();
+  let totalCents = 0;
+  let unpricedLines = 0;
+  for (const location of locations) {
+    let cents = 0;
+    for (const row of rows) {
+      const quantity = row.availableByLocation[location.id] ?? 0;
+      if (quantity <= 0) continue;
+      const unit = branchPrice.get(`${row.productId}:${location.id}`) ?? basePrice.get(row.productId) ?? 0;
+      if (unit <= 0) {
+        unpricedLines += 1;
+        continue;
+      }
+      cents += quantity * unit;
+    }
+    byLocation.set(location.id, cents / 100);
+    totalCents += cents;
+  }
+  return { byLocation, total: totalCents / 100, unpricedLines };
+}
+
 export function unassignedWarrantyQuarantine(receivedQuantity: number, returnedQuantity: number, assignedClaimQuantity: number, releasedRepair: boolean) {
   return releasedRepair ? 0 : Math.max(receivedQuantity - returnedQuantity - assignedClaimQuantity, 0);
 }
@@ -864,26 +904,47 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
     };
     const products = effectiveLocations.length ? await prisma.product.findMany({
       where: productWhere,
-      select: { id: true, itemCode: true, name: true, description: true, imageKey: true, brand: true, status: true, reorderLevel: true },
+      select: { id: true, itemCode: true, name: true, description: true, imageKey: true, brand: true, status: true, reorderLevel: true, price: true },
       orderBy: { itemCode: "asc" },
     }) : [];
-    const [balances, vehiclesByProduct] = await Promise.all([
+    const [balances, vehiclesByProduct, branchPrices] = await Promise.all([
       products.length ? prisma.inventoryBalance.findMany({
         where: { locationId: scopedLocation, productId: { in: products.map((product) => product.id) } },
         select: { id: true, productId: true, locationId: true, onHand: true, reserved: true, quarantined: true },
       }) : Promise.resolve([]),
       vehicleColumnsFor(products.map((product) => product.id)),
+      /*
+       * Read in one query for the whole page rather than included per product:
+       * a branch price is the exception, not the rule, so the map is short.
+       */
+      products.length ? prisma.productBranchPrice.findMany({
+        where: { locationId: scopedLocation, productId: { in: products.map((product) => product.id) } },
+        select: { productId: true, locationId: true, price: true },
+      }) : Promise.resolve([]),
     ]);
     const rows = buildInventoryRows(products, effectiveLocations, balances, vehiclesByProduct);
+    const stockValue = inventoryStockValue(
+      rows,
+      effectiveLocations,
+      // Rounded to whole centavos here so the sum stays integer arithmetic.
+      new Map(products.map((product) => [product.id, product.price ? Math.round(product.price.toNumber() * 100) : 0])),
+      new Map(branchPrices.map((entry) => [`${entry.productId}:${entry.locationId}`, Math.round(entry.price.toNumber() * 100)])),
+    );
     return {
       ...base, type: "inventory-summary", dateFrom: null, dateTo: null, appliedFilters: selectedFilters(query, filters, undatedRange),
       locations: effectiveLocations.map((location) => ({ id: location.id, code: location.code, name: location.name })),
       rows,
-      branchTotals: effectiveLocations.map((location) => ({ locationId: location.id, available: rows.reduce((sum, row) => sum + row.availableByLocation[location.id], 0) })),
+      branchTotals: effectiveLocations.map((location) => ({
+        locationId: location.id,
+        available: rows.reduce((sum, row) => sum + row.availableByLocation[location.id], 0),
+        value: stockValue.byLocation.get(location.id) ?? 0,
+      })),
       totals: {
         productCount: rows.length,
         locationCount: effectiveLocations.length,
         available: rows.reduce((sum, row) => sum + row.available, 0),
+        value: stockValue.total,
+        unpricedLines: stockValue.unpricedLines,
       },
     };
   }
