@@ -188,10 +188,15 @@ describe("stock transfer posting", () => {
           transferId: draft.id,
         }),
       ).resolves.toMatchObject({ data: [{ id: draft.id }] });
+      // A draft has not gone anywhere, so neither date is set yet.
+      expect(draft).toMatchObject({ dispatchedAt: null, deliveredAt: null });
       const finalized = await finalizeTransfer(adminActor, draft.id, draft.version);
-      const dispatched = await dispatchTransfer(adminActor, finalized.id, finalized.version);
+      const dispatched = await dispatchTransfer(adminActor, finalized.id, finalized.version, "DR-4417");
 
       expect(dispatched.status).toBe("IN_TRANSIT");
+      // Gone out but not arrived: a dispatch date and no delivery date.
+      expect(dispatched.dispatchedAt).toEqual(expect.any(String));
+      expect(dispatched).toMatchObject({ deliveredAt: null, dispatchReceiptNumber: "DR-4417" });
       await expect(
         prisma.notification.findMany({
           where: {
@@ -225,6 +230,14 @@ describe("stock transfer posting", () => {
       const received = await confirmReceipt(branchActor, dispatched.id, dispatched.version);
 
       expect(received.status).toBe("RECEIVED");
+      expect(received.deliveredAt).toEqual(expect.any(String));
+      expect(received.dispatchedAt).toBe(dispatched.dispatchedAt);
+      // The list reads the same row, so the new columns are populated there too.
+      await expect(
+        listTransfers(adminActor, { page: 1, pageSize: 10, transferId: draft.id }),
+      ).resolves.toMatchObject({
+        data: [{ deliveredAt: received.deliveredAt, dispatchedAt: received.dispatchedAt, dispatchReceiptNumber: "DR-4417" }],
+      });
       await expect(
         prisma.notification.findMany({
           where: {
@@ -287,6 +300,18 @@ describe("stock transfer posting", () => {
         notes: "One missing",
         lines: [{ lineId: dispatched.lines[0].id, actualQuantity: 4, reason: "Items missing" }],
       });
+
+      /*
+       * A short delivery never reaches confirmReceipt, so it never gets a
+       * receivedAt. The goods did arrive, and the count that found them short
+       * is when: without this fallback the row reads as never delivered while
+       * its stock sits on the destination's shelf.
+       */
+      expect(reported.deliveredAt).toEqual(expect.any(String));
+      expect(reported.dispatchedAt).toBe(dispatched.dispatchedAt);
+      await expect(
+        prisma.stockTransfer.findUniqueOrThrow({ where: { id: reported.id }, select: { receivedAt: true } }),
+      ).resolves.toMatchObject({ receivedAt: null });
 
       await expect(listNotifications(stockActor)).resolves.toEqual(
         expect.arrayContaining([

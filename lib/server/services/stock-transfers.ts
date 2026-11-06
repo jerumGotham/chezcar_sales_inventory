@@ -1284,6 +1284,15 @@ function serializeTransfer(transfer: TransferRecord, includeAudit = false) {
     id: transfer.id,
     reference: transfer.reference,
     dispatchReceiptNumber: transfer.dispatchReceiptNumber,
+    dispatchedAt: transfer.dispatchedAt?.toISOString() ?? null,
+    /*
+     * The day the destination branch counted the goods in. A delivery that
+     * came up short never reaches receivedAt -- it leaves the exact-receipt
+     * path at the discrepancy report -- so that report is the arrival for
+     * those, and without it every resolved transfer reads as never delivered
+     * although its stock is on the shelf.
+     */
+    deliveredAt: (transfer.receivedAt ?? transfer.discrepancy?.reportedAt)?.toISOString() ?? null,
     receiptPhotoUrls: transfer.receiptPhotos.map((photo) => receiptPhotoUrl(photo.id)),
     status: transfer.status as StockTransferStatus,
     version: transfer.version,

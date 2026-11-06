@@ -62,6 +62,14 @@ type TransferMovement = {
 type Transfer = {
   id: string;
   reference: string;
+  /** When the goods left the source. Null until the transfer is dispatched. */
+  dispatchedAt: string | null;
+  /**
+   * When the destination counted them in: the exact receipt, or the
+   * discrepancy report for a delivery that came up short, which never
+   * reaches a receipt of its own.
+   */
+  deliveredAt: string | null;
   status: string;
   version: number;
   source: { id: string; code: string; name: string };
@@ -347,6 +355,16 @@ async function fetchTransferProductOptions(sourceId: string): Promise<Product[]>
   return json.data as Product[];
 }
 
+/*
+ * Dates only: a transfer is read beside the paper delivery receipt, which
+ * carries a day and not a time.
+ */
+const transferDay = new Intl.DateTimeFormat("en-PH", { dateStyle: "medium", timeZone: "Asia/Manila" });
+
+function transferDate(value: string | null) {
+  return value ? transferDay.format(new Date(value)) : <span className="text-muted-foreground">--</span>;
+}
+
 export function StockTransfersClient({
   capabilities,
   branches,
@@ -443,6 +461,9 @@ export function StockTransfersClient({
     reference: (transfer) => transfer.reference,
     source: (transfer) => transfer.source.name,
     destination: (transfer) => transfer.destination.name,
+    dispatched: (transfer) => transfer.dispatchedAt ?? "",
+    delivered: (transfer) => transfer.deliveredAt ?? "",
+    receipt: (transfer) => transfer.dispatchReceiptNumber ?? "",
     status: (transfer) => getTransferStatusLabel(transfer.status),
     products: (transfer) => transfer.lines.length,
   });
@@ -1936,12 +1957,15 @@ export function StockTransfersClient({
             </p>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[700px]">
+            <table className="w-full min-w-[1040px]">
               <thead className="bg-muted">
                 <tr>
                   <SortableHeader className="p-3 text-left" label="Reference" sortKey="reference" sort={transferSort.sort} onSort={transferSort.toggle} />
                   <SortableHeader className="p-3 text-left" label="Source" sortKey="source" sort={transferSort.sort} onSort={transferSort.toggle} />
                   <SortableHeader className="p-3 text-left" label="Destination" sortKey="destination" sort={transferSort.sort} onSort={transferSort.toggle} />
+                  <SortableHeader className="p-3 text-left" label="Dispatched" sortKey="dispatched" sort={transferSort.sort} onSort={transferSort.toggle} />
+                  <SortableHeader className="p-3 text-left" label="Delivered" sortKey="delivered" sort={transferSort.sort} onSort={transferSort.toggle} />
+                  <SortableHeader className="p-3 text-left" label="Delivery receipt" sortKey="receipt" sort={transferSort.sort} onSort={transferSort.toggle} />
                   <SortableHeader className="p-3 text-left" label="Status" sortKey="status" sort={transferSort.sort} onSort={transferSort.toggle} />
                   <SortableHeader className="p-3 text-left" label="Products" sortKey="products" sort={transferSort.sort} onSort={transferSort.toggle} />
                   <th className="p-3" />
@@ -1950,7 +1974,7 @@ export function StockTransfersClient({
               <tbody>
                 {transfers.isLoading ? (
                   <tr>
-                    <td className="p-6" colSpan={6}>
+                    <td className="p-6" colSpan={9}>
                       Loading transfers...
                     </td>
                   </tr>
@@ -1965,6 +1989,9 @@ export function StockTransfersClient({
                         {transfer.destination.name} ({transfer.destination.code}
                         )
                       </td>
+                      <td className="p-3 whitespace-nowrap">{transferDate(transfer.dispatchedAt)}</td>
+                      <td className="p-3 whitespace-nowrap">{transferDate(transfer.deliveredAt)}</td>
+                      <td className="p-3">{transfer.dispatchReceiptNumber || <span className="text-muted-foreground">--</span>}</td>
                       <td className="p-3">
                         <Badge
                           className={getTransferStatusClass(transfer.status)}
@@ -2008,7 +2035,7 @@ export function StockTransfersClient({
                   ))
                 ) : (
                   <tr>
-                    <td className="p-6 text-muted-foreground" colSpan={6}>
+                    <td className="p-6 text-muted-foreground" colSpan={9}>
                       No transfers yet.
                     </td>
                   </tr>
