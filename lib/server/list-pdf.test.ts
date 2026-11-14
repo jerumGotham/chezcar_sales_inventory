@@ -84,6 +84,40 @@ describe("list PDF exports", () => {
     expect(header(body)).toBe("%PDF-");
   });
 
+  const transferRow = {
+    reference: "ST-243fe7b2-992b-494c-960d-7df2e671b89c", source: "Quezon City (QC)",
+    destination: "La Union (LU)", dispatched: "Oct 14, 2026", delivered: "--",
+    deliveryReceipt: "DR-4417", status: "IN TRANSIT", products: 1,
+  };
+
+  it("renders a stock transfers copy", async () => {
+    const body = await listPdf.createStockTransfersPdf([transferRow], metadata);
+    expect(header(body)).toBe("%PDF-");
+    expect(body.byteLength).toBeGreaterThan(1000);
+  });
+
+  it("renders a transfer that has no delivery date or receipt", async () => {
+    // Most of the live history predates the receipt field and plenty of rows
+    // are still in transit, so the common row is the one with gaps in it.
+    const body = await listPdf.createStockTransfersPdf([
+      { ...transferRow, delivered: "--", deliveryReceipt: "--", status: "DRAFT", dispatched: "--" },
+    ], metadata);
+    expect(header(body)).toBe("%PDF-");
+  });
+
+  it("renders an empty stock transfers export", async () => {
+    const body = await listPdf.createStockTransfersPdf([], { ...metadata, appliedFilters: [] });
+    expect(header(body)).toBe("%PDF-");
+  });
+
+  it("says so when the transfer export was truncated", async () => {
+    // A silently short export is a wrong answer that looks like a right one.
+    const full = await listPdf.createStockTransfersPdf([transferRow], metadata, true);
+    const partial = await listPdf.createStockTransfersPdf([transferRow], metadata, false);
+    expect(header(full)).toBe("%PDF-");
+    expect(full.byteLength).toBeGreaterThan(partial.byteLength);
+  });
+
   it("renders an empty export without rows", async () => {
     const body = await listPdf.createCustomerOrdersPdf([], { ...metadata, appliedFilters: [] });
     expect(header(body)).toBe("%PDF-");

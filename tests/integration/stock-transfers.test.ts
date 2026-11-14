@@ -258,6 +258,7 @@ describe("stock transfer posting", () => {
       ).resolves.toMatchObject({
         data: [{ deliveredAt: received.deliveredAt, dispatchedAt: received.dispatchedAt, dispatchReceiptNumber: "DR-4417" }],
       });
+      const { exportTransfers } = await import("../../lib/server/services/stock-transfers");
       const dispatchDay = manilaDay(received.dispatchedAt!);
       const deliveryDay = manilaDay(received.deliveredAt!);
       // A single day given as both ends is inclusive, so it finds that day.
@@ -288,6 +289,36 @@ describe("stock transfer posting", () => {
           deliveredFrom: "2099-01-01",
         }),
       ).resolves.toMatchObject({ data: [], meta: { total: 0 } });
+      /*
+       * The export has to answer the same filters as the table, because it is
+       * sold to the user as a copy of it. A sheet selected differently from
+       * the rows above it is worse than no sheet: it looks like the same
+       * thing and quietly is not.
+       */
+      const exportedAll = await exportTransfers(adminActor, {});
+      expect(exportedAll.rows.map((row) => row.id)).toEqual([draft.id]);
+      expect(exportedAll.truncated).toBe(false);
+      const exportedByDay = await exportTransfers(adminActor, {
+        dispatchedFrom: dispatchDay,
+        dispatchedTo: dispatchDay,
+      });
+      expect(exportedByDay.rows.map((row) => row.id)).toEqual([draft.id]);
+      // The filters are named on the sheet so a printed copy says what it is.
+      expect(exportedByDay.appliedFilters).toEqual([
+        { label: "Dispatched", value: `${dispatchDay} to ${dispatchDay}` },
+      ]);
+      const exportedMiss = await exportTransfers(adminActor, { dispatchedTo: "2020-01-01" });
+      expect(exportedMiss.rows).toEqual([]);
+      // An open end is stated as such rather than implying a bound.
+      expect((await exportTransfers(adminActor, { deliveredFrom: deliveryDay })).appliedFilters).toEqual([
+        { label: "Delivered", value: `${deliveryDay} to Any` },
+      ]);
+      // A source filter prints the branch, not the opaque id.
+      expect(
+        (await exportTransfers(adminActor, { sourceId: fixture.locations.branches.SP.id })).appliedFilters,
+      ).toEqual([
+        { label: "Source", value: `${fixture.locations.branches.SP.name} (${fixture.locations.branches.SP.code})` },
+      ]);
       await expect(
         prisma.notification.findMany({
           where: {

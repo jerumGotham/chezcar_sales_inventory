@@ -10,6 +10,7 @@ import type { StylesConfig } from "react-select";
 import {
   AlertTriangle,
   CheckCircle2,
+  FileText,
   Printer,
   Trash2,
   X,
@@ -26,6 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { CapabilityId } from "@/lib/contracts/roles";
 import type { TransferProductOptionDto } from "@/lib/contracts/stock-transfers";
+import { transferStatusLabel } from "@/lib/stock-transfer-status";
 import { ReceiptPhotosInput } from "@/components/receipt-photos-input";
 import { ReceiptExtraPhotos } from "@/components/receipt-extra-photos";
 
@@ -292,14 +294,6 @@ function ProductSelect({
   );
 }
 
-function getTransferStatusLabel(status: string) {
-  if (status === "FOR_DISPATCH") return "Ready for dispatch";
-  if (status === "DISCREPANCY_REPORTED") return "Receiving issue";
-  if (status === "UNDER_REVIEW") return "Under investigation";
-  if (status === "CANCELLED") return "Cancelled";
-  return status.replaceAll("_", " ");
-}
-
 function getTransferStatusClass(status: string) {
   if (status === "DRAFT") return "bg-muted text-foreground";
   if (status === "FOR_DISPATCH") return "bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300";
@@ -463,6 +457,19 @@ export function StockTransfersClient({
    * string compare is a date compare.
    */
   const hasAppliedFilters = Object.values(appliedFilters).some(Boolean) || Boolean(transferIdFilter);
+  /*
+   * Built from appliedFilters rather than draftFilters so the PDF is the
+   * table as it stands. Exporting a filter the user typed but never applied
+   * would hand them a sheet that does not match what is on screen.
+   */
+  const exportParams = (() => {
+    const params = new URLSearchParams({ format: "pdf" });
+    if (transferIdFilter) params.set("transferId", transferIdFilter);
+    for (const [key, value] of Object.entries(appliedFilters)) {
+      if (value) params.set(key, value);
+    }
+    return params.toString();
+  })();
   const invertedDateRange =
     draftFilters.dispatchedFrom && draftFilters.dispatchedTo && draftFilters.dispatchedFrom > draftFilters.dispatchedTo
       ? "Dispatched to must be on or after Dispatched from."
@@ -524,7 +531,7 @@ export function StockTransfersClient({
     dispatched: (transfer) => transfer.dispatchedAt ?? "",
     delivered: (transfer) => transfer.deliveredAt ?? "",
     receipt: (transfer) => transfer.dispatchReceiptNumber ?? "",
-    status: (transfer) => getTransferStatusLabel(transfer.status),
+    status: (transfer) => transferStatusLabel(transfer.status),
     products: (transfer) => transfer.lines.length,
   });
   const draftLineSort = useTableSort(selected?.lines, {
@@ -1127,7 +1134,7 @@ export function StockTransfersClient({
                   Print checklist
                 </Link>
                 <Badge className={getTransferStatusClass(selected.status)}>
-                  {getTransferStatusLabel(selected.status)}
+                  {transferStatusLabel(selected.status)}
                 </Badge>
               </div>
             </div>
@@ -1366,7 +1373,7 @@ export function StockTransfersClient({
                   Print checklist
                 </Link>
                 <Badge className={getTransferStatusClass(selected.status)}>
-                  {getTransferStatusLabel(selected.status)}
+                  {transferStatusLabel(selected.status)}
                 </Badge>
               </div>
             </div>
@@ -1984,7 +1991,7 @@ export function StockTransfersClient({
             id="transfer-filter-status"
             label="Filter by status"
             placeholder="All statuses"
-            options={[{ value: "", label: "All statuses" }, ...["DRAFT", "FOR_DISPATCH", "IN_TRANSIT", "RECEIVED", "DISCREPANCY_REPORTED", "UNDER_REVIEW", "RESOLVED", "CANCELLED"].map((status) => ({ value: status, label: getTransferStatusLabel(status) }))]}
+            options={[{ value: "", label: "All statuses" }, ...["DRAFT", "FOR_DISPATCH", "IN_TRANSIT", "RECEIVED", "DISCREPANCY_REPORTED", "UNDER_REVIEW", "RESOLVED", "CANCELLED"].map((status) => ({ value: status, label: transferStatusLabel(status) }))]}
             value={draftFilters.status}
             onChange={(value) => setDraftFilters({ ...draftFilters, status: value })}
           />
@@ -2053,6 +2060,20 @@ export function StockTransfersClient({
             <p className="text-sm text-muted-foreground">
               {transfers.isFetching && !transfers.isLoading ? "Updating..." : ""}
             </p>
+            <div className="flex flex-col items-end gap-1">
+              <a
+                href={`/api/stock-transfers?${exportParams}`}
+                className={buttonVariants({ variant: "outline", size: "sm" })}
+              >
+                <FileText aria-hidden="true" />
+                Export PDF
+              </a>
+              <p className="text-xs text-muted-foreground">
+                {hasAppliedFilters
+                  ? "Exports every transfer matching the applied filters."
+                  : "Exports every transfer you can see."}
+              </p>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1040px]">
@@ -2094,7 +2115,7 @@ export function StockTransfersClient({
                         <Badge
                           className={getTransferStatusClass(transfer.status)}
                         >
-                          {getTransferStatusLabel(transfer.status)}
+                          {transferStatusLabel(transfer.status)}
                         </Badge>
                       </td>
                       <td className="p-3">{transfer.lines.length}</td>

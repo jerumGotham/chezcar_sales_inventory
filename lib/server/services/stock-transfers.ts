@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { Prisma, type StockTransferStatus } from "@prisma/client";
 import { availableStock } from "@/lib/inventory-quantity";
 import { manilaDayRange } from "@/lib/manila-day";
+import { transferStatusLabel } from "@/lib/stock-transfer-status";
 
 import {
   assertAnyCapability,
@@ -480,26 +481,31 @@ export async function createDueTransferReminders(now = new Date()) {
   return { examined: due.length, reminded: sent };
 }
 
-export async function listTransfers(
-  actor: AuthContext,
-  query: {
-    page: number;
-    pageSize: number;
-    transferId?: string;
-    status?: StockTransferStatus;
-    sourceId?: string;
-    destinationId?: string;
-    reference?: string;
-    dispatchedFrom?: string;
-    dispatchedTo?: string;
-    deliveredFrom?: string;
-    deliveredTo?: string;
-  } = {
-    page: 1,
-    pageSize: 10,
-  },
-) {
-  assertCapability(actor, "stock-transfers:view");
+/** The filters the Stock Transfers list offers, shared with its PDF export. */
+export type TransferListFilters = {
+  transferId?: string;
+  status?: StockTransferStatus;
+  sourceId?: string;
+  destinationId?: string;
+  reference?: string;
+  dispatchedFrom?: string;
+  dispatchedTo?: string;
+  deliveredFrom?: string;
+  deliveredTo?: string;
+};
+
+/**
+ * One row cap for the PDF, so a filter left wide open cannot try to render
+ * the whole history into a single document.
+ */
+const EXPORT_TAKE = 5_000;
+
+/**
+ * Built once and used by both the list and its export, because an export
+ * whose rows are selected differently from the table above it is worse than
+ * no export: it looks like the same thing and quietly is not.
+ */
+function transferWhere(actor: AuthContext, query: TransferListFilters): Prisma.StockTransferWhereInput {
   const scoped = [...actor.locationIds];
   const dispatched = manilaDayRange(query.dispatchedFrom, query.dispatchedTo);
   const delivered = manilaDayRange(query.deliveredFrom, query.deliveredTo);
@@ -523,7 +529,7 @@ export async function listTransfers(
         { receivedAt: null, discrepancy: { reportedAt: delivered } },
       ],
     });
-  const where: Prisma.StockTransferWhereInput = {
+  return {
     id: query.transferId,
     status: query.status,
     sourceId: query.sourceId,
@@ -535,6 +541,20 @@ export async function listTransfers(
     dispatchedAt: dispatched,
     ...(conditions.length ? { AND: conditions } : {}),
   };
+}
+
+export async function listTransfers(
+  actor: AuthContext,
+  query: TransferListFilters & {
+    page: number;
+    pageSize: number;
+  } = {
+    page: 1,
+    pageSize: 10,
+  },
+) {
+  assertCapability(actor, "stock-transfers:view");
+  const where = transferWhere(actor, query);
   const [total, transfers] = await prisma.$transaction([
     prisma.stockTransfer.count({ where }),
     prisma.stockTransfer.findMany({
@@ -555,6 +575,60 @@ export async function listTransfers(
       total,
       totalPages: Math.max(1, Math.ceil(total / query.pageSize)),
     },
+  };
+}
+
+/**
+ * Every transfer matching the list's filters, for the PDF copy -- not just
+ * the page on screen, which is the convention the other list exports follow.
+ *
+ * The filter labels are resolved here rather than in the route because this
+ * is where the location rows are: a branch id printed raw on the sheet tells
+ * the reader nothing about which branch was asked for.
+ */
+export async function exportTransfers(actor: AuthContext, query: TransferListFilters) {
+  assertCapability(actor, "stock-transfers:view");
+  const where = transferWhere(actor, query);
+  const [transfers, locations] = await Promise.all([
+    prisma.stockTransfer.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: EXPORT_TAKE,
+      include: TRANSFER_INCLUDE,
+    }),
+    query.sourceId || query.destinationId
+      ? prisma.location.findMany({
+          where: { id: { in: [query.sourceId, query.destinationId].filter((id): id is string => Boolean(id)) } },
+          select: { id: true, code: true, name: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  const label = (id: string | undefined) => {
+    const location = locations.find((row) => row.id === id);
+    return location ? `${location.name} (${location.code})` : id;
+  };
+  const appliedFilters: Array<{ label: string; value: string }> = [];
+  if (query.reference) appliedFilters.push({ label: "Reference", value: query.reference });
+  if (query.sourceId) appliedFilters.push({ label: "Source", value: label(query.sourceId)! });
+  if (query.destinationId) appliedFilters.push({ label: "Destination", value: label(query.destinationId)! });
+  if (query.status) appliedFilters.push({ label: "Status", value: transferStatusLabel(query.status) });
+  // An open end is stated as such, so the sheet never implies a bound it did
+  // not apply.
+  if (query.dispatchedFrom || query.dispatchedTo)
+    appliedFilters.push({
+      label: "Dispatched",
+      value: `${query.dispatchedFrom ?? "Any"} to ${query.dispatchedTo ?? "Any"}`,
+    });
+  if (query.deliveredFrom || query.deliveredTo)
+    appliedFilters.push({
+      label: "Delivered",
+      value: `${query.deliveredFrom ?? "Any"} to ${query.deliveredTo ?? "Any"}`,
+    });
+  return {
+    rows: transfers.map((transfer) => serializeTransfer(transfer, canViewTransferAudit(actor))),
+    appliedFilters,
+    /** True when the cap bit, so the sheet can say so instead of lying by omission. */
+    truncated: transfers.length === EXPORT_TAKE,
   };
 }
 

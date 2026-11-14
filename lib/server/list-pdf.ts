@@ -261,3 +261,65 @@ export async function createCustomerOrdersPdf(
 
   return builder.finish();
 }
+
+export type StockTransferExportRow = {
+  reference: string;
+  source: string;
+  destination: string;
+  dispatched: string;
+  delivered: string;
+  deliveryReceipt: string;
+  status: string;
+  products: number;
+};
+
+export async function createStockTransfersPdf(
+  rows: StockTransferExportRow[],
+  metadata: ListPdfMetadata,
+  truncated = false,
+): Promise<ArrayBuffer> {
+  const builder = await createPdfBuilder({
+    title: "Stock Transfers List",
+    documentTitle: "Predator Stock Transfers List",
+    generatedBy: metadata.generatedBy,
+    footer: "Private | Authorized transfer scope | Times: Asia/Manila",
+  });
+
+  preamble(builder, "Stock Transfers List", metadata,
+    "Transfers matching the applied filters, not only the page shown on screen. Dispatched is the day the goods left; Delivered is the day the destination counted them in, which for a short delivery is the day the shortage was reported.");
+
+  if (truncated) {
+    builder.text("This export hit the 5,000 row limit and is incomplete. Narrow the filters to print the rest.", 9, true);
+    builder.space(8);
+  }
+
+  /*
+   * A count per status rather than a money total: a transfer moves goods
+   * between the company's own branches, so there is no sale here to add up,
+   * and the question a reader brings to this sheet is how many are still
+   * out.
+   */
+  const byStatus = new Map<string, number>();
+  for (const row of rows) byStatus.set(row.status, (byStatus.get(row.status) ?? 0) + 1);
+
+  builder.table("Transfers overview", [{ header: "Measure", width: 3 }, { header: "Total", width: 2, numeric: true }], [
+    ["Transfers exported", String(rows.length)],
+    ...[...byStatus.entries()].sort((a, b) => b[1] - a[1]).map(([status, count]): [string, string] => [status, String(count)]),
+    ["Products across transfers", String(rows.reduce((sum, row) => sum + row.products, 0))],
+  ], true);
+
+  builder.table("Stock transfers", [
+    { header: "Reference", width: 2.4 }, { header: "Source", width: 1.5 },
+    { header: "Destination", width: 1.6 }, { header: "Dispatched", width: 1.2 },
+    { header: "Delivered", width: 1.2 }, { header: "Delivery receipt", width: 1.3 },
+    { header: "Status", width: 1.4 }, { header: "Products", width: 1.1, numeric: true },
+  ], [
+    ...rows.map((row) => [
+      row.reference, row.source, row.destination, row.dispatched,
+      row.delivered, row.deliveryReceipt, row.status, String(row.products),
+    ]),
+    ["EXPORTED TOTAL", "", "", "", "", "", "", String(rows.reduce((sum, row) => sum + row.products, 0))],
+  ], true);
+
+  return builder.finish();
+}
