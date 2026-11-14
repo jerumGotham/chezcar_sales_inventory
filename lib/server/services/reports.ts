@@ -29,6 +29,7 @@ import {
   type StockMovementReport,
 } from "@/lib/contracts/reports";
 import { availableStock } from "@/lib/inventory-quantity";
+import { manilaDayBoundary } from "@/lib/manila-day";
 import { reportCapability } from "@/lib/contracts/roles";
 import { assertCapability, AuthorizationError, type AuthContext } from "@/lib/server/authorization";
 import { hasAllLocationAccess } from "@/lib/server/policy/access";
@@ -106,11 +107,6 @@ export function defaultReportDates(now = new Date()) {
   return { dateFrom: `${today.slice(0, 7)}-01`, dateTo: reportMonthEnd(today) };
 }
 
-function dateBoundary(value: string, end = false) {
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(Date.UTC(year, month - 1, day + (end ? 1 : 0)) - MANILA_OFFSET);
-}
-
 function locationFilter(actor: AuthContext) {
   return hasAllLocationAccess(actor) ? undefined : { in: [...actor.locationIds] };
 }
@@ -165,8 +161,8 @@ function dateRange(query: ReportQuery, defaults: boolean) {
     dateFrom: dateFrom ?? null,
     dateTo: dateTo ?? null,
     where: dateFrom || dateTo ? {
-      ...(dateFrom ? { gte: dateBoundary(dateFrom) } : {}),
-      ...(dateTo ? { lt: dateBoundary(dateTo, true) } : {}),
+      ...(dateFrom ? { gte: manilaDayBoundary(dateFrom) } : {}),
+      ...(dateTo ? { lt: manilaDayBoundary(dateTo, true) } : {}),
     } : undefined,
   };
 }
@@ -953,7 +949,7 @@ export async function getReport(actor: AuthContext, rawQuery: unknown): Promise<
     const movementRange = dateRange(query, true);
     // Pace is measured against the days actually covered by the filter.
     const periodDays = movementRange.dateFrom && movementRange.dateTo
-      ? Math.max(1, Math.round((dateBoundary(movementRange.dateTo, true).getTime() - dateBoundary(movementRange.dateFrom).getTime()) / 86_400_000))
+      ? Math.max(1, Math.round((manilaDayBoundary(movementRange.dateTo, true).getTime() - manilaDayBoundary(movementRange.dateFrom).getTime()) / 86_400_000))
       : 30;
     const productWhere: Prisma.ProductWhereInput = {
       ...(query.search ? { OR: [{ itemCode: { contains: query.search, mode: "insensitive" } }, { name: { contains: query.search, mode: "insensitive" } }] } : {}),

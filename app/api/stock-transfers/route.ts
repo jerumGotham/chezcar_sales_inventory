@@ -1,6 +1,6 @@
-import { z, ZodError } from "zod";
+import { ZodError } from "zod";
 import { authorizationErrorResponse, requireCapability } from "@/lib/server/authorization";
-import { createTransferSchema } from "@/lib/contracts/stock-transfers";
+import { createTransferSchema, listTransfersQuerySchema } from "@/lib/contracts/stock-transfers";
 import { TransferError, createTransfer, listTransfers } from "@/lib/server/services/stock-transfers";
 
 function errorResponse(error: unknown) {
@@ -8,21 +8,12 @@ function errorResponse(error: unknown) {
   if (error instanceof TransferError) return Response.json({ error: { code: error.code, message: error.message } }, { status: error.status });
   try { return authorizationErrorResponse(error); } catch (unexpected) { console.error("Stock transfer request failed", unexpected); return Response.json({ error: { code: "INTERNAL_ERROR", message: "Unable to process stock transfer" } }, { status: 500 }); }
 }
-const listQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(10),
-  transferId: z.string().trim().max(100).optional(),
-  status: z.enum(["DRAFT", "FOR_DISPATCH", "IN_TRANSIT", "RECEIVED", "DISCREPANCY_REPORTED", "UNDER_REVIEW", "RESOLVED", "CANCELLED"]).optional(),
-  sourceId: z.string().trim().max(100).optional(),
-  destinationId: z.string().trim().max(100).optional(),
-  reference: z.string().trim().max(100).optional(),
-});
 
 export async function GET(request: Request) {
   try {
     const actor = await requireCapability(request.headers, "stock-transfers:view");
     const searchParams = new URL(request.url).searchParams;
-    const query = listQuerySchema.parse({
+    const query = listTransfersQuerySchema.parse({
       page: searchParams.get("page") ?? undefined,
       pageSize: searchParams.get("pageSize") ?? undefined,
       transferId: searchParams.get("transferId") ?? undefined,
@@ -30,6 +21,10 @@ export async function GET(request: Request) {
       sourceId: searchParams.get("sourceId") || undefined,
       destinationId: searchParams.get("destinationId") || undefined,
       reference: searchParams.get("reference") || undefined,
+      dispatchedFrom: searchParams.get("dispatchedFrom") || undefined,
+      dispatchedTo: searchParams.get("dispatchedTo") || undefined,
+      deliveredFrom: searchParams.get("deliveredFrom") || undefined,
+      deliveredTo: searchParams.get("deliveredTo") || undefined,
     });
     return Response.json(await listTransfers(actor, query));
   } catch (error) {

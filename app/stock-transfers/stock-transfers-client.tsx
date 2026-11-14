@@ -218,6 +218,37 @@ function ChoiceSelect({
   );
 }
 
+/**
+ * A date input needs a visible label: unlike the selects beside it, it has no
+ * placeholder to say which end of which range it is, and four unlabelled
+ * boxes in a row are a guess.
+ */
+function DateFilter({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <Label htmlFor={id} className="text-xs font-normal text-muted-foreground">
+        {label}
+      </Label>
+      <Input
+        id={id}
+        type="date"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </div>
+  );
+}
+
 function productLabel(product: Product) {
   const availability =
     product.availableQuantity === null
@@ -313,6 +344,15 @@ type TransferFilters = {
   sourceId: string;
   destinationId: string;
   reference: string;
+  /*
+   * Calendar days, both ends inclusive and read in Manila. Every one is
+   * optional: an empty end means no bound on that side rather than today, so
+   * a start on its own asks for everything since.
+   */
+  dispatchedFrom: string;
+  dispatchedTo: string;
+  deliveredFrom: string;
+  deliveredTo: string;
 };
 
 async function fetchTransferPage(
@@ -330,6 +370,10 @@ async function fetchTransferPage(
   if (filters?.sourceId) searchParams.set("sourceId", filters.sourceId);
   if (filters?.destinationId) searchParams.set("destinationId", filters.destinationId);
   if (filters?.reference) searchParams.set("reference", filters.reference);
+  if (filters?.dispatchedFrom) searchParams.set("dispatchedFrom", filters.dispatchedFrom);
+  if (filters?.dispatchedTo) searchParams.set("dispatchedTo", filters.dispatchedTo);
+  if (filters?.deliveredFrom) searchParams.set("deliveredFrom", filters.deliveredFrom);
+  if (filters?.deliveredTo) searchParams.set("deliveredTo", filters.deliveredTo);
   const response = await fetch(`/api/stock-transfers?${searchParams}`, {
     credentials: "same-origin",
   });
@@ -406,9 +450,25 @@ export function StockTransfersClient({
   // One assigned location needs no choice; stock leaves where the user works.
   const [sourceId, setSourceId] = useState(sources.length === 1 ? sources[0].id : "");
   const [destinationId, setDestinationId] = useState("");
-  const emptyFilters: TransferFilters = { status: "", sourceId: "", destinationId: "", reference: "" };
+  const emptyFilters: TransferFilters = {
+    status: "", sourceId: "", destinationId: "", reference: "",
+    dispatchedFrom: "", dispatchedTo: "", deliveredFrom: "", deliveredTo: "",
+  };
   const [draftFilters, setDraftFilters] = useState<TransferFilters>(emptyFilters);
   const [appliedFilters, setAppliedFilters] = useState<TransferFilters>(emptyFilters);
+  /*
+   * The server answers a backwards range with a flat 400, which reads as the
+   * page breaking rather than as a typo in a date. Say which pair is wrong
+   * and hold Apply until it is fixed. Both values are plain YYYY-MM-DD, so a
+   * string compare is a date compare.
+   */
+  const hasAppliedFilters = Object.values(appliedFilters).some(Boolean) || Boolean(transferIdFilter);
+  const invertedDateRange =
+    draftFilters.dispatchedFrom && draftFilters.dispatchedTo && draftFilters.dispatchedFrom > draftFilters.dispatchedTo
+      ? "Dispatched to must be on or after Dispatched from."
+      : draftFilters.deliveredFrom && draftFilters.deliveredTo && draftFilters.deliveredFrom > draftFilters.deliveredTo
+        ? "Delivered to must be on or after Delivered from."
+        : null;
   const [replacementForTransferId, setReplacementForTransferId] = useState("");
   const [draftLines, setDraftLines] = useState<DraftLine[]>([
     { productId: "", quantity: 1 },
@@ -1893,7 +1953,8 @@ export function StockTransfersClient({
       )}
 
       <Card className="mt-6">
-        <CardContent className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-5">
+        <CardContent className="space-y-3 p-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <input
             aria-label="Search reference"
             className="h-10 min-w-0 rounded-md border px-3"
@@ -1927,9 +1988,43 @@ export function StockTransfersClient({
             value={draftFilters.status}
             onChange={(value) => setDraftFilters({ ...draftFilters, status: value })}
           />
-          <div className="flex items-center gap-2">
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <DateFilter
+              id="transfer-filter-dispatched-from"
+              label="Dispatched from"
+              value={draftFilters.dispatchedFrom}
+              onChange={(value) => setDraftFilters({ ...draftFilters, dispatchedFrom: value })}
+            />
+            <DateFilter
+              id="transfer-filter-dispatched-to"
+              label="Dispatched to"
+              value={draftFilters.dispatchedTo}
+              onChange={(value) => setDraftFilters({ ...draftFilters, dispatchedTo: value })}
+            />
+            <DateFilter
+              id="transfer-filter-delivered-from"
+              label="Delivered from"
+              value={draftFilters.deliveredFrom}
+              onChange={(value) => setDraftFilters({ ...draftFilters, deliveredFrom: value })}
+            />
+            <DateFilter
+              id="transfer-filter-delivered-to"
+              label="Delivered to"
+              value={draftFilters.deliveredTo}
+              onChange={(value) => setDraftFilters({ ...draftFilters, deliveredTo: value })}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Dates are optional and both ends are inclusive, by Manila date. A
+            dispatch date leaves out drafts, which were never dispatched; a
+            delivery that came up short counts on the day the shortage was
+            reported, the same day the list shows it.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               size="sm"
+              disabled={invertedDateRange !== null}
               onClick={() => {
                 setPage(1);
                 setAppliedFilters(draftFilters);
@@ -1948,6 +2043,9 @@ export function StockTransfersClient({
             >
               Reset
             </Button>
+            {invertedDateRange ? (
+              <p className="text-sm text-destructive">{invertedDateRange}</p>
+            ) : null}
           </div>
         </CardContent>
         <CardContent className="p-0">
@@ -2036,7 +2134,15 @@ export function StockTransfersClient({
                 ) : (
                   <tr>
                     <td className="p-6 text-muted-foreground" colSpan={9}>
-                      No transfers yet.
+                      {/*
+                        * An empty list under a filter is not an empty ledger.
+                        * Saying "no transfers yet" to a branch that has
+                        * hundreds, because it asked for the wrong week, reads
+                        * as lost data rather than as a filter that missed.
+                        */}
+                      {hasAppliedFilters
+                        ? "No transfers match these filters."
+                        : "No transfers yet."}
                     </td>
                   </tr>
                 )}

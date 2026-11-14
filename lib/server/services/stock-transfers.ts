@@ -3,6 +3,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { Prisma, type StockTransferStatus } from "@prisma/client";
 import { availableStock } from "@/lib/inventory-quantity";
+import { manilaDayRange } from "@/lib/manila-day";
 
 import {
   assertAnyCapability,
@@ -489,6 +490,10 @@ export async function listTransfers(
     sourceId?: string;
     destinationId?: string;
     reference?: string;
+    dispatchedFrom?: string;
+    dispatchedTo?: string;
+    deliveredFrom?: string;
+    deliveredTo?: string;
   } = {
     page: 1,
     pageSize: 10,
@@ -496,6 +501,28 @@ export async function listTransfers(
 ) {
   assertCapability(actor, "stock-transfers:view");
   const scoped = [...actor.locationIds];
+  const dispatched = manilaDayRange(query.dispatchedFrom, query.dispatchedTo);
+  const delivered = manilaDayRange(query.deliveredFrom, query.deliveredTo);
+  const conditions: Prisma.StockTransferWhereInput[] = [];
+  // A transfer belongs to both ends, so either side may follow it.
+  if (!hasAllLocationAccess(actor))
+    conditions.push({
+      OR: [{ sourceId: { in: scoped } }, { destinationId: { in: scoped } }],
+    });
+  /*
+   * The delivery date is not a column. A delivery that came up short never
+   * reaches confirmReceipt, so it has no receivedAt and the list dates its
+   * arrival by the discrepancy report instead; the filter has to follow that
+   * same fallback or every resolved transfer answers no date range at all,
+   * while its stock has been on the destination's shelf for weeks.
+   */
+  if (delivered)
+    conditions.push({
+      OR: [
+        { receivedAt: delivered },
+        { receivedAt: null, discrepancy: { reportedAt: delivered } },
+      ],
+    });
   const where: Prisma.StockTransferWhereInput = {
     id: query.transferId,
     status: query.status,
@@ -504,10 +531,9 @@ export async function listTransfers(
     reference: query.reference
       ? { contains: query.reference, mode: "insensitive" }
       : undefined,
-    // A transfer belongs to both ends, so either side may follow it.
-    ...(hasAllLocationAccess(actor)
-      ? {}
-      : { AND: [{ OR: [{ sourceId: { in: scoped } }, { destinationId: { in: scoped } }] }] }),
+    // A draft was never dispatched, so a dispatch range rightly excludes it.
+    dispatchedAt: dispatched,
+    ...(conditions.length ? { AND: conditions } : {}),
   };
   const [total, transfers] = await prisma.$transaction([
     prisma.stockTransfer.count({ where }),

@@ -21,6 +21,17 @@ function actor(
   return authContextFor(user, location);
 }
 
+/**
+ * The Manila calendar day an instant falls on, which is the day the list
+ * filters speak in. Computed here rather than imported so the test states the
+ * expected day itself instead of agreeing with the code under test.
+ */
+function manilaDay(value: string) {
+  return new Date(new Date(value).getTime() + 8 * 60 * 60 * 1_000)
+    .toISOString()
+    .slice(0, 10);
+}
+
 describe("stock transfer posting", () => {
   it("keeps source-side transfer reach separate from destination business data", async () => {
     await withDisposableDatabase(async ({ prisma }) => {
@@ -190,6 +201,15 @@ describe("stock transfer posting", () => {
       ).resolves.toMatchObject({ data: [{ id: draft.id }] });
       // A draft has not gone anywhere, so neither date is set yet.
       expect(draft).toMatchObject({ dispatchedAt: null, deliveredAt: null });
+      // And so no dispatch range can answer with it, however wide.
+      await expect(
+        listTransfers(adminActor, {
+          page: 1,
+          pageSize: 10,
+          dispatchedFrom: "2020-01-01",
+          dispatchedTo: "2099-12-31",
+        }),
+      ).resolves.toMatchObject({ data: [], meta: { total: 0 } });
       const finalized = await finalizeTransfer(adminActor, draft.id, draft.version);
       const dispatched = await dispatchTransfer(adminActor, finalized.id, finalized.version, "DR-4417");
 
@@ -238,6 +258,36 @@ describe("stock transfer posting", () => {
       ).resolves.toMatchObject({
         data: [{ deliveredAt: received.deliveredAt, dispatchedAt: received.dispatchedAt, dispatchReceiptNumber: "DR-4417" }],
       });
+      const dispatchDay = manilaDay(received.dispatchedAt!);
+      const deliveryDay = manilaDay(received.deliveredAt!);
+      // A single day given as both ends is inclusive, so it finds that day.
+      await expect(
+        listTransfers(adminActor, { page: 1, pageSize: 10, dispatchedFrom: dispatchDay, dispatchedTo: dispatchDay }),
+      ).resolves.toMatchObject({ data: [{ id: draft.id }], meta: { total: 1 } });
+      await expect(
+        listTransfers(adminActor, { page: 1, pageSize: 10, deliveredFrom: deliveryDay, deliveredTo: deliveryDay }),
+      ).resolves.toMatchObject({ data: [{ id: draft.id }], meta: { total: 1 } });
+      // An open end bounds one side only.
+      await expect(
+        listTransfers(adminActor, { page: 1, pageSize: 10, dispatchedFrom: dispatchDay }),
+      ).resolves.toMatchObject({ data: [{ id: draft.id }], meta: { total: 1 } });
+      // A range that ends before the dispatch excludes it rather than
+      // rounding into it, which is what the `lt` next-midnight bound buys.
+      await expect(
+        listTransfers(adminActor, { page: 1, pageSize: 10, dispatchedTo: "2020-01-01" }),
+      ).resolves.toMatchObject({ data: [], meta: { total: 0 } });
+      await expect(
+        listTransfers(adminActor, { page: 1, pageSize: 10, deliveredFrom: "2099-01-01" }),
+      ).resolves.toMatchObject({ data: [], meta: { total: 0 } });
+      // The two ranges narrow together rather than either one winning.
+      await expect(
+        listTransfers(adminActor, {
+          page: 1,
+          pageSize: 10,
+          dispatchedFrom: dispatchDay,
+          deliveredFrom: "2099-01-01",
+        }),
+      ).resolves.toMatchObject({ data: [], meta: { total: 0 } });
       await expect(
         prisma.notification.findMany({
           where: {
@@ -312,6 +362,25 @@ describe("stock transfer posting", () => {
       await expect(
         prisma.stockTransfer.findUniqueOrThrow({ where: { id: reported.id }, select: { receivedAt: true } }),
       ).resolves.toMatchObject({ receivedAt: null });
+      /*
+       * The delivery date filter has to follow that same fallback. Filtering
+       * on receivedAt alone would answer nothing here, hiding a transfer the
+       * list itself shows as delivered -- the branch would read the date on
+       * screen, filter for that day, and be told it does not exist.
+       */
+      const { listTransfers } = await import("../../lib/server/services/stock-transfers");
+      const shortDeliveryDay = manilaDay(reported.deliveredAt!);
+      await expect(
+        listTransfers(adminActor, {
+          page: 1,
+          pageSize: 10,
+          deliveredFrom: shortDeliveryDay,
+          deliveredTo: shortDeliveryDay,
+        }),
+      ).resolves.toMatchObject({ data: [{ id: reported.id }], meta: { total: 1 } });
+      await expect(
+        listTransfers(adminActor, { page: 1, pageSize: 10, deliveredTo: "2020-01-01" }),
+      ).resolves.toMatchObject({ data: [], meta: { total: 0 } });
 
       await expect(listNotifications(stockActor)).resolves.toEqual(
         expect.arrayContaining([
